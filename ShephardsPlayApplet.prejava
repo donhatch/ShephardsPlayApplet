@@ -1,0 +1,770 @@
+/*
+Trying to make a little applet
+that will let me play with triangulations with heights,
+and produce the dual diagrams with heights.
+
+For starters, always triangulates entire convex hull.
+User should be able to:
+    left click - add a vertex
+                   - if inside a triangle, trisects the triangle
+                   - if outside the convex hull, connects up
+                     to all visible other vertices
+    right click - delete a vertex that's on the convex hull
+                  or that's only connected to three neighbors
+    middle drag - move a vertex
+    's' - swap a diagonal
+*/
+
+#include "macros.h"
+
+import com.donhatchsw.util.Arrays;
+import com.donhatchsw.util.VecMath;
+
+public class ShephardsPlayApplet
+    extends java.applet.Applet
+    implements java.awt.event.MouseListener,
+               java.awt.event.MouseMotionListener,
+               java.awt.event.KeyListener
+{
+    //
+    // Utilities for applet stuff...
+    //
+        private String getParameterString(String paramName,
+                                       String defaultValue)
+        {
+            String paramValueString = getParameter(paramName);
+            if (paramValueString != null)
+                return paramValueString;
+            else
+                return defaultValue;
+        }
+        private int getParameterInt(String paramName,
+                                    int defaultValue)
+        {
+            String paramValueString = getParameter(paramName);
+            if (paramValueString != null)
+            {
+                try
+                {
+                    return Integer.decode(paramValueString).intValue();
+                }
+                catch (NumberFormatException e)
+                {
+                    return 0;
+                }
+            }
+            else
+                return defaultValue;
+        }
+        private double getParameterDouble(String paramName,
+                                          double defaultValue)
+        {
+            String paramValueString = getParameter(paramName);
+            if (paramValueString != null)
+            {
+                try
+                {
+                    return Double.parseDouble(paramValueString);
+                }
+                catch (NumberFormatException e)
+                {
+                    return 0;
+                }
+            }
+            else
+                return defaultValue;
+        }
+        private boolean getParameterBoolean(String paramName,
+                                            boolean defaultValue)
+        {
+            String paramValueString = getParameter(paramName);
+            if (paramValueString != null)
+            {
+                // Too simplistic, only honors case-sensitive "true"
+                //return Boolean.valueOf(paramValueString).booleanValue();
+
+                try
+                {
+                    int n = Integer.decode(paramValueString).intValue();
+                    return n != 0;
+                }
+                catch (NumberFormatException e)
+                {
+                    if (paramValueString.equalsIgnoreCase("true")
+                     || paramValueString.equalsIgnoreCase("yes")
+                     || paramValueString.equalsIgnoreCase("t")
+                     || paramValueString.equalsIgnoreCase("y"))
+                        return true;
+                    return false;
+                }
+            }
+            else
+                return defaultValue;
+        }
+
+    //
+    // Implementing Applet methods...
+    //
+        ShephardsPlayApplet()
+        {
+            setLayout(new java.awt.GridBagLayout());
+        } // ShephardsPlayApplet ctor
+
+        public void init()
+        {
+            eventVerbose = getParameterInt("EventVerbose", eventVerbose);
+            if (eventVerbose >= 1) System.out.println("in init");
+
+            // Specify an "event listener" object
+            // to respond to events.
+            // (>= Java 1.1 event model).
+            this.addMouseListener(this);
+            this.addMouseMotionListener(this);
+            this.addKeyListener(this);
+
+            graphicsAntiAliasingSetter = new GraphicsAntiAliasingSetter();
+
+            if (eventVerbose >= 1) System.out.println("out init");
+        } // init
+
+        public void start()
+        {
+            if (eventVerbose >= 1) System.out.println("in start");
+            if (eventVerbose >= 1) System.out.println("out start");
+        }
+        public void stop()
+        {
+            if (eventVerbose >= 1) System.out.println("in stop");
+            if (eventVerbose >= 1) System.out.println("out stop");
+        }
+        public void destroy()
+        {
+            if (eventVerbose >= 1) System.out.println("in destroy");
+            if (eventVerbose >= 1) System.out.println("out destroy");
+        }
+
+        //
+        // Button behavor changed incompatibly between Java 1.1 and 1.4
+        // (not sure exactly what version it changed in though).
+        // (I think it was 1.4 since that's when getButton() was added
+        // to MouseEvent).
+        //
+        private static int getButton(java.awt.event.MouseEvent e)
+        {
+            // gag me! we can't even query the java spec version number
+            // since System.getProperty() throws a security exception
+            // in netscape!
+            // so use empirical evidence...
+            int mods = e.getModifiers();
+#if 0 // can't seem to get this to work under IE at all, so don't try for now, it will just be wrong under 1.4
+            boolean is_1_4_or_greater = ((mods & ~0x1fff) != 0);
+            if (is_1_4_or_greater)
+            {
+                try
+                {
+                    return e.getButton();
+                }
+                catch (NoSuchMethodError err)
+                {
+                    // this only happens in IE, not netscape. fall through...
+                }
+            }
+#endif
+
+            if ((mods & java.awt.event.InputEvent.ALT_MASK) != 0)
+                return java_awt_event_MouseEvent_BUTTON2;
+            if ((mods & java.awt.event.InputEvent.META_MASK) != 0)
+                return java_awt_event_MouseEvent_BUTTON3;
+            return java_awt_event_MouseEvent_BUTTON1;
+        } // getButton
+
+        //
+        // MouseListener and MouseMotionListener methods...
+        // 
+        public void mousePressed(java.awt.event.MouseEvent e)
+        {
+            if (eventVerbose >= 1) System.out.println("in mousePressed: "+e);
+            if (eventVerbose >= 1)
+            {
+                if (getButton(e) == java_awt_event_MouseEvent_BUTTON1)
+                    System.out.println("    (left mouse)");
+                if (getButton(e) == java_awt_event_MouseEvent_BUTTON2)
+                    System.out.println("    (middle mouse)");
+                if (getButton(e) == java_awt_event_MouseEvent_BUTTON3)
+                    System.out.println("    (right mouse)");
+            }
+
+            prevX = e.getX();
+            prevY = e.getY();
+
+            int whichButton = getButton(e);
+            if (whichButton == java_awt_event_MouseEvent_BUTTON1)
+            {
+                button1IsDown = true;
+                //repaint();
+            }
+            else if (whichButton == java_awt_event_MouseEvent_BUTTON2)
+            {
+                button2IsDown = true;
+                //repaint();
+            }
+            else if (whichButton == java_awt_event_MouseEvent_BUTTON3)
+            {
+                button3IsDown = true;
+                //repaint();
+
+            } // right mouse
+
+            if (eventVerbose >= 1) System.out.println("out mousePressed: "+e);
+        }
+        public void mouseReleased(java.awt.event.MouseEvent e)
+        {
+            if (eventVerbose >= 1) System.out.println("in mouseReleased: "+e);
+
+            int whichButton = getButton(e);
+            if (whichButton == java_awt_event_MouseEvent_BUTTON1)
+            {
+                button1IsDown = false;
+            }
+            else if (whichButton == java_awt_event_MouseEvent_BUTTON2)
+            {
+                button2IsDown = false;
+            }
+            else if (whichButton == java_awt_event_MouseEvent_BUTTON3)
+            {
+                button3IsDown = false;
+            }
+            if (doQuality == 1) // if it makes a difference
+                repaint();
+
+            if (eventVerbose >= 1) System.out.println("out mouseReleased: "+e);
+        }
+        public void mouseEntered(java.awt.event.MouseEvent e)
+        {
+            if (eventVerbose >= 1) System.out.println("in mouseEntered: "+e);
+            if (eventVerbose >= 1) System.out.println("out mouseEntered: "+e);
+        }
+        public void mouseExited(java.awt.event.MouseEvent e)
+        {
+            if (eventVerbose >= 1) System.out.println("in mouseExited: "+e);
+            if (eventVerbose >= 1) System.out.println("out mouseExited: "+e);
+        }
+        public void mouseClicked(java.awt.event.MouseEvent e)
+        {
+            if (eventVerbose >= 1) System.out.println("in mouseClicked: "+e);
+            if (eventVerbose >= 1) System.out.println("out mouseClicked: "+e);
+        }
+        public void mouseDragged(java.awt.event.MouseEvent e)
+        {
+            if (eventVerbose >= 2) System.out.println("  in mouseDragged: "+e);
+
+            if (button3IsDown) // right mouse
+            {
+                int thisX = e.getX();
+                int thisY = e.getY();
+                java.awt.Dimension size = getSize();
+
+                prevX = thisX;
+                prevY = thisY;
+
+                //repaint();
+            }
+
+
+            if (button1IsDown)
+            {
+                int thisX = e.getX();
+                int thisY = e.getY();
+
+                java.awt.Dimension size = getSize();
+
+                prevX = thisX;
+                prevY = thisY;
+
+                repaint();
+            } // right mouse only
+
+            if (eventVerbose >= 2) System.out.println("  out mouseDragged: "+e);
+        }
+        public void mouseMoved(java.awt.event.MouseEvent e)
+        {
+            if (eventVerbose >= 3) System.out.println("    in mouseMoved: "+e);
+            if (eventVerbose >= 3) System.out.println("    out mouseMoved: "+e);
+        }
+
+        //
+        // KeyListener methods...
+        //
+        public void keyPressed(java.awt.event.KeyEvent e)
+        {
+            if (eventVerbose >= 1) System.out.println("in keyPressed: "+e);
+            if (eventVerbose >= 1) System.out.println("out keyPressed: "+e);
+        }
+        public void keyReleased(java.awt.event.KeyEvent e)
+        {
+            if (eventVerbose >= 1) System.out.println("in keyReleased: "+e);
+            if (eventVerbose >= 1) System.out.println("out keyReleased: "+e);
+        }
+        public void keyTyped(java.awt.event.KeyEvent e)
+        {
+            if (eventVerbose >= 1) System.out.println("in keyTyped: "+e);
+            switch (e.getKeyChar())
+            {
+                case 'V': // cycle verbosity-- upper-case to minimize possibility of hitting it by accident thus causing subsequent perfomance degradation with no visible reason if Java Console is not visible
+                    System.out.print("eventVerbose "+eventVerbose);
+                    eventVerbose = (eventVerbose+1) % 4;
+                    System.out.println(" -> "+eventVerbose);
+                    break;
+
+                case ' ': // just repaint (i.e. mark dirty)
+                    repaint();
+                    break;
+                /*
+                case 'A': // toggle doAntiAliasing
+                    doAntiAliasing ^= true;
+                    System.out.println("doAntiAliasing -> "+doAntiAliasing+" (if this platform supports it)");
+                    repaint();
+                    break;
+                */
+
+                case 't': // increase lineThicknessInPixels
+                    System.out.print("lineThicknessInPixels "+lineThicknessInPixels);
+                    lineThicknessInPixels += 1.;
+                    System.out.println(" -> "+lineThicknessInPixels);
+                    repaint();
+                    break;
+                case 'T': // decrease lineThicknessInPixels
+                    System.out.print("lineThicknessInPixels "+lineThicknessInPixels);
+                    lineThicknessInPixels -= 1.;
+                    System.out.println(" -> "+lineThicknessInPixels);
+                    repaint();
+                    break;
+
+                case 'B': // toggle doDoubleBuffer
+                    doDoubleBuffer ^= true;
+                    System.out.println("doDoubleBuffer -> "+doDoubleBuffer);
+                    repaint();
+                    break;
+
+#define CTRL(lowerCaseLetter) ((lowerCaseLetter)-'a' + 1)
+
+                default:
+                    System.out.println("Unknown key '"+e.getKeyChar()+"'("+(int)e.getKeyChar()+") typed");
+                    break;
+            }
+            if (eventVerbose >= 1) System.out.println("out keyTyped: "+e);
+        } // keyTyped
+
+        //
+        // Make it so we get keyboard focus on startup,
+        // without having to click first.  Thanks, Melinda!
+        // The state of things seems to be:
+        //      - Buttons and TextFields are apparently "focus traversable"
+        //        by default.  Canvases and Applets aren't,
+        //        implying (not obvious) that you need to click to type
+        //        when the app starts,
+        //        which is almost never the desired behavior.
+        //        You can change this by overriding isFocusTraversable(),
+        //        which we do below.
+        //      - Other approaches using requestFocus():
+        //        A Canvas calling requestFocus() doesn't seem to do
+        //        anything.  An Applet calling requestFocus() doesn't
+        //        do anything during init(), but I think it works
+        //        if you put it in the mouseEntered handler or something,
+        //        though this can lead to various unpredictabilities.
+        // In this applet we are drawing directly on the Applet (not a Canvas),
+        // so presumably the requestFocus() approach would work,
+        // but the isFocusTraversable() fix is better in any case.
+        //
+        public boolean isFocusTraversable()
+        {
+            return true;
+        }
+
+        // override to not clear...
+        public void update(java.awt.Graphics g)
+        {
+            paint(g);
+        }
+
+
+        // PAINT
+	public void paint(java.awt.Graphics frontBufferGraphics)
+	{
+	    if (eventVerbose >= 1) System.out.println("in paint");
+
+            makeSureBackBufferIsRight();
+            java.awt.Graphics g;
+            if (doDoubleBuffer)
+                g = backBufferImage.getGraphics();
+            else
+                g = frontBufferGraphics;
+
+
+            java.awt.Dimension size = getSize();
+            double minSize = MIN(size.width, size.height);
+            MyGraphics mg = new MyGraphics(g, size,
+                                    -size.width/minSize,size.width/minSize,
+                                    -size.height/minSize,size.height/minSize);
+
+            // XXX do stuff here!
+
+            if (g != frontBufferGraphics)
+            {
+                frontBufferGraphics.drawImage(backBufferImage, 0, 0, this);
+            }
+
+	    if (eventVerbose >= 1) System.out.println("out paint");
+	} // paint
+
+
+
+
+
+
+
+    public static class ManifoldMesh
+    {
+        public class Vertex
+        {
+            public double x, y, h;
+            public Vertex(double x, double y, double h)
+            {
+                this.x = x;
+                this.y = y;
+                this.h = h;
+                verts = (Vertex[])Arrays.append(verts, this);
+            }
+        } // public class Vertex
+        public class Edge
+        {
+            private Vertex _initialVertex;
+            private Edge _opposite;
+            private Edge _nextEdgeOnLeftFace;
+            private Edge _prevEdgeOnLeftFace;
+
+            public Edge(boolean andBack)
+            {
+                if (andBack)
+                {
+                    Edge opposite = new Edge(false);
+                    setOpposite(opposite, true);
+                }
+                edges = (Edge[])Arrays.append(edges, this);
+            }
+
+            //
+            // Accessor methods...
+            //
+            public Vertex initialVertex()
+            {
+                return _initialVertex;
+            }
+            public Edge opposite()
+            {
+                return _opposite;
+            }
+            public Edge nextEdgeOnLeftFace()
+            {
+                return _nextEdgeOnLeftFace;
+            }
+            public Edge prevEdgeOnLeftFace()
+            {
+                return _prevEdgeOnLeftFace;
+            }
+
+            public void setInitialVertex(Vertex v)
+            {
+                _initialVertex = v;
+            }
+
+            public void setOpposite(Edge opposite, boolean andBack)
+            {
+                _opposite = opposite;
+                if (andBack)
+                    _opposite.setOpposite(this, false);
+            }
+            public void setNextEdgeOnLeftFace(Edge next, boolean andBack)
+            {
+                _nextEdgeOnLeftFace = next;
+                if (andBack)
+                    next.setPrevEdgeOnLeftFace(this, false);
+            }
+            public void setPrevEdgeOnLeftFace(Edge prev, boolean andBack)
+            {
+                _prevEdgeOnLeftFace = prev;
+                if (andBack)
+                    prev.setNextEdgeOnLeftFace(this, false);
+            }
+
+            //
+            // Helper methods...
+            // From the caller's point of view,
+            // these are just like the accessor methods
+            //
+            public Vertex finalVertex()
+            {
+                return _opposite._initialVertex;
+            }
+            public Edge nextEdgeOnRightFace()
+            {
+                return _opposite.prevEdgeOnLeftFace()._opposite;
+            }
+            public Edge prevEdgeOnRightFace()
+            {
+                return _opposite.nextEdgeOnLeftFace()._opposite;
+            }
+        } // public class Edge
+
+        public void sanityCheck()
+        {
+            boolean sawVertAsInitial[] = new boolean[verts.length]; // all false
+            boolean sawEdgeAsOpposite[] = new boolean[edges.length]; // all false
+            boolean sawEdgeAsNext[] = new boolean[edges.length]; // all false
+            boolean sawEdgeAsPrev[] = new boolean[edges.length]; // all false
+            FORI (iEdge, edges.length)
+            {
+                Edge e = edges[iEdge];
+                assert(e.initialVertex() != null);
+                assert(e.opposite() != null);
+                assert(e.opposite() != e);
+                assert(e.initialVertex() != null);
+                assert(e.nextEdgeOnLeftFace() != null);
+                assert(e.prevEdgeOnLeftFace() != null);
+                assert(e.opposite().opposite() == e);
+                assert(e.nextEdgeOnLeftFace().prevEdgeOnLeftFace() == e);
+                assert(e.prevEdgeOnLeftFace().nextEdgeOnLeftFace() == e);
+
+                // XXX use hash table if going to do this on big things
+                int initialVertIndex = Arrays.indexOfUsingEqualsSymbol(edges, e.initialVertex());
+                int oppositeIndex = Arrays.indexOfUsingEqualsSymbol(edges, e.opposite());
+                int nextIndex = Arrays.indexOfUsingEqualsSymbol(edges, e.nextEdgeOnLeftFace());
+                int prevIndex = Arrays.indexOfUsingEqualsSymbol(edges, e.prevEdgeOnLeftFace());
+                assert(initialVertIndex != -1);
+                assert(oppositeIndex != -1);
+                assert(nextIndex != -1);
+                assert(prevIndex != -1);
+
+                // Okay for a vert to be initial more than once...
+                sawVertAsInitial[initialVertIndex] = true;
+
+                // But not the others...
+                assert(!sawEdgeAsOpposite[oppositeIndex]);
+                sawEdgeAsOpposite[oppositeIndex] = true;
+                assert(!sawEdgeAsNext[nextIndex]);
+                sawEdgeAsNext[nextIndex] = true;
+                assert(!sawEdgeAsPrev[prevIndex]);
+                sawEdgeAsPrev[prevIndex] = true;
+            }
+
+            FORI (iVert, verts.length)
+            {
+                assert(sawVertAsInitial[iVert]);
+            }
+            FORI (iEdge, edges.length)
+            {
+                assert(sawEdgeAsOpposite[iEdge]);
+                assert(sawEdgeAsNext[iEdge]);
+                assert(sawEdgeAsPrev[iEdge]);
+            }
+        } // sanityCheck
+
+
+
+
+        /*                    ^
+             insertThisEdge   | beforeThisEdge
+            <-----------------*
+                             /|\
+                            / | \
+        */
+        public void insertEdgeBefore(Edge insertThisEdge, Edge beforeThisEdge)
+        {
+            beforeThisEdge.prevEdgeOnLeftFace().setNextEdgeOnLeftFace(insertThisEdge, true);
+            insertThisEdge.opposite().setNextEdgeOnLeftFace(beforeThisEdge, true);
+            insertThisEdge.setInitialVertex(beforeThisEdge.initialVertex());
+        }
+        public void addWhisker(Edge beforeThisEdge,
+                               Vertex v) // to this vertex
+        {
+            Edge e = new Edge(true);
+            e.opposite().setInitialVertex(v);
+            e.setNextEdgeOnLeftFace(e.opposite(), true);
+            insertEdgeBefore(e, beforeThisEdge);
+        }
+        public void addDiagonal(Edge beforeThisEdge, Edge beforeThatEdge)
+        {
+            Edge e = new Edge(true);
+            insertEdgeBefore(beforeThisEdge, e);
+            insertEdgeBefore(beforeThatEdge, e.opposite());
+        }
+        public void addEdgeBetweenTwoIsolatedVertices(Vertex v0, Vertex v1)
+        {
+            Edge e = new Edge(true);
+            e.setInitialVertex(v0);
+            e.opposite().setInitialVertex(v1);
+            e.setNextEdgeOnLeftFace(e.opposite(), true);
+            e.setPrevEdgeOnLeftFace(e.opposite(), true);
+        }
+        // This is the "kis" operation, the dual of truncating a vertex.
+        public void addVertexInsideFace(double x, double y, double h,
+                                        Edge someEdgeOnFace)
+        {
+            Vertex v = new Vertex(x,y,h);
+            //
+            // Start by attaching a single whisker to the new vertex...
+            //
+            addWhisker(someEdgeOnFace, v);
+
+            //
+            // Now fill in with triangles,
+            // connecting everything to the new vertex v.
+            //
+            while (someEdgeOnFace.nextEdgeOnLeftFace()
+                                 .nextEdgeOnLeftFace()
+                                 .nextEdgeOnLeftFace() != someEdgeOnFace)
+            {
+                addDiagonal(someEdgeOnFace.prevEdgeOnLeftFace(),
+                            someEdgeOnFace.prevEdgeOnLeftFace()
+                                          .prevEdgeOnLeftFace()
+                                          .prevEdgeOnLeftFace());
+            }
+        }
+        public void deleteEdge(Edge e)
+        {
+            e.prevEdgeOnLeftFace().setNextEdgeOnLeftFace(e.opposite().nextEdgeOnLeftFace(), true);
+            e.opposite().prevEdgeOnLeftFace().setNextEdgeOnLeftFace(e.nextEdgeOnLeftFace(), true);
+            assert(e.nextEdgeOnLeftFace() == e.opposite());
+            assert(e.prevEdgeOnLeftFace() == e.opposite());
+            int i = Arrays.indexOfUsingEqualsSymbol(edges, e);
+            edges = (Edge[])Arrays.concat(Arrays.subarray(edges,0,i), Arrays.subarray(edges,i+1,edges.length-i-1));
+            int j = Arrays.indexOfUsingEqualsSymbol(edges, e.opposite());
+            edges = (Edge[])Arrays.concat(Arrays.subarray(edges,0,j), Arrays.subarray(edges,j+1,edges.length-j-1));
+        }
+
+        // XXX should really make these vectors or something,
+        // XXX so that all operations will be constant time.
+        public Vertex verts[] = {};
+        public Edge edges[] = {};
+    } // ManifoldMesh
+
+
+    /*
+        Given:
+            x0,y0,h0
+            x1,y1,h1
+            x2,y2,h2
+        representing an infinitesimal triangle
+        whose vertices are infinitesimally-squared away from the unit sphere:
+            x0 eps, y0 eps, 1 + h0 eps^2
+            x1 eps, y1 eps, 1 + h1 eps^2
+            x2 eps, y2 eps, 1 + h2 eps^2
+        we want to find x,y,h
+        representing the point:
+            x eps, y eps, h eps^2
+        that is the intersection point of the 3 planes
+        whose closest-points-to-origin are the original 3 points.
+        If we write this out, it's equivalent to solving:
+            [x0 y0 1] [x]   [x0^2 + y0^2 + h0]
+            [x1 y1 1] [y] = [x1^2 + y1^2 + h1]
+            [x2 y2 1] [h]   [x0^2 + y2^2 + h2]
+    */
+    static void SolveForDualPoint(double x0, double y0, double h0,
+                                  double x1, double y1, double h1,
+                                  double x2, double y2, double h2,
+                                  double result[])
+    {
+        double M[][] = {
+            {x0,y0,1},
+            {x1,y1,1},
+            {x2,y2,1},
+        };
+        double b[] = {
+            x0*x0 + y0+y0 + h0,
+            x1*x1 + y1+y1 + h1,
+            x2*x2 + y2+y2 + h2,
+        };
+        VecMath.invmxv(result,M,b);
+    } // SolveForDualPoint
+
+    //
+    // Member variables...
+    //
+
+    GraphicsAntiAliasingSetter graphicsAntiAliasingSetter;
+
+    int eventVerbose = 0; // can set with eventVerbose=1 on command line
+    int nonEventVerbose = 0;
+    boolean doAntiAliasing = false;
+    boolean implementAntiAliasingInHardware = true; // XXX should have a better name for this-- really mean let java runtime do it
+    boolean doDoubleBuffer = true;
+    java.awt.Image backBufferImage = null;
+
+    public static void main(final String args[])
+    {
+        System.out.println("in main");
+
+        final java.awt.Frame frame = new java.awt.Frame("Shephards Play Applet") {
+            public boolean handleEvent(java.awt.Event event)
+            {
+                switch(event.id)
+                {
+                    case java.awt.Event.WINDOW_DESTROY:
+                        System.out.println("bye!");
+                        // Empirically, either of the following
+                        // cause the app to exit-- do both to be safe!
+                        // (XXX I've heard rumors that just doing dispose()
+                        //  messes up the debugger)
+                        // (XXX but doing exit is evil)
+                        dispose(); // hide() doesn't delete the windows
+                        System.exit(0);
+                        return true;
+                }
+                return super.handleEvent(event);
+            }
+        };
+
+        // ARGH! The above no longer works in java 1.5!
+        // have to use a listener I guess...
+        frame.addWindowListener(new java.awt.event.WindowAdapter() {
+            public void windowClosing(java.awt.event.WindowEvent we) {
+                System.out.println("ciao!");
+                frame.dispose(); // hide() doesn't delete the windows
+                System.exit(0);
+            }
+        });
+
+        final ShephardsPlayApplet applet = new ShephardsPlayApplet();
+
+        // XXX the following seems to be necessary, or getParameter() will crash, at least in 1.4.  Want to send params from command line anyway.
+        applet.setStub(new java.applet.AppletStub() {
+             public void appletResize(int width, int height)
+                 { /* should resize frame, but a ShephardsPlayApplet never asks to be resized */ }
+             public java.applet.AppletContext getAppletContext() { return null;}             public java.net.URL getCodeBase() { return null; }
+             public java.net.URL getDocumentBase() { return null; }
+             public String getParameter(String name)
+             {
+                 // case insensitive... and unfortunately there's no
+                 // startsWithIgnoreCase
+                 String prefix = name.toLowerCase() + "=";
+                 int i;
+                 FOR (i, args.length)
+                     if (args[i].toLowerCase().startsWith(prefix))
+                         return args[i].substring(prefix.length());
+                 return null;
+             }
+             public boolean isActive() { return true; }
+        });
+
+        frame.add(applet);
+
+        applet.init();
+        applet.start();
+
+        frame.move(400, 20);
+        frame.resize(512, 512);
+        frame.show();
+
+        System.out.println("out main");
+    } // main
+} // class ShephardsPlayApplet
