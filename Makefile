@@ -7,6 +7,7 @@ JAVAC=${JAVAROOT}/bin/javac
 JARFILE = ShephardsPlayApplet.jar
 CLASSES = \
         GraphicsAntiAliasingSetter.class \
+        MyGraphics.class \
         ShephardsPlayApplet.class \
         ${NULL}
 JAR_DEPENDS_ON = ${CLASSES}      macros.h Makefile javacpp javarenumber
@@ -15,7 +16,7 @@ JAR_CONTAINS = *.class *.prejava macros.h Makefile javacpp javarenumber
 .PHONY: all
 all: ${JARFILE}
 
-${JARFILE}: Makefile META-INF/MANIFEST.MF ShephardsPlayApplet.class
+${JARFILE}: Makefile META-INF/MANIFEST.MF ${CLASSES}
 	${JAVAROOT}/bin/jar -cfm ${JARFILE} META-INF/MANIFEST.MF ${JAR_CONTAINS}
 
 CPPFLAGS += -Wall -Werror
@@ -30,10 +31,12 @@ CPPFLAGS += -Wall -Werror
 	./javarenumber -v 0 $*.class
 	# too slow... only do this in the production version
 	# on second thought, try it, for now...
-	@./javarenumber -v -1 $*'$$'*.class
+	# on third hand, it bombs with Couldn't open GraphicsAntiAliasingSetter$*.class because that one has no subclasses... argh.
+	#@./javarenumber -v -1 $*'$$'*.class
 
-ShephardsPlayApplet.class: macros.h Makefile
+MyGraphics.class: macros.h Makefile
 GraphicsAntiAliasingSetter.class: macros.h Makefile
+ShephardsPlayApplet.class: macros.h Makefile
 
 .PHONY: clean
 clean:
