@@ -13,6 +13,11 @@ CLASSES = \
 JAR_DEPENDS_ON = ${CLASSES}      macros.h Makefile javacpp javarenumber
 JAR_CONTAINS = *.class *.prejava macros.h Makefile javacpp javarenumber
 
+# XXX ARGH! why doesn't it work using -classpath .:./donhatchsw.jar ???
+# XXX doing this instead for now, making com a symlink
+# XXX to a dir that contains all the donhatchsw class files
+JAR_CONTAINS += com
+
 .PHONY: all
 all: ${JARFILE}
 

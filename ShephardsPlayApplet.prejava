@@ -201,29 +201,82 @@ public class ShephardsPlayApplet
                     System.out.println("    (right mouse)");
             }
 
-            prevX = e.getX();
-            prevY = e.getY();
+            double thisP[] = new double[2];
+            mostRecentGraphics.pick(e.getX(), e.getY(), thisP);
 
             int whichButton = getButton(e);
             if (whichButton == java_awt_event_MouseEvent_BUTTON1)
             {
                 button1IsDown = true;
-                //repaint();
+
+                //
+                // Add a vertex
+                //
+                System.out.println("Adding a vertex at "+thisP[0]+","+thisP[1]+","+0+"");
+                mesh.addIsolatedVertex(thisP[0], thisP[1], 0);
+
+                //
+                // If it's the second vertex, add an edge
+                //
+                ManifoldMesh.Vertex verts[] = mesh.verts; // after we added one
+                if (verts.length == 2)
+                {
+                    System.out.println("Adding an edge between first two verts");
+                    mesh.addEdgeBetweenTwoIsolatedVertices(verts[0], verts[1]);
+                }
+                else if (verts.length == 3)
+                {
+                    assert(mesh.edges.length == 1*2);
+                    if (nonEventVerbose >= 1)
+                        System.out.println("Kissing");
+                    mesh.kisIsolatedVertex(verts[verts.length-1],
+                                           mesh.edges[0]);
+                }
+                else if (verts.length == 4)
+                {
+                    assert(mesh.edges.length == 3*2);
+                    if (nonEventVerbose >= 1)
+                        System.out.println("Kissing");
+                    mesh.kisIsolatedVertex(verts[verts.length-1],
+                                           mesh.edges[0]);
+                }
+                mesh.sanityCheck();
+
+                selectedVertIndex = verts.length-1;
             }
             else if (whichButton == java_awt_event_MouseEvent_BUTTON2)
             {
                 button2IsDown = true;
-                //repaint();
+
+                //
+                // Select closest vertex
+                //
+                selectedVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1]);
+
+                System.out.println("Selected vertex "+selectedVertIndex+"");
             }
             else if (whichButton == java_awt_event_MouseEvent_BUTTON3)
             {
                 button3IsDown = true;
-                //repaint();
+
+                //
+                // Delete closest vertex
+                //
+                selectedVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1]);
+                if (selectedVertIndex != -1)
+                    mesh.deleteVertex(mesh.verts[selectedVertIndex]);
+                selectedVertIndex = -1;
+
+                mesh.sanityCheck();
 
             } // right mouse
 
+            prevP = thisP;
+
+            repaint();
+
             if (eventVerbose >= 1) System.out.println("out mousePressed: "+e);
-        }
+        } // mousePressed
         public void mouseReleased(java.awt.event.MouseEvent e)
         {
             if (eventVerbose >= 1) System.out.println("in mouseReleased: "+e);
@@ -265,31 +318,23 @@ public class ShephardsPlayApplet
         {
             if (eventVerbose >= 2) System.out.println("  in mouseDragged: "+e);
 
-            if (button3IsDown) // right mouse
+            double thisP[] = new double[2];
+            mostRecentGraphics.pick(e.getX(), e.getY(), thisP);
+
+            if (button1IsDown || button2IsDown)
             {
-                int thisX = e.getX();
-                int thisY = e.getY();
-                java.awt.Dimension size = getSize();
-
-                prevX = thisX;
-                prevY = thisY;
-
-                //repaint();
+                if (selectedVertIndex != -1)
+                    mesh.verts[selectedVertIndex].x += thisP[0]-prevP[0];
+                    mesh.verts[selectedVertIndex].y += thisP[1]-prevP[1];
             }
 
-
-            if (button1IsDown)
+            if (button3IsDown) // right mouse
             {
-                int thisX = e.getX();
-                int thisY = e.getY();
+            }
 
-                java.awt.Dimension size = getSize();
+            repaint();
 
-                prevX = thisX;
-                prevY = thisY;
-
-                repaint();
-            } // right mouse only
+            prevP = thisP;
 
             if (eventVerbose >= 2) System.out.println("  out mouseDragged: "+e);
         }
@@ -326,13 +371,11 @@ public class ShephardsPlayApplet
                 case ' ': // just repaint (i.e. mark dirty)
                     repaint();
                     break;
-                /*
                 case 'A': // toggle doAntiAliasing
                     doAntiAliasing ^= true;
                     System.out.println("doAntiAliasing -> "+doAntiAliasing+" (if this platform supports it)");
                     repaint();
                     break;
-                */
 
                 case 't': // increase lineThicknessInPixels
                     System.out.print("lineThicknessInPixels "+lineThicknessInPixels);
@@ -413,6 +456,7 @@ public class ShephardsPlayApplet
             MyGraphics mg = new MyGraphics(g, size,
                                     -size.width/minSize,size.width/minSize,
                                     -size.height/minSize,size.height/minSize);
+            mostRecentGraphics = mg;
 
             if (implementAntiAliasingInHardware)
             {
@@ -429,6 +473,29 @@ public class ShephardsPlayApplet
             //
             mg.setColor(java.awt.Color.black);
             mg.fillWindow();
+
+
+
+            {
+                mg.setColor(java.awt.Color.white);
+
+                ManifoldMesh.Vertex verts[] = mesh.verts;
+                FORI (iVert, verts.length)
+                {
+                    mg.drawPoint(verts[iVert].x,
+                                 verts[iVert].y, 3);
+                }
+
+                ManifoldMesh.Edge edges[] = mesh.edges;
+                FORI (iEdge, edges.length/2)
+                {
+                    ManifoldMesh.Vertex v0 = edges[iEdge*2].initialVertex();
+                    ManifoldMesh.Vertex v1 = edges[iEdge*2].finalVertex();
+                    mg.drawLine(v0.x,v0.y,v1.x,v1.y,doAntiAliasing);
+                }
+            }
+
+
 
             if (g != frontBufferGraphics)
             {
@@ -462,8 +529,20 @@ public class ShephardsPlayApplet
     //
     // Definition of stuff for this particular app...
     //
-        public static class ManifoldMesh
+        public class ManifoldMesh // non-static, for nonEventVerbose
         {
+            public String toString()
+            {
+                StringBuffer sb = new StringBuffer();
+                sb.append(""+verts.length+" verts:\n");
+                FORI (iVert, verts.length)
+                    sb.append("    "+verts[iVert].x+" "+verts[iVert].y+" "+verts[iVert].h+"\n");
+                sb.append(""+edges.length+" edges:\n");
+                FORI (iEdge, edges.length)
+                    sb.append("    v"+edges[iEdge].initialVertex().myIndex()+" -> v"+edges[iEdge].finalVertex().myIndex()+"\n");
+                return sb.toString();
+            }
+
             public class Vertex
             {
                 public double x, y, h;
@@ -472,7 +551,12 @@ public class ShephardsPlayApplet
                     this.x = x;
                     this.y = y;
                     this.h = h;
-                    verts = (Vertex[])Arrays.append(verts, this);
+                    verts = (Vertex[])com.donhatchsw.util.Arrays.append(verts, this);
+                }
+
+                public int myIndex()
+                {
+                    return Arrays.indexOfUsingEqualsSymbol(verts, this);
                 }
             } // public class Vertex
             public class Edge
@@ -484,12 +568,12 @@ public class ShephardsPlayApplet
 
                 public Edge(boolean andBack)
                 {
+                    edges = (Edge[])Arrays.append(edges, this);
                     if (andBack)
                     {
                         Edge opposite = new Edge(false);
                         setOpposite(opposite, true);
                     }
-                    edges = (Edge[])Arrays.append(edges, this);
                 }
 
                 //
@@ -553,6 +637,12 @@ public class ShephardsPlayApplet
                 {
                     return _opposite.nextEdgeOnLeftFace()._opposite;
                 }
+
+
+                public int myIndex()
+                {
+                    return Arrays.indexOfUsingEqualsSymbol(edges, this);
+                }
             } // public class Edge
 
             public void sanityCheck()
@@ -575,7 +665,7 @@ public class ShephardsPlayApplet
                     assert(e.prevEdgeOnLeftFace().nextEdgeOnLeftFace() == e);
 
                     // XXX use hash table if going to do this on big things
-                    int initialVertIndex = Arrays.indexOfUsingEqualsSymbol(edges, e.initialVertex());
+                    int initialVertIndex = Arrays.indexOfUsingEqualsSymbol(verts, e.initialVertex());
                     int oppositeIndex = Arrays.indexOfUsingEqualsSymbol(edges, e.opposite());
                     int nextIndex = Arrays.indexOfUsingEqualsSymbol(edges, e.nextEdgeOnLeftFace());
                     int prevIndex = Arrays.indexOfUsingEqualsSymbol(edges, e.prevEdgeOnLeftFace());
@@ -598,7 +688,8 @@ public class ShephardsPlayApplet
 
                 FORI (iVert, verts.length)
                 {
-                    assert(sawVertAsInitial[iVert]);
+                    if (false) // can have isolated verts
+                        assert(sawVertAsInitial[iVert]);
                 }
                 FORI (iEdge, edges.length)
                 {
@@ -619,9 +710,13 @@ public class ShephardsPlayApplet
             */
             public void insertEdgeBefore(Edge insertThisEdge, Edge beforeThisEdge)
             {
+                if (nonEventVerbose >= 1)
+                    System.out.println("        In insertEdgeBefore(insertThisEdge="+insertThisEdge.myIndex()+", beforeThisEdge="+beforeThisEdge.myIndex()+"");
                 beforeThisEdge.prevEdgeOnLeftFace().setNextEdgeOnLeftFace(insertThisEdge, true);
                 insertThisEdge.opposite().setNextEdgeOnLeftFace(beforeThisEdge, true);
                 insertThisEdge.setInitialVertex(beforeThisEdge.initialVertex());
+                if (nonEventVerbose >= 1)
+                    System.out.println("        Out insertEdgeBefore(insertThisEdge="+insertThisEdge.myIndex()+", beforeThisEdge="+beforeThisEdge.myIndex()+"");
             }
             public void addWhisker(Edge beforeThisEdge,
                                    Vertex v) // to this vertex
@@ -633,9 +728,13 @@ public class ShephardsPlayApplet
             }
             public void addDiagonal(Edge beforeThisEdge, Edge beforeThatEdge)
             {
+                if (nonEventVerbose >= 1)
+                    System.out.println("    In addDiagonal(beforeThisEdge="+beforeThisEdge.myIndex()+", beforeThatEdge="+beforeThatEdge.myIndex()+"");
                 Edge e = new Edge(true);
-                insertEdgeBefore(beforeThisEdge, e);
-                insertEdgeBefore(beforeThatEdge, e.opposite());
+                insertEdgeBefore(e, beforeThisEdge);
+                insertEdgeBefore(e.opposite(), beforeThatEdge);
+                if (nonEventVerbose >= 1)
+                    System.out.println("    Out addDiagonal(beforeThisEdge="+beforeThisEdge.myIndex()+", beforeThatEdge="+beforeThatEdge.myIndex()+"");
             }
             public void addEdgeBetweenTwoIsolatedVertices(Vertex v0, Vertex v1)
             {
@@ -645,15 +744,26 @@ public class ShephardsPlayApplet
                 e.setNextEdgeOnLeftFace(e.opposite(), true);
                 e.setPrevEdgeOnLeftFace(e.opposite(), true);
             }
-            // This is the "kis" operation, the dual of truncating a vertex.
-            public void addVertexInsideFace(double x, double y, double h,
-                                            Edge someEdgeOnFace)
+            public void addIsolatedVertex(double x, double y, double h)
             {
-                Vertex v = new Vertex(x,y,h);
+                new Vertex(x,y,h); // adds itself to verts
+            }
+            // This is the "kis" operation, the dual of truncating a vertex.
+            public void kisIsolatedVertex(Vertex v, Edge someEdgeOnFace)
+            {
+                if (nonEventVerbose >= 1)
+                    System.out.println("In kis(v="+v.myIndex()+", someEdgeOnFac="+someEdgeOnFace.myIndex()+"");
                 //
                 // Start by attaching a single whisker to the new vertex...
                 //
+                if (nonEventVerbose >= 1)
+                    System.out.println("    adding a whisker from edge "+someEdgeOnFace.myIndex()+" to vert "+v.myIndex());
                 addWhisker(someEdgeOnFace, v);
+                if (nonEventVerbose >= 1)
+                {
+                    System.out.println("    did that at least.");
+                    PRINT(this);
+                }
 
                 //
                 // Now fill in with triangles,
@@ -663,29 +773,71 @@ public class ShephardsPlayApplet
                                      .nextEdgeOnLeftFace()
                                      .nextEdgeOnLeftFace() != someEdgeOnFace)
                 {
+                    if (nonEventVerbose >= 1)
+                        System.out.println("    adding diagonal from start of edge "+someEdgeOnFace.prevEdgeOnLeftFace().myIndex()+" to start of edge "+someEdgeOnFace.prevEdgeOnLeftFace().prevEdgeOnLeftFace().prevEdgeOnLeftFace().myIndex()+"");
                     addDiagonal(someEdgeOnFace.prevEdgeOnLeftFace(),
                                 someEdgeOnFace.prevEdgeOnLeftFace()
                                               .prevEdgeOnLeftFace()
                                               .prevEdgeOnLeftFace());
+                    if (nonEventVerbose >= 1)
+                    {
+                        System.out.println("    did that diagonal.");
+                        PRINT(this);
+                    }
                 }
+                if (nonEventVerbose >= 1)
+                    System.out.println("Out kis(v="+v.myIndex()+", someEdgeOnFac="+someEdgeOnFace.myIndex()+"");
             }
             public void deleteEdge(Edge e)
             {
                 e.prevEdgeOnLeftFace().setNextEdgeOnLeftFace(e.opposite().nextEdgeOnLeftFace(), true);
                 e.opposite().prevEdgeOnLeftFace().setNextEdgeOnLeftFace(e.nextEdgeOnLeftFace(), true);
+                /*
                 assert(e.nextEdgeOnLeftFace() == e.opposite());
                 assert(e.prevEdgeOnLeftFace() == e.opposite());
-                int i = Arrays.indexOfUsingEqualsSymbol(edges, e);
-                edges = (Edge[])Arrays.concat(Arrays.subarray(edges,0,i), Arrays.subarray(edges,i+1,edges.length-i-1));
-                int j = Arrays.indexOfUsingEqualsSymbol(edges, e.opposite());
-                edges = (Edge[])Arrays.concat(Arrays.subarray(edges,0,j), Arrays.subarray(edges,j+1,edges.length-j-1));
+                */
+                int i = e.myIndex();
+                edges = (Edge[])Arrays.concat(Arrays.subarray(edges,0,i), Arrays.subarray(edges,i+1,edges.length-i-1)); // XXX should be Arrays.remove
+                int j = e.opposite().myIndex();
+                edges = (Edge[])Arrays.concat(Arrays.subarray(edges,0,j), Arrays.subarray(edges,j+1,edges.length-j-1)); // XXX should be Arrays.remove
             }
+            public void deleteVertex(Vertex v)
+            {
+                FORI (iEdge, edges.length)
+                {
+                    if (edges[iEdge].initialVertex() == v
+                     || edges[iEdge].finalVertex() == v)
+                    {
+                        deleteEdge(edges[iEdge]);
+                        iEdge--; // so when we incrememnt we get back to here
+                    }
+                }
+                int iVert = v.myIndex();
+                verts = (Vertex[])Arrays.concat(Arrays.subarray(verts,0,iVert), Arrays.subarray(verts,iVert+1,verts.length-iVert-1));
+            }
+
+            public int indexOfClosestVert(double x, double y)
+            {
+                double closestDistSqrd = Double.POSITIVE_INFINITY;
+                int closestVertIndex = -1;
+                FORI (iVert, verts.length)
+                {
+                    double thisDistSqrd = SQR(verts[iVert].x-x)
+                                        + SQR(verts[iVert].y-y);
+                    if (thisDistSqrd < closestDistSqrd)
+                    {
+                        closestDistSqrd = thisDistSqrd;
+                        closestVertIndex = iVert;
+                    }
+                }
+                return closestVertIndex; // -1 if none
+            } // indexOfClosestVert
 
             // XXX should really make these vectors or something,
             // XXX so that all operations will be constant time.
             public Vertex verts[] = {};
             public Edge edges[] = {};
-        } // ManifoldMesh
+        } // class ManifoldMesh
 
 
         /*
@@ -729,7 +881,8 @@ public class ShephardsPlayApplet
     //
     // Member variables...
     //
-        ManifoldMesh manifoldMesh = new ManifoldMesh();
+        ManifoldMesh mesh = new ManifoldMesh();
+        int selectedVertIndex = -1;
 
         GraphicsAntiAliasingSetter graphicsAntiAliasingSetter;
         int eventVerbose = 0; // can set with eventVerbose=1 on command line
@@ -739,9 +892,9 @@ public class ShephardsPlayApplet
         double lineThicknessInPixels = 1.;
         boolean doDoubleBuffer = true;
         java.awt.Image backBufferImage = null;
+        MyGraphics mostRecentGraphics = null;
 
-        int prevX = 0;
-        int prevY = 0;
+        double prevP[] = null;
 
     //
     // Track mouse state...
