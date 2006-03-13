@@ -218,54 +218,34 @@ public class ShephardsPlayApplet
                 //
                 // If it's the second vertex, add an edge
                 //
-                ManifoldMesh.Vertex verts[] = mesh.verts; // after we added one
+                Mesh.Vertex verts[] = mesh.verts; // after we added one
                 if (verts.length == 2)
                 {
                     System.out.println("Adding an edge between first two verts");
                     mesh.addEdgeBetweenTwoIsolatedVertices(verts[0], verts[1]);
                 }
+
                 //
-                // If it's the third vertex,
-                // there is only one edge and only one face;
-                // kis anywhere.
-                //
-                if (verts.length == 3)
-                {
-                    assert(mesh.edges.length == 1*2);
-                    if (nonEventVerbose >= 1)
-                        System.out.println("Kissing");
-                    mesh.kisIsolatedVertex(verts[verts.length-1],
-                                           mesh.edges[0]);
-                }
-                //
-                // If it's the fourth or more vertex,
-                // we have to be smart and find out which face we are on.
-                // We may be inside multiple faces, in which case
-                // pick the one with smallest area.
-                // If we are not inside any faces, then we must be
-                // in the outer inside-out face,
-                // in which case connect the new vertex to every outer vertex
+                // If it's the third or more vertex,
+                // find out which face we are on
+                // (all triangles CCW), and kis that face.
+                // if we are not inside any face by that criterion,
+                // then assume we are inside the outer face
+                // and connect the new vertex to every vertex
                 // that's visible from it.
                 //
-                if (verts.length >= 4)
+                if (verts.length >= 3)
                 {
-                    ManifoldMesh.Edge edgeOfSmallestGoodFace = null;
-                    double twiceAreaOfSmallestGoodFace = Double.POSITIVE_INFINITY;
-                    ManifoldMesh.Edge edgeOfLargestFace = null;
-                    double twiceAreaOfLargestFace = 0.;
-
+                    boolean kissed = false;
+                    double twiceMostNegativeFaceArea = Double.POSITIVE_INFINITY;
+                    Mesh.Edge edgeOnMostNegativeFace = null;
+                    // XXX traverses each face of size n n times!  need to keep track of what we've done already
                     FORI (iEdge, mesh.edges.length)
                     {
-                        PRINT(iEdge);
-                        //
-                        // See whether the new vertex is inside that face...
-                        // that is, see whether the sign of the triangle
-                        // subtended to each edge is consistent.
-                        //
-                        boolean thisFaceIsGoodSoFar = true; // until proven otherwise
-                        ManifoldMesh.Edge edgeI = mesh.edges[iEdge];
+                        boolean thisFaceIsGoodSoFar = true;
+                        Mesh.Edge edgeI = mesh.edges[iEdge];
                         double twiceThisFaceArea = 0.;
-                        for (ManifoldMesh.Edge edge = edgeI;;)
+                        for (Mesh.Edge edge = edgeI;;)
                         {
                             PRINT(edge.myIndex());
                             double twiceThisTriArea = twiceTriArea(
@@ -275,7 +255,7 @@ public class ShephardsPlayApplet
                                                     edge.finalVertex().x,
                                                     edge.finalVertex().y);
                             PRINT(twiceThisTriArea);
-                            if (twiceThisTriArea*twiceThisFaceArea < 0)
+                            if (twiceThisTriArea < 0)
                             {
                                 thisFaceIsGoodSoFar = false; // it's bad!
                             }
@@ -287,30 +267,22 @@ public class ShephardsPlayApplet
                         PRINT(thisFaceIsGoodSoFar);
                         if (thisFaceIsGoodSoFar)
                         {
-                            if (ABS(twiceThisFaceArea) < ABS(twiceAreaOfSmallestGoodFace))
-                            {
-                                edgeOfSmallestGoodFace = mesh.edges[iEdge];
-                                twiceAreaOfSmallestGoodFace = twiceThisFaceArea;
-                            }
+                            // I'm inside this face;
+                            // kis it and done
+                            mesh.kisIsolatedVertex(verts[verts.length-1],
+                                                   edgeI);
+                            kissed = true;
+                            break;
                         }
-                        if (ABS(twiceThisFaceArea) > ABS(twiceAreaOfLargestFace))
+                        if (twiceThisFaceArea < twiceMostNegativeFaceArea)
                         {
-                            edgeOfLargestFace = mesh.edges[iEdge];
-                            twiceAreaOfLargestFace = twiceThisFaceArea;
+                            twiceMostNegativeFaceArea = twiceThisFaceArea;
+                            edgeOnMostNegativeFace = mesh.edges[iEdge];
                         }
                     }
-                    PRINT(edgeOfSmallestGoodFace);
-                    if (edgeOfSmallestGoodFace != null)
+                    if (!kissed)
                     {
-                        //
-                        // It's definitely inside this face.
-                        // Make a kiss.
-                        //
-                        mesh.kisIsolatedVertex(verts[verts.length-1],
-                                               edgeOfSmallestGoodFace);
-                    }
-                    else if (edgeOfLargestFace != null)
-                    {
+                        System.out.println("In the outer face");
                         //
                         // It wasn't inside any face.
                         // Assume it's in the outer face.
@@ -319,24 +291,24 @@ public class ShephardsPlayApplet
                         // and then delete all newly added edges
                         // that cross the boundary of the outer face.
                         //
-                        ManifoldMesh.Edge oldOuterFaceBoundary[];
+                        Mesh.Edge oldOuterFaceBoundary[];
                         {
                             {
                                 int iOldBoundaryEdge = 0;
-                                for (ManifoldMesh.Edge edge = edgeOfLargestFace;;)
+                                for (Mesh.Edge edge = edgeOnMostNegativeFace;;)
                                 {
                                     iOldBoundaryEdge++;
-                                    if ((edge = edge.nextEdgeOnLeftFace()) == edgeOfLargestFace)
+                                    if ((edge = edge.nextEdgeOnLeftFace()) == edgeOnMostNegativeFace)
                                         break;
                                 }
-                                oldOuterFaceBoundary = new ManifoldMesh.Edge[iOldBoundaryEdge];
+                                oldOuterFaceBoundary = new Mesh.Edge[iOldBoundaryEdge];
                             }
                             {
                                 int iOldBoundaryEdge = 0;
-                                for (ManifoldMesh.Edge edge = edgeOfLargestFace;;)
+                                for (Mesh.Edge edge = edgeOnMostNegativeFace;;)
                                 {
                                     oldOuterFaceBoundary[iOldBoundaryEdge++] = edge;
-                                    if ((edge = edge.nextEdgeOnLeftFace()) == edgeOfLargestFace)
+                                    if ((edge = edge.nextEdgeOnLeftFace()) == edgeOnMostNegativeFace)
                                         break;
                                 }
                                 assert(iOldBoundaryEdge == oldOuterFaceBoundary.length);
@@ -345,7 +317,7 @@ public class ShephardsPlayApplet
 
                         int oldNumEdges = mesh.edges.length;
                         mesh.kisIsolatedVertex(verts[verts.length-1],
-                                               edgeOfLargestFace);
+                                               edgeOnMostNegativeFace);
                         for (int iEdge = oldNumEdges;
                              iEdge < mesh.edges.length;
                              iEdge += 2)
@@ -354,8 +326,8 @@ public class ShephardsPlayApplet
                                  iOldBoundaryEdge < oldOuterFaceBoundary.length;
                                  ++iOldBoundaryEdge)
                             {
-                                ManifoldMesh.Edge oldEdge = oldOuterFaceBoundary[iOldBoundaryEdge];
-                                ManifoldMesh.Edge newEdge = mesh.edges[iEdge];
+                                Mesh.Edge oldEdge = oldOuterFaceBoundary[iOldBoundaryEdge];
+                                Mesh.Edge newEdge = mesh.edges[iEdge];
 
                                 if (newEdge.initialVertex() == oldEdge.initialVertex()
                                  || newEdge.initialVertex() == oldEdge.finalVertex()
@@ -386,8 +358,7 @@ public class ShephardsPlayApplet
                             }
                         }
                     }
-                }
-
+                } // if verts.length >= 3
 
                 mesh.sanityCheck();
 
@@ -628,18 +599,18 @@ public class ShephardsPlayApplet
             {
                 mg.setColor(java.awt.Color.white);
 
-                ManifoldMesh.Vertex verts[] = mesh.verts;
+                Mesh.Vertex verts[] = mesh.verts;
                 FORI (iVert, verts.length)
                 {
                     mg.drawPoint(verts[iVert].x,
                                  verts[iVert].y, 3);
                 }
 
-                ManifoldMesh.Edge edges[] = mesh.edges;
+                Mesh.Edge edges[] = mesh.edges;
                 FORI (iEdge, edges.length/2)
                 {
-                    ManifoldMesh.Vertex v0 = edges[iEdge*2].initialVertex();
-                    ManifoldMesh.Vertex v1 = edges[iEdge*2].finalVertex();
+                    Mesh.Vertex v0 = edges[iEdge*2].initialVertex();
+                    Mesh.Vertex v1 = edges[iEdge*2].finalVertex();
                     mg.drawLine(v0.x,v0.y,v1.x,v1.y,doAntiAliasing);
                 }
             }
@@ -678,7 +649,7 @@ public class ShephardsPlayApplet
     //
     // Definition of stuff for this particular app...
     //
-        public class ManifoldMesh // non-static, for nonEventVerbose
+        public class Mesh // non-static, for nonEventVerbose
         {
             public String toString()
             {
@@ -986,7 +957,7 @@ public class ShephardsPlayApplet
             // XXX so that all operations will be constant time.
             public Vertex verts[] = {};
             public Edge edges[] = {};
-        } // class ManifoldMesh
+        } // class Mesh
 
 
         /*
@@ -1058,7 +1029,7 @@ public class ShephardsPlayApplet
     //
     // Member variables...
     //
-        ManifoldMesh mesh = new ManifoldMesh();
+        Mesh mesh = new Mesh();
         int selectedVertIndex = -1;
 
         GraphicsAntiAliasingSetter graphicsAntiAliasingSetter;
