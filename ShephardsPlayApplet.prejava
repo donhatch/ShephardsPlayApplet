@@ -17,6 +17,13 @@ User should be able to:
 
 #include "macros.h"
 
+// So can compile in pre-1.4,
+// we use these instead of java.awt.event.MouseEvent.BUTTON1 etc.
+#define java_awt_event_MouseEvent_BUTTON1 1
+#define java_awt_event_MouseEvent_BUTTON2 2
+#define java_awt_event_MouseEvent_BUTTON3 3
+
+
 import com.donhatchsw.util.Arrays;
 import com.donhatchsw.util.VecMath;
 
@@ -234,8 +241,8 @@ public class ShephardsPlayApplet
             {
                 button3IsDown = false;
             }
-            if (doQuality == 1) // if it makes a difference
-                repaint();
+
+            repaint();
 
             if (eventVerbose >= 1) System.out.println("out mouseReleased: "+e);
         }
@@ -417,289 +424,324 @@ public class ShephardsPlayApplet
 	    if (eventVerbose >= 1) System.out.println("out paint");
 	} // paint
 
-
-
-
-
-
-
-    public static class ManifoldMesh
-    {
-        public class Vertex
+        private void makeSureBackBufferIsRight()
         {
-            public double x, y, h;
-            public Vertex(double x, double y, double h)
+            if (doDoubleBuffer)
             {
-                this.x = x;
-                this.y = y;
-                this.h = h;
-                verts = (Vertex[])Arrays.append(verts, this);
-            }
-        } // public class Vertex
-        public class Edge
-        {
-            private Vertex _initialVertex;
-            private Edge _opposite;
-            private Edge _nextEdgeOnLeftFace;
-            private Edge _prevEdgeOnLeftFace;
-
-            public Edge(boolean andBack)
-            {
-                if (andBack)
+                java.awt.Dimension size = getSize();
+                if (backBufferImage == null
+                 || backBufferImage.getWidth(this) != size.width
+                 || backBufferImage.getHeight(this) != size.height)
                 {
-                    Edge opposite = new Edge(false);
-                    setOpposite(opposite, true);
+                    if (eventVerbose >= 1)
+                    {
+                        System.out.println("Creating back buffer " + size.width + "x" + size.height);
+                    }
+                    backBufferImage = createImage(size.width, size.height);
                 }
-                edges = (Edge[])Arrays.append(edges, this);
             }
+            else
+                backBufferImage = null;
+        } // makeSureBackBufferIsRight
 
-            //
-            // Accessor methods...
-            //
-            public Vertex initialVertex()
-            {
-                return _initialVertex;
-            }
-            public Edge opposite()
-            {
-                return _opposite;
-            }
-            public Edge nextEdgeOnLeftFace()
-            {
-                return _nextEdgeOnLeftFace;
-            }
-            public Edge prevEdgeOnLeftFace()
-            {
-                return _prevEdgeOnLeftFace;
-            }
 
-            public void setInitialVertex(Vertex v)
-            {
-                _initialVertex = v;
-            }
-
-            public void setOpposite(Edge opposite, boolean andBack)
-            {
-                _opposite = opposite;
-                if (andBack)
-                    _opposite.setOpposite(this, false);
-            }
-            public void setNextEdgeOnLeftFace(Edge next, boolean andBack)
-            {
-                _nextEdgeOnLeftFace = next;
-                if (andBack)
-                    next.setPrevEdgeOnLeftFace(this, false);
-            }
-            public void setPrevEdgeOnLeftFace(Edge prev, boolean andBack)
-            {
-                _prevEdgeOnLeftFace = prev;
-                if (andBack)
-                    prev.setNextEdgeOnLeftFace(this, false);
-            }
-
-            //
-            // Helper methods...
-            // From the caller's point of view,
-            // these are just like the accessor methods
-            //
-            public Vertex finalVertex()
-            {
-                return _opposite._initialVertex;
-            }
-            public Edge nextEdgeOnRightFace()
-            {
-                return _opposite.prevEdgeOnLeftFace()._opposite;
-            }
-            public Edge prevEdgeOnRightFace()
-            {
-                return _opposite.nextEdgeOnLeftFace()._opposite;
-            }
-        } // public class Edge
-
-        public void sanityCheck()
+    //
+    // Definition of stuff for this particular app...
+    //
+        public static class ManifoldMesh
         {
-            boolean sawVertAsInitial[] = new boolean[verts.length]; // all false
-            boolean sawEdgeAsOpposite[] = new boolean[edges.length]; // all false
-            boolean sawEdgeAsNext[] = new boolean[edges.length]; // all false
-            boolean sawEdgeAsPrev[] = new boolean[edges.length]; // all false
-            FORI (iEdge, edges.length)
+            public class Vertex
             {
-                Edge e = edges[iEdge];
-                assert(e.initialVertex() != null);
-                assert(e.opposite() != null);
-                assert(e.opposite() != e);
-                assert(e.initialVertex() != null);
-                assert(e.nextEdgeOnLeftFace() != null);
-                assert(e.prevEdgeOnLeftFace() != null);
-                assert(e.opposite().opposite() == e);
-                assert(e.nextEdgeOnLeftFace().prevEdgeOnLeftFace() == e);
-                assert(e.prevEdgeOnLeftFace().nextEdgeOnLeftFace() == e);
+                public double x, y, h;
+                public Vertex(double x, double y, double h)
+                {
+                    this.x = x;
+                    this.y = y;
+                    this.h = h;
+                    verts = (Vertex[])Arrays.append(verts, this);
+                }
+            } // public class Vertex
+            public class Edge
+            {
+                private Vertex _initialVertex;
+                private Edge _opposite;
+                private Edge _nextEdgeOnLeftFace;
+                private Edge _prevEdgeOnLeftFace;
 
-                // XXX use hash table if going to do this on big things
-                int initialVertIndex = Arrays.indexOfUsingEqualsSymbol(edges, e.initialVertex());
-                int oppositeIndex = Arrays.indexOfUsingEqualsSymbol(edges, e.opposite());
-                int nextIndex = Arrays.indexOfUsingEqualsSymbol(edges, e.nextEdgeOnLeftFace());
-                int prevIndex = Arrays.indexOfUsingEqualsSymbol(edges, e.prevEdgeOnLeftFace());
-                assert(initialVertIndex != -1);
-                assert(oppositeIndex != -1);
-                assert(nextIndex != -1);
-                assert(prevIndex != -1);
+                public Edge(boolean andBack)
+                {
+                    if (andBack)
+                    {
+                        Edge opposite = new Edge(false);
+                        setOpposite(opposite, true);
+                    }
+                    edges = (Edge[])Arrays.append(edges, this);
+                }
 
-                // Okay for a vert to be initial more than once...
-                sawVertAsInitial[initialVertIndex] = true;
+                //
+                // Accessor methods...
+                //
+                public Vertex initialVertex()
+                {
+                    return _initialVertex;
+                }
+                public Edge opposite()
+                {
+                    return _opposite;
+                }
+                public Edge nextEdgeOnLeftFace()
+                {
+                    return _nextEdgeOnLeftFace;
+                }
+                public Edge prevEdgeOnLeftFace()
+                {
+                    return _prevEdgeOnLeftFace;
+                }
 
-                // But not the others...
-                assert(!sawEdgeAsOpposite[oppositeIndex]);
-                sawEdgeAsOpposite[oppositeIndex] = true;
-                assert(!sawEdgeAsNext[nextIndex]);
-                sawEdgeAsNext[nextIndex] = true;
-                assert(!sawEdgeAsPrev[prevIndex]);
-                sawEdgeAsPrev[prevIndex] = true;
+                public void setInitialVertex(Vertex v)
+                {
+                    _initialVertex = v;
+                }
+
+                public void setOpposite(Edge opposite, boolean andBack)
+                {
+                    _opposite = opposite;
+                    if (andBack)
+                        _opposite.setOpposite(this, false);
+                }
+                public void setNextEdgeOnLeftFace(Edge next, boolean andBack)
+                {
+                    _nextEdgeOnLeftFace = next;
+                    if (andBack)
+                        next.setPrevEdgeOnLeftFace(this, false);
+                }
+                public void setPrevEdgeOnLeftFace(Edge prev, boolean andBack)
+                {
+                    _prevEdgeOnLeftFace = prev;
+                    if (andBack)
+                        prev.setNextEdgeOnLeftFace(this, false);
+                }
+
+                //
+                // Helper methods...
+                // From the caller's point of view,
+                // these are just like the accessor methods
+                //
+                public Vertex finalVertex()
+                {
+                    return _opposite._initialVertex;
+                }
+                public Edge nextEdgeOnRightFace()
+                {
+                    return _opposite.prevEdgeOnLeftFace()._opposite;
+                }
+                public Edge prevEdgeOnRightFace()
+                {
+                    return _opposite.nextEdgeOnLeftFace()._opposite;
+                }
+            } // public class Edge
+
+            public void sanityCheck()
+            {
+                boolean sawVertAsInitial[] = new boolean[verts.length]; // all false
+                boolean sawEdgeAsOpposite[] = new boolean[edges.length]; // all false
+                boolean sawEdgeAsNext[] = new boolean[edges.length]; // all false
+                boolean sawEdgeAsPrev[] = new boolean[edges.length]; // all false
+                FORI (iEdge, edges.length)
+                {
+                    Edge e = edges[iEdge];
+                    assert(e.initialVertex() != null);
+                    assert(e.opposite() != null);
+                    assert(e.opposite() != e);
+                    assert(e.initialVertex() != null);
+                    assert(e.nextEdgeOnLeftFace() != null);
+                    assert(e.prevEdgeOnLeftFace() != null);
+                    assert(e.opposite().opposite() == e);
+                    assert(e.nextEdgeOnLeftFace().prevEdgeOnLeftFace() == e);
+                    assert(e.prevEdgeOnLeftFace().nextEdgeOnLeftFace() == e);
+
+                    // XXX use hash table if going to do this on big things
+                    int initialVertIndex = Arrays.indexOfUsingEqualsSymbol(edges, e.initialVertex());
+                    int oppositeIndex = Arrays.indexOfUsingEqualsSymbol(edges, e.opposite());
+                    int nextIndex = Arrays.indexOfUsingEqualsSymbol(edges, e.nextEdgeOnLeftFace());
+                    int prevIndex = Arrays.indexOfUsingEqualsSymbol(edges, e.prevEdgeOnLeftFace());
+                    assert(initialVertIndex != -1);
+                    assert(oppositeIndex != -1);
+                    assert(nextIndex != -1);
+                    assert(prevIndex != -1);
+
+                    // Okay for a vert to be initial more than once...
+                    sawVertAsInitial[initialVertIndex] = true;
+
+                    // But not the others...
+                    assert(!sawEdgeAsOpposite[oppositeIndex]);
+                    sawEdgeAsOpposite[oppositeIndex] = true;
+                    assert(!sawEdgeAsNext[nextIndex]);
+                    sawEdgeAsNext[nextIndex] = true;
+                    assert(!sawEdgeAsPrev[prevIndex]);
+                    sawEdgeAsPrev[prevIndex] = true;
+                }
+
+                FORI (iVert, verts.length)
+                {
+                    assert(sawVertAsInitial[iVert]);
+                }
+                FORI (iEdge, edges.length)
+                {
+                    assert(sawEdgeAsOpposite[iEdge]);
+                    assert(sawEdgeAsNext[iEdge]);
+                    assert(sawEdgeAsPrev[iEdge]);
+                }
+            } // sanityCheck
+
+
+
+
+            /*                    ^
+                 insertThisEdge   | beforeThisEdge
+                <-----------------*
+                                 /|\
+                                / | \
+            */
+            public void insertEdgeBefore(Edge insertThisEdge, Edge beforeThisEdge)
+            {
+                beforeThisEdge.prevEdgeOnLeftFace().setNextEdgeOnLeftFace(insertThisEdge, true);
+                insertThisEdge.opposite().setNextEdgeOnLeftFace(beforeThisEdge, true);
+                insertThisEdge.setInitialVertex(beforeThisEdge.initialVertex());
+            }
+            public void addWhisker(Edge beforeThisEdge,
+                                   Vertex v) // to this vertex
+            {
+                Edge e = new Edge(true);
+                e.opposite().setInitialVertex(v);
+                e.setNextEdgeOnLeftFace(e.opposite(), true);
+                insertEdgeBefore(e, beforeThisEdge);
+            }
+            public void addDiagonal(Edge beforeThisEdge, Edge beforeThatEdge)
+            {
+                Edge e = new Edge(true);
+                insertEdgeBefore(beforeThisEdge, e);
+                insertEdgeBefore(beforeThatEdge, e.opposite());
+            }
+            public void addEdgeBetweenTwoIsolatedVertices(Vertex v0, Vertex v1)
+            {
+                Edge e = new Edge(true);
+                e.setInitialVertex(v0);
+                e.opposite().setInitialVertex(v1);
+                e.setNextEdgeOnLeftFace(e.opposite(), true);
+                e.setPrevEdgeOnLeftFace(e.opposite(), true);
+            }
+            // This is the "kis" operation, the dual of truncating a vertex.
+            public void addVertexInsideFace(double x, double y, double h,
+                                            Edge someEdgeOnFace)
+            {
+                Vertex v = new Vertex(x,y,h);
+                //
+                // Start by attaching a single whisker to the new vertex...
+                //
+                addWhisker(someEdgeOnFace, v);
+
+                //
+                // Now fill in with triangles,
+                // connecting everything to the new vertex v.
+                //
+                while (someEdgeOnFace.nextEdgeOnLeftFace()
+                                     .nextEdgeOnLeftFace()
+                                     .nextEdgeOnLeftFace() != someEdgeOnFace)
+                {
+                    addDiagonal(someEdgeOnFace.prevEdgeOnLeftFace(),
+                                someEdgeOnFace.prevEdgeOnLeftFace()
+                                              .prevEdgeOnLeftFace()
+                                              .prevEdgeOnLeftFace());
+                }
+            }
+            public void deleteEdge(Edge e)
+            {
+                e.prevEdgeOnLeftFace().setNextEdgeOnLeftFace(e.opposite().nextEdgeOnLeftFace(), true);
+                e.opposite().prevEdgeOnLeftFace().setNextEdgeOnLeftFace(e.nextEdgeOnLeftFace(), true);
+                assert(e.nextEdgeOnLeftFace() == e.opposite());
+                assert(e.prevEdgeOnLeftFace() == e.opposite());
+                int i = Arrays.indexOfUsingEqualsSymbol(edges, e);
+                edges = (Edge[])Arrays.concat(Arrays.subarray(edges,0,i), Arrays.subarray(edges,i+1,edges.length-i-1));
+                int j = Arrays.indexOfUsingEqualsSymbol(edges, e.opposite());
+                edges = (Edge[])Arrays.concat(Arrays.subarray(edges,0,j), Arrays.subarray(edges,j+1,edges.length-j-1));
             }
 
-            FORI (iVert, verts.length)
-            {
-                assert(sawVertAsInitial[iVert]);
-            }
-            FORI (iEdge, edges.length)
-            {
-                assert(sawEdgeAsOpposite[iEdge]);
-                assert(sawEdgeAsNext[iEdge]);
-                assert(sawEdgeAsPrev[iEdge]);
-            }
-        } // sanityCheck
+            // XXX should really make these vectors or something,
+            // XXX so that all operations will be constant time.
+            public Vertex verts[] = {};
+            public Edge edges[] = {};
+        } // ManifoldMesh
 
 
-
-
-        /*                    ^
-             insertThisEdge   | beforeThisEdge
-            <-----------------*
-                             /|\
-                            / | \
+        /*
+            Given:
+                x0,y0,h0
+                x1,y1,h1
+                x2,y2,h2
+            representing an infinitesimal triangle
+            whose vertices are infinitesimally-squared away from the unit sphere:
+                x0 eps, y0 eps, 1 + h0 eps^2
+                x1 eps, y1 eps, 1 + h1 eps^2
+                x2 eps, y2 eps, 1 + h2 eps^2
+            we want to find x,y,h
+            representing the point:
+                x eps, y eps, h eps^2
+            that is the intersection point of the 3 planes
+            whose closest-points-to-origin are the original 3 points.
+            If we write this out, it's equivalent to solving:
+                [x0 y0 1] [x]   [x0^2 + y0^2 + h0]
+                [x1 y1 1] [y] = [x1^2 + y1^2 + h1]
+                [x2 y2 1] [h]   [x0^2 + y2^2 + h2]
         */
-        public void insertEdgeBefore(Edge insertThisEdge, Edge beforeThisEdge)
+        static void SolveForDualPoint(double x0, double y0, double h0,
+                                      double x1, double y1, double h1,
+                                      double x2, double y2, double h2,
+                                      double result[])
         {
-            beforeThisEdge.prevEdgeOnLeftFace().setNextEdgeOnLeftFace(insertThisEdge, true);
-            insertThisEdge.opposite().setNextEdgeOnLeftFace(beforeThisEdge, true);
-            insertThisEdge.setInitialVertex(beforeThisEdge.initialVertex());
-        }
-        public void addWhisker(Edge beforeThisEdge,
-                               Vertex v) // to this vertex
-        {
-            Edge e = new Edge(true);
-            e.opposite().setInitialVertex(v);
-            e.setNextEdgeOnLeftFace(e.opposite(), true);
-            insertEdgeBefore(e, beforeThisEdge);
-        }
-        public void addDiagonal(Edge beforeThisEdge, Edge beforeThatEdge)
-        {
-            Edge e = new Edge(true);
-            insertEdgeBefore(beforeThisEdge, e);
-            insertEdgeBefore(beforeThatEdge, e.opposite());
-        }
-        public void addEdgeBetweenTwoIsolatedVertices(Vertex v0, Vertex v1)
-        {
-            Edge e = new Edge(true);
-            e.setInitialVertex(v0);
-            e.opposite().setInitialVertex(v1);
-            e.setNextEdgeOnLeftFace(e.opposite(), true);
-            e.setPrevEdgeOnLeftFace(e.opposite(), true);
-        }
-        // This is the "kis" operation, the dual of truncating a vertex.
-        public void addVertexInsideFace(double x, double y, double h,
-                                        Edge someEdgeOnFace)
-        {
-            Vertex v = new Vertex(x,y,h);
-            //
-            // Start by attaching a single whisker to the new vertex...
-            //
-            addWhisker(someEdgeOnFace, v);
-
-            //
-            // Now fill in with triangles,
-            // connecting everything to the new vertex v.
-            //
-            while (someEdgeOnFace.nextEdgeOnLeftFace()
-                                 .nextEdgeOnLeftFace()
-                                 .nextEdgeOnLeftFace() != someEdgeOnFace)
-            {
-                addDiagonal(someEdgeOnFace.prevEdgeOnLeftFace(),
-                            someEdgeOnFace.prevEdgeOnLeftFace()
-                                          .prevEdgeOnLeftFace()
-                                          .prevEdgeOnLeftFace());
-            }
-        }
-        public void deleteEdge(Edge e)
-        {
-            e.prevEdgeOnLeftFace().setNextEdgeOnLeftFace(e.opposite().nextEdgeOnLeftFace(), true);
-            e.opposite().prevEdgeOnLeftFace().setNextEdgeOnLeftFace(e.nextEdgeOnLeftFace(), true);
-            assert(e.nextEdgeOnLeftFace() == e.opposite());
-            assert(e.prevEdgeOnLeftFace() == e.opposite());
-            int i = Arrays.indexOfUsingEqualsSymbol(edges, e);
-            edges = (Edge[])Arrays.concat(Arrays.subarray(edges,0,i), Arrays.subarray(edges,i+1,edges.length-i-1));
-            int j = Arrays.indexOfUsingEqualsSymbol(edges, e.opposite());
-            edges = (Edge[])Arrays.concat(Arrays.subarray(edges,0,j), Arrays.subarray(edges,j+1,edges.length-j-1));
-        }
-
-        // XXX should really make these vectors or something,
-        // XXX so that all operations will be constant time.
-        public Vertex verts[] = {};
-        public Edge edges[] = {};
-    } // ManifoldMesh
-
-
-    /*
-        Given:
-            x0,y0,h0
-            x1,y1,h1
-            x2,y2,h2
-        representing an infinitesimal triangle
-        whose vertices are infinitesimally-squared away from the unit sphere:
-            x0 eps, y0 eps, 1 + h0 eps^2
-            x1 eps, y1 eps, 1 + h1 eps^2
-            x2 eps, y2 eps, 1 + h2 eps^2
-        we want to find x,y,h
-        representing the point:
-            x eps, y eps, h eps^2
-        that is the intersection point of the 3 planes
-        whose closest-points-to-origin are the original 3 points.
-        If we write this out, it's equivalent to solving:
-            [x0 y0 1] [x]   [x0^2 + y0^2 + h0]
-            [x1 y1 1] [y] = [x1^2 + y1^2 + h1]
-            [x2 y2 1] [h]   [x0^2 + y2^2 + h2]
-    */
-    static void SolveForDualPoint(double x0, double y0, double h0,
-                                  double x1, double y1, double h1,
-                                  double x2, double y2, double h2,
-                                  double result[])
-    {
-        double M[][] = {
-            {x0,y0,1},
-            {x1,y1,1},
-            {x2,y2,1},
-        };
-        double b[] = {
-            x0*x0 + y0+y0 + h0,
-            x1*x1 + y1+y1 + h1,
-            x2*x2 + y2+y2 + h2,
-        };
-        VecMath.invmxv(result,M,b);
-    } // SolveForDualPoint
+            double M[][] = {
+                {x0,y0,1},
+                {x1,y1,1},
+                {x2,y2,1},
+            };
+            double b[] = {
+                x0*x0 + y0+y0 + h0,
+                x1*x1 + y1+y1 + h1,
+                x2*x2 + y2+y2 + h2,
+            };
+            VecMath.invmxv(result,M,b);
+        } // SolveForDualPoint
 
     //
     // Member variables...
     //
+        GraphicsAntiAliasingSetter graphicsAntiAliasingSetter;
+        int eventVerbose = 0; // can set with eventVerbose=1 on command line
+        int nonEventVerbose = 0;
+        boolean doAntiAliasing = false;
+        boolean implementAntiAliasingInHardware = true; // XXX should have a better name for this-- really mean let java runtime do it
+        double lineThicknessInPixels = 1.;
+        boolean doDoubleBuffer = true;
+        java.awt.Image backBufferImage = null;
 
-    GraphicsAntiAliasingSetter graphicsAntiAliasingSetter;
+        int prevX = 0;
+        int prevY = 0;
 
-    int eventVerbose = 0; // can set with eventVerbose=1 on command line
-    int nonEventVerbose = 0;
-    boolean doAntiAliasing = false;
-    boolean implementAntiAliasingInHardware = true; // XXX should have a better name for this-- really mean let java runtime do it
-    boolean doDoubleBuffer = true;
-    java.awt.Image backBufferImage = null;
+    //
+    // Track mouse state...
+    // (I think java newer versions of java (XXX starting when?)
+    // let you query from the events themselves,
+    // but e.g. in 1.1 there is no way to tell whether button1
+    // is down during a drag without keeping state
+    //
+        boolean button1IsDown = false;
+        boolean button2IsDown = false;
+        boolean button3IsDown = false;
 
+
+    //
+    // Main...
+    //
     public static void main(final String args[])
     {
         System.out.println("in main");
