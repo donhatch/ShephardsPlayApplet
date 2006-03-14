@@ -15,11 +15,11 @@ User should be able to:
     's' - swap a diagonal
 
 TO DO:
-    - make myIndex() more efficient
     - delaunayize?
     - help
     - don't draw crap when resizing
     - figure out why stack traces show .java on top even after renumbering
+    - BUG: make a quad and then swap, it says there are 0 dual edges??
 */
 
 #include "macros.h"
@@ -581,6 +581,7 @@ public class ShephardsPlayApplet
                     {
                         System.out.println("Swapping diagonal edge e"+closestEdgeIndex);
                         mesh.swapDiagonal(mesh.edges[closestEdgeIndex]);
+                        mesh.sanityCheck();
                     }
                     repaint();
                     break;
@@ -592,6 +593,7 @@ public class ShephardsPlayApplet
                     {
                         System.out.println("Deleting edge e"+closestEdgeIndex);
                         mesh.deleteEdge(mesh.edges[closestEdgeIndex]);
+                        mesh.sanityCheck();
                     }
                     repaint();
                     break;
@@ -705,6 +707,21 @@ public class ShephardsPlayApplet
                     mg.drawLine(v0.x,v0.y,v1.x,v1.y,doAntiAliasing);
                 }
             }
+
+            //
+            // Try optimizing the heights...
+            //
+            if (true)
+            {
+                double optimalVertexHeights[] = mesh.findOptimalVertexHeights();
+                FORI (iVert, mesh.verts.length)
+                {
+                    PRINT(iVert);
+                    PRINT(optimalVertexHeights[iVert]);
+                    mesh.verts[iVert].h = optimalVertexHeights[iVert];
+                }
+            }
+
             //
             // Draw the dual diagram...
             //
@@ -751,17 +768,6 @@ public class ShephardsPlayApplet
                     dualVerts[ind0] = dualVert;
                     dualVerts[ind1] = dualVert;
                     dualVerts[ind2] = dualVert;
-                }
-
-                if (true)
-                {
-                    double optimalVertexHeights[] = mesh.findOptimalVertexHeights();
-                    FORI (iVert, mesh.verts.length)
-                    {
-                        PRINT(iVert);
-                        PRINT(optimalVertexHeights[iVert]);
-                        mesh.verts[iVert].h = optimalVertexHeights[iVert];
-                    }
                 }
 
                 //
@@ -849,17 +855,20 @@ public class ShephardsPlayApplet
             public class Vertex
             {
                 public double x, y, h;
+                private int _myIndex = -1;
                 public Vertex(double x, double y, double h)
                 {
                     this.x = x;
                     this.y = y;
                     this.h = h;
                     verts = (Vertex[])com.donhatchsw.util.Arrays.append(verts, this);
+                    fixVertIndices(verts.length-1);
                 }
 
                 public int myIndex()
                 {
-                    return Arrays.indexOfUsingEqualsSymbol(verts, this);
+                    //return Arrays.indexOfUsingEqualsSymbol(verts, this);
+                    return _myIndex;
                 }
             } // public class Vertex
             public class Edge
@@ -868,10 +877,13 @@ public class ShephardsPlayApplet
                 private Edge _opposite;
                 private Edge _nextEdgeOnLeftFace;
                 private Edge _prevEdgeOnLeftFace;
+                private int _myIndex = -1;
 
                 public Edge(boolean andBack)
                 {
+                    this._myIndex = -1; // will get fixed
                     edges = (Edge[])Arrays.append(edges, this);
+                    fixEdgeIndices(edges.length-1);
                     if (andBack)
                     {
                         Edge opposite = new Edge(false);
@@ -944,9 +956,23 @@ public class ShephardsPlayApplet
 
                 public int myIndex()
                 {
-                    return Arrays.indexOfUsingEqualsSymbol(edges, this);
+                    //return Arrays.indexOfUsingEqualsSymbol(edges, this);
+                    return _myIndex;
                 }
             } // public class Edge
+
+            // Called whenever verts array changes
+            private void fixVertIndices(int i0)
+            {
+                for (int iVert = i0; iVert < verts.length; ++iVert)
+                    verts[iVert]._myIndex = iVert;
+            }
+            // Called whenever edges array changes
+            private void fixEdgeIndices(int i0)
+            {
+                for (int iEdge = i0; iEdge < edges.length; ++iEdge)
+                    edges[iEdge]._myIndex = iEdge;
+            }
 
             public void sanityCheck()
             {
@@ -957,6 +983,7 @@ public class ShephardsPlayApplet
                 FORI (iEdge, edges.length)
                 {
                     Edge e = edges[iEdge];
+                    assert(e.myIndex() == iEdge);
                     assert(e.initialVertex() != null);
                     assert(e.opposite() != null);
                     assert(e.opposite() != e);
@@ -991,6 +1018,7 @@ public class ShephardsPlayApplet
 
                 FORI (iVert, verts.length)
                 {
+                    assert(verts[iVert].myIndex() == iVert);
                     if (false) // can have isolated verts
                         assert(sawVertAsInitial[iVert]);
                 }
@@ -1137,8 +1165,11 @@ public class ShephardsPlayApplet
                 */
                 int i = e.myIndex();
                 edges = (Edge[])Arrays.concat(Arrays.subarray(edges,0,i), Arrays.subarray(edges,i+1,edges.length-i-1)); // XXX should be Arrays.remove when it exists
+                fixEdgeIndices(i);
+
                 int j = e.opposite().myIndex();
                 edges = (Edge[])Arrays.concat(Arrays.subarray(edges,0,j), Arrays.subarray(edges,j+1,edges.length-j-1)); // XXX should be Arrays.remove when it exists
+                fixEdgeIndices(j);
             }
             public void deleteVertex(Vertex v)
             {
@@ -1153,6 +1184,7 @@ public class ShephardsPlayApplet
                 }
                 int iVert = v.myIndex();
                 verts = (Vertex[])Arrays.concat(Arrays.subarray(verts,0,iVert), Arrays.subarray(verts,iVert+1,verts.length-iVert-1));
+                fixVertIndices(iVert);
             }
 
             public int indexOfClosestVert(double x, double y)
@@ -1313,6 +1345,8 @@ public class ShephardsPlayApplet
                 int nIndependentVerts = verts.length - 3; // XXX not right in general
                 if (nIndependentVerts > nDualEdges)
                 {
+                    PRINT(nIndependentVerts);
+                    PRINT(nDualEdges);
                     System.out.println("Out findOptimalVertexHeights (too many independent verts, it's underconstrained)");
                     return new double[verts.length]; // zeros
                 }
@@ -1399,6 +1433,9 @@ public class ShephardsPlayApplet
                 //
                 double b[] = VecMath.fillvec(nDualEdges, desiredDualEdgeLength);
                 VecMath.vmv(b, b, sampleResultLengths[nIndependentVerts]);
+
+                PRINTMAT(A);
+                PRINTVEC(b);
 
                 //
                 // Solve the linear least squares system...
