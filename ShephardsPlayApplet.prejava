@@ -247,14 +247,12 @@ public class ShephardsPlayApplet
                         double twiceThisFaceArea = 0.;
                         for (Mesh.Edge edge = edgeI;;)
                         {
-                            PRINT(edge.myIndex());
                             double twiceThisTriArea = twiceTriArea(
                                                     thisP[0],thisP[1],
                                                     edge.initialVertex().x,
                                                     edge.initialVertex().y,
                                                     edge.finalVertex().x,
                                                     edge.finalVertex().y);
-                            PRINT(twiceThisTriArea);
                             if (twiceThisTriArea < 0)
                             {
                                 thisFaceIsGoodSoFar = false; // it's bad!
@@ -264,7 +262,6 @@ public class ShephardsPlayApplet
                             if ((edge = edge.nextEdgeOnLeftFace()) == edgeI)
                                 break;
                         }
-                        PRINT(thisFaceIsGoodSoFar);
                         if (thisFaceIsGoodSoFar)
                         {
                             // I'm inside this face;
@@ -334,7 +331,7 @@ public class ShephardsPlayApplet
                                  || newEdge.finalVertex() == oldEdge.initialVertex()
                                  || newEdge.finalVertex() == oldEdge.finalVertex())
                                     continue;
-                                System.out.println("    Seeing whether new edge v"+newEdge.initialVertex().myIndex()+" -> v"+newEdge.finalVertex().myIndex()+" crosses old boundary edges v"+oldEdge.initialVertex().myIndex()+" -> v"+oldEdge.finalVertex().myIndex()+"");
+                                //System.out.println("    Seeing whether new edge v"+newEdge.initialVertex().myIndex()+" -> v"+newEdge.finalVertex().myIndex()+" crosses old boundary edges v"+oldEdge.initialVertex().myIndex()+" -> v"+oldEdge.finalVertex().myIndex()+"");
                                 if (edgesCrossOrCloseToIt(
                                                 oldEdge.initialVertex().x,
                                                 oldEdge.initialVertex().y,
@@ -346,14 +343,14 @@ public class ShephardsPlayApplet
                                                 newEdge.finalVertex().y,
                                                 1e-6))
                                 {
-                                    System.out.println("        It does.");
+                                    //System.out.println("        It does.");
                                     mesh.deleteEdge(newEdge);
                                     iEdge -= 2; // so we don't skip the one that gets moved into the deleted spot
                                     break;
                                 }
                                 else
                                 {
-                                    System.out.println("        It doesn't.");
+                                    //System.out.println("        It doesn't.");
                                 }
                             }
                         }
@@ -444,8 +441,11 @@ public class ShephardsPlayApplet
             if (button1IsDown || button2IsDown)
             {
                 if (selectedVertIndex != -1)
+                {
                     mesh.verts[selectedVertIndex].x += thisP[0]-prevP[0];
                     mesh.verts[selectedVertIndex].y += thisP[1]-prevP[1];
+                    // XXX what do do with h???
+                }
             }
 
             if (button3IsDown) // right mouse
@@ -461,6 +461,14 @@ public class ShephardsPlayApplet
         public void mouseMoved(java.awt.event.MouseEvent e)
         {
             if (eventVerbose >= 3) System.out.println("    in mouseMoved: "+e);
+
+            if (mostRecentGraphics != null)
+            {
+                double thisP[] = new double[2];
+                mostRecentGraphics.pick(e.getX(), e.getY(), thisP);
+                prevP = thisP;
+            }
+
             if (eventVerbose >= 3) System.out.println("    out mouseMoved: "+e);
         }
 
@@ -470,6 +478,28 @@ public class ShephardsPlayApplet
         public void keyPressed(java.awt.event.KeyEvent e)
         {
             if (eventVerbose >= 1) System.out.println("in keyPressed: "+e);
+            double incr = .005;
+            switch(e.getKeyCode())
+            {
+                case java.awt.event.KeyEvent.VK_UP:
+                {
+                    System.out.println("Up");
+                    int iVert = mesh.indexOfClosestVert(prevP[0], prevP[1]);
+                    mesh.verts[iVert].h += incr;
+                    repaint();
+                    break;
+                }
+                case java.awt.event.KeyEvent.VK_DOWN:
+                {
+                    System.out.println("Down");
+                    int iVert = mesh.indexOfClosestVert(prevP[0], prevP[1]);
+                    mesh.verts[iVert].h -= incr;
+                    repaint();
+                    break;
+                }
+                default:
+                    break;
+            }
             if (eventVerbose >= 1) System.out.println("out keyPressed: "+e);
         }
         public void keyReleased(java.awt.event.KeyEvent e)
@@ -515,6 +545,57 @@ public class ShephardsPlayApplet
                     System.out.println("doDoubleBuffer -> "+doDoubleBuffer);
                     repaint();
                     break;
+
+                case 'i': case '+': case '=': // zoom in
+                    FORI (iVert, mesh.verts.length)
+                    {
+                        double scale = Math.sqrt(2.);
+                        mesh.verts[iVert].x *= scale;
+                        mesh.verts[iVert].y *= scale;
+                        mesh.verts[iVert].h *= scale*scale;
+                    }
+                    repaint();
+                    break;
+                case 'o': case '-':           // zoom out
+                    FORI (iVert, mesh.verts.length)
+                    {
+                        double scale = Math.sqrt(.5);
+                        mesh.verts[iVert].x *= scale;
+                        mesh.verts[iVert].y *= scale;
+                        mesh.verts[iVert].h *= scale*scale;
+                    }
+                    repaint();
+                    break;
+
+                case 's': // swap diagonal
+                {
+                    int closestEdgeIndex = mesh.indexOfClosestEdge(prevP[0],prevP[1]);
+                    if (closestEdgeIndex != -1)
+                    {
+                        System.out.println("Swapping diagonal edge e"+closestEdgeIndex);
+                        mesh.swapDiagonal(mesh.edges[closestEdgeIndex]);
+                    }
+                    repaint();
+                    break;
+                }
+                case 'd':
+                {
+                    int closestEdgeIndex = mesh.indexOfClosestEdge(prevP[0],prevP[1]);
+                    if (closestEdgeIndex != -1)
+                    {
+                        System.out.println("Deleting edge e"+closestEdgeIndex);
+                        mesh.deleteEdge(mesh.edges[closestEdgeIndex]);
+                    }
+                    repaint();
+                    break;
+                }
+                case 'S': // re-sphereize
+                    FORI (iVert, mesh.verts.length)
+                        mesh.verts[iVert].h = 0.;
+                    repaint();
+                    break;
+
+
 
 #define CTRL(lowerCaseLetter) ((lowerCaseLetter)-'a' + 1)
 
@@ -596,6 +677,9 @@ public class ShephardsPlayApplet
 
 
 
+            //
+            // Draw the mesh...
+            //
             {
                 mg.setColor(java.awt.Color.white);
 
@@ -612,6 +696,86 @@ public class ShephardsPlayApplet
                     Mesh.Vertex v0 = edges[iEdge*2].initialVertex();
                     Mesh.Vertex v1 = edges[iEdge*2].finalVertex();
                     mg.drawLine(v0.x,v0.y,v1.x,v1.y,doAntiAliasing);
+                }
+            }
+            //
+            // Draw the dual diagram...
+            //
+            {
+                //
+                // Draw and store the dual verts...
+                //
+                mg.setColor(java.awt.Color.red);
+                double dualVerts[][] = new double[mesh.edges.length][];
+                FORI (iEdge, mesh.edges.length)
+                {
+                    if (dualVerts[iEdge] != null)
+                        continue; // already did this triangle
+
+                    Mesh.Edge e0 = mesh.edges[iEdge];
+                    Mesh.Edge e1 = e0.nextEdgeOnLeftFace();
+                    Mesh.Edge e2 = e1.nextEdgeOnLeftFace();
+                    if (e2.nextEdgeOnLeftFace() != e0)
+                        continue; // not a triangle
+
+                    Mesh.Vertex v0 = e0.initialVertex();
+                    Mesh.Vertex v1 = e1.initialVertex();
+                    Mesh.Vertex v2 = e2.initialVertex();
+
+                    if (twiceTriArea(v0.x,v0.y,
+                                     v1.x,v1.y,
+                                     v2.x,v2.y) < 0)
+                        continue; // the triangle is inside out; it's the boundary
+
+                    double dualVert[] = new double[3];
+                    SolveForDualPoint(v0.x, v0.y, v0.h - .5 * (SQR(v0.x)+SQR(v0.y)),
+                                      v1.x, v1.y, v1.h - .5 * (SQR(v1.x)+SQR(v1.y)),
+                                      v2.x, v2.y, v2.h - .5 * (SQR(v2.x)+SQR(v2.y)),
+                                      dualVert);
+                    //System.out.println("    drawing dual vert at "+Arrays.toStringCompact(dualVert));
+                    mg.drawPoint(dualVert[0],
+                                 dualVert[1], 5);
+                    int ind0 = iEdge;
+                    int ind1 = e1.myIndex();
+                    int ind2 = e2.myIndex();
+                    assert(dualVerts[ind0] == null);
+                    assert(dualVerts[ind1] == null);
+                    assert(dualVerts[ind2] == null);
+                    dualVerts[ind0] = dualVert;
+                    dualVerts[ind1] = dualVert;
+                    dualVerts[ind2] = dualVert;
+                }
+
+                //
+                // Now try connecting the dual verts
+                //
+                FORI (iEdge, mesh.edges.length)
+                {
+                    if (dualVerts[iEdge] == null)
+                        continue; // not a triangle
+                    int jEdge = mesh.edges[iEdge].opposite().myIndex(); // XXX slow and lame-- should really store myIndex inside the edge, okay to update it whenever we rearrange the edge array
+                    if (dualVerts[jEdge] != null)
+                    {
+                        mg.drawLine(dualVerts[iEdge][0],dualVerts[iEdge][1],
+                                    dualVerts[jEdge][0],dualVerts[jEdge][1],
+                                    doAntiAliasing);
+                    }
+                    else
+                    {
+                        double v0[] = {mesh.edges[iEdge].initialVertex().x,
+                                       mesh.edges[iEdge].initialVertex().y};
+                        double v1[] = {mesh.edges[iEdge].finalVertex().x,
+                                       mesh.edges[iEdge].finalVertex().y};
+                        double toEdgeVec[] = VecMath.xv2(
+                                                 VecMath.vmv(v0, v1));
+                        VecMath.normalize(toEdgeVec, toEdgeVec);
+                        double destPoint[] = {dualVerts[iEdge][0]+toEdgeVec[0],
+                                              dualVerts[iEdge][1]+toEdgeVec[1]};
+                        mg.drawLine(dualVerts[iEdge][0],dualVerts[iEdge][1],
+                                    destPoint[0],destPoint[1],
+                                    doAntiAliasing);
+                                                             
+                    }
                 }
             }
 
@@ -856,6 +1020,42 @@ public class ShephardsPlayApplet
                 if (nonEventVerbose >= 1)
                     System.out.println("    Out addDiagonal(beforeThisEdge="+beforeThisEdge.myIndex()+", beforeThatEdge="+beforeThatEdge.myIndex()+"");
             }
+            public void swapDiagonal(Edge e)
+            {
+                if (e.nextEdgeOnLeftFace().nextEdgeOnLeftFace().nextEdgeOnLeftFace() != e
+                 || e.opposite().nextEdgeOnLeftFace().nextEdgeOnLeftFace().nextEdgeOnLeftFace() != e.opposite())
+                {
+                    System.out.println("    Can't swap diagonal, it's not on a quad");
+                    return;
+                }
+
+                Edge beforeThisEdge = e.prevEdgeOnLeftFace();
+                Edge beforeThatEdge = e.opposite().prevEdgeOnLeftFace();
+
+                //
+                // Another subtle thing to check...
+                // Make sure the other diagonal doesn't
+                // already exist.
+                //
+                {
+                    Vertex v0 = beforeThisEdge.initialVertex();
+                    Vertex v1 = beforeThatEdge.initialVertex();
+                    // XXX could do this faster by walking around the vert,
+                    // XXX but whatever
+                    FORI (iEdge, edges.length)
+                    {
+                        if (edges[iEdge].initialVertex() == v0
+                         && edges[iEdge].finalVertex() == v1)
+                        {
+                            System.out.println("    Can't swap diagonal, the other diagonal already exists");
+                            return;
+                        }
+                    }
+                }
+
+                deleteEdge(e);
+                addDiagonal(beforeThisEdge, beforeThatEdge);
+            }
             public void addEdgeBetweenTwoIsolatedVertices(Vertex v0, Vertex v1)
             {
                 Edge e = new Edge(true);
@@ -953,6 +1153,27 @@ public class ShephardsPlayApplet
                 return closestVertIndex; // -1 if none
             } // indexOfClosestVert
 
+            public int indexOfClosestEdge(double x, double y)
+            {
+                double closestDistSqrd = Double.POSITIVE_INFINITY;
+                int closestEdgeIndex = -1;
+                FORI (iEdge, edges.length)
+                {
+                    double thisDistSqrd = distSqrdFromPointToSeg(x,y,
+                                             edges[iEdge].initialVertex().x,
+                                             edges[iEdge].initialVertex().y,
+                                             edges[iEdge].finalVertex().x,
+                                             edges[iEdge].finalVertex().y);
+                    if (thisDistSqrd < closestDistSqrd)
+                    {
+                        closestDistSqrd = thisDistSqrd;
+                        closestEdgeIndex = iEdge;
+                    }
+                }
+                return closestEdgeIndex; // -1 if none
+            } // indexOfClosestEdge
+
+
             // XXX should really make these vectors or something,
             // XXX so that all operations will be constant time.
             public Vertex verts[] = {};
@@ -991,9 +1212,9 @@ public class ShephardsPlayApplet
                 {x2,y2,1},
             };
             double b[] = {
-                x0*x0 + y0+y0 + h0,
-                x1*x1 + y1+y1 + h1,
-                x2*x2 + y2+y2 + h2,
+                x0*x0 + y0*y0 + h0,
+                x1*x1 + y1*y1 + h1,
+                x2*x2 + y2*y2 + h2,
             };
             VecMath.invmxv(result,M,b);
         } // SolveForDualPoint
@@ -1025,6 +1246,22 @@ public class ShephardsPlayApplet
                                 b0x,b0y,
                                 a1x,a1y) >= -eps*eps*eps*eps;
         } // edgesCrossOrCloseToIt
+
+        static double distSqrdFromPointToSeg(double x, double y,
+                                             double x0, double y0,
+                                             double x1, double y1)
+        {
+            double v[] = {x-x0,y-y0};
+            double v1[] = {x1-x0,y1-y0};
+            if (VecMath.normsqrd(v1) == 0.)
+                return VecMath.normsqrd(v);
+            double t = VecMath.dot(v,v1)
+                     / VecMath.dot(v1,v1);
+            t = CLAMP(t, 0., 1.);
+            double vprojectedOntoV1[] = VecMath.sxv(t, v1);
+            return VecMath.distsqrd(v, vprojectedOntoV1);
+        }
+
 
     //
     // Member variables...
