@@ -1454,7 +1454,7 @@ public class ShephardsPlayApplet
 
                 // Figure out the desired dualEdgeLength...
                 // XXX just hard code for now
-                double desiredDualEdgeLength = .1;
+                double desiredDualEdgeLength = .25;
 
                 int edge2dualVert[] = VecMath.fillvec(edges.length, -1);
                 int nDualVerts;
@@ -1603,9 +1603,9 @@ public class ShephardsPlayApplet
                             PRINT(h0);
                             PRINT(h1);
                             PRINT(h2);
-                            SolveForDualPoint(v0.x,v0.y,h0,
-                                              v1.x,v1.y,h1,
-                                              v2.x,v2.y,h2,
+                            SolveForDualPoint(v0.x,v0.y,h0 - .5 * (SQR(v0.x)+SQR(v0.y)),
+                                              v1.x,v1.y,h1 - .5 * (SQR(v1.x)+SQR(v1.y)),
+                                              v2.x,v2.y,h2 - .5 * (SQR(v2.x)+SQR(v2.y)),
                                               dualVertsScratch[iDualVert]);
                         }
                         FORI (iDualEdge, nDualEdges)
@@ -1613,6 +1613,23 @@ public class ShephardsPlayApplet
                             sampleResultLengths[iSample][iDualEdge] =
                                 VecMath.dist(dualVertsScratch[dualEdge2dualVerts[iDualEdge][0]],
                                              dualVertsScratch[dualEdge2dualVerts[iDualEdge][1]]);
+                            // Need to figure out the sign.
+                            // If dual edge length is positive,
+                            // it will point from the original edge's left face
+                            // to the original edge's right face.
+                            // So the dual edge dir cross the original edge dir
+                            // should be > 0.
+                            double dualEdgeDir[] = VecMath.vmv(dualVertsScratch[dualEdge2dualVerts[iDualEdge][1]], dualVertsScratch[dualEdge2dualVerts[iDualEdge][0]]);
+                            double originalEdgeDir[] = VecMath.vmv(
+                                new double[] {edges[dualEdge2edge[iDualEdge]].finalVertex().x,
+                                              edges[dualEdge2edge[iDualEdge]].finalVertex().y},
+                                new double[] {edges[dualEdge2edge[iDualEdge]].initialVertex().x,
+                                              edges[dualEdge2edge[iDualEdge]].initialVertex().y}
+                            );
+                            if (VecMath.vxv2(dualEdgeDir, originalEdgeDir) < 0)
+                            {
+                                sampleResultLengths[iSample][iDualEdge] *= -1;
+                            }
                         }
                     }
                     PRINTMAT(sampleHeights);
@@ -1645,6 +1662,40 @@ public class ShephardsPlayApplet
                 System.out.flush();
                 double leastSquaresSolution[] = VecMath.vxinvm(b, A);
                 System.out.println("    done.");
+                PRINTVEC(leastSquaresSolution);
+                double gotLengths[] = VecMath.vxm(leastSquaresSolution, A);
+                PRINTVEC(gotLengths);
+
+                boolean doCheckLeastSquaresSolution = true;
+                if (doCheckLeastSquaresSolution)
+                {
+                    System.out.print("    Checking");
+                    System.out.flush();
+
+                    int nTests = 100;
+                    FORI (iTest, nTests)
+                    {
+                        System.out.print(".");
+
+                        //
+                        // Perturb each element of the solution
+                        // by a random amount
+                        //
+                        double foo[] = VecMath.copyvec(leastSquaresSolution);
+                        double dir[] = VecMath.random(leastSquaresSolution.length);
+                        VecMath.normalize(dir);
+                        double fudges[] = {.01, -.01};
+                        FORI (iFudge, fudges.length)
+                        {
+                            VecMath.vpsxv(foo, leastSquaresSolution, fudges[iFudge], dir);
+                            double bar[] = VecMath.vxm(foo, A);
+                            //PRINT(VecMath.dist(bar, b));
+                            if (foo.length > 0)
+                                assert(VecMath.dist(gotLengths, b) < VecMath.dist(bar, b));
+                        }
+                    }
+                    System.out.println("    done.");
+                }
 
 
                 assert(leastSquaresSolution.length == independentVert2verts.length);
