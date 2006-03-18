@@ -31,6 +31,14 @@ TO DO:
     - other mesh editing operations (split face by edge, split edge by vertex, join adjacent vertices, separate a vertex into two (but how to assign the neighbors?))
     - undo?
     - BUG: make a quad and then swap, it says there are 0 dual edges??
+    - BUG: when only part of window gets exposed, only the exposed part gets painted?  hmm, not sure I have control over this
+    - look at this, maybe clues about positive octant penalty functions...
+        http://www.cs.indiana.edu/~yingfeng/ABSURDIST/javadoc/penalty/PenaltyMinimizer.html
+      something about "translating into a positive orthant problem" and "optimizing over the positive orthant"
+      intersection of a linear subspace witht the positive orthant
+      http://projecteuclid.org/Dienst/UI/1.0/Summarize/euclid.mmj/1028988894
+      The knee-jerk mapping:
+      http://www.math.dartmouth.edu/~doyle/docs/jerk/jerk.pdf
 */
 
 #include "macros.h"
@@ -821,6 +829,74 @@ public class ShephardsPlayApplet
                 }
             }
 
+            if (doShowPositiveOrthantnessVisualization)
+            {
+                int nPoints = 5000;
+                int nLabels = 100;
+                double M[][] = new double[3][3];
+                {
+                    // XXX should add a function to VecMath for random orthonormal matrix?
+                    FORI (i, 2)
+                    FORI (j, 3)
+                        M[i][j] = 2*Math.random() - 1.;
+                    VecMath.normalize(M[0], M[0]);
+                    VecMath.vpsxv(M[1],
+                                  M[1],
+                                  -VecMath.dot(M[0], M[1]),
+                                  M[0]);
+                    VecMath.normalize(M[1], M[1]);
+                    VecMath.vxv3(M[2], M[0], M[1]);
+                }
+
+                double v[] = new double[3];
+                double Mv[] = new double[3];
+                FORI (iPoint, nLabels+nPoints)
+                {
+                    VecMath.random(v);
+
+                    if (iPoint == 0 || iPoint == nLabels+nPoints-1)
+                        VecMath.fillvec(v, 1.);
+                    else if (iPoint == 1 || iPoint == nLabels+nPoints-2)
+                        VecMath.fillvec(v, -1);
+
+
+                    VecMath.normalize(v, v);
+                    VecMath.mxv(Mv, M, v);
+                    if (Mv[2] < 0.)
+                    {
+                        VecMath.sxv(v, -1., v);
+                        VecMath.sxv(Mv, -1., Mv);
+                    }
+                    double goodness = VecMath.positiveOrthantness(v, true);
+                    //double incrDegrees = 10.;
+                    double incrDegrees = 5.;
+                    double dN = goodness * 180 / Math.PI / incrDegrees;
+                    int iN = (int)Math.round(dN);
+                    if (iPoint <= 1
+                     || iPoint >= nLabels+nPoints-2
+                     || ABS(iN-dN) < .01)
+                    {
+                        if (iN == 0)
+                            mg.setColor(java.awt.Color.red);
+                        else if (iN % 2 == 0)
+                            mg.setColor(java.awt.Color.green);
+                        else
+                            mg.setColor(java.awt.Color.blue);
+
+                        if (iPoint == 0
+                         || iPoint == nLabels+nPoints-1)
+                            mg.drawString(""+(dN*incrDegrees),
+                                          Mv[0],Mv[1], -1., 1.);
+                        else if (iPoint < nLabels)
+                            mg.drawString(""+(int)Math.round(dN*incrDegrees),
+                                          Mv[0],Mv[1], -1., 1.);
+                        else
+                            mg.drawPoint(Mv[0],Mv[1], 1);
+                    }
+                    else
+                        iPoint--; // cancel loop iteration
+                }
+            }
 
 
             if (g != frontBufferGraphics)
@@ -1578,6 +1654,8 @@ public class ShephardsPlayApplet
         Mesh mesh = new Mesh();
         int selectedVertIndex = -1;
         boolean doOptimize = false;
+
+        boolean doShowPositiveOrthantnessVisualization = true; // XXX total hack-- it's cool but put it somewhere else!!
 
     //
     // Applet-generic member variables...
