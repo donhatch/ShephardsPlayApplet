@@ -510,7 +510,8 @@ public class ShephardsPlayApplet
             {
                 case java.awt.event.KeyEvent.VK_UP:
                 {
-                    System.out.println("Up");
+                    System.out.print("Up");
+                    System.out.flush();
                     int iVert = mesh.indexOfClosestVert(prevP[0], prevP[1]);
                     mesh.verts[iVert].h += incr;
                     repaint();
@@ -518,7 +519,8 @@ public class ShephardsPlayApplet
                 }
                 case java.awt.event.KeyEvent.VK_DOWN:
                 {
-                    System.out.println("Down");
+                    System.out.print("Down");
+                    System.out.flush();
                     int iVert = mesh.indexOfClosestVert(prevP[0], prevP[1]);
                     mesh.verts[iVert].h -= incr;
                     repaint();
@@ -621,6 +623,12 @@ public class ShephardsPlayApplet
                 case 'S': // re-sphereize
                     FORI (iVert, mesh.verts.length)
                         mesh.verts[iVert].h = 0.;
+                    repaint();
+                    break;
+
+                case 'l': // toggle doLabels
+                    doLabels ^= true;
+                    System.out.println("doLabels -> "+doLabels);
                     repaint();
                     break;
 
@@ -827,6 +835,100 @@ public class ShephardsPlayApplet
                                     doAntiAliasing);
                                                              
                     }
+                }
+            }
+
+            //
+            // Draw the labels last...
+            //
+            if (doLabels)
+            {
+                mg.setColor(java.awt.Color.white);
+
+                boolean trySmartVertexAngles = true;
+
+                double smartVertexAngles[] = null;
+                if (trySmartVertexAngles)
+                {
+                    int nVerts = mesh.verts.length;
+                    int nEdges = mesh.edges.length;
+                    smartVertexAngles = new double[nVerts]; // initialized to 0
+
+                    FORI (iEdge0, nEdges)
+                    {
+                        Mesh.Edge edge0 = mesh.edges[iEdge0];
+                        Mesh.Vertex vert = edge0.initialVertex();
+                        if (smartVertexAngles[vert.myIndex()] != 0.)
+                            continue; // already saw this one for sure
+
+                        double biggestGap = -1.;
+                        double angOfBiggestGap = 0.;
+                        // walk CCW around vertex
+                        Mesh.Edge thisEdge = edge0;
+                        Mesh.Edge nextEdge;
+                        do {
+                            assert(thisEdge.initialVertex() == vert);
+                            nextEdge = thisEdge.prevEdgeOnLeftFace().opposite();
+                            double nextAng = Math.atan2(nextEdge.finalVertex().y-nextEdge.initialVertex().y,
+                                                        nextEdge.finalVertex().x-nextEdge.initialVertex().x);
+                            double thisAng = Math.atan2(thisEdge.finalVertex().y-thisEdge.initialVertex().y,
+                                                        thisEdge.finalVertex().x-thisEdge.initialVertex().x);
+                            double thisGap = nextAng - thisAng;
+                            if (thisGap < 0)
+                                thisGap += 2*Math.PI;
+                            if (thisGap > biggestGap)
+                            {
+                                biggestGap = thisGap;
+                                angOfBiggestGap = thisAng+thisGap/2;
+                            }
+                        } while ((thisEdge = nextEdge) != edge0);
+                        smartVertexAngles[vert.myIndex()] = angOfBiggestGap;
+                    }
+                }
+
+
+
+                Mesh.Vertex verts[] = mesh.verts;
+                FORI (iVert, verts.length)
+                {
+                    double x = verts[iVert].x;
+                    double y = verts[iVert].y;
+                    double ang;
+                    if (trySmartVertexAngles)
+                    {
+                        ang = smartVertexAngles[iVert];
+                    }
+                    else
+                    {
+                        ang = Math.random() * 2*Math.PI;
+                    }
+                    double offr = 5/mg.getScaleX(); // pixels
+                    double offx = offr*Math.cos(ang);
+                    double offy = offr*Math.sin(ang);
+                    double offmax = MAX(ABS(offx),ABS(offy));
+
+                    mg.drawString("v"+iVert,
+                                  x+offx,
+                                  y+offy,
+                                  -offx/offmax, offy/offmax);
+                }
+
+                Mesh.Edge edges[] = mesh.edges;
+                FORI (iEdge, edges.length)
+                {
+                    Mesh.Vertex v0 = edges[iEdge].initialVertex();
+                    Mesh.Vertex v1 = edges[iEdge].finalVertex();
+                    double x = (v0.x+v1.x)/2;
+                    double y = (v0.y+v1.y)/2;
+                    double ang = Math.PI/2 + Math.atan2(v1.y-v0.y, v1.x-v0.x);
+                    double offr = 2/mg.getScaleX(); // pixels
+                    double offx = offr*Math.cos(ang);
+                    double offy = offr*Math.sin(ang);
+                    double offmax = MAX(ABS(offx),ABS(offy));
+                    mg.drawString("e"+iEdge,
+                                  x+offx,
+                                  y+offy,
+                                  -offx/offmax, offy/offmax);
                 }
             }
 
@@ -1655,6 +1757,7 @@ public class ShephardsPlayApplet
         Mesh mesh = new Mesh();
         int selectedVertIndex = -1;
         boolean doOptimize = false;
+        boolean doLabels = false;
 
         boolean doShowPositiveOrthantnessVisualization = false; // XXX total hack-- it's cool but put it somewhere else!!
 
