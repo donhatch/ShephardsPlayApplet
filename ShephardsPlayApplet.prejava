@@ -292,7 +292,7 @@ public class ShephardsPlayApplet
                             }
                             twiceThisFaceArea += twiceThisTriArea;
 
-                            if ((edge = edge.nextEdgeOnLeftFace()) == edgeI)
+                            if ((edge = edge.next()) == edgeI)
                                 break;
                         }
                         if (thisFaceIsGoodSoFar)
@@ -328,7 +328,7 @@ public class ShephardsPlayApplet
                                 for (Mesh.Edge edge = edgeOnMostNegativeFace;;)
                                 {
                                     iOldBoundaryEdge++;
-                                    if ((edge = edge.nextEdgeOnLeftFace()) == edgeOnMostNegativeFace)
+                                    if ((edge = edge.next()) == edgeOnMostNegativeFace)
                                         break;
                                 }
                                 oldOuterFaceBoundary = new Mesh.Edge[iOldBoundaryEdge];
@@ -338,7 +338,7 @@ public class ShephardsPlayApplet
                                 for (Mesh.Edge edge = edgeOnMostNegativeFace;;)
                                 {
                                     oldOuterFaceBoundary[iOldBoundaryEdge++] = edge;
-                                    if ((edge = edge.nextEdgeOnLeftFace()) == edgeOnMostNegativeFace)
+                                    if ((edge = edge.next()) == edgeOnMostNegativeFace)
                                         break;
                                 }
                                 assert(iOldBoundaryEdge == oldOuterFaceBoundary.length);
@@ -777,9 +777,9 @@ public class ShephardsPlayApplet
                         continue; // already did this triangle
 
                     Mesh.Edge e0 = mesh.edges[iEdge];
-                    Mesh.Edge e1 = e0.nextEdgeOnLeftFace();
-                    Mesh.Edge e2 = e1.nextEdgeOnLeftFace();
-                    if (e2.nextEdgeOnLeftFace() != e0)
+                    Mesh.Edge e1 = e0.next();
+                    Mesh.Edge e2 = e1.next();
+                    if (e2.next() != e0)
                         continue; // not a triangle
 
                     Mesh.Vertex v0 = e0.initialVertex();
@@ -874,7 +874,7 @@ public class ShephardsPlayApplet
                         Mesh.Edge nextEdge;
                         do {
                             assert(thisEdge.initialVertex() == vert);
-                            nextEdge = thisEdge.prevEdgeOnLeftFace().opposite();
+                            nextEdge = thisEdge.prev().opposite();
                             double nextAng = Math.atan2(nextEdge.finalVertex().y-nextEdge.initialVertex().y,
                                                         nextEdge.finalVertex().x-nextEdge.initialVertex().x);
                             double thisAng = Math.atan2(thisEdge.finalVertex().y-thisEdge.initialVertex().y,
@@ -1077,8 +1077,8 @@ public class ShephardsPlayApplet
             {
                 private Vertex _initialVertex;
                 private Edge _opposite;
-                private Edge _nextEdgeOnLeftFace;
-                private Edge _prevEdgeOnLeftFace;
+                private Edge _next;
+                private Edge _prev;
                 private int _myIndex = -1;
 
                 public Edge(boolean andBack)
@@ -1104,13 +1104,13 @@ public class ShephardsPlayApplet
                 {
                     return _opposite;
                 }
-                public Edge nextEdgeOnLeftFace()
+                public Edge next()
                 {
-                    return _nextEdgeOnLeftFace;
+                    return _next;
                 }
-                public Edge prevEdgeOnLeftFace()
+                public Edge prev()
                 {
-                    return _prevEdgeOnLeftFace;
+                    return _prev;
                 }
 
                 public void setInitialVertex(Vertex v)
@@ -1124,17 +1124,17 @@ public class ShephardsPlayApplet
                     if (andBack)
                         _opposite.setOpposite(this, false);
                 }
-                public void setNextEdgeOnLeftFace(Edge next, boolean andBack)
+                public void setNext(Edge next, boolean andBack)
                 {
-                    _nextEdgeOnLeftFace = next;
+                    _next = next;
                     if (andBack)
-                        next.setPrevEdgeOnLeftFace(this, false);
+                        next.setPrev(this, false);
                 }
-                public void setPrevEdgeOnLeftFace(Edge prev, boolean andBack)
+                public void setPrev(Edge prev, boolean andBack)
                 {
-                    _prevEdgeOnLeftFace = prev;
+                    _prev = prev;
                     if (andBack)
-                        prev.setNextEdgeOnLeftFace(this, false);
+                        prev.setNext(this, false);
                 }
 
                 //
@@ -1145,14 +1145,6 @@ public class ShephardsPlayApplet
                 public Vertex finalVertex()
                 {
                     return _opposite._initialVertex;
-                }
-                public Edge nextEdgeOnRightFace()
-                {
-                    return _opposite.prevEdgeOnLeftFace()._opposite;
-                }
-                public Edge prevEdgeOnRightFace()
-                {
-                    return _opposite.nextEdgeOnLeftFace()._opposite;
                 }
 
 
@@ -1190,17 +1182,17 @@ public class ShephardsPlayApplet
                     assert(e.opposite() != null);
                     assert(e.opposite() != e);
                     assert(e.initialVertex() != null);
-                    assert(e.nextEdgeOnLeftFace() != null);
-                    assert(e.prevEdgeOnLeftFace() != null);
+                    assert(e.next() != null);
+                    assert(e.prev() != null);
                     assert(e.opposite().opposite() == e);
-                    assert(e.nextEdgeOnLeftFace().prevEdgeOnLeftFace() == e);
-                    assert(e.prevEdgeOnLeftFace().nextEdgeOnLeftFace() == e);
+                    assert(e.next().prev() == e);
+                    assert(e.prev().next() == e);
 
                     // XXX use hash table if going to do this on big things
                     int initialVertIndex = Arrays.indexOfUsingEqualsSymbol(verts, e.initialVertex());
                     int oppositeIndex = Arrays.indexOfUsingEqualsSymbol(edges, e.opposite());
-                    int nextIndex = Arrays.indexOfUsingEqualsSymbol(edges, e.nextEdgeOnLeftFace());
-                    int prevIndex = Arrays.indexOfUsingEqualsSymbol(edges, e.prevEdgeOnLeftFace());
+                    int nextIndex = Arrays.indexOfUsingEqualsSymbol(edges, e.next());
+                    int prevIndex = Arrays.indexOfUsingEqualsSymbol(edges, e.prev());
                     assert(initialVertIndex != -1);
                     assert(oppositeIndex != -1);
                     assert(nextIndex != -1);
@@ -1245,8 +1237,8 @@ public class ShephardsPlayApplet
             {
                 if (nonEventVerbose >= 1)
                     System.out.println("        In insertEdgeBefore(insertThisEdge="+insertThisEdge.myIndex()+", beforeThisEdge="+beforeThisEdge.myIndex()+"");
-                beforeThisEdge.prevEdgeOnLeftFace().setNextEdgeOnLeftFace(insertThisEdge, true);
-                insertThisEdge.opposite().setNextEdgeOnLeftFace(beforeThisEdge, true);
+                beforeThisEdge.prev().setNext(insertThisEdge, true);
+                insertThisEdge.opposite().setNext(beforeThisEdge, true);
                 insertThisEdge.setInitialVertex(beforeThisEdge.initialVertex());
                 if (nonEventVerbose >= 1)
                     System.out.println("        Out insertEdgeBefore(insertThisEdge="+insertThisEdge.myIndex()+", beforeThisEdge="+beforeThisEdge.myIndex()+"");
@@ -1256,7 +1248,7 @@ public class ShephardsPlayApplet
             {
                 Edge e = new Edge(true);
                 e.opposite().setInitialVertex(v);
-                e.setNextEdgeOnLeftFace(e.opposite(), true);
+                e.setNext(e.opposite(), true);
                 insertEdgeBefore(e, beforeThisEdge);
             }
             public void addDiagonal(Edge beforeThisEdge, Edge beforeThatEdge)
@@ -1271,15 +1263,15 @@ public class ShephardsPlayApplet
             }
             public void swapDiagonal(Edge e)
             {
-                if (e.nextEdgeOnLeftFace().nextEdgeOnLeftFace().nextEdgeOnLeftFace() != e
-                 || e.opposite().nextEdgeOnLeftFace().nextEdgeOnLeftFace().nextEdgeOnLeftFace() != e.opposite())
+                if (e.next().next().next() != e
+                 || e.opposite().next().next().next() != e.opposite())
                 {
                     System.out.println("    Can't swap diagonal, it's not on a quad");
                     return;
                 }
 
-                Edge beforeThisEdge = e.prevEdgeOnLeftFace();
-                Edge beforeThatEdge = e.opposite().prevEdgeOnLeftFace();
+                Edge beforeThisEdge = e.prev();
+                Edge beforeThatEdge = e.opposite().prev();
 
                 //
                 // Another subtle thing to check...
@@ -1310,8 +1302,8 @@ public class ShephardsPlayApplet
                 Edge e = new Edge(true);
                 e.setInitialVertex(v0);
                 e.opposite().setInitialVertex(v1);
-                e.setNextEdgeOnLeftFace(e.opposite(), true);
-                e.setPrevEdgeOnLeftFace(e.opposite(), true);
+                e.setNext(e.opposite(), true);
+                e.setPrev(e.opposite(), true);
             }
             public void addIsolatedVertex(double x, double y, double h)
             {
@@ -1338,16 +1330,16 @@ public class ShephardsPlayApplet
                 // Now fill in with triangles,
                 // connecting everything to the new vertex v.
                 //
-                while (someEdgeOnFace.nextEdgeOnLeftFace()
-                                     .nextEdgeOnLeftFace()
-                                     .nextEdgeOnLeftFace() != someEdgeOnFace)
+                while (someEdgeOnFace.next()
+                                     .next()
+                                     .next() != someEdgeOnFace)
                 {
                     if (nonEventVerbose >= 1)
-                        System.out.println("    adding diagonal from start of edge "+someEdgeOnFace.prevEdgeOnLeftFace().myIndex()+" to start of edge "+someEdgeOnFace.prevEdgeOnLeftFace().prevEdgeOnLeftFace().prevEdgeOnLeftFace().myIndex()+"");
-                    addDiagonal(someEdgeOnFace.prevEdgeOnLeftFace(),
-                                someEdgeOnFace.prevEdgeOnLeftFace()
-                                              .prevEdgeOnLeftFace()
-                                              .prevEdgeOnLeftFace());
+                        System.out.println("    adding diagonal from start of edge "+someEdgeOnFace.prev().myIndex()+" to start of edge "+someEdgeOnFace.prev().prev().prev().myIndex()+"");
+                    addDiagonal(someEdgeOnFace.prev(),
+                                someEdgeOnFace.prev()
+                                              .prev()
+                                              .prev());
                     if (nonEventVerbose >= 1)
                     {
                         System.out.println("    did that diagonal.");
@@ -1359,11 +1351,11 @@ public class ShephardsPlayApplet
             }
             public void deleteEdge(Edge e)
             {
-                e.prevEdgeOnLeftFace().setNextEdgeOnLeftFace(e.opposite().nextEdgeOnLeftFace(), true);
-                e.opposite().prevEdgeOnLeftFace().setNextEdgeOnLeftFace(e.nextEdgeOnLeftFace(), true);
+                e.prev().setNext(e.opposite().next(), true);
+                e.opposite().prev().setNext(e.next(), true);
                 /*
-                assert(e.nextEdgeOnLeftFace() == e.opposite());
-                assert(e.prevEdgeOnLeftFace() == e.opposite());
+                assert(e.next() == e.opposite());
+                assert(e.prev() == e.opposite());
                 */
                 int i = e.myIndex();
                 edges = (Edge[])Arrays.concat(Arrays.subarray(edges,0,i), Arrays.subarray(edges,i+1,edges.length-i-1)); // XXX should be Arrays.remove when it exists
@@ -1439,11 +1431,11 @@ public class ShephardsPlayApplet
                     FORI (iEdge, edges.length)
                     {
                         Edge edge = edges[iEdge];
-                        if (edge.nextEdgeOnLeftFace().nextEdgeOnLeftFace().nextEdgeOnLeftFace() != edge)
+                        if (edge.next().next().next() != edge)
                             continue;
                         Vertex v0 = edge.initialVertex();
-                        Vertex v1 = edge.nextEdgeOnLeftFace().initialVertex();
-                        Vertex v2 = edge.nextEdgeOnLeftFace().nextEdgeOnLeftFace().initialVertex();
+                        Vertex v1 = edge.next().initialVertex();
+                        Vertex v2 = edge.next().next().initialVertex();
                         if (twiceTriArea(0,0,
                                          v0.x,v0.y,
                                          v1.x,v1.y) >= 0
@@ -1478,9 +1470,9 @@ public class ShephardsPlayApplet
                         if (edge2dualVert[iEdge] != -1)
                             continue; // already saw some other edge on this tri
                         Edge edge = edges[iEdge];
-                        Edge edge1 = edge.nextEdgeOnLeftFace();
-                        Edge edge2 = edge1.nextEdgeOnLeftFace();
-                        boolean thisIsATri = (edge2.nextEdgeOnLeftFace() == edge);
+                        Edge edge1 = edge.next();
+                        Edge edge2 = edge1.next();
+                        boolean thisIsATri = (edge2.next() == edge);
                         if (thisIsATri)
                         {
                             edge2dualVert[iEdge] = nDualVerts;
@@ -1489,7 +1481,7 @@ public class ShephardsPlayApplet
                             nDualVerts++;
 
                             if (edge2dualVert[edge.opposite().myIndex()] != -1
-                             && edge.opposite().nextEdgeOnLeftFace().nextEdgeOnLeftFace().nextEdgeOnLeftFace() == edge.opposite())
+                             && edge.opposite().next().next().next() == edge.opposite())
                             {
                                 // Opposite edge is also on a tri
                                 // that we haven't counted yet
@@ -1522,8 +1514,8 @@ public class ShephardsPlayApplet
                          && dualVert2verts[iDualVert][0] == -1) // if we didn't already do this dual vert
                         {
                             dualVert2verts[iDualVert][0] = mesh.edges[iEdge].initialVertex().myIndex();
-                            dualVert2verts[iDualVert][1] = mesh.edges[iEdge].nextEdgeOnLeftFace().initialVertex().myIndex();
-                            dualVert2verts[iDualVert][2] = mesh.edges[iEdge].nextEdgeOnLeftFace().nextEdgeOnLeftFace().initialVertex().myIndex();
+                            dualVert2verts[iDualVert][1] = mesh.edges[iEdge].next().initialVertex().myIndex();
+                            dualVert2verts[iDualVert][2] = mesh.edges[iEdge].next().next().initialVertex().myIndex();
                         }
                     }
                     FORI (iDualVert, nDualVerts)
