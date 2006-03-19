@@ -15,6 +15,7 @@ User should be able to:
     's' - swap a diagonal
 
 TO DO:
+    - make vim know that .prejava should get syntax highlighting of .java
     - fix optimization problem
     - figure out simpler math behind the mapping from vert heights to edge lengths
     - animation of optimization
@@ -640,7 +641,12 @@ public class ShephardsPlayApplet
                     repaint();
                     break;
                 }
-                case 'S': // re-sphereize
+                case 'S': // turn off optimize, and re-sphereize
+                    if (doOptimize)
+                    {
+                        doOptimize ^= true;
+                        System.out.println("doOptimize -> "+doOptimize);
+                    }
                     FORI (iVert, mesh.verts.length)
                         mesh.verts[iVert].h = 0.;
                     repaint();
@@ -1609,7 +1615,7 @@ public class ShephardsPlayApplet
                     {
                         //
                         // Input sampleHeights[iSample]
-                        // and get out sampleResultLengths[iSample]
+                        // and get out sampleResultVerts[iSample]
                         //
                         FORI (iDualVert, nDualVerts)
                         {
@@ -1637,52 +1643,84 @@ public class ShephardsPlayApplet
                     PRINTMAT(sampleHeights);
                 }
 
-                double sampleResultLengths[][] = new double[nSamples][nDualEdges];
+                double sampleResultVectors[][];
+                double desiredResultVector[];
+
+                // can optimize positions or lengths.  I think optimizing positions is more robust.
+                boolean optimizePositions = true;
+                if (optimizePositions)
                 {
-                    FORI (iSample, nSamples)
+                    sampleResultVectors = (double[][])Arrays.flatten(sampleResultVerts, 1, 2);
+
+                    double triCentroids[][] = new double[nDualVerts][2];
+
+                    double triVertsScratch[][] = new double[3][2];
+                    FORI (iDualVert, nDualVerts)
                     {
-                        FORI (iDualEdge, nDualEdges)
+                        FORI (iVertOnTri, 3)
                         {
-                            sampleResultLengths[iSample][iDualEdge] =
-                                VecMath.dist(sampleResultVerts[iSample][dualEdge2dualVerts[iDualEdge][0]],
-                                             sampleResultVerts[iSample][dualEdge2dualVerts[iDualEdge][1]]);
-                            // Need to figure out the sign.
-                            // If dual edge length is positive,
-                            // it will point from the original edge's left face
-                            // to the original edge's right face.
-                            // So the dual edge dir cross the original edge dir
-                            // should be > 0.
-                            double dualEdgeDir[] = VecMath.vmv(sampleResultVerts[iSample][dualEdge2dualVerts[iDualEdge][1]], sampleResultVerts[iSample][dualEdge2dualVerts[iDualEdge][0]]);
-                            double originalEdgeDir[] = VecMath.vmv(
-                                new double[] {edges[dualEdge2edge[iDualEdge]].finalVertex().x,
-                                              edges[dualEdge2edge[iDualEdge]].finalVertex().y},
-                                new double[] {edges[dualEdge2edge[iDualEdge]].initialVertex().x,
-                                              edges[dualEdge2edge[iDualEdge]].initialVertex().y}
-                            );
-                            if (VecMath.vxv2(dualEdgeDir, originalEdgeDir) < 0)
+                            triVertsScratch[iVertOnTri][0] = mesh.verts[dualVert2verts[iDualVert][iVertOnTri]].x;
+                            triVertsScratch[iVertOnTri][1] = mesh.verts[dualVert2verts[iDualVert][iVertOnTri]].y;
+                        }
+                        VecMath.average(triCentroids[iDualVert], triVertsScratch);
+                    }
+                    desiredResultVector = (double[])Arrays.flatten(triCentroids, 0, 2);
+                }
+                else // optimize lengths
+                {
+                    double sampleResultLengths[][] = new double[nSamples][nDualEdges];
+                    {
+                        FORI (iSample, nSamples)
+                        {
+                            //
+                            // Calculate sampleResultLengths[iSample]
+                            // from sampleResultVerts[iSample]
+                            //
+                            FORI (iDualEdge, nDualEdges)
                             {
-                                sampleResultLengths[iSample][iDualEdge] *= -1;
+                                sampleResultLengths[iSample][iDualEdge] =
+                                    VecMath.dist(sampleResultVerts[iSample][dualEdge2dualVerts[iDualEdge][0]],
+                                                 sampleResultVerts[iSample][dualEdge2dualVerts[iDualEdge][1]]);
+                                // Need to figure out the sign.
+                                // If dual edge length is positive,
+                                // it will point from the original edge's left face
+                                // to the original edge's right face.
+                                // So the dual edge dir cross the original edge dir
+                                // should be > 0.
+                                double dualEdgeDir[] = VecMath.vmv(sampleResultVerts[iSample][dualEdge2dualVerts[iDualEdge][1]], sampleResultVerts[iSample][dualEdge2dualVerts[iDualEdge][0]]);
+                                double originalEdgeDir[] = VecMath.vmv(
+                                    new double[] {edges[dualEdge2edge[iDualEdge]].finalVertex().x,
+                                                  edges[dualEdge2edge[iDualEdge]].finalVertex().y},
+                                    new double[] {edges[dualEdge2edge[iDualEdge]].initialVertex().x,
+                                                  edges[dualEdge2edge[iDualEdge]].initialVertex().y}
+                                );
+                                if (VecMath.vxv2(dualEdgeDir, originalEdgeDir) < 0)
+                                {
+                                    sampleResultLengths[iSample][iDualEdge] *= -1;
+                                }
                             }
                         }
+                        PRINTMAT(sampleResultLengths);
                     }
-                    PRINTMAT(sampleResultLengths);
+                    sampleResultVectors = sampleResultLengths;
+                    desiredResultVector = VecMath.fillvec(nDualEdges, desiredDualEdgeLength);
                 }
 
                 //
                 // Row i of A is the result from the i'th basis sample,
                 // minus the result from the 0 vector.
                 //
-                double A[][] = new double[nIndependentVerts][nDualEdges];
-                FORI (i, nIndependentVerts)
-                    VecMath.vmv(A[i],
-                                sampleResultLengths[i],
-                                sampleResultLengths[nIndependentVerts]);
+                double A[][] = new double[sampleResultVectors.length-1][sampleResultVectors[0].length];
+                FORI (iSample, sampleResultVectors.length-1)
+                    VecMath.vmv(A[iSample],
+                                sampleResultVectors[iSample],
+                                sampleResultVectors[sampleResultVectors.length-1]);
                 //
                 // b is the desired result
                 // minus the result from the 0 vector.
                 //
-                double b[] = VecMath.fillvec(nDualEdges, desiredDualEdgeLength);
-                VecMath.vmv(b, b, sampleResultLengths[nIndependentVerts]);
+                double b[] = VecMath.vmv(desiredResultVector,
+                                         sampleResultVectors[sampleResultVectors.length-1]);
 
                 PRINTMAT(A);
                 PRINTVEC(b);
