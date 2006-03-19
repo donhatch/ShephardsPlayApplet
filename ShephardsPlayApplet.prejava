@@ -516,6 +516,11 @@ public class ShephardsPlayApplet
             {
                 case java.awt.event.KeyEvent.VK_UP:
                 {
+                    if (doOptimize)
+                    {
+                        doOptimize ^= true;
+                        System.out.println("doOptimize -> "+doOptimize+" ('O' to turn back on)");
+                    }
                     System.out.print("Up");
                     System.out.flush();
                     int iVert = mesh.indexOfClosestVert(prevP[0], prevP[1]);
@@ -525,6 +530,11 @@ public class ShephardsPlayApplet
                 }
                 case java.awt.event.KeyEvent.VK_DOWN:
                 {
+                    if (doOptimize)
+                    {
+                        doOptimize ^= true;
+                        System.out.println("doOptimize -> "+doOptimize+" ('O' to turn back on)");
+                    }
                     System.out.print("Down");
                     System.out.flush();
                     int iVert = mesh.indexOfClosestVert(prevP[0], prevP[1]);
@@ -645,7 +655,7 @@ public class ShephardsPlayApplet
                     if (doOptimize)
                     {
                         doOptimize ^= true;
-                        System.out.println("doOptimize -> "+doOptimize);
+                        System.out.println("doOptimize -> "+doOptimize+" ('O' to turn back on)");
                     }
                     FORI (iVert, mesh.verts.length)
                         mesh.verts[iVert].h = 0.;
@@ -1455,7 +1465,8 @@ public class ShephardsPlayApplet
 
                 System.out.println("In findOptimalVertexHeights");
 
-                int i0 = 0, i1 = 1, i2 = 2;
+                int nDependentVerts = 3;
+                int dependentVertIndices[] = {0,1,2};
                 // Prefer the triangle that contains the origin...
                 {
                     FORI (iEdge, edges.length)
@@ -1476,9 +1487,9 @@ public class ShephardsPlayApplet
                                          v2.x,v2.y,
                                          v0.x,v0.y) >= 0)
                         {
-                            i0 = v0.myIndex();
-                            i1 = v1.myIndex();
-                            i2 = v2.myIndex();
+                            dependentVertIndices[0] = v0.myIndex();
+                            dependentVertIndices[1] = v1.myIndex();
+                            dependentVertIndices[2] = v2.myIndex();
                             break; // origin is inside this tri CCW
                         }
                     }
@@ -1571,15 +1582,25 @@ public class ShephardsPlayApplet
 
 
 
-                PRINT(i0);
-                PRINT(i1);
-                PRINT(i2);
+
+                PRINTARRAY(dependentVertIndices);
                 PRINT(verts.length);
-                int nIndependentVerts = verts.length - 3; // XXX not right in general
-                if (nIndependentVerts > nDualEdges)
+
+                // can optimize positions or lengths.  I think optimizing positions is more robust.
+                boolean optimizePositions = true;
+                if (optimizePositions)
+                {
+                    nDependentVerts = 1; // XXX not right in general, should be number of connected components maybe
+                    dependentVertIndices = new int[] {0};
+                }
+
+                int nIndependentVerts = verts.length - nDependentVerts;
+
+
+                if (nIndependentVerts > (optimizePositions ? 2*nDualVerts : nDualEdges))
                 {
                     PRINT(nIndependentVerts);
-                    PRINT(nDualEdges);
+                    PRINT((optimizePositions ? 2*nDualVerts : nDualEdges));
                     System.out.println("Out findOptimalVertexHeights (too many independent verts, it's underconstrained)");
                     return new double[verts.length]; // zeros
                 }
@@ -1590,7 +1611,7 @@ public class ShephardsPlayApplet
                     int iIndependentVert = 0;
                     FORI (iVert, verts.length)
                     {
-                        if (iVert != i0 && iVert != i1 && iVert != i2)
+                        if (Arrays.indexOf(dependentVertIndices, iVert) == -1)
                         {
                             vert2independentVert[iVert] = iIndependentVert;
                             independentVert2verts[iIndependentVert] = iVert;
@@ -1646,24 +1667,35 @@ public class ShephardsPlayApplet
                 double sampleResultVectors[][];
                 double desiredResultVector[];
 
-                // can optimize positions or lengths.  I think optimizing positions is more robust.
-                boolean optimizePositions = true;
                 if (optimizePositions)
                 {
-                    sampleResultVectors = (double[][])Arrays.flatten(sampleResultVerts, 1, 2);
-
                     double triCentroids[][] = new double[nDualVerts][2];
 
-                    double triVertsScratch[][] = new double[3][2];
+                    double triVerts[][] = new double[3][2];
                     FORI (iDualVert, nDualVerts)
                     {
                         FORI (iVertOnTri, 3)
                         {
-                            triVertsScratch[iVertOnTri][0] = mesh.verts[dualVert2verts[iDualVert][iVertOnTri]].x;
-                            triVertsScratch[iVertOnTri][1] = mesh.verts[dualVert2verts[iDualVert][iVertOnTri]].y;
+                            triVerts[iVertOnTri][0] = mesh.verts[dualVert2verts[iDualVert][iVertOnTri]].x;
+                            triVerts[iVertOnTri][1] = mesh.verts[dualVert2verts[iDualVert][iVertOnTri]].y;
                         }
-                        VecMath.average(triCentroids[iDualVert], triVertsScratch);
+                        VecMath.average(triCentroids[iDualVert], triVerts);
                     }
+
+                    if (true)
+                    {
+                        //
+                        // Transform sample result vectors
+                        // and desired result vector
+                        // into a space where all triangles
+                        // are all equilateral triangles of the same size
+                        //
+                        FORI (iDualVerts, nDualVerts)
+                        {
+                        }
+                    }
+
+                    sampleResultVectors = (double[][])Arrays.flatten(sampleResultVerts, 1, 2);
                     desiredResultVector = (double[])Arrays.flatten(triCentroids, 0, 2);
                 }
                 else // optimize lengths
@@ -1774,9 +1806,8 @@ public class ShephardsPlayApplet
                 {
                     optimalVertexHeights[independentVert2verts[iIndex]] = leastSquaresSolution[iIndex];
                 }
-                optimalVertexHeights[i0] = 0.;
-                optimalVertexHeights[i1] = 0.;
-                optimalVertexHeights[i2] = 0.;
+                FORI (iDependentVert, dependentVertIndices.length)
+                    optimalVertexHeights[dependentVertIndices[iDependentVert]] = 0.;
 
                 System.out.println("Out findOptimalVertexHeights");
 
