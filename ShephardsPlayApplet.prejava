@@ -53,6 +53,7 @@ TO DO:
 
 import com.donhatchsw.util.Arrays;
 import com.donhatchsw.util.VecMath;
+import com.donhatchsw.util.LinearProgramming;
 
 public class ShephardsPlayApplet
     extends java.applet.Applet
@@ -677,6 +678,18 @@ public class ShephardsPlayApplet
 
 
 #define CTRL(lowerCaseLetter) ((lowerCaseLetter)-'a' + 1)
+                case CTRL('o'): // cycle optimizationType
+                    optimizationTypeIndex = (optimizationTypeIndex+1)%availableOptimizationTypes.length;
+                    optimizationType = availableOptimizationTypes[optimizationTypeIndex];
+                    System.out.println("optimizationType -> "+optimizationTypeNames[optimizationType]);
+                    repaint();
+                    break;
+
+                case CTRL('v'): // toggle nonEventVerbose
+                    nonEventVerbose = (nonEventVerbose+1)%2;
+                    System.out.println("nonEventVerbose -> "+nonEventVerbose);
+                    repaint();
+                    break;
 
                 default:
                     System.out.println("Unknown key '"+e.getKeyChar()+"'("+(int)e.getKeyChar()+") typed");
@@ -783,10 +796,10 @@ public class ShephardsPlayApplet
             //
             if (doOptimize)
             {
-                double optimalVertexHeights[] = mesh.findOptimalVertexHeights();
+                double optimalVertexHeights[] = mesh.findOptimalVertexHeights(optimizationType);
                 FORI (iVert, mesh.verts.length)
                 {
-                    PRINTSUB(optimalVertexHeights,iVert);
+                    //PRINTSUB(optimalVertexHeights,iVert);
                     mesh.verts[iVert].h = optimalVertexHeights[iVert];
                 }
             }
@@ -1458,12 +1471,13 @@ public class ShephardsPlayApplet
                 return closestEdgeIndex; // -1 if none
             } // indexOfClosestEdge
 
-            public double[] findOptimalVertexHeights()
+            public double[] findOptimalVertexHeights(int optimizationType)
             {
                 if (verts.length < 3)
                     return new double[verts.length]; // zeros
 
-                System.out.println("In findOptimalVertexHeights");
+                if (nonEventVerbose >= 1)
+                    System.out.println("In findOptimalVertexHeights");
 
                 int nDependentVerts = 3;
                 int dependentVertIndices[] = {0,1,2};
@@ -1541,8 +1555,6 @@ public class ShephardsPlayApplet
                         }
                     }
                 }
-                PRINT(nDualVerts);
-                PRINT(nDualEdges);
 
                 int dualVert2verts[][] = VecMath.fillmat(nDualVerts, 3, -1);
                 int dualEdge2edge[] = VecMath.fillvec(nDualEdges, -1); // XXX not used?
@@ -1581,14 +1593,11 @@ public class ShephardsPlayApplet
                 }
 
 
-
-
-                PRINTARRAY(dependentVertIndices);
-                PRINT(verts.length);
-
                 // can optimize positions or lengths.  I think optimizing positions is more robust.
-                boolean optimizePositions = true;
-                if (optimizePositions)
+                boolean optimizingBarycentrics = optimizationType == OPTIMIZE_BARYCENTRICS_LEAST_SQUARES
+                                              || optimizationType == OPTIMIZE_BARYCENTRICS_MAX_MIN
+                                              || optimizationType == OPTIMIZE_BARYCENTRICS_INFINITY_NORM;
+                if (optimizingBarycentrics)
                 {
                     nDependentVerts = 1; // XXX not right in general, should be number of connected components maybe
                     dependentVertIndices = new int[] {0};
@@ -1596,11 +1605,9 @@ public class ShephardsPlayApplet
 
                 int nIndependentVerts = verts.length - nDependentVerts;
 
-
-                if (nIndependentVerts > (optimizePositions ? 2*nDualVerts : nDualEdges))
+                if (nIndependentVerts > (optimizingBarycentrics ? 2*nDualVerts : nDualEdges))
                 {
-                    PRINT(nIndependentVerts);
-                    PRINT((optimizePositions ? 2*nDualVerts : nDualEdges));
+                    //PRINT((optimizingBarycentrics ? 2*nDualVerts : nDualEdges));
                     System.out.println("Out findOptimalVertexHeights (too many independent verts, it's underconstrained)");
                     return new double[verts.length]; // zeros
                 }
@@ -1622,8 +1629,6 @@ public class ShephardsPlayApplet
                     }
                     assert(iIndependentVert == nIndependentVerts);
                 }
-                PRINT(nIndependentVerts);
-                PRINT(nDualEdges);
 
 
                 int nSamples = nIndependentVerts+1;
@@ -1652,56 +1657,138 @@ public class ShephardsPlayApplet
                             Vertex v0 = verts[iVert0];
                             Vertex v1 = verts[iVert1];
                             Vertex v2 = verts[iVert2];
-                            PRINT(h0);
-                            PRINT(h1);
-                            PRINT(h2);
                             SolveForDualPoint(v0.x,v0.y,h0 - .5 * (SQR(v0.x)+SQR(v0.y)),
                                               v1.x,v1.y,h1 - .5 * (SQR(v1.x)+SQR(v1.y)),
                                               v2.x,v2.y,h2 - .5 * (SQR(v2.x)+SQR(v2.y)),
                                               sampleResultVerts[iSample][iDualVert]);
                         }
                     }
-                    PRINTMAT(sampleHeights);
+                    //PRINTMAT(sampleHeights);
                 }
 
-                double sampleResultVectors[][];
-                double desiredResultVector[];
+                double solvedHeights[];
 
-                if (optimizePositions)
+                if (optimizingBarycentrics)
                 {
-                    double triCentroids[][] = new double[nDualVerts][2];
-
-                    double triVerts[][] = new double[3][2];
-                    FORI (iDualVert, nDualVerts)
+                    // We want to maximize the minimum barycentric occurring
+                    // anywhere in the result.
+                    double sampleBarycentrics[][][] = new double[nSamples][nDualVerts][3];
+                    FORI (iSample, nSamples)
                     {
-                        FORI (iVertOnTri, 3)
+                        FORI (iDualVert, nDualVerts)
                         {
-                            triVerts[iVertOnTri][0] = mesh.verts[dualVert2verts[iDualVert][iVertOnTri]].x;
-                            triVerts[iVertOnTri][1] = mesh.verts[dualVert2verts[iDualVert][iVertOnTri]].y;
+                            int tri[] = dualVert2verts[iDualVert];
+                            double wholeArea = twiceTriArea(mesh.verts[tri[0]].x, mesh.verts[tri[0]].y,
+                                                            mesh.verts[tri[1]].x, mesh.verts[tri[1]].y,
+                                                            mesh.verts[tri[2]].x, mesh.verts[tri[2]].y);
+                            double dualVert[] = sampleResultVerts[iSample][iDualVert];
+                            FORI (iVertOnTri, 3)
+                            {
+                                sampleBarycentrics[iSample][iDualVert][iVertOnTri] =
+                                        twiceTriArea(dualVert[0], dualVert[1],
+                                                     mesh.verts[tri[(iVertOnTri+1)%3]].x,
+                                                     mesh.verts[tri[(iVertOnTri+1)%3]].y,
+                                                     mesh.verts[tri[(iVertOnTri+2)%3]].x,
+                                                     mesh.verts[tri[(iVertOnTri+2)%3]].y)
+                                      / wholeArea;
+                            }
                         }
-                        VecMath.average(triCentroids[iDualVert], triVerts);
                     }
+                    double sampleResultVectors[][] = (double[][])Arrays.flatten(sampleBarycentrics, 1, 2);
+                    double desiredResultVector[] = VecMath.fillvec(sampleResultVectors[0].length,
+                                        optimizationType==OPTIMIZE_BARYCENTRICS_MAX_MIN ? 0. : 1./3.);
 
-                    if (true)
+                    //
+                    // Find C and d
+                    // such that x -> C x - d
+                    // maps heights to barycentrics.
+                    //
+
+                    //
+                    // Column i of C is the result from the i'th basis sample,
+                    // minus the result from the 0 vector.
+                    //
+                    double C[][] = new double[sampleResultVectors.length-1][sampleResultVectors[0].length]; // start transposed...
+                    FORI (iSample, sampleResultVectors.length-1)
+                        VecMath.vmv(C[iSample],
+                                    sampleResultVectors[iSample],
+                                    sampleResultVectors[sampleResultVectors.length-1]);
+                    C = VecMath.transpose(C);
+
+                    //
+                    // d is the desired result minus the result from the zero vector.
+                    //
+                    double d[] = VecMath.vmv(desiredResultVector,
+                                             sampleResultVectors[sampleResultVectors.length-1]);
+
+                    // XXX could get clean up the dependent/intependent lookup tables if we want by expressing the independent vertex's constraints here...
+                    double A[][] = {}; // no equality constraints
+                    double b[] = {}; // no equality constraints
+
+                    LinearProgramming.debugLevel = 0;
+
+                    if (optimizationType == OPTIMIZE_BARYCENTRICS_LEAST_SQUARES)
                     {
-                        //
-                        // Transform sample result vectors
-                        // and desired result vector
-                        // into a space where all triangles
-                        // are all equilateral triangles of the same size
-                        //
-                        FORI (iDualVerts, nDualVerts)
+                        if (nonEventVerbose >= 1)
                         {
+                            System.out.print("    Solving barycentrics least squares from all 1/3's...");
+                            System.out.flush();
                         }
+                        solvedHeights = VecMath.invmxv(C,d);
+                        if (nonEventVerbose >= 1)
+                            System.out.println("    done.");
                     }
-
-                    sampleResultVectors = (double[][])Arrays.flatten(sampleResultVerts, 1, 2);
-                    desiredResultVector = (double[])Arrays.flatten(triCentroids, 0, 2);
+                    else if (optimizationType == OPTIMIZE_BARYCENTRICS_INFINITY_NORM)
+                    {
+                        solvedHeights = new double[sampleResultVectors.length-1];
+                        if (nonEventVerbose >= 1)
+                        {
+                            System.out.print("    Solving barycentrics infinity norm from all 1/3's...");
+                            System.out.flush();
+                        }
+                        int result = LinearProgramming.LInfinitySolve(solvedHeights, C,d);
+                        if (nonEventVerbose >= 1)
+                            System.out.println("    done.");
+                        if (result != 0)
+                            System.out.println("WARNING: LPSolve returned "+result);
+                    }
+                    else if (optimizationType == OPTIMIZE_BARYCENTRICS_MAX_MIN)
+                    {
+                        solvedHeights = new double[sampleResultVectors.length-1];
+                        if (nonEventVerbose >= 1)
+                        {
+                            System.out.print("    Solving barycentrics maximizing minimal element...");
+                            System.out.flush();
+                        }
+                        int result = LinearProgramming.maximizeMinimum(solvedHeights,
+                                                                       A, b,
+                                                                       C, d);
+                        if (nonEventVerbose >= 1)
+                            System.out.println("    done.");
+                        if (false)
+                        {
+                            PRINTMAT(A);
+                            PRINTVEC(b);
+                            PRINTMAT(C);
+                            PRINTVEC(d);
+                            PRINT(result);
+                            PRINTVEC(solvedHeights);
+                        }
+                        if (result != 0)
+                            System.out.println("WARNING: LPSolve returned "+result);
+                    }
+                    else
+                    {
+                        assert(false);
+                    }
                 }
                 else // optimize lengths
                 {
-                    double sampleResultLengths[][] = new double[nSamples][nDualEdges];
+                    double sampleResultVectors[][];
+                    double desiredResultVector[];
+
                     {
+                        double sampleResultLengths[][] = new double[nSamples][nDualEdges];
                         FORI (iSample, nSamples)
                         {
                             //
@@ -1732,84 +1819,111 @@ public class ShephardsPlayApplet
                                 }
                             }
                         }
-                        PRINTMAT(sampleResultLengths);
+                        //PRINTMAT(sampleResultLengths);
+                        sampleResultVectors = sampleResultLengths;
                     }
-                    sampleResultVectors = sampleResultLengths;
                     desiredResultVector = VecMath.fillvec(nDualEdges, desiredDualEdgeLength);
-                }
 
-                //
-                // Row i of A is the result from the i'th basis sample,
-                // minus the result from the 0 vector.
-                //
-                double A[][] = new double[sampleResultVectors.length-1][sampleResultVectors[0].length];
-                FORI (iSample, sampleResultVectors.length-1)
-                    VecMath.vmv(A[iSample],
-                                sampleResultVectors[iSample],
-                                sampleResultVectors[sampleResultVectors.length-1]);
-                //
-                // b is the desired result
-                // minus the result from the 0 vector.
-                //
-                double b[] = VecMath.vmv(desiredResultVector,
-                                         sampleResultVectors[sampleResultVectors.length-1]);
-
-                PRINTMAT(A);
-                PRINTVEC(b);
-
-                //
-                // Solve the linear least squares system...
-                //
-                System.out.print("    Solving... ");
-                System.out.flush();
-                double leastSquaresSolution[] = VecMath.vxinvm(b, A);
-                System.out.println("    done.");
-                PRINTVEC(leastSquaresSolution);
-                double gotLengths[] = VecMath.vxm(leastSquaresSolution, A);
-                PRINTVEC(gotLengths);
-
-                boolean doCheckLeastSquaresSolution = true;
-                if (doCheckLeastSquaresSolution)
-                {
-                    System.out.print("    Checking");
-                    System.out.flush();
-
-                    int nTests = 100;
-                    FORI (iTest, nTests)
+                    // the following is general, could optimize something else if desired
                     {
-                        System.out.print(".");
 
                         //
-                        // Perturb each element of the solution
-                        // by a random amount
+                        // Row i of A is the result from the i'th basis sample,
+                        // minus the result from the 0 vector.
                         //
-                        double foo[] = VecMath.copyvec(leastSquaresSolution);
-                        double dir[] = VecMath.random(leastSquaresSolution.length);
-                        VecMath.normalize(dir);
-                        double fudges[] = {.01, -.01};
-                        FORI (iFudge, fudges.length)
+                        double A[][] = new double[sampleResultVectors.length-1][sampleResultVectors[0].length];
+                        FORI (iSample, sampleResultVectors.length-1)
+                            VecMath.vmv(A[iSample],
+                                        sampleResultVectors[iSample],
+                                        sampleResultVectors[sampleResultVectors.length-1]);
+                        //
+                        // b is the desired result
+                        // minus the result from the 0 vector.
+                        //
+                        double b[] = VecMath.vmv(desiredResultVector,
+                                                 sampleResultVectors[sampleResultVectors.length-1]);
+
+                        //PRINTMAT(A);
+                        //PRINTVEC(b);
+
+                        double leastSquaresSolution[];
+                        if (optimizationType == OPTIMIZE_LENGTHS_LEAST_SQUARES)
                         {
-                            VecMath.vpsxv(foo, leastSquaresSolution, fudges[iFudge], dir);
-                            double bar[] = VecMath.vxm(foo, A);
-                            //PRINT(VecMath.dist(bar, b));
-                            if (foo.length > 0)
-                                assert(VecMath.dist(gotLengths, b) < VecMath.dist(bar, b));
+                            if (nonEventVerbose >= 1)
+                            {
+                                System.out.print("    Solving for lengths least squares from all "+desiredDualEdgeLength+" ...");
+                                System.out.flush();
+                            }
+                            leastSquaresSolution = VecMath.vxinvm(b, A);
+                            if (nonEventVerbose >= 1)
+                                System.out.println("    done.");
                         }
+                        else if (optimizationType == OPTIMIZE_LENGTHS_INFINITY_NORM)
+                        {
+                            leastSquaresSolution = new double[sampleResultVectors.length-1];
+                            if (nonEventVerbose >= 1)
+                            {
+                                System.out.print("    Solving lengths infinity norm from all .25's...");
+                                System.out.flush();
+                            }
+                            int result = LinearProgramming.LInfinitySolve(leastSquaresSolution, VecMath.transpose(A),b);
+                            if (nonEventVerbose >= 1)
+                                System.out.println("    done.");
+                            if (result != 0)
+                                System.out.println("WARNING: LPSolve returned "+result);
+                        }
+                        else
+                            assert(false);
+
+                        //PRINTVEC(leastSquaresSolution);
+                        double gotLengths[] = VecMath.vxm(leastSquaresSolution, A);
+                        //PRINTVEC(gotLengths);
+
+                        boolean doCheckLeastSquaresSolution = false; // I'm convinced it works
+                        if (doCheckLeastSquaresSolution)
+                        {
+                            System.out.print("    Checking");
+                            System.out.flush();
+
+                            int nTests = 100;
+                            FORI (iTest, nTests)
+                            {
+                                System.out.print(".");
+
+                                //
+                                // Perturb each element of the solution
+                                // by a random amount
+                                //
+                                double foo[] = VecMath.copyvec(leastSquaresSolution);
+                                double dir[] = VecMath.random(leastSquaresSolution.length);
+                                VecMath.normalize(dir);
+                                double fudges[] = {.01, -.01};
+                                FORI (iFudge, fudges.length)
+                                {
+                                    VecMath.vpsxv(foo, leastSquaresSolution, fudges[iFudge], dir);
+                                    double bar[] = VecMath.vxm(foo, A);
+                                    //PRINT(VecMath.dist(bar, b));
+                                    if (foo.length > 0)
+                                        assert(VecMath.dist(gotLengths, b) < VecMath.dist(bar, b));
+                                }
+                            }
+                            System.out.println("    done.");
+                        }
+                        solvedHeights = leastSquaresSolution;
                     }
-                    System.out.println("    done.");
-                }
+                } // optimize lengths
 
-
-                assert(leastSquaresSolution.length == independentVert2verts.length);
+                assert(solvedHeights.length == independentVert2verts.length);
                 double optimalVertexHeights[] = new double[verts.length];
                 FORI (iIndex, independentVert2verts.length)
                 {
-                    optimalVertexHeights[independentVert2verts[iIndex]] = leastSquaresSolution[iIndex];
+                    optimalVertexHeights[independentVert2verts[iIndex]] = solvedHeights[iIndex];
                 }
                 FORI (iDependentVert, dependentVertIndices.length)
                     optimalVertexHeights[dependentVertIndices[iDependentVert]] = 0.;
 
-                System.out.println("Out findOptimalVertexHeights");
+                if (nonEventVerbose >= 1)
+                    System.out.println("Out findOptimalVertexHeights");
 
                 return optimalVertexHeights;
             } // findOptimalVertexHeights
@@ -1914,6 +2028,28 @@ public class ShephardsPlayApplet
         Mesh mesh = new Mesh();
         int selectedVertIndex = -1;
         boolean doOptimize = false;
+            static final int OPTIMIZE_BARYCENTRICS_LEAST_SQUARES = 0;
+            static final int OPTIMIZE_BARYCENTRICS_INFINITY_NORM = 1;
+            static final int OPTIMIZE_BARYCENTRICS_MAX_MIN = 2;
+            static final int OPTIMIZE_LENGTHS_LEAST_SQUARES = 3;
+            static final int OPTIMIZE_LENGTHS_INFINITY_NORM = 4;
+            static final String optimizationTypeNames[] = {
+                "OPTIMIZE_BARYCENTRICS_LEAST_SQUARES from all 1/3's",
+                "OPTIMIZE_BARYCENTRICS_INFINITY_NORM from all 1/3's",
+                "OPTIMIZE_BARYCENTRICS_MAX_MIN",
+                "OPTIMIZE_LENGTHS_LEAST_SQUARES from all .25's",
+                "OPTIMIZE_LENGTHS_INFINITY_NORM from all .25's",
+            };
+            static final int availableOptimizationTypes[] = {
+                OPTIMIZE_BARYCENTRICS_LEAST_SQUARES,
+                OPTIMIZE_BARYCENTRICS_INFINITY_NORM,
+                OPTIMIZE_BARYCENTRICS_MAX_MIN,
+                OPTIMIZE_LENGTHS_LEAST_SQUARES,
+                OPTIMIZE_LENGTHS_INFINITY_NORM,
+            };
+        int optimizationTypeIndex = OPTIMIZE_BARYCENTRICS_LEAST_SQUARES;
+        int optimizationType = availableOptimizationTypes[optimizationTypeIndex];
+
         boolean doLabels = false;
 
         boolean doShowPositiveOrthantnessVisualization = false; // XXX total hack-- it's cool but put it somewhere else!!
