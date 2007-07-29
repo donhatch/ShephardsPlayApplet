@@ -1,8 +1,13 @@
-JAVAROOT=/usr/java/jdk1.5.0
+#JAVAROOT=/usr/java/jdk1.5.0
+#JAVAC=${JAVAROOT}/bin/javac
+
+JAVAROOT=/usr/java/j2sdk1.4.2
 JAVAC=${JAVAROOT}/bin/javac
 
 #JAVAROOT=/usr/java/j2sdk1.4.2
 #JAVAC=jikes +P -source 1.4 -classpath ${JAVAROOT}/jre/lib/rt.jar
+
+
 
 JARFILE = ShephardsPlayApplet.jar
 CLASSES = \
