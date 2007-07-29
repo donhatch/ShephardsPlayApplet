@@ -15,7 +15,7 @@ User should be able to:
     's' - swap a diagonal
 
 TO DO:
-    - make vim know that .prejava should get syntax highlighting of .java
+    - undo
     - fix optimization problem
     - figure out simpler math behind the mapping from vert heights to edge lengths
     - animation of optimization
@@ -30,7 +30,6 @@ TO DO:
     - gui
     - write a generic applet to reduce pain each time
     - other mesh editing operations (split face by edge, split edge by vertex, join adjacent vertices, separate a vertex into two (but how to assign the neighbors?))
-    - undo?
     - BUG: figure out how to make it not repaint continuously when resizing (my other appets too)
     - BUG: when only part of window gets exposed, only the exposed part gets painted?  hmm, not sure I have control over this
     - look at this, maybe clues about positive octant penalty functions...
@@ -654,7 +653,7 @@ public class ShephardsPlayApplet
                     repaint();
                     break;
                 }
-                case 'd':
+                case 'd': // delete closest edge
                 {
                     int closestEdgeIndex = mesh.indexOfClosestEdge(prevP[0],prevP[1]);
                     if (closestEdgeIndex != -1)
@@ -689,7 +688,34 @@ public class ShephardsPlayApplet
                     repaint();
                     break;
 
-
+                case 'h': // help
+                    System.out.println("===================================================================");
+                    System.out.println("Mouse:");
+                    System.out.println("    left click: add a vertex and drag it");
+                    System.out.println("        - if inside a triangle, trisects the triangle");
+                    System.out.println("        - if outside the convex hull, connect up to all visible other vertices");
+                    System.out.println("    middle drag: move a vertex");
+                    System.out.println("    right click: delete a vertex that's on the convex hull");
+                    System.out.println("        or that's only connected to 3 neighbors");
+                    System.out.println("Keys:");
+                    System.out.println("    'V' - cycle verbosity (to java console or system output)");
+                    System.out.println("    ' ' - just repaint");
+                    System.out.println("    'A' - toggle doAntiAliasing");
+                    // System.out.println("    't' - increase lineThicknessInPixels");
+                    // System.out.println("    'T' - decrease lineThicknessInPixels");
+                    System.out.println("    'B' - toggle doDoubleBuffer");
+                    System.out.println("    'i'/'+'/'=' - zoom in");
+                    System.out.println("    'o''-' - zoom out");
+                    System.out.println("    's' - swap a diagonal");
+                    System.out.println("    'O' - toggle doOptimize");
+                    System.out.println("    'l' - toggle doLabels");
+                    System.out.println("    'S' - turn off optimize, and re-spherize");
+                    System.out.println("    'd' - delete closest edge");
+                    System.out.println("    Up arrow: pull face plane of closest vertex out");
+                    System.out.println("    Down arrow: pull face plane of closest vertex in");
+                    System.out.println("    Left/right arrow: translate fudge");
+                    System.out.println("===================================================================");
+                    break;
 
 #define CTRL(lowerCaseLetter) ((lowerCaseLetter)-'a' + 1)
                 case CTRL('i'): // toggle doShowInsideOutDualVerts
@@ -1116,7 +1142,7 @@ public class ShephardsPlayApplet
     //
     // Definition of stuff for this particular app...
     //
-        public class Mesh // non-static, for nonEventVerbose
+        private class Mesh // non-static, for nonEventVerbose
         {
             public String toString()
             {
@@ -1979,10 +2005,10 @@ public class ShephardsPlayApplet
                 [x1 y1 1] [y] = [x1^2 + y1^2 + h1]
                 [x2 y2 1] [h]   [x0^2 + y2^2 + h2]
         */
-        static void SolveForDualPoint(double x0, double y0, double h0,
-                                      double x1, double y1, double h1,
-                                      double x2, double y2, double h2,
-                                      double result[])
+        private static void SolveForDualPoint(double x0, double y0, double h0,
+                                              double x1, double y1, double h1,
+                                              double x2, double y2, double h2,
+                                              double result[])
         {
             double M[][] = {
                 {x0,y0,1},
@@ -2001,19 +2027,19 @@ public class ShephardsPlayApplet
 
         } // SolveForDualPoint
 
-        static double twiceTriArea(double x0, double y0,
-                                   double x1, double y1,
-                                   double x2, double y2)
+        private static double twiceTriArea(double x0, double y0,
+                                           double x1, double y1,
+                                           double x2, double y2)
         {
             return (x1-x0)*(y2-y0) - (x2-x0)*(y1-y0);
         }
 
         // eps is in linear units
-        static boolean edgesCrossOrCloseToIt(double a0x, double a0y,
-                                             double a1x, double a1y,
-                                             double b0x, double b0y,
-                                             double b1x, double b1y,
-                                             double eps)
+        private static boolean edgesCrossOrCloseToIt(double a0x, double a0y,
+                                                     double a1x, double a1y,
+                                                     double b0x, double b0y,
+                                                     double b1x, double b1y,
+                                                     double eps)
         {
             return twiceTriArea(a0x,a0y,
                                 a1x,a1y,
@@ -2029,9 +2055,9 @@ public class ShephardsPlayApplet
                                 a1x,a1y) >= -eps*eps*eps*eps;
         } // edgesCrossOrCloseToIt
 
-        static double distSqrdFromPointToSeg(double x, double y,
-                                             double x0, double y0,
-                                             double x1, double y1)
+        private static double distSqrdFromPointToSeg(double x, double y,
+                                                     double x0, double y0,
+                                                     double x1, double y1)
         {
             double v[] = {x-x0,y-y0};
             double v1[] = {x1-x0,y1-y0};
@@ -2048,51 +2074,51 @@ public class ShephardsPlayApplet
     //
     // App-specific variables...
     //
-        Mesh mesh = new Mesh();
-        int selectedVertIndex = -1;
-        boolean doOptimize = false;
-            static final int OPTIMIZE_BARYCENTRICS_LEAST_SQUARES = 0;
-            static final int OPTIMIZE_BARYCENTRICS_INFINITY_NORM = 1;
-            static final int OPTIMIZE_BARYCENTRICS_MAX_MIN = 2;
-            static final int OPTIMIZE_LENGTHS_LEAST_SQUARES = 3;
-            static final int OPTIMIZE_LENGTHS_INFINITY_NORM = 4;
-            static final String optimizationTypeNames[] = {
+        private Mesh mesh = new Mesh();
+        private int selectedVertIndex = -1;
+        private boolean doOptimize = false;
+            private static final int OPTIMIZE_BARYCENTRICS_LEAST_SQUARES = 0;
+            private static final int OPTIMIZE_BARYCENTRICS_INFINITY_NORM = 1;
+            private static final int OPTIMIZE_BARYCENTRICS_MAX_MIN = 2;
+            private static final int OPTIMIZE_LENGTHS_LEAST_SQUARES = 3;
+            private static final int OPTIMIZE_LENGTHS_INFINITY_NORM = 4;
+            private static final String optimizationTypeNames[] = {
                 "OPTIMIZE_BARYCENTRICS_LEAST_SQUARES from all 1/3's",
                 "OPTIMIZE_BARYCENTRICS_INFINITY_NORM from all 1/3's",
                 "OPTIMIZE_BARYCENTRICS_MAX_MIN",
                 "OPTIMIZE_LENGTHS_LEAST_SQUARES from all .25's",
                 "OPTIMIZE_LENGTHS_INFINITY_NORM from all .25's",
             };
-            static final int availableOptimizationTypes[] = {
+            private static final int availableOptimizationTypes[] = {
                 OPTIMIZE_BARYCENTRICS_LEAST_SQUARES,
                 OPTIMIZE_BARYCENTRICS_INFINITY_NORM,
                 OPTIMIZE_BARYCENTRICS_MAX_MIN,
                 OPTIMIZE_LENGTHS_LEAST_SQUARES,
                 OPTIMIZE_LENGTHS_INFINITY_NORM,
             };
-        int optimizationTypeIndex = OPTIMIZE_BARYCENTRICS_LEAST_SQUARES;
+        private int optimizationTypeIndex = OPTIMIZE_BARYCENTRICS_LEAST_SQUARES;
         int optimizationType = availableOptimizationTypes[optimizationTypeIndex];
 
-        boolean doLabels = false;
-        boolean doShowInsideOutDualVerts = false; // might also be nice to have option for implicit primal vertex in middle of outer face, so that dual will be single-face-bounded... and maybe ctrl-up,ctrl-down will adjust the height of that face
+        private boolean doLabels = false;
+        private boolean doShowInsideOutDualVerts = false; // might also be nice to have option for implicit primal vertex in middle of outer face, so that dual will be single-face-bounded... and maybe ctrl-up,ctrl-down will adjust the height of that face
 
-        boolean doShowPositiveOrthantnessVisualization = false; // XXX total hack-- it's cool but put it somewhere else!!
+        private boolean doShowPositiveOrthantnessVisualization = false; // XXX total hack-- it's cool but put it somewhere else!!
 
     //
     // Applet-generic member variables...
     //
-        GraphicsAntiAliasingSetter graphicsAntiAliasingSetter;
-        int eventVerbose = 0; // can set with eventVerbose=1 on command line
-        int nonEventVerbose = 0;
-        boolean doAntiAliasing = false;
-        boolean implementAntiAliasingInHardware = true; // XXX should have a better name for this-- really mean let java runtime do it
-        double lineThicknessInPixels = 1.;
-        boolean doDoubleBuffer = true;
-        java.awt.Image backBufferImage = null;
-        MyGraphics mostRecentGraphics = null;
-        double translateFudgeX = 0.;
+        private GraphicsAntiAliasingSetter graphicsAntiAliasingSetter;
+        private int eventVerbose = 0; // can set with eventVerbose=1 on command line
+        private int nonEventVerbose = 0;
+        private boolean doAntiAliasing = false;
+        private boolean implementAntiAliasingInHardware = true; // XXX should have a better name for this-- really mean let java runtime do it
+        private double lineThicknessInPixels = 1.;
+        private boolean doDoubleBuffer = true;
+        private java.awt.Image backBufferImage = null;
+        private MyGraphics mostRecentGraphics = null;
+        private double translateFudgeX = 0.;
 
-        double prevP[] = null;
+        private double prevP[] = null;
 
     //
     // Track mouse state...
@@ -2101,9 +2127,9 @@ public class ShephardsPlayApplet
     // but e.g. in 1.1 there is no way to tell whether button1
     // is down during a drag without keeping state
     //
-        boolean button1IsDown = false;
-        boolean button2IsDown = false;
-        boolean button3IsDown = false;
+        private boolean button1IsDown = false;
+        private boolean button2IsDown = false;
+        private boolean button3IsDown = false;
 
 
     //
