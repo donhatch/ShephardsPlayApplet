@@ -15,7 +15,8 @@ User should be able to:
     's' - swap a diagonal
 
 TO DO:
-    - undo
+    - save/load
+    - simple translation from simple lists and back... creating that sample scene was a nightmare!
     - fix optimization problem
     - figure out simpler math behind the mapping from vert heights to edge lengths
     - animation of optimization
@@ -164,6 +165,8 @@ public class ShephardsPlayApplet
             this.addKeyListener(this);
 
             graphicsAntiAliasingSetter = new GraphicsAntiAliasingSetter();
+
+            doCannedThing(); // XXX get rid of this probably
 
             if (eventVerbose >= 1) System.out.println("out init");
         } // init
@@ -724,6 +727,15 @@ public class ShephardsPlayApplet
                     break;
                 }
 
+                case 'a': // toggle doArrowsTowardsSharpestDihedrals
+                {
+                    doArrowsTowardsSharpestDihedrals ^= true;
+                    System.out.println("doArrowsTowardsSharpestDihedrals -> "+doArrowsTowardsSharpestDihedrals);
+                    repaint();
+                    break;
+                }
+
+
 #define CTRL(lowerCaseLetter) ((lowerCaseLetter)-'a' + 1)
 
                 case 'u': case CTRL('z'): // undo
@@ -782,6 +794,7 @@ public class ShephardsPlayApplet
                     System.out.println("    's' - swap a diagonal");
                     System.out.println("    'O' - toggle doOptimize");
                     System.out.println("    'l' - toggle doLabels");
+                    System.out.println("    'a' - toggle doArrowsTowardsSharpestDihedrals");
                     System.out.println("    'S' - turn off optimize, and re-spherize");
                     System.out.println("    'd' - delete closest edge");
                     System.out.println("    ctrl-'i' - toggle doShowInsideOutDualVerts");
@@ -812,12 +825,110 @@ public class ShephardsPlayApplet
                     repaint();
                     break;
 
+                case CTRL('c'): // very special case canned... netless9 example
+                {
+                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+
+                    doCannedThing();
+
+                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    undoTreeSquirrel.Do(new UndoItem(before, after));
+                    repaint();
+                    break;
+                }
+
                 default:
                     System.out.println("Unknown key '"+e.getKeyChar()+"'("+(int)e.getKeyChar()+") typed");
                     break;
             }
             if (eventVerbose >= 1) System.out.println("out keyTyped: "+e);
         } // keyTyped
+
+        // Make the mesh into netless9
+        private void doCannedThing()
+        {
+            if (false)
+            {
+                double incDegrees = 5.;
+                PRINT(Math.sin(DTOR(60+incDegrees))/Math.sin(DTOR(60)));
+                double vertPositions[][] = new double[7][3];
+                FORI (i, 6)
+                {
+                    double ang = DTOR(-90 + (60-incDegrees)*i);
+                    //double length = Math.pow(Math.sin(DTOR(60+incDegrees))/Math.sin(DTOR(60)), i);
+                    double length = .5 * Math.pow(Math.sin(DTOR(60+2*incDegrees))/Math.sin(DTOR(60-incDegrees)), i);
+                    vertPositions[i][0] = length * Math.cos(ang);
+                    vertPositions[i][1] = length * Math.sin(ang);
+                    vertPositions[i][2] = 0;
+                }
+                vertPositions[6][0] = 0;
+                vertPositions[6][1] = 0;
+                vertPositions[6][2] = 0;
+                int faces[][] = {
+                    {6,0,1},
+                    {6,1,2},
+                    {6,2,3},
+                    {6,3,4},
+                    {6,4,5},
+                    {6,5,0},
+                    {5,4,3,2,1,0},
+                };
+                mesh = new Mesh(vertPositions, faces);
+            }
+            if (true)
+            {
+                // s = how much bigger each edge is from the previous
+                double s = 1.1;
+                double sliceAngle;
+                {
+                    // In the initial 6 slice pie,
+                    // the southwest triangle has sides a=s, b=s^5, c=s^6.
+                    // what are its angles?
+                    // http://www.teacherschoice.com.au/Maths_Library/Trigonometry/solve_trig_SSS.htm
+                    double a = s;
+                    double b = s*s*s*s*s;
+                    double c = s*s*s*s*s*s;
+                    double C = triangleAngle(a, b, c);
+                    // All right, the southwest angle at the center
+                    // is C, a bit more than pi/3.
+                    // Distribute the rest of the spokes evenly.
+                    sliceAngle = (2*Math.PI-C) / 5;
+                }
+                PRINT(RTOD(sliceAngle));
+                double vertPositions[][] = new double[7][3];
+                vertPositions[0][0] = 0;
+                vertPositions[0][1] = 0;
+                vertPositions[0][2] = 0;
+                FORI (i, 6)
+                {
+                    double ang = -Math.PI/2 + i*sliceAngle;
+                    double length = .5 * Math.pow(s, i);
+                    vertPositions[i+1][0] = length * Math.cos(ang);
+                    vertPositions[i+1][1] = length * Math.sin(ang);
+                    vertPositions[i+1][2] = 0;
+                }
+                int faces[][] = {
+                    {0,1,2},
+                    {0,2,3},
+                    {0,3,4},
+                    {0,4,5},
+                    {0,5,6},
+                    {0,6,1},
+                    {6,5,4,3,2,1},
+                };
+
+                mesh = new Mesh(vertPositions, faces);
+                {
+                    double c = VecMath.dist(vertPositions[1], vertPositions[6]);
+                    double a = c;
+                    double b = c*s;
+                    double v7[] = completeTriangle(vertPositions[1],
+                                                   vertPositions[6],
+                                                   a, b);
+                    mesh.addIsolatedVertex(v7[0],v7[1],0);
+                }
+            }
+        } // doCannedThing
 
         //
         // Make it so we get keyboard focus on startup,
@@ -993,8 +1104,8 @@ public class ShephardsPlayApplet
                 FORI (iEdge, mesh.edges.length)
                 {
                     if (dualVerts[iEdge] == null)
-                        continue; // not a triangle
-                    int jEdge = mesh.edges[iEdge].opposite().myIndex(); // XXX slow and lame-- should really store myIndex inside the edge, okay to update it whenever we rearrange the edge array
+                        continue; // not a triangle, or insie out
+                    int jEdge = mesh.edges[iEdge].opposite().myIndex();
                     if (dualVerts[jEdge] != null)
                     {
                         mg.drawLine(dualVerts[iEdge][0],dualVerts[iEdge][1],
@@ -1017,6 +1128,48 @@ public class ShephardsPlayApplet
                                     destPoint[0],destPoint[1],
                                     doAntiAliasing);
                                                              
+                    }
+                }
+
+                //
+                // Now try marking the sharpest dihedral dual edge
+                // out of each dual vertex.
+                // I.e. the dual edge opposite the largest dual angle.
+                // I.e. the dual edge corresponding to the longest of the three primal
+                // triangle sides.
+                //
+                if (doArrowsTowardsSharpestDihedrals)
+                {
+                    mg.setColor(java.awt.Color.green);
+                    FORI (iEdge, mesh.edges.length)
+                    {
+                        if (dualVerts[iEdge] == null)
+                            continue; // not a triangle, or insie out
+                        Mesh.Edge e0 = mesh.edges[iEdge];
+                        Mesh.Edge e1 = e0.next();
+                        Mesh.Edge e2 = e1.next();
+                        assert(e2.next() == e0);
+                        Mesh.Vertex triVerts[] = {e0.initialVertex(),
+                                                  e1.initialVertex(),
+                                                  e2.initialVertex()};
+                        double sideLengths[] = new double[3];
+                        FORI (i, 3)
+                            sideLengths[i] = Math.sqrt(SQR(triVerts[i].x-triVerts[(i+1)%3].x)
+                                                     + SQR(triVerts[i].y-triVerts[(i+1)%3].y));
+                        int bestSide = MAXI3(sideLengths[0], sideLengths[1], sideLengths[2]);
+                        double triCenterDualVert[] = dualVerts[e0.myIndex()];
+                        double v0[] = {triVerts[bestSide].x, triVerts[bestSide].y};
+                        double v1[] = {triVerts[(bestSide+1)%3].x, triVerts[(bestSide+1)%3].y};
+                        double toEdgeVec[] = VecMath.xv2(
+                                                 VecMath.vmv(v0, v1));
+                        VecMath.normalize(toEdgeVec, toEdgeVec);
+                        // XXX be smarter!  maybe 1/3 of the way along the edge, or somethin
+                        double whereToDrawMark[] = {
+                            triCenterDualVert[0] + .02 * toEdgeVec[0],
+                            triCenterDualVert[1] + .02 * toEdgeVec[1],
+                        };
+                        mg.drawPoint(whereToDrawMark[0],
+                                     whereToDrawMark[1], 5);
                     }
                 }
             }
@@ -2055,6 +2208,50 @@ public class ShephardsPlayApplet
             private Mesh()
             {
             }
+
+            private Mesh(double vertPositions[][],
+                         int faceIndices[][])
+            {
+                FORI (i, vertPositions.length)
+                {
+                    // adds itself to verts...
+                    new Vertex(vertPositions[i][0],  // x
+                               vertPositions[i][1],  // y
+                               vertPositions[i][2]); // h
+                }
+                java.util.Hashtable vertIndsToEdge = new java.util.Hashtable();
+                FORI (i, faceIndices.length)
+                FORI (j, faceIndices[i].length)
+                {
+                    int v0 = faceIndices[i][j];
+                    int v1 = faceIndices[i][(j+1)%faceIndices[i].length];
+                    assert(INRANGE(0 <=, v0, < vertPositions.length));
+                    assert(INRANGE(0 <=, v1, < vertPositions.length));
+                    String v0_v1 = ""+v0+"_"+v1;
+                    String v1_v0 = ""+v1+"_"+v0;
+                    if (vertIndsToEdge.get(v0_v1) == null)
+                    {
+                        Edge edge = new Edge(true); // adds itself, and opposite, to verts
+                        vertIndsToEdge.put(v0_v1, edge);
+                        vertIndsToEdge.put(v1_v0, edge.opposite());
+                        edge.setInitialVertex(verts[v0]);
+                        edge.opposite().setInitialVertex(verts[v1]);
+                    }
+                }
+                FORI (i, faceIndices.length)
+                FORI (j, faceIndices[i].length)
+                {
+                    int v0 = faceIndices[i][j];
+                    int v1 = faceIndices[i][(j+1)%faceIndices[i].length];
+                    int v2 = faceIndices[i][(j+2)%faceIndices[i].length];
+                    String v0_v1 = ""+v0+"_"+v1;
+                    String v1_v2 = ""+v1+"_"+v2;
+                    Edge e01 = (Edge)vertIndsToEdge.get(v0_v1);
+                    Edge e12 = (Edge)vertIndsToEdge.get(v1_v2);
+                    e01.setNext(e12, true);
+                }
+            } // Mesh from vertex positions and face indices
+
             private Mesh(Mesh original)
             {
                 FORI (i, original.verts.length)
@@ -2155,6 +2352,33 @@ public class ShephardsPlayApplet
 
         } // SolveForDualPoint
 
+        // Calculate the angle C, opposite side c,
+        // given side lengths a, b, c,
+        // using c^2 = a^2 + b^2 - 2*a*b*cos(C)
+        private static double triangleAngle(double a, double b, double c)
+        {
+            return Math.acos((a*a + b*b - c*c) / (2*a*b));
+        }
+
+        // Find vertex v2 that completes the triangle with given edge lengths,
+        // such that v0,v1,v2 are CCW.
+        private static double[] completeTriangle(double v0[],
+                                                 double v1[],
+                                                 double dist12,
+                                                 double dist20)
+        {
+            // Make sure has only 2 entries
+            v0 = new double[]{v0[0],v0[1]};
+            v1 = new double[]{v1[0],v1[1]};
+            double ang0 = triangleAngle(VecMath.dist(v0,v1), dist20, dist12);
+            double dir01[] = VecMath.normalize(VecMath.vmv(v1,v0));
+            double v2[] = VecMath.sxvpsxvpsxv(
+                1.,                    v0,
+                dist20*Math.cos(ang0), dir01,
+                dist20*Math.sin(ang0), VecMath.xv2(dir01));
+            return v2;
+        } // completeTriangle
+
         private static double twiceTriArea(double x0, double y0,
                                            double x1, double y1,
                                            double x2, double y2)
@@ -2229,6 +2453,7 @@ public class ShephardsPlayApplet
         int optimizationType = availableOptimizationTypes[optimizationTypeIndex];
 
         private boolean doLabels = false;
+        private boolean doArrowsTowardsSharpestDihedrals = false;
         private boolean doShowInsideOutDualVerts = false; // might also be nice to have option for implicit primal vertex in middle of outer face, so that dual will be single-face-bounded... and maybe ctrl-up,ctrl-down will adjust the height of that face
 
         private boolean doShowPositiveOrthantnessVisualization = false; // XXX total hack-- it's cool but put it somewhere else!!
