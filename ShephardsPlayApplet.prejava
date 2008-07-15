@@ -167,7 +167,8 @@ public class ShephardsPlayApplet
 
             graphicsAntiAliasingSetter = new GraphicsAntiAliasingSetter();
 
-            doCannedThing(); // XXX get rid of this probably
+            //doCannedThingHexesSpiral(); // XXX get rid of this probably
+            doCannedThingNetless9(); // XXX get rid of this probably
 
             if (eventVerbose >= 1) System.out.println("out init");
         } // init
@@ -544,6 +545,7 @@ public class ShephardsPlayApplet
             {
                 case java.awt.event.KeyEvent.VK_UP:
                 {
+                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
                     if (doOptimize)
                     {
                         doOptimize ^= true;
@@ -552,12 +554,18 @@ public class ShephardsPlayApplet
                     System.out.print("Up");
                     System.out.flush();
                     int iVert = mesh.indexOfClosestVert(prevP[0], prevP[1]);
-                    mesh.verts[iVert].h += incr;
+                    if (e.isControlDown())
+                        mesh.verts[iVert].h += incr*.1;
+                    else
+                        mesh.verts[iVert].h += incr;
+                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    undoTreeSquirrel.Do(new UndoItem(before, after));
                     repaint();
                     break;
                 }
                 case java.awt.event.KeyEvent.VK_DOWN:
                 {
+                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
                     if (doOptimize)
                     {
                         doOptimize ^= true;
@@ -566,7 +574,12 @@ public class ShephardsPlayApplet
                     System.out.print("Down");
                     System.out.flush();
                     int iVert = mesh.indexOfClosestVert(prevP[0], prevP[1]);
-                    mesh.verts[iVert].h -= incr;
+                    if (e.isControlDown())
+                        mesh.verts[iVert].h -= incr*.1;
+                    else
+                        mesh.verts[iVert].h -= incr;
+                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    undoTreeSquirrel.Do(new UndoItem(before, after));
                     repaint();
                     break;
                 }
@@ -730,8 +743,16 @@ public class ShephardsPlayApplet
 
                 case 'a': // toggle doArrowsTowardsSharpestDihedrals
                 {
-                    doArrowsTowardsSharpestDihedrals ^= true;
-                    System.out.println("doArrowsTowardsSharpestDihedrals -> "+doArrowsTowardsSharpestDihedrals);
+                    if (e.isAltDown())
+                    {
+                        doArrowsTowardsShortestEdges ^= true;
+                        System.out.println("doArrowsTowardsShortestEdges -> "+doArrowsTowardsShortestEdges);
+                    }
+                    else
+                    {
+                        doArrowsTowardsSharpestDihedrals ^= true;
+                        System.out.println("doArrowsTowardsSharpestDihedrals -> "+doArrowsTowardsSharpestDihedrals);
+                    }
                     repaint();
                     break;
                 }
@@ -796,6 +817,7 @@ public class ShephardsPlayApplet
                     System.out.println("    'O' - toggle doOptimize");
                     System.out.println("    'l' - toggle doLabels");
                     System.out.println("    'a' - toggle doArrowsTowardsSharpestDihedrals");
+                    System.out.println("    ctrl-'a' - toggle doArrowsTowardsShortestEdges");
                     System.out.println("    'S' - turn off optimize, and re-spherize");
                     System.out.println("    'd' - delete closest edge");
                     System.out.println("    ctrl-'i' - toggle doShowInsideOutDualVerts");
@@ -831,7 +853,10 @@ public class ShephardsPlayApplet
                 {
                     UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
 
-                    doCannedThing();
+                    if (e.isAltDown())
+                        doCannedThingHexesSpiral();
+                    else
+                        doCannedThingNetless9();
 
                     UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
                     undoTreeSquirrel.Do(new UndoItem(before, after));
@@ -847,12 +872,13 @@ public class ShephardsPlayApplet
         } // keyTyped
 
         // Make the mesh into netless9
-        private void doCannedThing()
+        private void doCannedThingNetless9()
         {
             if (true)
             {
                 // s = how much bigger each edge is from the previous
                 double s = 1.05;
+                //double s = 1.001;
                 double sliceAngle;
                 {
                     // In the initial 6 slice pie,
@@ -869,8 +895,9 @@ public class ShephardsPlayApplet
                     sliceAngle = (2*Math.PI-C) / 5;
                 }
                 PRINT(RTOD(sliceAngle));
-                //int nVerts = 24;
                 int nVerts = 19;
+                //int nVerts = 40;
+                //int nVerts = 1000;
                 double verts[][] = new double[nVerts][3];
                 int nNeighbors[] = new int[nVerts]; // zeros
                 ArrayList facesList = new ArrayList();
@@ -879,8 +906,9 @@ public class ShephardsPlayApplet
                 verts[0][0] = 0;
                 verts[0][1] = 0;
                 verts[0][2] = 0;
-                verts[1][0] = 0;
-                verts[1][1] = -1;
+                // Had the seed on the -y axis, changing it to +x axis for the hell of it
+                verts[1][0] = 1;
+                verts[1][1] = 0;
                 verts[1][2] = 0;
                 nNeighbors[0] = 1;
                 nNeighbors[1] = 1;
@@ -961,12 +989,145 @@ public class ShephardsPlayApplet
             }
             FORI (iVert, mesh.verts.length)
             {
-                double scale = .25;
+                double scale = .2;
                 mesh.verts[iVert].x *= scale;
                 mesh.verts[iVert].y *= scale;
                 mesh.verts[iVert].h *= scale*scale;
             }
-        } // doCannedThing
+        } // doCannedThingNetless9
+
+        private void doCannedThingHexesSpiral()
+        {
+            if (true)
+            {
+                // s = how much bigger each edge is from the previous
+                //double s = 1.05;
+                //double s = 1.001;
+                double s = 1.;
+                double sliceAngle;
+                {
+                    // In the initial 6 slice pie,
+                    // the southwest triangle has sides a=1, b=s^5, c=s^6.
+                    // what are its angles?
+                    // http://www.teacherschoice.com.au/Maths_Library/Trigonometry/solve_trig_SSS.htm
+                    double a = 1;
+                    double b = s*s*s*s*s;
+                    double c = s*s*s*s*s*s;
+                    double C = triangleAngle(a, b, c);
+                    // All right, the southwest angle at the center
+                    // is C, a bit more than pi/3.
+                    // Distribute the rest of the spokes evenly.
+                    sliceAngle = (2*Math.PI-C) / 5;
+                }
+                PRINT(RTOD(sliceAngle));
+                //int nVerts = 19;
+                //int nVerts = 18;
+                //int nVerts = 100;
+                int nVerts = 500;
+                //int nVerts = 1000;
+                double verts[][] = new double[nVerts][3];
+                int nNeighbors[] = new int[nVerts]; // zeros
+                ArrayList facesList = new ArrayList();
+
+                // Seed with verts 0 and 1, and an edge between them.
+                verts[0][0] = 0;
+                verts[0][1] = 0;
+                verts[0][2] = 0;
+                // Had the seed on the -y axis, changing it to +x axis for the hell of it
+                verts[1][0] = 1;
+                verts[1][1] = 0;
+                verts[1][2] = 0;
+                nNeighbors[0] = 1;
+                nNeighbors[1] = 1;
+
+                PRINT(VecMath.dist(verts[1], verts[6]));
+                PRINT(Math.pow(s, 6));
+
+                int oldestPerimeterEdge[] = {0,1};
+
+                for (int i = 2; i < nVerts; ++i)
+                {
+                    //PRINT(i);
+                    int arity = nNeighbors[oldestPerimeterEdge[0]];
+                    assert(arity < 6);
+                    double angFrac = 1./(6-arity);
+                    //PRINT(1./angFrac);
+                    double largestEdge = VecMath.dist(verts[i-1], verts[oldestPerimeterEdge[0]]);
+                    //PRINT(largestEdge);
+                    //PRINT(Math.pow(s, facesList.size()));
+
+                    double c = VecMath.dist(verts[oldestPerimeterEdge[0]],
+                                            verts[oldestPerimeterEdge[1]]);
+                    double a = largestEdge * Math.pow(s, 1./angFrac);
+                    double b = a*s;
+                    //PRINT(a);
+                    //PRINT(b);
+                    double target[] = completeTriangle(verts[oldestPerimeterEdge[1]],
+                                                       verts[oldestPerimeterEdge[0]],
+                                                       a, b);
+                    double ang0 = Math.atan2(verts[i-1][1]-verts[oldestPerimeterEdge[0]][1],
+                                             verts[i-1][0]-verts[oldestPerimeterEdge[0]][0]);
+                    double ang1 = Math.atan2(target[1]-verts[oldestPerimeterEdge[0]][1],
+                                             target[0]-verts[oldestPerimeterEdge[0]][0]);
+                    //PRINT(RTOD(ang0));
+                    //PRINT(RTOD(ang1));
+                    //PRINT(angFrac);
+                    while (ang1 < ang0) ang1 += 2*Math.PI;
+                    double ang = LERP(ang0, ang1, angFrac);
+                    double length = largestEdge * s;
+                    verts[i][0] = verts[oldestPerimeterEdge[0]][0] + length*Math.cos(ang);
+                    verts[i][1] = verts[oldestPerimeterEdge[0]][1] + length*Math.sin(ang);
+                    facesList.add(new int[]{oldestPerimeterEdge[0], i-1, i});
+                    nNeighbors[oldestPerimeterEdge[0]]++;
+                    nNeighbors[i-1]++;
+                    nNeighbors[i] = 2;
+                    if (nNeighbors[oldestPerimeterEdge[0]] == 6)
+                    {
+                        //System.out.println("COMPLETING at "+i);
+                        facesList.add(new int[]{oldestPerimeterEdge[1], oldestPerimeterEdge[0], i});
+                        nNeighbors[oldestPerimeterEdge[1]]++;
+                        nNeighbors[i]++;
+                        oldestPerimeterEdge[0]++;
+                        oldestPerimeterEdge[1]++;
+                    }
+                }
+
+                {
+                    int nPerimeterVerts = 0;
+                    FORI (i, nVerts)
+                        if (nNeighbors[i] < 6)
+                            nPerimeterVerts++;
+                    int perimeterVerts[] = new int[nPerimeterVerts];
+                    nPerimeterVerts = 0;
+                    FORI (i, nVerts)
+                        if (nNeighbors[i] < 6)
+                            perimeterVerts[perimeterVerts.length-1-nPerimeterVerts++] = i;
+                    facesList.add(perimeterVerts);
+                    PRINT(nPerimeterVerts);
+                }
+
+
+                int faces[][] = new int[facesList.size()][];
+                facesList.toArray(faces);
+                mesh = new Mesh(verts, faces);
+                //PRINTARRAY(nNeighbors);
+                //PRINTARRAY(verts);
+                //PRINTARRAY(faces);
+            }
+            FORI (iVert, mesh.verts.length)
+            {
+                double scale = .2;
+                mesh.verts[iVert].x *= scale;
+                mesh.verts[iVert].y *= scale;
+                mesh.verts[iVert].h *= scale*scale;
+            }
+            //double heightIncr = .005*.14;
+            double heightIncr = .005*.01;
+            FORI (iVert, mesh.verts.length)
+            {
+                mesh.verts[iVert].h -= heightIncr * iVert;
+            }
+        } // doCannedThingHexesSpiral
 
         //
         // Make it so we get keyboard focus on startup,
@@ -1175,6 +1336,7 @@ public class ShephardsPlayApplet
                 // I.e. the dual edge opposite the largest dual angle.
                 // I.e. the dual edge corresponding to the longest of the three primal
                 // triangle sides.
+                // We draw it 3 times, to make sure we get the same logic from each direction. If there are ties, it will get drawn in each place I think.
                 //
                 if (doArrowsTowardsSharpestDihedrals)
                 {
@@ -1182,7 +1344,7 @@ public class ShephardsPlayApplet
                     FORI (iEdge, mesh.edges.length)
                     {
                         if (dualVerts[iEdge] == null)
-                            continue; // not a triangle, or insie out
+                            continue; // not a triangle, or inside out
                         Mesh.Edge e0 = mesh.edges[iEdge];
                         Mesh.Edge e1 = e0.next();
                         Mesh.Edge e2 = e1.next();
@@ -1195,7 +1357,7 @@ public class ShephardsPlayApplet
                             sideLengths[i] = Math.sqrt(SQR(triVerts[i].x-triVerts[(i+1)%3].x)
                                                      + SQR(triVerts[i].y-triVerts[(i+1)%3].y));
                         int bestSide = MAXI3(sideLengths[0], sideLengths[1], sideLengths[2]);
-                        double triCenterDualVert[] = dualVerts[e0.myIndex()];
+                        double triCenterDualVert[] = dualVerts[e0.myIndex()]; // huh? using an edge index to index into the dual verts?
                         double v0[] = {triVerts[bestSide].x, triVerts[bestSide].y};
                         double v1[] = {triVerts[(bestSide+1)%3].x, triVerts[(bestSide+1)%3].y};
                         double toEdgeVec[] = VecMath.xv2(
@@ -1206,8 +1368,55 @@ public class ShephardsPlayApplet
                             triCenterDualVert[0] + .02 * toEdgeVec[0],
                             triCenterDualVert[1] + .02 * toEdgeVec[1],
                         };
+                        //VecMath.vpsxv(whereToDrawMark, whereToDrawMark, .004, VecMath.random(2));
                         mg.drawPoint(whereToDrawMark[0],
                                      whereToDrawMark[1], 5);
+                    }
+                }
+                if (doArrowsTowardsShortestEdges)
+                {
+                    mg.setColor(java.awt.Color.cyan);
+                    FORI (iEdge, mesh.edges.length)
+                    {
+                        if (dualVerts[iEdge] == null)
+                            continue; // not a triangle, or inside out
+
+                        Mesh.Edge e0 = mesh.edges[iEdge];
+                        Mesh.Edge e1 = e0.next();
+                        Mesh.Edge e2 = e1.next();
+                        assert(e2.next() == e0);
+                        Mesh.Vertex triVerts[] = {e0.initialVertex(),
+                                                  e1.initialVertex(),
+                                                  e2.initialVertex()};
+                        double triCenterDualVert[] = dualVerts[e0.myIndex()];
+                        double neighborDualVerts[][] = {
+                            dualVerts[e0.opposite().myIndex()],
+                            dualVerts[e1.opposite().myIndex()],
+                            dualVerts[e2.opposite().myIndex()],
+                        };
+                        double dualSideLengths[] = new double[3];
+                        FORI (i, 3)
+                        {
+                            if (neighborDualVerts[i] == null)
+                                dualSideLengths[i] = Double.POSITIVE_INFINITY;
+                            else
+                                dualSideLengths[i] = VecMath.dist(triCenterDualVert, neighborDualVerts[i]);
+                        }
+                        int bestSide = MINI3(dualSideLengths[0], dualSideLengths[1], dualSideLengths[2]);
+                        double v0[] = {triVerts[bestSide].x, triVerts[bestSide].y};
+                        double v1[] = {triVerts[(bestSide+1)%3].x, triVerts[(bestSide+1)%3].y};
+                        double toEdgeVec[] = VecMath.xv2(
+                                                 VecMath.vmv(v0, v1));
+                        VecMath.normalize(toEdgeVec, toEdgeVec);
+                        // XXX be smarter!  maybe 1/3 of the way along the edge, or somethin
+                        double whereToDrawMark[] = {
+                            triCenterDualVert[0] + .02 * toEdgeVec[0],
+                            triCenterDualVert[1] + .02 * toEdgeVec[1],
+                        };
+                        //VecMath.vpsxv(whereToDrawMark, whereToDrawMark, .005, VecMath.random(2));
+                        mg.drawPoint(whereToDrawMark[0],
+                                     whereToDrawMark[1], 5);
+
                     }
                 }
             }
@@ -2498,6 +2707,7 @@ public class ShephardsPlayApplet
 
         private boolean doLabels = false;
         private boolean doArrowsTowardsSharpestDihedrals = true;
+        private boolean doArrowsTowardsShortestEdges = true;
         private boolean doShowInsideOutDualVerts = false; // might also be nice to have option for implicit primal vertex in middle of outer face, so that dual will be single-face-bounded... and maybe ctrl-up,ctrl-down will adjust the height of that face
 
         private boolean doShowPositiveOrthantnessVisualization = false; // XXX total hack-- it's cool but put it somewhere else!!
