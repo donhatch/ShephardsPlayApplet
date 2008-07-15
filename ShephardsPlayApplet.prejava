@@ -27,7 +27,6 @@ TO DO:
     - don't draw crap when resizing (and fix whatever other applet I got this from too)
     - figure out why stack traces show .java on top even after renumbering
     - allow panning
-    - 'c' should clear maybe
     - gui
     - write a generic applet to reduce pain each time
     - other mesh editing operations (split face by edge, split edge by vertex, join adjacent vertices, separate a vertex into two (but how to assign the neighbors?))
@@ -611,7 +610,19 @@ public class ShephardsPlayApplet
         public void keyTyped(java.awt.event.KeyEvent e)
         {
             if (eventVerbose >= 1) System.out.println("in keyTyped: "+e);
-            switch (e.getKeyChar())
+            char c = e.getKeyChar();
+
+            // In java 1.6, apparently ctrl-letter
+            // started coming out as just the letter
+            // (with ke.isControlDown() true).
+            // Detect this and change it to the old behavior...
+            // XXX need to do something else, or nothing at all here, for old javas (1.1) in which isControlDown doesn't exist... or else just stop trying to support 1.1 at all
+            if (c >= 'a' && c <= 'z' && e.isControlDown())
+            {
+                c -= ('a'-1);
+            }
+
+            switch (c)
             {
                 case 'V': // cycle verbosity-- upper-case to minimize possibility of hitting it by accident thus causing subsequent perfomance degradation with no visible reason if Java Console is not visible
                     System.out.print("eventVerbose "+eventVerbose);
@@ -741,7 +752,7 @@ public class ShephardsPlayApplet
                     break;
                 }
 
-                case 'a': // toggle doArrowsTowardsSharpestDihedrals
+                case 'a': // toggle doArrowsTowardsSharpestDihedrals or doArrowsTowardsShortestEdges
                 {
                     if (e.isAltDown())
                     {
@@ -794,6 +805,15 @@ public class ShephardsPlayApplet
                     repaint();
                     break;
                 }
+                case 'c':
+                {
+                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    mesh = new Mesh();
+                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    undoTreeSquirrel.Do(new UndoItem(before, after));
+                    repaint();
+                    break;
+                }
 
                 case 'h': // help
                     System.out.println("===================================================================");
@@ -802,14 +822,13 @@ public class ShephardsPlayApplet
                     System.out.println("        - if inside a triangle, trisects the triangle");
                     System.out.println("        - if outside the convex hull, connect up to all visible other vertices");
                     System.out.println("    middle drag: move a vertex");
-                    System.out.println("    right click: delete a vertex that's on the convex hull");
-                    System.out.println("        or that's only connected to 3 neighbors");
+                    System.out.println("    right click: delete a vertex");
                     System.out.println("Keys:");
                     System.out.println("    'V' - cycle verbosity (to java console or system output)");
                     System.out.println("    ' ' - just repaint");
                     System.out.println("    'A' - toggle doAntiAliasing");
-                    // System.out.println("    't' - increase lineThicknessInPixels");
-                    // System.out.println("    'T' - decrease lineThicknessInPixels");
+                    // System.out.println("    't' - increase lineThicknessInPixels"); // not used, I don't think
+                    // System.out.println("    'T' - decrease lineThicknessInPixels"); // not used, I don't think
                     System.out.println("    'B' - toggle doDoubleBuffer");
                     System.out.println("    'i'/'+'/'=' - zoom in");
                     System.out.println("    'o''-' - zoom out");
@@ -817,7 +836,7 @@ public class ShephardsPlayApplet
                     System.out.println("    'O' - toggle doOptimize");
                     System.out.println("    'l' - toggle doLabels");
                     System.out.println("    'a' - toggle doArrowsTowardsSharpestDihedrals");
-                    System.out.println("    ctrl-'a' - toggle doArrowsTowardsShortestEdges");
+                    System.out.println("    alt-'a' - toggle doArrowsTowardsShortestEdges");
                     System.out.println("    'S' - turn off optimize, and re-spherize");
                     System.out.println("    'd' - delete closest edge");
                     System.out.println("    ctrl-'i' - toggle doShowInsideOutDualVerts");
@@ -826,7 +845,10 @@ public class ShephardsPlayApplet
                     System.out.println("    Up arrow: pull face plane of closest vertex out");
                     System.out.println("    Down arrow: pull face plane of closest vertex in");
                     System.out.println("    Left/right arrow: translate fudge");
+                    System.out.println("    'c' - clear");
                     System.out.println("    ctrl-'c' - example in which cutting the sharpest dihedral at each vertex does not lead to a solution");
+                    System.out.println("    'u' / ctrl-'z' - undo");
+                    System.out.println("    'r' / 'U' / ctrl-'r' / ctrl-'y' - redo");
                     System.out.println("===================================================================");
                     break;
 
@@ -865,7 +887,7 @@ public class ShephardsPlayApplet
                 }
 
                 default:
-                    System.out.println("Unknown key '"+e.getKeyChar()+"'("+(int)e.getKeyChar()+") typed");
+                    System.out.println("Unknown key '"+c+"'("+(int)e.getKeyChar()+") typed");
                     break;
             }
             if (eventVerbose >= 1) System.out.println("out keyTyped: "+e);
