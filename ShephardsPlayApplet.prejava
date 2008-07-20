@@ -166,7 +166,8 @@ public class ShephardsPlayApplet
             graphicsAntiAliasingSetter = new GraphicsAntiAliasingSetter();
 
             //doCannedThingHexesSpiral(); // XXX get rid of this probably
-            doCannedThingNetless9(); // XXX get rid of this probably
+            //doCannedThingNetless9(); // XXX get rid of this probably
+            doCannedThingEyeball(); // XXX get rid of this probably
 
             if (eventVerbose >= 1) System.out.println("out init");
         } // init
@@ -893,6 +894,15 @@ public class ShephardsPlayApplet
                     repaint();
                     break;
                 }
+                case CTRL('e'): // very special case canned eyeball example
+                {
+                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    doCannedThingEyeball();
+                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    undoTreeSquirrel.Do(new UndoItem(before, after));
+                    repaint();
+                    break;
+                }
 
                 default:
                     System.out.println("Unknown key '"+c+"'("+(int)e.getKeyChar()+") typed");
@@ -1025,6 +1035,85 @@ public class ShephardsPlayApplet
                 mesh.verts[iVert].h *= scale*scale;
             }
         } // doCannedThingNetless9
+
+        private void doCannedThingEyeball()
+        {
+            int n = 72;
+            int nRows = 7;
+            double r0 = .25;
+            double aspect = 2;
+
+            // empirically, fudges to make it kind of right for n=72, r0=.25, aspect=2
+            double incr = .005;
+            incr *= .25; // XXX argh! up and down arrows depend on current view scale! squared!
+
+            double rowHeightFudges[] = {
+                -5*incr,
+                -2*incr,
+                -0*incr,
+                -0*incr,
+                -3*incr,
+                -11*incr,
+                -26.5*incr,
+            };
+
+            ArrayList vertsList = new ArrayList();
+            ArrayList facesList = new ArrayList();
+
+            vertsList.add(new double[]{0,0,0});
+            FORI (iRow, nRows)
+            {
+                double multiplier = 1 + aspect*2*Math.PI/n; // magic
+                double r = r0 * Math.pow(multiplier, iRow);
+                FORI (i, n)
+                {
+                    double theta = 2*Math.PI*(i+iRow*.5)/n;
+                    vertsList.add(new double[]{r*Math.cos(theta),
+                                               r*Math.sin(theta),
+                                               rowHeightFudges[iRow],
+                                               });
+                    if (iRow == 0)
+                        facesList.add(new int[]{1 + iRow*n + i,
+                                                1 + iRow*n + (i+1)%n,
+                                                0});
+                    else
+                    {
+                        facesList.add(new int[]{1 + iRow*n + i,
+                                                1 + iRow*n + (i+1)%n,
+                                                1 + (iRow-1)*n + (i+1)%n});
+                        facesList.add(new int[]{1 + iRow*n + i,
+                                                1 + (iRow-1)*n + (i+1)%n,
+                                                1 + (iRow-1)*n + i});
+                    }
+                    /*
+                    else
+                    {
+                        facesList.add(new int[]{1 + iRow*n + i,
+                                                1 + (iRow-1)*n + (i+1)%n,
+                                                1 + (iRow-2)*n + (i+1)%n});
+                        facesList.add(new int[]{1 + iRow*n + i,
+                                                1 + (iRow-2)*n + (i+1)%n,
+                                                1 + (iRow-1)*n + i});
+                    }
+                    if (iRow == nRows-1)
+                        facesList.add(new int[]{1 + iRow*n + i,
+                                                1 + iRow*n + (i+1)%n,
+                                                1 + (iRow-1)*n + (i+1)%n});
+                    */
+                }
+            }
+            int insideOutFace[] = new int[n];
+            FORI (i, n)
+                insideOutFace[i] = vertsList.size()-1-i;
+            facesList.add(insideOutFace);
+
+
+            double verts[][] = new double[vertsList.size()][];
+            vertsList.toArray(verts);
+            int faces[][] = new int[facesList.size()][];
+            facesList.toArray(faces);
+            mesh = new Mesh(verts, faces);
+        } // doCannedThingEyeball
 
         private void doCannedThingHexesSpiral()
         {
@@ -1697,7 +1786,7 @@ public class ShephardsPlayApplet
                 public Edge(boolean andBack)
                 {
                     this._myIndex = -1; // will get fixed
-                    edges = (Edge[])Arrays.append(edges, this);
+                    edges = (Edge[])Arrays.append(edges, this); // some of these take a long time??  OHHHH it's a frickin real array you dummy, so it's O(n^2)
                     fixEdgeIndices(edges.length-1);
                     if (andBack)
                     {
@@ -2838,6 +2927,8 @@ public class ShephardsPlayApplet
         frame.move(400, 20);
         frame.resize(512, 512);
         frame.show();
+
+        Misc.printPlatonicSolidVertexCurvatures();
 
         System.out.println("out main");
     } // main
