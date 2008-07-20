@@ -13,6 +13,7 @@ JARFILE = ShephardsPlayApplet.jar
 CLASSES = \
         GraphicsAntiAliasingSetter.class \
         MyGraphics.class \
+        Misc.class \
         ShephardsPlayApplet.class \
         ${NULL}
 JAR_DEPENDS_ON = ${CLASSES}      macros.h Makefile javacpp javarenumber
