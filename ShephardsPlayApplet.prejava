@@ -281,148 +281,151 @@ public class ShephardsPlayApplet
                     System.out.println("    Adding a vertex at "+thisP[0]+" "+thisP[1]+" "+0+"");
                     mesh.addIsolatedVertex(thisP[0], thisP[1], 0);
 
-                    //
-                    // If it's the second vertex, add an edge
-                    //
-                    ArrayList verts = mesh.verts; // after we added one
-                    if (verts.size() == 2)
+                    ArrayList verts = mesh.verts;
+                    ArrayList edges = mesh.edges;
+                    if (verts.size() >= 2)
                     {
-                        System.out.println("Adding an edge between first two verts");
-                        mesh.addEdgeBetweenTwoIsolatedVertices((Mesh.Vertex)verts.get(0), (Mesh.Vertex)verts.get(1));
-                    }
-
-                    //
-                    // If it's the third or more vertex,
-                    // find out which face we are on
-                    // (all triangles CCW), and kis that face.
-                    // if we are not inside any face by that criterion,
-                    // then assume we are inside the outer face
-                    // and connect the new vertex to every vertex
-                    // that's visible from it.
-                    //
-                    if (verts.size() >= 3)
-                    {
-                        boolean kissed = false;
-                        double twiceMostNegativeFaceArea = Double.POSITIVE_INFINITY;
-                        Mesh.Edge edgeOnMostNegativeFace = null;
-                        // XXX traverses each face of size n n times!  need to keep track of what we've done already
-                        int nEdges = mesh.edges.size();
-                        FORI (iEdge, nEdges)
+                        //
+                        // If are no edges at all, add an edge
+                        //
+                        if (edges.size() == 0)
                         {
-                            boolean thisFaceIsGoodSoFar = true;
-                            Mesh.Edge edgeI = (Mesh.Edge)mesh.edges.get(iEdge);
-                            double twiceThisFaceArea = 0.;
-                            for (Mesh.Edge edge = edgeI;;)
-                            {
-                                double twiceThisTriArea = twiceTriArea(
-                                                        thisP[0],thisP[1],
-                                                        edge.initialVertex().x,
-                                                        edge.initialVertex().y,
-                                                        edge.finalVertex().x,
-                                                        edge.finalVertex().y);
-                                if (twiceThisTriArea < 0)
-                                {
-                                    thisFaceIsGoodSoFar = false; // it's bad!
-                                }
-                                twiceThisFaceArea += twiceThisTriArea;
-
-                                if ((edge = edge.next()) == edgeI)
-                                    break;
-                            }
-                            if (thisFaceIsGoodSoFar)
-                            {
-                                // I'm inside this face;
-                                // kis it and done
-                                mesh.kisIsolatedVertex((Mesh.Vertex)verts.get(verts.size()-1),
-                                                       edgeI);
-                                kissed = true;
-                                break;
-                            }
-                            if (twiceThisFaceArea < twiceMostNegativeFaceArea)
-                            {
-                                twiceMostNegativeFaceArea = twiceThisFaceArea;
-                                edgeOnMostNegativeFace = edgeI;
-                            }
+                            System.out.println("Adding an edge between two verts");
+                            mesh.addEdgeBetweenTwoIsolatedVertices((Mesh.Vertex)verts.get(verts.size()-2),
+                                                                   (Mesh.Vertex)verts.get(verts.size()-1));
                         }
-                        if (!kissed)
+                        else // edges.size() >= 1
                         {
-                            System.out.println("In the outer face");
+                            // There was already an edge.
+                            // Find out which face we are on
+                            // (all triangles CCW), and kis that face.
+                            // if we are not inside any face by that criterion,
+                            // then assume we are inside the outer face
+                            // and connect the new vertex to every vertex
+                            // that's visible from it.
                             //
-                            // It wasn't inside any face.
-                            // Assume it's in the outer face.
-                            // In this case,
-                            // make a kiss to the outer face
-                            // and then delete all newly added edges
-                            // that cross the boundary of the outer face.
-                            //
-                            Mesh.Edge oldOuterFaceBoundary[];
+                            boolean kissed = false;
+                            double twiceMostNegativeFaceArea = Double.POSITIVE_INFINITY;
+                            Mesh.Edge edgeOnMostNegativeFace = null;
+                            // XXX traverses each face of size n n times!  need to keep track of what we've done already
+                            int nEdges = mesh.edges.size();
+                            FORI (iEdge, nEdges)
                             {
+                                boolean thisFaceIsGoodSoFar = true;
+                                Mesh.Edge edgeI = (Mesh.Edge)mesh.edges.get(iEdge);
+                                double twiceThisFaceArea = 0.;
+                                for (Mesh.Edge edge = edgeI;;)
                                 {
-                                    int iOldBoundaryEdge = 0;
-                                    for (Mesh.Edge edge = edgeOnMostNegativeFace;;)
+                                    double twiceThisTriArea = twiceTriArea(
+                                                            thisP[0],thisP[1],
+                                                            edge.initialVertex().x,
+                                                            edge.initialVertex().y,
+                                                            edge.finalVertex().x,
+                                                            edge.finalVertex().y);
+                                    if (twiceThisTriArea < 0)
                                     {
-                                        iOldBoundaryEdge++;
-                                        if ((edge = edge.next()) == edgeOnMostNegativeFace)
-                                            break;
+                                        thisFaceIsGoodSoFar = false; // it's bad!
                                     }
-                                    oldOuterFaceBoundary = new Mesh.Edge[iOldBoundaryEdge];
-                                }
-                                {
-                                    int iOldBoundaryEdge = 0;
-                                    for (Mesh.Edge edge = edgeOnMostNegativeFace;;)
-                                    {
-                                        oldOuterFaceBoundary[iOldBoundaryEdge++] = edge;
-                                        if ((edge = edge.next()) == edgeOnMostNegativeFace)
-                                            break;
-                                    }
-                                    assert(iOldBoundaryEdge == oldOuterFaceBoundary.length);
-                                }
-                            }
+                                    twiceThisFaceArea += twiceThisTriArea;
 
-                            int oldNumEdges = mesh.edges.size();
-                            mesh.kisIsolatedVertex((Mesh.Vertex)verts.get(verts.size()-1),
-                                                   edgeOnMostNegativeFace);
-                            for (int iEdge = oldNumEdges;
-                                 iEdge < mesh.edges.size();
-                                 iEdge += 2)
-                            {
-                                for (int iOldBoundaryEdge = 0;
-                                     iOldBoundaryEdge < oldOuterFaceBoundary.length;
-                                     ++iOldBoundaryEdge)
-                                {
-                                    Mesh.Edge oldEdge = oldOuterFaceBoundary[iOldBoundaryEdge];
-                                    Mesh.Edge newEdge = (Mesh.Edge)mesh.edges.get(iEdge);
-
-                                    if (newEdge.initialVertex() == oldEdge.initialVertex()
-                                     || newEdge.initialVertex() == oldEdge.finalVertex()
-                                     || newEdge.finalVertex() == oldEdge.initialVertex()
-                                     || newEdge.finalVertex() == oldEdge.finalVertex())
-                                        continue;
-                                    //System.out.println("    Seeing whether new edge v"+newEdge.initialVertex().myIndex()+" -> v"+newEdge.finalVertex().myIndex()+" crosses old boundary edges v"+oldEdge.initialVertex().myIndex()+" -> v"+oldEdge.finalVertex().myIndex()+"");
-                                    if (edgesCrossOrCloseToIt(
-                                                    oldEdge.initialVertex().x,
-                                                    oldEdge.initialVertex().y,
-                                                    oldEdge.finalVertex().x,
-                                                    oldEdge.finalVertex().y,
-                                                    newEdge.initialVertex().x,
-                                                    newEdge.initialVertex().y,
-                                                    newEdge.finalVertex().x,
-                                                    newEdge.finalVertex().y,
-                                                    1e-6))
-                                    {
-                                        //System.out.println("        It does.");
-                                        mesh.deleteEdge(newEdge);
-                                        iEdge -= 2; // so we don't skip the one that gets moved into the deleted spot
+                                    if ((edge = edge.next()) == edgeI)
                                         break;
-                                    }
-                                    else
+                                }
+                                if (thisFaceIsGoodSoFar)
+                                {
+                                    // I'm inside this face;
+                                    // kis it and done
+                                    mesh.kisIsolatedVertex((Mesh.Vertex)verts.get(verts.size()-1),
+                                                           edgeI);
+                                    kissed = true;
+                                    break;
+                                }
+                                if (twiceThisFaceArea < twiceMostNegativeFaceArea)
+                                {
+                                    twiceMostNegativeFaceArea = twiceThisFaceArea;
+                                    edgeOnMostNegativeFace = edgeI;
+                                }
+                            }
+                            if (!kissed)
+                            {
+                                System.out.println("In the outer face");
+                                //
+                                // It wasn't inside any face.
+                                // Assume it's in the outer face.
+                                // In this case,
+                                // make a kiss to the outer face
+                                // and then delete all newly added edges
+                                // that cross the boundary of the outer face.
+                                //
+                                Mesh.Edge oldOuterFaceBoundary[];
+                                {
                                     {
-                                        //System.out.println("        It doesn't.");
+                                        int iOldBoundaryEdge = 0;
+                                        for (Mesh.Edge edge = edgeOnMostNegativeFace;;)
+                                        {
+                                            iOldBoundaryEdge++;
+                                            if ((edge = edge.next()) == edgeOnMostNegativeFace)
+                                                break;
+                                        }
+                                        oldOuterFaceBoundary = new Mesh.Edge[iOldBoundaryEdge];
+                                    }
+                                    {
+                                        int iOldBoundaryEdge = 0;
+                                        for (Mesh.Edge edge = edgeOnMostNegativeFace;;)
+                                        {
+                                            oldOuterFaceBoundary[iOldBoundaryEdge++] = edge;
+                                            if ((edge = edge.next()) == edgeOnMostNegativeFace)
+                                                break;
+                                        }
+                                        assert(iOldBoundaryEdge == oldOuterFaceBoundary.length);
+                                    }
+                                }
+
+                                int oldNumEdges = mesh.edges.size();
+                                mesh.kisIsolatedVertex((Mesh.Vertex)verts.get(verts.size()-1),
+                                                       edgeOnMostNegativeFace);
+                                for (int iEdge = oldNumEdges;
+                                     iEdge < mesh.edges.size();
+                                     iEdge += 2)
+                                {
+                                    for (int iOldBoundaryEdge = 0;
+                                         iOldBoundaryEdge < oldOuterFaceBoundary.length;
+                                         ++iOldBoundaryEdge)
+                                    {
+                                        Mesh.Edge oldEdge = oldOuterFaceBoundary[iOldBoundaryEdge];
+                                        Mesh.Edge newEdge = (Mesh.Edge)mesh.edges.get(iEdge);
+
+                                        if (newEdge.initialVertex() == oldEdge.initialVertex()
+                                         || newEdge.initialVertex() == oldEdge.finalVertex()
+                                         || newEdge.finalVertex() == oldEdge.initialVertex()
+                                         || newEdge.finalVertex() == oldEdge.finalVertex())
+                                            continue;
+                                        //System.out.println("    Seeing whether new edge v"+newEdge.initialVertex().myIndex()+" -> v"+newEdge.finalVertex().myIndex()+" crosses old boundary edges v"+oldEdge.initialVertex().myIndex()+" -> v"+oldEdge.finalVertex().myIndex()+"");
+                                        if (edgesCrossOrCloseToIt(
+                                                        oldEdge.initialVertex().x,
+                                                        oldEdge.initialVertex().y,
+                                                        oldEdge.finalVertex().x,
+                                                        oldEdge.finalVertex().y,
+                                                        newEdge.initialVertex().x,
+                                                        newEdge.initialVertex().y,
+                                                        newEdge.finalVertex().x,
+                                                        newEdge.finalVertex().y,
+                                                        1e-6))
+                                        {
+                                            //System.out.println("        It does.");
+                                            mesh.deleteEdge(newEdge);
+                                            iEdge -= 2; // so we don't skip the one that gets moved into the deleted spot
+                                            break;
+                                        }
+                                        else
+                                        {
+                                            //System.out.println("        It doesn't.");
+                                        }
                                     }
                                 }
                             }
-                        }
-                    } // if verts.length >= 3
+                        } // if verts.length >= 3
+                    } // if verts.size() >= 2 after adding the new vertex
 
                     mesh.sanityCheck();
 
