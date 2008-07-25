@@ -249,158 +249,185 @@ public class ShephardsPlayApplet
             {
                 button1IsDown = true;
 
-                //
-                // Add a vertex
-                //
-                System.out.println("    Adding a vertex at "+thisP[0]+" "+thisP[1]+" "+0+"");
-                mesh.addIsolatedVertex(thisP[0], thisP[1], 0);
-
-                //
-                // If it's the second vertex, add an edge
-                //
-                ArrayList verts = mesh.verts; // after we added one
-                if (verts.size() == 2)
+                if (e.isControlDown())
                 {
-                    System.out.println("Adding an edge between first two verts");
-                    mesh.addEdgeBetweenTwoIsolatedVertices((Mesh.Vertex)verts.get(0), (Mesh.Vertex)verts.get(1));
+                    //
+                    // Add an edge from the closest vertex
+                    //
+                    System.out.println("    Adding an edge at "+thisP[0]+" "+thisP[1]+" "+0+"");
+
+                    //
+                    // If there are no vertices, add one
+                    //
+                    ArrayList verts = mesh.verts;
+                    if (verts.size() == 0)
+                    {
+                        System.out.println("        (Adding a vertex first)");
+                        mesh.addIsolatedVertex(thisP[0], thisP[1], 0);
+                    }
+
+                    //
+                    // Select closest vertex
+                    //
+                    selectedVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1]);
+
+                    rubberBandingNewEdge = true;
                 }
-
-                //
-                // If it's the third or more vertex,
-                // find out which face we are on
-                // (all triangles CCW), and kis that face.
-                // if we are not inside any face by that criterion,
-                // then assume we are inside the outer face
-                // and connect the new vertex to every vertex
-                // that's visible from it.
-                //
-                if (verts.size() >= 3)
+                else // control is not down
                 {
-                    boolean kissed = false;
-                    double twiceMostNegativeFaceArea = Double.POSITIVE_INFINITY;
-                    Mesh.Edge edgeOnMostNegativeFace = null;
-                    // XXX traverses each face of size n n times!  need to keep track of what we've done already
-                    int nEdges = mesh.edges.size();
-                    FORI (iEdge, nEdges)
-                    {
-                        boolean thisFaceIsGoodSoFar = true;
-                        Mesh.Edge edgeI = (Mesh.Edge)mesh.edges.get(iEdge);
-                        double twiceThisFaceArea = 0.;
-                        for (Mesh.Edge edge = edgeI;;)
-                        {
-                            double twiceThisTriArea = twiceTriArea(
-                                                    thisP[0],thisP[1],
-                                                    edge.initialVertex().x,
-                                                    edge.initialVertex().y,
-                                                    edge.finalVertex().x,
-                                                    edge.finalVertex().y);
-                            if (twiceThisTriArea < 0)
-                            {
-                                thisFaceIsGoodSoFar = false; // it's bad!
-                            }
-                            twiceThisFaceArea += twiceThisTriArea;
+                    //
+                    // Add a vertex
+                    //
+                    System.out.println("    Adding a vertex at "+thisP[0]+" "+thisP[1]+" "+0+"");
+                    mesh.addIsolatedVertex(thisP[0], thisP[1], 0);
 
-                            if ((edge = edge.next()) == edgeI)
-                                break;
-                        }
-                        if (thisFaceIsGoodSoFar)
-                        {
-                            // I'm inside this face;
-                            // kis it and done
-                            mesh.kisIsolatedVertex((Mesh.Vertex)verts.get(verts.size()-1),
-                                                   edgeI);
-                            kissed = true;
-                            break;
-                        }
-                        if (twiceThisFaceArea < twiceMostNegativeFaceArea)
-                        {
-                            twiceMostNegativeFaceArea = twiceThisFaceArea;
-                            edgeOnMostNegativeFace = edgeI;
-                        }
+                    //
+                    // If it's the second vertex, add an edge
+                    //
+                    ArrayList verts = mesh.verts; // after we added one
+                    if (verts.size() == 2)
+                    {
+                        System.out.println("Adding an edge between first two verts");
+                        mesh.addEdgeBetweenTwoIsolatedVertices((Mesh.Vertex)verts.get(0), (Mesh.Vertex)verts.get(1));
                     }
-                    if (!kissed)
+
+                    //
+                    // If it's the third or more vertex,
+                    // find out which face we are on
+                    // (all triangles CCW), and kis that face.
+                    // if we are not inside any face by that criterion,
+                    // then assume we are inside the outer face
+                    // and connect the new vertex to every vertex
+                    // that's visible from it.
+                    //
+                    if (verts.size() >= 3)
                     {
-                        System.out.println("In the outer face");
-                        //
-                        // It wasn't inside any face.
-                        // Assume it's in the outer face.
-                        // In this case,
-                        // make a kiss to the outer face
-                        // and then delete all newly added edges
-                        // that cross the boundary of the outer face.
-                        //
-                        Mesh.Edge oldOuterFaceBoundary[];
+                        boolean kissed = false;
+                        double twiceMostNegativeFaceArea = Double.POSITIVE_INFINITY;
+                        Mesh.Edge edgeOnMostNegativeFace = null;
+                        // XXX traverses each face of size n n times!  need to keep track of what we've done already
+                        int nEdges = mesh.edges.size();
+                        FORI (iEdge, nEdges)
                         {
+                            boolean thisFaceIsGoodSoFar = true;
+                            Mesh.Edge edgeI = (Mesh.Edge)mesh.edges.get(iEdge);
+                            double twiceThisFaceArea = 0.;
+                            for (Mesh.Edge edge = edgeI;;)
                             {
-                                int iOldBoundaryEdge = 0;
-                                for (Mesh.Edge edge = edgeOnMostNegativeFace;;)
+                                double twiceThisTriArea = twiceTriArea(
+                                                        thisP[0],thisP[1],
+                                                        edge.initialVertex().x,
+                                                        edge.initialVertex().y,
+                                                        edge.finalVertex().x,
+                                                        edge.finalVertex().y);
+                                if (twiceThisTriArea < 0)
                                 {
-                                    iOldBoundaryEdge++;
-                                    if ((edge = edge.next()) == edgeOnMostNegativeFace)
-                                        break;
+                                    thisFaceIsGoodSoFar = false; // it's bad!
                                 }
-                                oldOuterFaceBoundary = new Mesh.Edge[iOldBoundaryEdge];
-                            }
-                            {
-                                int iOldBoundaryEdge = 0;
-                                for (Mesh.Edge edge = edgeOnMostNegativeFace;;)
-                                {
-                                    oldOuterFaceBoundary[iOldBoundaryEdge++] = edge;
-                                    if ((edge = edge.next()) == edgeOnMostNegativeFace)
-                                        break;
-                                }
-                                assert(iOldBoundaryEdge == oldOuterFaceBoundary.length);
-                            }
-                        }
+                                twiceThisFaceArea += twiceThisTriArea;
 
-                        int oldNumEdges = mesh.edges.size();
-                        mesh.kisIsolatedVertex((Mesh.Vertex)verts.get(verts.size()-1),
-                                               edgeOnMostNegativeFace);
-                        for (int iEdge = oldNumEdges;
-                             iEdge < mesh.edges.size();
-                             iEdge += 2)
-                        {
-                            for (int iOldBoundaryEdge = 0;
-                                 iOldBoundaryEdge < oldOuterFaceBoundary.length;
-                                 ++iOldBoundaryEdge)
-                            {
-                                Mesh.Edge oldEdge = oldOuterFaceBoundary[iOldBoundaryEdge];
-                                Mesh.Edge newEdge = (Mesh.Edge)mesh.edges.get(iEdge);
-
-                                if (newEdge.initialVertex() == oldEdge.initialVertex()
-                                 || newEdge.initialVertex() == oldEdge.finalVertex()
-                                 || newEdge.finalVertex() == oldEdge.initialVertex()
-                                 || newEdge.finalVertex() == oldEdge.finalVertex())
-                                    continue;
-                                //System.out.println("    Seeing whether new edge v"+newEdge.initialVertex().myIndex()+" -> v"+newEdge.finalVertex().myIndex()+" crosses old boundary edges v"+oldEdge.initialVertex().myIndex()+" -> v"+oldEdge.finalVertex().myIndex()+"");
-                                if (edgesCrossOrCloseToIt(
-                                                oldEdge.initialVertex().x,
-                                                oldEdge.initialVertex().y,
-                                                oldEdge.finalVertex().x,
-                                                oldEdge.finalVertex().y,
-                                                newEdge.initialVertex().x,
-                                                newEdge.initialVertex().y,
-                                                newEdge.finalVertex().x,
-                                                newEdge.finalVertex().y,
-                                                1e-6))
-                                {
-                                    //System.out.println("        It does.");
-                                    mesh.deleteEdge(newEdge);
-                                    iEdge -= 2; // so we don't skip the one that gets moved into the deleted spot
+                                if ((edge = edge.next()) == edgeI)
                                     break;
-                                }
-                                else
+                            }
+                            if (thisFaceIsGoodSoFar)
+                            {
+                                // I'm inside this face;
+                                // kis it and done
+                                mesh.kisIsolatedVertex((Mesh.Vertex)verts.get(verts.size()-1),
+                                                       edgeI);
+                                kissed = true;
+                                break;
+                            }
+                            if (twiceThisFaceArea < twiceMostNegativeFaceArea)
+                            {
+                                twiceMostNegativeFaceArea = twiceThisFaceArea;
+                                edgeOnMostNegativeFace = edgeI;
+                            }
+                        }
+                        if (!kissed)
+                        {
+                            System.out.println("In the outer face");
+                            //
+                            // It wasn't inside any face.
+                            // Assume it's in the outer face.
+                            // In this case,
+                            // make a kiss to the outer face
+                            // and then delete all newly added edges
+                            // that cross the boundary of the outer face.
+                            //
+                            Mesh.Edge oldOuterFaceBoundary[];
+                            {
                                 {
-                                    //System.out.println("        It doesn't.");
+                                    int iOldBoundaryEdge = 0;
+                                    for (Mesh.Edge edge = edgeOnMostNegativeFace;;)
+                                    {
+                                        iOldBoundaryEdge++;
+                                        if ((edge = edge.next()) == edgeOnMostNegativeFace)
+                                            break;
+                                    }
+                                    oldOuterFaceBoundary = new Mesh.Edge[iOldBoundaryEdge];
+                                }
+                                {
+                                    int iOldBoundaryEdge = 0;
+                                    for (Mesh.Edge edge = edgeOnMostNegativeFace;;)
+                                    {
+                                        oldOuterFaceBoundary[iOldBoundaryEdge++] = edge;
+                                        if ((edge = edge.next()) == edgeOnMostNegativeFace)
+                                            break;
+                                    }
+                                    assert(iOldBoundaryEdge == oldOuterFaceBoundary.length);
+                                }
+                            }
+
+                            int oldNumEdges = mesh.edges.size();
+                            mesh.kisIsolatedVertex((Mesh.Vertex)verts.get(verts.size()-1),
+                                                   edgeOnMostNegativeFace);
+                            for (int iEdge = oldNumEdges;
+                                 iEdge < mesh.edges.size();
+                                 iEdge += 2)
+                            {
+                                for (int iOldBoundaryEdge = 0;
+                                     iOldBoundaryEdge < oldOuterFaceBoundary.length;
+                                     ++iOldBoundaryEdge)
+                                {
+                                    Mesh.Edge oldEdge = oldOuterFaceBoundary[iOldBoundaryEdge];
+                                    Mesh.Edge newEdge = (Mesh.Edge)mesh.edges.get(iEdge);
+
+                                    if (newEdge.initialVertex() == oldEdge.initialVertex()
+                                     || newEdge.initialVertex() == oldEdge.finalVertex()
+                                     || newEdge.finalVertex() == oldEdge.initialVertex()
+                                     || newEdge.finalVertex() == oldEdge.finalVertex())
+                                        continue;
+                                    //System.out.println("    Seeing whether new edge v"+newEdge.initialVertex().myIndex()+" -> v"+newEdge.finalVertex().myIndex()+" crosses old boundary edges v"+oldEdge.initialVertex().myIndex()+" -> v"+oldEdge.finalVertex().myIndex()+"");
+                                    if (edgesCrossOrCloseToIt(
+                                                    oldEdge.initialVertex().x,
+                                                    oldEdge.initialVertex().y,
+                                                    oldEdge.finalVertex().x,
+                                                    oldEdge.finalVertex().y,
+                                                    newEdge.initialVertex().x,
+                                                    newEdge.initialVertex().y,
+                                                    newEdge.finalVertex().x,
+                                                    newEdge.finalVertex().y,
+                                                    1e-6))
+                                    {
+                                        //System.out.println("        It does.");
+                                        mesh.deleteEdge(newEdge);
+                                        iEdge -= 2; // so we don't skip the one that gets moved into the deleted spot
+                                        break;
+                                    }
+                                    else
+                                    {
+                                        //System.out.println("        It doesn't.");
+                                    }
                                 }
                             }
                         }
-                    }
-                } // if verts.length >= 3
+                    } // if verts.length >= 3
 
-                mesh.sanityCheck();
+                    mesh.sanityCheck();
 
-                selectedVertIndex = verts.size()-1;
+                    selectedVertIndex = verts.size()-1;
+                }
             }
             else if (whichButton == java_awt_event_MouseEvent_BUTTON2)
             {
@@ -439,9 +466,33 @@ public class ShephardsPlayApplet
         {
             if (eventVerbose >= 1) System.out.println("in mouseReleased: "+e);
 
+            double thisP[] = new double[2];
+            mostRecentGraphics.pick(e.getX(), e.getY(), thisP);
+
             int whichButton = getButton(e);
             if (whichButton == java_awt_event_MouseEvent_BUTTON1)
             {
+                if (rubberBandingNewEdge)
+                {
+                    if (mesh.verts.size() == 1)
+                    {
+                        mesh.addIsolatedVertex(thisP[0], thisP[1], 0);
+                    }
+                    int finalVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1]);
+                    if (selectedVertIndex != -1
+                     && finalVertIndex != -1
+                     && selectedVertIndex != finalVertIndex)
+                    {
+                        System.out.println("Trying to add an edge between "+selectedVertIndex+" and "+finalVertIndex);
+                        ArrayList verts = mesh.verts;
+                        mesh.addEdgeBetweenTwoVertices((Mesh.Vertex)mesh.verts.get(selectedVertIndex),
+                                                       (Mesh.Vertex)mesh.verts.get(finalVertIndex));
+                        mesh.sanityCheck();
+                    }
+                }
+
+                rubberBandingNewEdge = false;
+
                 button1IsDown = false;
             }
             else if (whichButton == java_awt_event_MouseEvent_BUTTON2)
@@ -459,6 +510,8 @@ public class ShephardsPlayApplet
                 undoTreeSquirrel.Do(new UndoItem(stateWhenPressed, stateWhenReleased));
                 stateWhenPressed = null;
             }
+
+            prevP = thisP;
 
             repaint();
 
@@ -488,34 +541,41 @@ public class ShephardsPlayApplet
 
             if (button1IsDown || button2IsDown)
             {
-                if (e.isShiftDown())
+                if (rubberBandingNewEdge)
                 {
-                    // Drag all the verts
-                    FORIDOWN (iVert, mesh.verts.size())
-                    {
-                        ((Mesh.Vertex)mesh.verts.get(iVert)).x += thisP[0]-prevP[0];
-                        ((Mesh.Vertex)mesh.verts.get(iVert)).y += thisP[1]-prevP[1];
-                    }
+                    // nothing, we'll just draw the rubberband in the new position when we repaint
                 }
-                else if (selectedVertIndex != -1)
+                else
                 {
-                    // Drag just the selected vert
-                    ((Mesh.Vertex)mesh.verts.get(selectedVertIndex)).x += thisP[0]-prevP[0];
-                    ((Mesh.Vertex)mesh.verts.get(selectedVertIndex)).y += thisP[1]-prevP[1];
-                    // XXX what do do with h???
-                    if (nonEventVerbose >= 1)
+                    if (e.isShiftDown())
                     {
-                        double verts[][] = new double[mesh.verts.size()][];
+                        // Drag all the verts
                         FORIDOWN (iVert, mesh.verts.size())
-                            verts[iVert] = new double[] {((Mesh.Vertex)mesh.verts.get(iVert)).x,
-                                                         ((Mesh.Vertex)mesh.verts.get(iVert)).y,
-                                                         ((Mesh.Vertex)mesh.verts.get(iVert)).h};
-                        int edges[][] = new int[mesh.edges.size()][];
-                        FORIDOWN (iEdge, mesh.edges.size())
-                            edges[iEdge] = new int[] {((Mesh.Edge)mesh.edges.get(iEdge)).initialVertex().myIndex(),
-                                                      ((Mesh.Edge)mesh.edges.get(iEdge)).finalVertex().myIndex()};
-                        PRINTARRAY(verts);
-                        PRINTARRAY(edges);
+                        {
+                            ((Mesh.Vertex)mesh.verts.get(iVert)).x += thisP[0]-prevP[0];
+                            ((Mesh.Vertex)mesh.verts.get(iVert)).y += thisP[1]-prevP[1];
+                        }
+                    }
+                    else if (selectedVertIndex != -1)
+                    {
+                        // Drag just the selected vert
+                        ((Mesh.Vertex)mesh.verts.get(selectedVertIndex)).x += thisP[0]-prevP[0];
+                        ((Mesh.Vertex)mesh.verts.get(selectedVertIndex)).y += thisP[1]-prevP[1];
+                        // XXX what do do with h???
+                        if (nonEventVerbose >= 1)
+                        {
+                            double verts[][] = new double[mesh.verts.size()][];
+                            FORIDOWN (iVert, mesh.verts.size())
+                                verts[iVert] = new double[] {((Mesh.Vertex)mesh.verts.get(iVert)).x,
+                                                             ((Mesh.Vertex)mesh.verts.get(iVert)).y,
+                                                             ((Mesh.Vertex)mesh.verts.get(iVert)).h};
+                            int edges[][] = new int[mesh.edges.size()][];
+                            FORIDOWN (iEdge, mesh.edges.size())
+                                edges[iEdge] = new int[] {((Mesh.Edge)mesh.edges.get(iEdge)).initialVertex().myIndex(),
+                                                          ((Mesh.Edge)mesh.edges.get(iEdge)).finalVertex().myIndex()};
+                            PRINTARRAY(verts);
+                            PRINTARRAY(edges);
+                        }
                     }
                 }
             }
@@ -834,6 +894,8 @@ public class ShephardsPlayApplet
                 {
                     UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
                     mesh = new Mesh();
+                    translateFudgeX = 0; // doesn't get undone properly
+                    translateFudgeY = 0; // doesn't get undone properly
                     UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
                     undoTreeSquirrel.Do(new UndoItem(before, after));
                     repaint();
@@ -852,6 +914,7 @@ public class ShephardsPlayApplet
                     System.out.println("    middle drag: move a vertex");
                     System.out.println("    right click: delete a vertex");
                     System.out.println("    shift-middle drag: pan entire picture");
+                    System.out.println("    control-right drag: create new edge between two vertices");
                     System.out.println("Keys:");
                     System.out.println("    'V' - cycle verbosity (to java console or system output)");
                     System.out.println("    ' ' - just repaint");
@@ -1721,7 +1784,18 @@ public class ShephardsPlayApplet
                                       -offx/offmax, offy/offmax);
                     }
                 }
-            }
+            } // if (doLabels)
+
+            //
+            // Draw the rubber band last last
+            //
+            if (rubberBandingNewEdge)
+            {
+                mg.setColor(java.awt.Color.white);
+                Mesh.Vertex v0 = (Mesh.Vertex)mesh.verts.get(selectedVertIndex);
+                mg.drawLine(v0.x, v0.y,
+                            prevP[0], prevP[1], doAntiAliasing);
+            } // if (rubberBandingNewEdge)
 
             if (doShowPositiveOrthantnessVisualization)
             {
@@ -2103,6 +2177,72 @@ public class ShephardsPlayApplet
                 e.setNext(e.opposite(), true);
                 e.setPrev(e.opposite(), true);
             }
+            public void addEdgeBetweenTwoVertices(Vertex v0, Vertex v1)
+            {
+                assert(v0 != v1);
+                if (verts.size() == 2)
+                {
+                    // XXX this case might not be necessary?
+                    addEdgeBetweenTwoIsolatedVertices(v0, v1);
+                    return;
+                }
+                // find the face containing both vertices
+                // that has greatest area.
+                Edge bestBeforeThisEdge = null;
+                Edge bestBeforeThatEdge = null;
+                double bestTwiceFaceArea = Double.NEGATIVE_INFINITY;
+                int nEdges = edges.size();
+                FORI (iEdge, nEdges)
+                {
+                    Edge e0 = (Edge)edges.get(iEdge);
+                    if (e0.initialVertex() == v0)
+                    {
+                        if (e0.finalVertex() == v1)
+                        {
+                            return; // the vertices are neighbors... definitely don't do anything in this case
+                        }
+                        // walk around the face CCW looking for v1
+                        for (Edge e = e0; e.finalVertex() != v0; e = e.next())
+                        {
+                            if (e.finalVertex() == v1)
+                            {
+                                double twiceFaceArea = twiceFaceArea(e0);
+                                if (twiceFaceArea > bestTwiceFaceArea)
+                                {
+                                    bestBeforeThisEdge = e0;
+                                    bestBeforeThatEdge = e.next();
+                                    bestTwiceFaceArea = twiceFaceArea;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (bestBeforeThisEdge != null)
+                {
+                    addDiagonal(bestBeforeThisEdge,
+                                bestBeforeThatEdge);
+                    return;
+                }
+                // XXX TODO: more cases, if either or both of the vertices are isolated, or otherwise connecting two components
+            } // addEdgeBetweenTwoVertices
+
+            public double twiceFaceArea(Edge e0)
+            {
+                double sum = 0;
+                Vertex v0 = e0.initialVertex();
+                // All edges e not containing v0...
+                for (Edge e = e0.next(); e.finalVertex() != v0; e = e.next())
+                {
+                    Vertex v1 = e.initialVertex();
+                    Vertex v2 = e.finalVertex();
+                    sum += twiceTriArea(v0.x, v0.y,
+                                        v1.x, v1.y,
+                                        v2.x, v2.y);
+                }
+                return sum;
+            } // twiceFaceArea
+
             public void addIsolatedVertex(double x, double y, double h)
             {
                 new Vertex(x,y,h); // adds itself to verts
@@ -2799,13 +2939,30 @@ public class ShephardsPlayApplet
                 x2 eps, y2 eps, 1 + h2 eps^2
             we want to find x,y,h
             representing the point:
-                x eps, y eps, h eps^2
+                x eps, y eps, 1 + h eps^2
             that is the intersection point of the 3 planes
             whose closest-points-to-origin are the original 3 points.
-            If we write this out, it's equivalent to solving:
+            That is,
+                [x0 eps, y0 eps, 1 + h0 eps^2] [x eps      ]   [x0^2 eps^2 + y0^2 eps^2 + 1 + 2 h0 eps^2 + h0^2 eps^4]
+                [x1 eps, y1 eps, 1 + h1 eps^2] [y eps      ] = [x1^2 eps^2 + y1^2 eps^2 + 1 + 2 h1 eps^2 + h1^2 eps^4]
+                [x2 eps, y2 eps, 1 + h2 eps^2] [1 + h eps^2]   [x2^2 eps^2 + y2^2 eps^2 + 1 + 2 h2 eps^2 + h2^2 eps^4]
+            Now subtract 1 + hi eps^2 from both sides of each equation:
+                [x0 eps, y0 eps, 1 + h0 eps^2] [x eps  ]       [x0^2 eps^2 + y0^2 eps^2 + h0 eps^2 + h0^2 eps^4]
+                [x1 eps, y1 eps, 1 + h1 eps^2] [y eps  ]     = [x1^2 eps^2 + y1^2 eps^2 + h1 eps^2 + h1^2 eps^4]
+                [x2 eps, y2 eps, 1 + h2 eps^2] [h eps^2]       [x2^2 eps^2 + y2^2 eps^2 + h2 eps^2 + h2^2 eps^4]
+            Rearrange the left hand sides a bit:
+                [x0 eps, y0 eps, eps + h0 eps^3] [x eps]       [x0^2 eps^2 + y0^2 eps^2 + h0 eps^2 + h0^2 eps^4]
+                [x1 eps, y1 eps, eps + h1 eps^3] [y eps]     = [x1^2 eps^2 + y1^2 eps^2 + h1 eps^2 + h1^2 eps^4]
+                [x2 eps, y2 eps, eps + h2 eps^3] [h eps]       [x2^2 eps^2 + y2^2 eps^2 + h2 eps^2 + h2^2 eps^4]
+            Divide both sides by eps^2:
+                [x0, y0, 1 + h0 eps^2] [x]   [x0^2 + y0^2 + h0 + h0^2 eps^2]
+                [x1, y1, 1 + h1 eps^2] [y] = [x1^2 + y1^2 + h1 + h1^2 eps^2]
+                [x2, y2, 1 + h2 eps^2] [h]   [x2^2 + y2^2 + h2 + h2^2 eps^2]
+            Finally, the infinitesimals can drop out, and it's equivalent to solving:
                 [x0 y0 1] [x]   [x0^2 + y0^2 + h0]
                 [x1 y1 1] [y] = [x1^2 + y1^2 + h1]
                 [x2 y2 1] [h]   [x0^2 + y2^2 + h2]
+            Easy!
         */
         private static void SolveForDualPoint(double x0, double y0, double h0,
                                               double x1, double y1, double h1,
@@ -2906,6 +3063,7 @@ public class ShephardsPlayApplet
         private UndoTreeSquirrel undoTreeSquirrel = new UndoTreeSquirrel();
         private Mesh mesh = new Mesh();
         private int selectedVertIndex = -1;
+        private boolean rubberBandingNewEdge = false;
         private boolean doOptimize = false;
             private static final int OPTIMIZE_BARYCENTRICS_LEAST_SQUARES = 0;
             private static final int OPTIMIZE_BARYCENTRICS_INFINITY_NORM = 1;
