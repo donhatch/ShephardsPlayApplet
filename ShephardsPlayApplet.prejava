@@ -52,6 +52,7 @@ import com.donhatchsw.util.Arrays;
 import com.donhatchsw.util.VecMath;
 import com.donhatchsw.util.LinearProgramming;
 import com.donhatchsw.util.UndoTreeSquirrel;
+import com.donhatchsw.util.TriangulationOptimizer;
 import com.donhatchsw.compat.ArrayList;
 
 public class ShephardsPlayApplet
@@ -697,6 +698,7 @@ public class ShephardsPlayApplet
                 c -= ('a'-1);
             }
 
+#define CTRL(lowerCaseLetter) ((lowerCaseLetter)-'a' + 1)
             switch (c)
             {
                 case 'V': // cycle verbosity-- upper-case to minimize possibility of hitting it by accident thus causing subsequent perfomance degradation with no visible reason if Java Console is not visible
@@ -771,7 +773,7 @@ public class ShephardsPlayApplet
                     if (closestEdgeIndex != -1)
                     {
                         System.out.println("Swapping diagonal edge e"+closestEdgeIndex);
-                        mesh.swapDiagonal((Mesh.Edge)mesh.edges.get(closestEdgeIndex));
+                        mesh.swapDiagonal((Mesh.Edge)mesh.edges.get(closestEdgeIndex), false);
                         mesh.sanityCheck();
                     }
                     UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
@@ -779,6 +781,23 @@ public class ShephardsPlayApplet
                     repaint();
                     break;
                 }
+
+                case CTRL('s'): // swap diagonal but only if it makes it closer to delaunay
+                {
+                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    int closestEdgeIndex = mesh.indexOfClosestEdge(prevP[0],prevP[1]);
+                    if (closestEdgeIndex != -1)
+                    {
+                        System.out.println("Swapping diagonal edge e"+closestEdgeIndex);
+                        mesh.swapDiagonal((Mesh.Edge)mesh.edges.get(closestEdgeIndex), true);
+                        mesh.sanityCheck();
+                    }
+                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    undoTreeSquirrel.Do(new UndoItem(before, after));
+                    repaint();
+                    break;
+                }
+
                 case 'd': // delete closest edge
                 {
                     UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
@@ -843,8 +862,6 @@ public class ShephardsPlayApplet
                     break;
                 }
 
-
-#define CTRL(lowerCaseLetter) ((lowerCaseLetter)-'a' + 1)
 
                 case 'u': case CTRL('z'): // undo
                 {
@@ -914,6 +931,7 @@ public class ShephardsPlayApplet
                     System.out.println("    'i'/'+'/'=' - zoom in");
                     System.out.println("    'o'/'-' - zoom out");
                     System.out.println("    's' - swap a diagonal");
+                    System.out.println("    ctrl-'s' - swap a diagonal if the result is more Delaunay");
                     System.out.println("    'O' - toggle doOptimize");
                     System.out.println("    'l' - toggle doLabels");
                     System.out.println("    'a' - toggle doArrowsTowardsSharpestDihedrals (green)");
@@ -2134,7 +2152,7 @@ public class ShephardsPlayApplet
                 if (nonEventVerbose >= 1)
                     System.out.println("    Out addDiagonal(beforeThisEdge="+beforeThisEdge.myIndex()+", beforeThatEdge="+beforeThatEdge.myIndex()+"");
             }
-            public void swapDiagonal(Edge e)
+            public void swapDiagonal(Edge e, boolean onlyIfMoreDelaunay)
             {
                 if (e.next().next().next() != e
                  || e.opposite().next().next().next() != e.opposite())
@@ -2154,8 +2172,8 @@ public class ShephardsPlayApplet
                 {
                     Vertex v0 = beforeThisEdge.initialVertex();
                     Vertex v1 = beforeThatEdge.initialVertex();
-                    // XXX could do this faster by walking around the vert,
-                    // XXX but whatever
+                    // Could do this faster by walking around the vert,
+                    // but this is more complete since it checks for some pathological cases
                     FORIDOWN (iEdge, edges.size())
                     {
                         Edge edge = (Edge)edges.get(iEdge);
@@ -2165,6 +2183,26 @@ public class ShephardsPlayApplet
                             System.out.println("    Can't swap diagonal, the other diagonal already exists");
                             return;
                         }
+                    }
+                }
+
+                if (onlyIfMoreDelaunay)
+                {
+                    Vertex a = beforeThisEdge.initialVertex();
+                    Vertex b = beforeThisEdge.finalVertex();
+                    Vertex c = beforeThatEdge.initialVertex();
+                    Vertex d = beforeThatEdge.finalVertex();
+                    double comfort = TriangulationOptimizer.calcQuadComfort(new double[]{a.x,a.y},
+                                                                            new double[]{b.x,b.y},
+                                                                            new double[]{c.x,c.y},
+                                                                            new double[]{d.x,d.y},
+                                                                            0, 1);
+                    comfort *= -1; // XXX FUDGE -- was it computed wrong originally?? or am I confused? bleah
+                    System.out.println("    comfort = "+comfort);
+                    if (comfort >= 0) // should this be fuzzy? I won't worry about it for now
+                    {
+                        System.out.println("    Swapping diagonal would not improve it");
+                        return;
                     }
                 }
 
