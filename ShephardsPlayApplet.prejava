@@ -50,6 +50,7 @@ TO DO:
 
 import com.donhatchsw.util.Arrays;
 import com.donhatchsw.util.VecMath;
+import com.donhatchsw.util.SortStuff;
 import com.donhatchsw.util.LinearProgramming;
 import com.donhatchsw.util.UndoTreeSquirrel;
 import com.donhatchsw.util.TriangulationOptimizer;
@@ -374,7 +375,7 @@ public class ShephardsPlayApplet
                                                        edgeOnMostNegativeFace);
                                 for (int iEdge = oldNumEdges;
                                      iEdge < mesh.edges.size();
-                                     iEdge += 2)
+                                     iEdge += 2) // only do one of an edge and its opposite
                                 {
                                     for (int iOldBoundaryEdge = 0;
                                          iOldBoundaryEdge < oldOuterFaceBoundarySize;
@@ -773,7 +774,7 @@ public class ShephardsPlayApplet
                     if (closestEdgeIndex != -1)
                     {
                         System.out.println("Swapping diagonal edge e"+closestEdgeIndex);
-                        mesh.swapDiagonal((Mesh.Edge)mesh.edges.get(closestEdgeIndex), false);
+                        mesh.swapDiagonal((Mesh.Edge)mesh.edges.get(closestEdgeIndex), false, true);
                         mesh.sanityCheck();
                     }
                     UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
@@ -784,13 +785,163 @@ public class ShephardsPlayApplet
 
                 case CTRL('s'): // swap diagonal but only if it makes it closer to delaunay
                 {
+                    // Swap diagonal but only if it makes it closer to delaunay
                     UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
-                    int closestEdgeIndex = mesh.indexOfClosestEdge(prevP[0],prevP[1]);
-                    if (closestEdgeIndex != -1)
+                    if (e.isShiftDown())
                     {
-                        System.out.println("Swapping diagonal edge e"+closestEdgeIndex);
-                        mesh.swapDiagonal((Mesh.Edge)mesh.edges.get(closestEdgeIndex), true);
-                        mesh.sanityCheck();
+                        //
+                        // Delaunay triangulate the whole point set.
+                        // Not the most efficient.
+                        //
+
+                        // Kill all the heights
+                        // XXX FIX THIS-- should use the heights, not kill them!!
+                        FORI (iVert, mesh.verts.size())
+                            ((Mesh.Vertex)mesh.verts.get(iVert)).h = 0.;
+
+                        // Start by killing all the edges
+                        mesh.edges.clear();
+
+                        // Process the vertices in lexicographic order...
+                        Mesh.Vertex sortedVerts[] = new Mesh.Vertex[mesh.verts.size()];
+                        mesh.verts.toArray(sortedVerts);
+                        SortStuff.sort(sortedVerts, new SortStuff.Comparator() {
+                            public int compare(Object obja, Object objb)
+                            {
+                                Mesh.Vertex a = (Mesh.Vertex)obja;
+                                Mesh.Vertex b = (Mesh.Vertex)objb;
+                                return a.x < b.x ? -1 :
+                                       a.x > b.x ? 1 :
+                                       a.y < b.y ? -1 :
+                                       a.y > b.y ? 1 :
+                                       a.myIndex() < b.myIndex() ? -1 :
+                                       a.myIndex() > b.myIndex() ? 1 :
+                                       0;
+                            }
+                        });
+
+                        Mesh.Edge someEdgeOnOuterFace = null;
+                        FORI (iSortedVert, sortedVerts.length)
+                        {
+                            Mesh.Vertex v = sortedVerts[iSortedVert];
+                            if (iSortedVert > 0
+                             && sortedVerts[iSortedVert-1].x == v.x
+                             && sortedVerts[iSortedVert-1].y == v.y)
+                            {
+                                mesh.deleteVertex(v); // not the most efficient, since renumbers, but whatever
+                                continue;
+                            }
+                            if (iSortedVert == 0)
+                            {
+                                // nothing
+                            }
+                            else if (mesh.edges.size() == 0)
+                            {
+                                mesh.addEdgeBetweenTwoIsolatedVertices(sortedVerts[0], v);
+                                someEdgeOnOuterFace = (Mesh.Edge)mesh.edges.get(0);
+                            }
+                            else
+                            {
+                                ArrayList/*<Mesh.Edge>*/ oldOuterFaceBoundary = new ArrayList();
+                                for (Mesh.Edge edge = someEdgeOnOuterFace;;)
+                                {
+                                    oldOuterFaceBoundary.add(edge);
+                                    if ((edge = edge.next()) == someEdgeOnOuterFace)
+                                        break;
+                                }
+                                int oldOuterFaceBoundarySize = oldOuterFaceBoundary.size();
+
+
+                                int oldNumEdges = mesh.edges.size();
+                                mesh.kisIsolatedVertex(v, someEdgeOnOuterFace);
+                                // Delete all new edges that cross one of the faces
+                                // on the original boundary
+                                for (int iEdge = oldNumEdges;
+                                     iEdge < mesh.edges.size();
+                                     iEdge += 2) // only do one of an edge and its opposite
+                                {
+                                    for (int iOldBoundaryEdge = 0;
+                                         iOldBoundaryEdge < oldOuterFaceBoundarySize;
+                                         ++iOldBoundaryEdge)
+                                    {
+                                        Mesh.Edge oldEdge = (Mesh.Edge)oldOuterFaceBoundary.get(iOldBoundaryEdge);
+                                        Mesh.Edge newEdge = (Mesh.Edge)mesh.edges.get(iEdge);
+
+                                        if (newEdge.initialVertex() == oldEdge.initialVertex()
+                                         || newEdge.initialVertex() == oldEdge.finalVertex()
+                                         || newEdge.finalVertex() == oldEdge.initialVertex()
+                                         || newEdge.finalVertex() == oldEdge.finalVertex())
+                                            continue;
+                                        //System.out.println("    Seeing whether new edge v"+newEdge.initialVertex().myIndex()+" -> v"+newEdge.finalVertex().myIndex()+" crosses old boundary edges v"+oldEdge.initialVertex().myIndex()+" -> v"+oldEdge.finalVertex().myIndex()+"");
+                                        if (edgesCrossOrCloseToIt(
+                                                        oldEdge.initialVertex().x,
+                                                        oldEdge.initialVertex().y,
+                                                        oldEdge.finalVertex().x,
+                                                        oldEdge.finalVertex().y,
+                                                        newEdge.initialVertex().x,
+                                                        newEdge.initialVertex().y,
+                                                        newEdge.finalVertex().x,
+                                                        newEdge.finalVertex().y,
+                                                        1e-6))
+                                        {
+                                            //System.out.println("        It does.");
+                                            mesh.deleteEdge(newEdge);
+                                            iEdge -= 2; // so we don't skip the one that gets moved into the deleted spot
+                                            break;
+                                        }
+                                        else
+                                        {
+                                            //System.out.println("        It doesn't.");
+                                        }
+                                    }
+                                }
+
+                                // Find an edge on the new outer face.
+                                {
+                                    double bestTwiceFaceArea = Double.POSITIVE_INFINITY;
+                                    Mesh.Vertex v0 = sortedVerts[0];
+                                    Mesh.Edge e0 = (Mesh.Edge)mesh.edges.get(0);
+                                    // for each edge surrounding v0...
+                                    for (Mesh.Edge ee = e0;;)
+                                    {
+                                        assert(ee.initialVertex() == v0);
+                                        double twiceFaceArea = mesh.twiceFaceArea(ee);
+                                        if (twiceFaceArea < bestTwiceFaceArea)
+                                        {
+                                            bestTwiceFaceArea = twiceFaceArea;
+                                            someEdgeOnOuterFace = ee;
+                                        }
+                                        if ((ee = ee.opposite().next()) == e0)
+                                            break;
+                                    }
+                                    //System.out.println("now "+(iSortedVert+1)+" verts, new someEdgeOnOuterFace: "+someEdgeOnOuterFace.initialVertex()+"->"+someEdgeOnOuterFace.finalVertex().myIndex()+"");
+                                }
+                            }
+                        }
+
+                        // Okay now we have some triangulation...
+                        // Delauneyize it.
+                        while (true)
+                        {
+                            boolean didSomething = false;
+                            for (int iEdge = 0; iEdge < mesh.edges.size(); iEdge += 2)
+                            {
+                                if (mesh.swapDiagonal((Mesh.Edge)mesh.edges.get(iEdge), true, false))
+                                    didSomething = true;
+                            }
+                            if (!didSomething)
+                                break;
+                        }
+                    }
+                    else
+                    {
+                        int closestEdgeIndex = mesh.indexOfClosestEdge(prevP[0],prevP[1]);
+                        if (closestEdgeIndex != -1)
+                        {
+                            System.out.println("Swapping diagonal edge e"+closestEdgeIndex);
+                            mesh.swapDiagonal((Mesh.Edge)mesh.edges.get(closestEdgeIndex), true, true);
+                            mesh.sanityCheck();
+                        }
                     }
                     UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
                     undoTreeSquirrel.Do(new UndoItem(before, after));
@@ -932,6 +1083,7 @@ public class ShephardsPlayApplet
                     System.out.println("    'o'/'-' - zoom out");
                     System.out.println("    's' - swap a diagonal");
                     System.out.println("    ctrl-'s' - swap a diagonal if the result is more Delaunay");
+                    System.out.println("    ctrl-shift-'s' - Delaunay triangulate");
                     System.out.println("    'O' - toggle doOptimize");
                     System.out.println("    'l' - toggle doLabels");
                     System.out.println("    'a' - toggle doArrowsTowardsSharpestDihedrals (green)");
@@ -2152,13 +2304,15 @@ public class ShephardsPlayApplet
                 if (nonEventVerbose >= 1)
                     System.out.println("    Out addDiagonal(beforeThisEdge="+beforeThisEdge.myIndex()+", beforeThatEdge="+beforeThatEdge.myIndex()+"");
             }
-            public void swapDiagonal(Edge e, boolean onlyIfMoreDelaunay)
+            // returns true iff did something
+            public boolean swapDiagonal(Edge e, boolean onlyIfMoreDelaunay, boolean verbose)
             {
                 if (e.next().next().next() != e
                  || e.opposite().next().next().next() != e.opposite())
                 {
-                    System.out.println("    Can't swap diagonal, it's not on a quad");
-                    return;
+                    if (verbose)
+                        System.out.println("    Can't swap diagonal, it's not on a quad");
+                    return false;
                 }
 
                 Edge beforeThisEdge = e.prev();
@@ -2180,35 +2334,39 @@ public class ShephardsPlayApplet
                         if (edge.initialVertex() == v0
                          && edge.finalVertex() == v1)
                         {
-                            System.out.println("    Can't swap diagonal, the other diagonal already exists");
-                            return;
+                            if (verbose)
+                                System.out.println("    Can't swap diagonal, the other diagonal already exists");
+                            return false;
                         }
                     }
                 }
 
                 if (onlyIfMoreDelaunay)
                 {
-                    Vertex a = beforeThisEdge.initialVertex();
-                    Vertex b = beforeThisEdge.finalVertex();
-                    Vertex c = beforeThatEdge.initialVertex();
-                    Vertex d = beforeThatEdge.finalVertex();
+                    Vertex a = beforeThisEdge.finalVertex();
+                    Vertex b = beforeThatEdge.initialVertex();
+                    Vertex c = beforeThatEdge.finalVertex();
+                    Vertex d = beforeThisEdge.initialVertex();
+                    // comfort of ac relative to bd
                     double comfort = TriangulationOptimizer.calcQuadComfort(new double[]{a.x,a.y},
                                                                             new double[]{b.x,b.y},
                                                                             new double[]{c.x,c.y},
                                                                             new double[]{d.x,d.y},
                                                                             0, 1);
-                    comfort *= -1; // XXX FUDGE -- was it computed wrong originally?? or am I confused? bleah
-                    System.out.println("    comfort = "+comfort);
+                    if (verbose)
+                        System.out.println("    comfort = "+comfort);
                     if (comfort >= 0) // should this be fuzzy? I won't worry about it for now
                     {
-                        System.out.println("    Swapping diagonal would not improve it");
-                        return;
+                        if (verbose)
+                            System.out.println("    Swapping diagonal would not improve it");
+                        return false;
                     }
                 }
 
                 deleteEdge(e);
                 addDiagonal(beforeThisEdge, beforeThatEdge);
-            }
+                return true;
+            } // swapDiagonal
             public void addEdgeBetweenTwoIsolatedVertices(Vertex v0, Vertex v1)
             {
                 Edge e = new Edge(true);
