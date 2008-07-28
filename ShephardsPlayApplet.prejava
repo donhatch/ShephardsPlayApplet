@@ -724,8 +724,9 @@ public class ShephardsPlayApplet
                     break;
 
                 case 't': // toggle showTriangles
-                    showTriangles ^= true;
-                    System.out.println("showTriangles -> "+showTriangles);
+                    System.out.print("showTriangles "+showTriangles);
+                    showTriangles = MOD(showTriangles-1, 3);
+                    System.out.println(" -> "+showTriangles);
                     repaint();
                     break;
 
@@ -1570,7 +1571,7 @@ public class ShephardsPlayApplet
             //
             // Draw the mesh in white...
             //
-            if (showTriangles)
+            if (showTriangles >= 1)
             {
                 mg.setColor(java.awt.Color.white);
 
@@ -1582,13 +1583,17 @@ public class ShephardsPlayApplet
                                  vert.y, 3);
                 }
 
-                ArrayList edges = mesh.edges;
-                FORIDOWN (iEdge, edges.size()/2)
+                if (showTriangles >= 2)
                 {
-                    Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge*2);
-                    Mesh.Vertex v0 = edge.initialVertex();
-                    Mesh.Vertex v1 = edge.finalVertex();
-                    mg.drawLine(v0.x,v0.y,v1.x,v1.y,doAntiAliasing);
+
+                    ArrayList edges = mesh.edges;
+                    FORIDOWN (iEdge, edges.size()/2)
+                    {
+                        Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge*2);
+                        Mesh.Vertex v0 = edge.initialVertex();
+                        Mesh.Vertex v1 = edge.finalVertex();
+                        mg.drawLine(v0.x,v0.y,v1.x,v1.y,doAntiAliasing);
+                    }
                 }
             }
 
@@ -1670,11 +1675,11 @@ public class ShephardsPlayApplet
 
                 //
                 // Now try connecting the dual verts
-                //
+                // 
                 FORIDOWN (iEdge, mesh.edges.size())
                 {
                     if (dualVerts[iEdge] == null)
-                        continue; // not a triangle, or insie out
+                        continue; // not a triangle, or inside out
                     Mesh.Edge edge = (Mesh.Edge)mesh.edges.get(iEdge);
                     int jEdge = edge.opposite().myIndex();
                     if (dualVerts[jEdge] != null)
@@ -1685,6 +1690,7 @@ public class ShephardsPlayApplet
                     }
                     else
                     {
+                        // Draw a ray out to infinity
                         double v0[] = {edge.initialVertex().x,
                                        edge.initialVertex().y};
                         double v1[] = {edge.finalVertex().x,
@@ -1692,7 +1698,8 @@ public class ShephardsPlayApplet
                         double toEdgeVec[] = VecMath.xv2(
                                                  VecMath.vmv(v0, v1));
                         VecMath.normalize(toEdgeVec, toEdgeVec);
-                        double rayLength = 1.;
+                        double rayLength = 1.; // for edges to infinity
+                        //double destPoint[] = VecMath.vpsxv(2, dualVerts[iEdge], rayLength, toEdgeVec); // XXX argh, version that allows specifying length doesn't exist yet, and without that it gets confused because dualVerts[iEdge] has length 3
                         double destPoint[] = {dualVerts[iEdge][0]+rayLength*toEdgeVec[0],
                                               dualVerts[iEdge][1]+rayLength*toEdgeVec[1]};
                         mg.drawLine(dualVerts[iEdge][0],dualVerts[iEdge][1],
@@ -1701,6 +1708,37 @@ public class ShephardsPlayApplet
                                                              
                     }
                 }
+
+                //
+                // And, as polish for voronoi diagrams,
+                // draw perpendicular lines
+                // at each isolated edge or whisker.
+                // XXX should do this along hairs... or maybe every edge that is not on a triangle on either side? nah
+                //
+                FORIDOWN (iEdge, mesh.edges.size())
+                {
+                    Mesh.Edge edge = (Mesh.Edge)mesh.edges.get(iEdge);
+                    if (edge.next() == edge.opposite()) // check in only one of the two directions
+                    //if (dualVerts[iEdge] == null && dualVerts[edge.opposite().myIndex()] == null && iEdge < edge.opposite().myIndex())
+                    {
+                        double v0[] = {edge.initialVertex().x,
+                                       edge.initialVertex().y};
+                        double v1[] = {edge.finalVertex().x,
+                                       edge.finalVertex().y};
+                        double toEdgeVec[] = VecMath.xv2(
+                                                 VecMath.vmv(v0, v1));
+                        VecMath.normalize(toEdgeVec, toEdgeVec);
+                        double midPoint[] = VecMath.lerp(v0, v1, .5);
+                        double lineLength = 1.;
+                        double fromPoint[] = VecMath.vpsxv(midPoint, -lineLength*.5, toEdgeVec);
+                        double toPoint[] = VecMath.vpsxv(midPoint, lineLength*.5, toEdgeVec);
+                        mg.drawLine(fromPoint[0],fromPoint[1],
+                                    toPoint[0], toPoint[1],
+                                    doAntiAliasing);
+                    }
+                }
+
+
 
                 //
                 // Now try marking the sharpest dihedral dual edge
@@ -3077,14 +3115,16 @@ public class ShephardsPlayApplet
 
 
         /*
-            Note, the h given here is actually the vertex's h - .5 * (x^2 + y^2).
+            Note, the h given here are the "actual" positions v.h - .5 * (x^2 + y^2).
+            where v.h is the offset stored in the vertex.
 
             Given:
                 x0,y0,h0
                 x1,y1,h1
                 x2,y2,h2
             representing an infinitesimal triangle
-            whose vertices are infinitesimally-squared away from the unit sphere:
+            whose vertices are infinitesimally-squared away from the unit sphere
+            at the tangent plane z=1:
                 x0 eps, y0 eps, 1 + h0 eps^2
                 x1 eps, y1 eps, 1 + h1 eps^2
                 x2 eps, y2 eps, 1 + h2 eps^2
@@ -3243,8 +3283,8 @@ public class ShephardsPlayApplet
         private boolean doShowInsideOutDualVerts = false; // might also be nice to have option for implicit primal vertex in middle of outer face, so that dual will be single-face-bounded... and maybe ctrl-up,ctrl-down will adjust the height of that face
 
         private boolean doShowPositiveOrthantnessVisualization = false; // XXX total hack-- it's cool but put it somewhere else!!
-        private boolean showTriangles = true;
-        private boolean continuouslyDelaunayize = true;
+        private int showTriangles = 2; // 0: nothing, 1: verts, 2: and tris
+        private boolean continuouslyDelaunayize = false; // XXX need an interface for this!
 
     //
     // Applet-generic member variables...
