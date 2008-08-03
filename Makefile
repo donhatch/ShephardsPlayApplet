@@ -45,9 +45,9 @@ CPPFLAGS += -Wall -Werror
 	# on third hand, it bombs with Couldn't open GraphicsAntiAliasingSetter$*.class because that one has no subclasses... argh.
 	#@./javarenumber -v -1 $*'$$'*.class
 
-MyGraphics.class: macros.h Makefile
-GraphicsAntiAliasingSetter.class: macros.h Makefile
-ShephardsPlayApplet.class: macros.h Makefile
+MyGraphics.class: macros.h Makefile donhatchsw.jar
+GraphicsAntiAliasingSetter.class: macros.h Makefile donhatchsw.jar
+ShephardsPlayApplet.class: macros.h Makefile donhatchsw.jar
 
 .PHONY: clean
 clean:
