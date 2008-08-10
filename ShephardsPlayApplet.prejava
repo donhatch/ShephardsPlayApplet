@@ -171,6 +171,10 @@ public class ShephardsPlayApplet
             //doCannedThingNetless9(); // XXX get rid of this probably
             //doCannedThingEyeball(); // XXX get rid of this probably
             doCannedThingNetless8(); // XXX get rid of this probably
+            //doCannedThingCrackKiller(); // XXX get rid of this probably
+            //doCannedThingHexesSpiralOther(); // XXX get rid of this probably
+            //doCannedThingNetless888(); // XXX get rid of this probably
+            //doCannedThingNetless8Symmetric(); // XXX get rid of this probably
 
             if (eventVerbose >= 1) System.out.println("out init");
         } // init
@@ -245,7 +249,7 @@ public class ShephardsPlayApplet
             double thisP[] = new double[2];
             mostRecentGraphics.pick(e.getX(), e.getY(), thisP);
 
-            stateWhenPressed = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+            stateWhenPressed = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
 
             int whichButton = getButton(e);
             if (whichButton == java_awt_event_MouseEvent_BUTTON1)
@@ -272,7 +276,7 @@ public class ShephardsPlayApplet
                     //
                     // Select closest vertex
                     //
-                    selectedVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1]);
+                    beingDraggedVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1]);
                     rubberBandingNewEdge = true;
                 }
                 else // control is not down
@@ -418,7 +422,7 @@ public class ShephardsPlayApplet
 
                     mesh.sanityCheck();
 
-                    selectedVertIndex = verts.size()-1;
+                    beingDraggedVertIndex = verts.size()-1;
                 }
             }
             else if (whichButton == java_awt_event_MouseEvent_BUTTON2)
@@ -428,9 +432,9 @@ public class ShephardsPlayApplet
                 //
                 // Select closest vertex
                 //
-                selectedVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1]);
+                beingDraggedVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1]);
 
-                System.out.println("Selected vertex "+selectedVertIndex+"");
+                System.out.println("Dragging vertex "+beingDraggedVertIndex+"");
             }
             else if (whichButton == java_awt_event_MouseEvent_BUTTON3)
             {
@@ -439,10 +443,10 @@ public class ShephardsPlayApplet
                 //
                 // Delete closest vertex
                 //
-                selectedVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1]);
-                if (selectedVertIndex != -1)
-                    mesh.deleteVertex((Mesh.Vertex)mesh.verts.get(selectedVertIndex));
-                selectedVertIndex = -1;
+                beingDraggedVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1]);
+                if (beingDraggedVertIndex != -1)
+                    mesh.deleteVertex((Mesh.Vertex)mesh.verts.get(beingDraggedVertIndex));
+                beingDraggedVertIndex = -1;
 
                 mesh.sanityCheck();
 
@@ -473,13 +477,13 @@ public class ShephardsPlayApplet
                         mesh.addIsolatedVertex(thisP[0], thisP[1], 0);
                     }
                     int finalVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1]);
-                    if (selectedVertIndex != -1
+                    if (beingDraggedVertIndex != -1
                      && finalVertIndex != -1
-                     && selectedVertIndex != finalVertIndex)
+                     && beingDraggedVertIndex != finalVertIndex)
                     {
-                        System.out.println("Trying to add an edge between "+selectedVertIndex+" and "+finalVertIndex);
+                        System.out.println("Trying to add an edge between "+beingDraggedVertIndex+" and "+finalVertIndex);
                         ArrayList verts = mesh.verts;
-                        mesh.addEdgeBetweenTwoVertices((Mesh.Vertex)mesh.verts.get(selectedVertIndex),
+                        mesh.addEdgeBetweenTwoVertices((Mesh.Vertex)mesh.verts.get(beingDraggedVertIndex),
                                                        (Mesh.Vertex)mesh.verts.get(finalVertIndex));
                         mesh.sanityCheck();
                     }
@@ -502,7 +506,7 @@ public class ShephardsPlayApplet
 
             if (stateWhenPressed != null)
             {
-                UndoItem.State stateWhenReleased = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                UndoItem.State stateWhenReleased = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
                 undoTreeSquirrel.Do(new UndoItem(stateWhenPressed, stateWhenReleased));
                 stateWhenPressed = null;
             }
@@ -552,11 +556,47 @@ public class ShephardsPlayApplet
                             ((Mesh.Vertex)mesh.verts.get(iVert)).y += thisP[1]-prevP[1];
                         }
                     }
-                    else if (selectedVertIndex != -1)
+                    else if (beingDraggedVertIndex != -1)
                     {
-                        // Drag just the selected vert
-                        ((Mesh.Vertex)mesh.verts.get(selectedVertIndex)).x += thisP[0]-prevP[0];
-                        ((Mesh.Vertex)mesh.verts.get(selectedVertIndex)).y += thisP[1]-prevP[1];
+                        if (e.isControlDown())
+                        {
+                            // Drag all 6 points of kaleidescope
+
+                            // rotation by 120 degrees, row-oriented
+                            double A[][] = {
+                               { Math.cos(DTOR(120)), Math.sin(DTOR(120))},
+                               {-Math.sin(DTOR(120)), Math.cos(DTOR(120))},
+                            };
+                            // left-right reflection
+                            double B[][] = {
+                                {-1,0},
+                                {0,1},
+                            };
+                            double AA[][] = VecMath.mxm(A,A);
+                            double I[][] = VecMath.mxm(AA,A);
+                            double AB[][] = VecMath.mxm(A,B);
+                            double AAB[][] = VecMath.mxm(AA,B);
+                            double group[][][] = {I,A,AA,B,AB,AAB};
+                            double v[] = {((Mesh.Vertex)mesh.verts.get(beingDraggedVertIndex)).x,
+                                          ((Mesh.Vertex)mesh.verts.get(beingDraggedVertIndex)).y};
+                            double dv[] = VecMath.vmv(thisP, prevP);
+                            FORI (iGroup, group.length)
+                            {
+                                double image[] = VecMath.vxm(v,group[iGroup]);
+                                int iImage = mesh.indexOfClosestVert(
+                                                image[0], image[1]);
+                                double imageTweak[] = VecMath.vxm(dv, group[iGroup]);
+                                ((Mesh.Vertex)mesh.verts.get(iImage)).x += imageTweak[0];
+                                ((Mesh.Vertex)mesh.verts.get(iImage)).y += imageTweak[1];
+                            }
+                        }
+                        else
+                        {
+                            // Drag just the selected vert
+                            ((Mesh.Vertex)mesh.verts.get(beingDraggedVertIndex)).x += thisP[0]-prevP[0];
+                            ((Mesh.Vertex)mesh.verts.get(beingDraggedVertIndex)).y += thisP[1]-prevP[1];
+                        }
+
                         if (continuouslyDelaunayize) delaunayize();
                         if (nonEventVerbose >= 1)
                         {
@@ -611,7 +651,7 @@ public class ShephardsPlayApplet
             {
                 case java.awt.event.KeyEvent.VK_UP:
                 {
-                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
                     if (doOptimize)
                     {
                         doOptimize ^= true;
@@ -627,14 +667,14 @@ public class ShephardsPlayApplet
                     else
                         ((Mesh.Vertex)mesh.verts.get(iVert)).h += incr;
                     if (continuouslyDelaunayize) delaunayize();
-                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
                     undoTreeSquirrel.Do(new UndoItem(before, after));
                     repaint();
                     break;
                 }
                 case java.awt.event.KeyEvent.VK_DOWN:
                 {
-                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
                     if (doOptimize)
                     {
                         doOptimize ^= true;
@@ -650,7 +690,7 @@ public class ShephardsPlayApplet
                     else
                         ((Mesh.Vertex)mesh.verts.get(iVert)).h -= incr;
                     if (continuouslyDelaunayize) delaunayize();
-                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
                     undoTreeSquirrel.Do(new UndoItem(before, after));
                     repaint();
                     break;
@@ -738,12 +778,13 @@ public class ShephardsPlayApplet
 
                 case 'i': case '+': case '=': // zoom in
                 {
-                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
                     double scale = Math.sqrt(2.);
                     FORIDOWN (iVert, mesh.verts.size())
                     {
                         Mesh.Vertex vert = (Mesh.Vertex)mesh.verts.get(iVert);
-                        vert.x *= scale;
+                        if (!e.isControlDown())
+                            vert.x *= scale;
                         vert.y *= scale;
                         vert.h *= scale*scale;
                     }
@@ -751,26 +792,27 @@ public class ShephardsPlayApplet
                     translateFudgeY *= scale;
 
                     // should be no need to re-delaunayize
-                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
                     undoTreeSquirrel.Do(new UndoItem(before, after));
                     repaint();
                     break;
                 }
                 case 'o': case '-':           // zoom out
                 {
-                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
                     double scale = Math.sqrt(.5);
                     FORIDOWN (iVert, mesh.verts.size())
                     {
                         Mesh.Vertex vert = (Mesh.Vertex)mesh.verts.get(iVert);
-                        vert.x *= scale;
+                        if (!e.isControlDown())
+                            vert.x *= scale;
                         vert.y *= scale;
                         vert.h *= scale*scale;
                     }
                     translateFudgeX *= scale;
                     translateFudgeY *= scale;
                     // should be no need to re-delaunayize
-                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
                     undoTreeSquirrel.Do(new UndoItem(before, after));
                     repaint();
                     break;
@@ -778,8 +820,8 @@ public class ShephardsPlayApplet
 
                 case 's': // swap diagonal
                 {
-                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
-                    int closestEdgeIndex = mesh.indexOfClosestEdge(prevP[0],prevP[1]);
+                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                    int closestEdgeIndex = mesh.indexOfClosestEdge(prevP);
                     if (closestEdgeIndex != -1)
                     {
                         System.out.println("Swapping diagonal edge e"+closestEdgeIndex);
@@ -787,7 +829,7 @@ public class ShephardsPlayApplet
                         mesh.sanityCheck();
                     }
                     if (continuouslyDelaunayize) delaunayize();
-                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
                     undoTreeSquirrel.Do(new UndoItem(before, after));
                     repaint();
                     break;
@@ -796,12 +838,12 @@ public class ShephardsPlayApplet
                 case CTRL('s'): // swap diagonal but only if it makes it closer to delaunay
                 {
                     // Swap diagonal but only if it makes it closer to delaunay
-                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
                     if (e.isShiftDown())
                         delaunayize();
                     else
                     {
-                        int closestEdgeIndex = mesh.indexOfClosestEdge(prevP[0],prevP[1]);
+                        int closestEdgeIndex = mesh.indexOfClosestEdge(prevP);
                         if (closestEdgeIndex != -1)
                         {
                             System.out.println("Swapping diagonal edge e"+closestEdgeIndex);
@@ -810,16 +852,54 @@ public class ShephardsPlayApplet
                         }
                         if (continuouslyDelaunayize) delaunayize(); // silly, it will just undo the swap in this case
                     }
-                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
                     undoTreeSquirrel.Do(new UndoItem(before, after));
                     repaint();
                     break;
                 }
 
+                case 'w': // toggle closest dual vertex for weighting (think of better mnemonic)
+                {
+                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                    if (mostRecentDualVerts != null)
+                    {
+                        double closestDistSqrd = Double.POSITIVE_INFINITY;
+                        int closestIndex = -1;
+                        FORI (iDualVert, mostRecentDualVerts.length) // beginning to end, so we choose first of equal
+                        {
+                            if (mostRecentDualVerts[iDualVert] == null)
+                                continue; // that array has some nulls
+                            if (closestIndex != -1
+                             && mostRecentDualVerts[iDualVert] == mostRecentDualVerts[closestIndex])
+                                continue; // each is represented 3 times, only use the first
+                            double thisDistSqrd = VecMath.distsqrd(prevP, mostRecentDualVerts[iDualVert]);
+                            if (thisDistSqrd < closestDistSqrd)
+                            {
+                                closestDistSqrd = thisDistSqrd;
+                                closestIndex = iDualVert;
+                            }
+                        }
+                        int indInd = Arrays.indexOf(selectedDualVertIndices, closestIndex);
+                        if (indInd != -1)
+                        {
+                            System.out.println("    deselecting dual vert "+closestIndex+"");
+                            selectedDualVertIndices = (int[])Arrays.delete(selectedDualVertIndices, indInd);
+                        }
+                        else
+                        {
+                            System.out.println("    selecting dual vert "+closestIndex+"");
+                            selectedDualVertIndices = (int[])Arrays.append(selectedDualVertIndices, closestIndex);
+                        }
+                    }
+                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                    undoTreeSquirrel.Do(new UndoItem(before, after));
+                    repaint();
+                    break;
+                }
                 case 'd': // delete closest edge
                 {
-                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
-                    int closestEdgeIndex = mesh.indexOfClosestEdge(prevP[0],prevP[1]);
+                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                    int closestEdgeIndex = mesh.indexOfClosestEdge(prevP);
                     if (closestEdgeIndex != -1)
                     {
                         System.out.println("Deleting edge e"+closestEdgeIndex);
@@ -827,14 +907,14 @@ public class ShephardsPlayApplet
                         mesh.sanityCheck();
                     }
                     if (continuouslyDelaunayize) delaunayize();
-                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
                     undoTreeSquirrel.Do(new UndoItem(before, after));
                     repaint();
                     break;
                 }
                 case 'S': // turn off optimize, and re-sphereize
                 {
-                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
                     if (doOptimize)
                     {
                         doOptimize ^= true;
@@ -843,7 +923,7 @@ public class ShephardsPlayApplet
                     FORIDOWN (iVert, mesh.verts.size())
                         ((Mesh.Vertex)mesh.verts.get(iVert)).h = 0.;
                     if (continuouslyDelaunayize) delaunayize();
-                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
                     undoTreeSquirrel.Do(new UndoItem(before, after));
                     repaint();
                     break;
@@ -857,11 +937,11 @@ public class ShephardsPlayApplet
 
                 case 'O': // toggle doOptimize
                 {
-                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
                     doOptimize ^= true;
                     System.out.println("doOptimize -> "+doOptimize);
                     if (continuouslyDelaunayize) delaunayize();
-                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
                     undoTreeSquirrel.Do(new UndoItem(before, after));
                     repaint();
                     break;
@@ -893,6 +973,7 @@ public class ShephardsPlayApplet
                         doOptimize = item.before.doOptimize;
                         optimizationTypeIndex = item.before.optimizationTypeIndex;
                         optimizationType = availableOptimizationTypes[optimizationTypeIndex];
+                        selectedDualVertIndices = VecMath.copyvec(item.before.selectedDualVertIndices);
                     }
                     else
                     {
@@ -910,6 +991,7 @@ public class ShephardsPlayApplet
                         doOptimize = item.after.doOptimize;
                         optimizationTypeIndex = item.after.optimizationTypeIndex;
                         optimizationType = availableOptimizationTypes[optimizationTypeIndex];
+                        selectedDualVertIndices = VecMath.copyvec(item.after.selectedDualVertIndices);
                     }
                     else
                     {
@@ -920,12 +1002,12 @@ public class ShephardsPlayApplet
                 }
                 case 'c': // clear
                 {
-                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
                     mesh = new Mesh();
                     translateFudgeX = 0; // doesn't get undone properly
                     translateFudgeY = 0; // doesn't get undone properly
                     if (continuouslyDelaunayize) delaunayize();
-                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
                     undoTreeSquirrel.Do(new UndoItem(before, after));
                     repaint();
                     break;
@@ -996,7 +1078,7 @@ public class ShephardsPlayApplet
 
                 case CTRL('c'): // very special case canned... netless9 example
                 {
-                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
 
                     if (e.isAltDown())
                         doCannedThingHexesSpiral();
@@ -1004,17 +1086,17 @@ public class ShephardsPlayApplet
                         doCannedThingNetless9();
 
                     if (continuouslyDelaunayize) delaunayize();
-                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
                     undoTreeSquirrel.Do(new UndoItem(before, after));
                     repaint();
                     break;
                 }
                 case CTRL('e'): // very special case canned eyeball example
                 {
-                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
                     doCannedThingEyeball();
                     if (continuouslyDelaunayize) delaunayize();
-                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex);
+                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
                     undoTreeSquirrel.Do(new UndoItem(before, after));
                     repaint();
                     break;
@@ -1120,6 +1202,7 @@ public class ShephardsPlayApplet
                 {7*slope*Eps, 0,  23*Eps*Eps},
                 {-7*slope*Eps, 0, 23*Eps*Eps},
             };
+
             int faces[][] = {
                 {5,4,1},
                 {0,4,5},
@@ -1132,6 +1215,96 @@ public class ShephardsPlayApplet
             };
             mesh = new Mesh(verts, faces);
         } // doCannedThingNetless8
+
+        private static double[][] generateVertices(double vertGenerators[][],
+                                                   double xforms[][][])
+        {
+            double eps = 1e-9;
+            double verts[][] = vertGenerators; // make this an arraylist if we ever do a lot
+            FORI (iVert, verts.length) // while verts is growing
+            {
+                FORI (ixform, xforms.length)
+                {
+                    double vert[] = VecMath.vxm(verts[iVert],
+                                                xforms[ixform]);
+                    int jVert;
+                    FOR (jVert, verts.length)
+                        if (VecMath.equals(vert, verts[jVert], eps))
+                            break;
+                    if (jVert == verts.length)
+                        verts = (double[][])Arrays.append(verts, vert);
+                }
+            }
+            return verts;
+        } // generateVertices
+
+        // Try to do a symmetric thing like netless8.
+        // Grrrr, it doesn't work.
+        private void doCannedThingNetless888()
+        {
+            double vertsGenerators[][] = new double[][] {
+                {0,0},
+                {0,-1},
+                {.1,-.75},
+            };
+            double xforms[][][] = {
+                // left-right reflection
+                {
+                    {-1,0},
+                    {0,1},
+                },
+                // rotation by 120 degrees, row-oriented
+                {
+                   { Math.cos(DTOR(120)), Math.sin(DTOR(120))},
+                   {-Math.sin(DTOR(120)), Math.cos(DTOR(120))},
+                },
+            };
+            double verts[][] = generateVertices(vertsGenerators,
+                                                xforms);
+            if (false)
+            {
+                // Hack to see what happens... maybe have key for this
+                FORI (iVert, verts.length)
+                    verts[iVert][1] *= .1;
+            }
+
+            int faces[][] = {};
+            mesh = new Mesh(verts, faces);
+            delaunayize();
+        } // doCannedThingNetless888()
+
+        private void doCannedThingNetless8Symmetric()
+        {
+            double vertsGenerators[][] = new double[][] {
+                {0,-1},
+                //{0,1/5.}, // looks nice but doesn't work well
+                {0,3/8.},
+            };
+            double xforms[][][] = {
+                // left-right reflection
+                {
+                    {-1,0},
+                    {0,1},
+                },
+                // rotation by 120 degrees, row-oriented
+                {
+                   { Math.cos(DTOR(120)), Math.sin(DTOR(120))},
+                   {-Math.sin(DTOR(120)), Math.cos(DTOR(120))},
+                },
+            };
+            double verts[][] = generateVertices(vertsGenerators,
+                                                xforms);
+            if (false)
+            {
+                // Hack to see what happens... maybe have key for this
+                FORI (iVert, verts.length)
+                    verts[iVert][1] *= .1;
+            }
+
+            int faces[][] = {};
+            mesh = new Mesh(verts, faces);
+            delaunayize();
+        } // doCannedThingNetless8Symmetric
 
         // Make the mesh into netless9
         private void doCannedThingNetless9()
@@ -1363,14 +1536,61 @@ public class ShephardsPlayApplet
             mesh = new Mesh(verts, faces);
         } // doCannedThingEyeball
 
+        // XXX unused, didn't need it after all
+        private static double[] triangleApex(double v0[], double ang0,
+                                             double v1[], double ang1)
+        {
+            double e01ang = Math.atan2(v1[1]-v0[1], v1[0]-v0[0]);
+            double e02ang = e01ang + ang0;
+            double e21ang = e01ang - ang1;
+            double normal02[] = new double[]{Math.cos(e02ang+Math.PI/2),
+                                             Math.sin(e02ang+Math.PI/2)};
+            double normal21[] = new double[]{Math.cos(e21ang+Math.PI/2),
+                                             Math.sin(e21ang+Math.PI/2)};
+            // Find v2 satisfying:
+            //    v2 dot normal02 == v0 dot normal02
+            //    v2 dot normal21 == v1 dot normal21
+            double A[][] = {normal02,
+                            normal21};
+            double b[] = {VecMath.dot(v0, normal02),
+                          VecMath.dot(v1, normal21)};
+            // Solve A v2 == b
+            return VecMath.invmxv(A, b);
+        } // triangleApex
+        private void doCannedThingCrackKiller()
+        {
+            double verts[][] = new double[5][];
+            double angle0 = DTOR(180);
+            double angleIncr = DTOR(-65);
+            double length0 = .1;
+            double lengthMultiplier = 5;
+            verts[0] = new double[]{0,0};
+            FORI (i, 4)
+            {
+                double length = length0 * Math.pow(lengthMultiplier, i);
+                double ang = angle0 + i*angleIncr;
+                verts[i+1] = new double[]{length*Math.cos(ang),
+                                          length*Math.sin(ang)};
+            }
+
+            int faces[][] = {};
+            mesh = new Mesh(verts, faces);
+            delaunayize();
+        } // doCannedThingCrackKiller
+
+        // Generalization of netless9.
+        // counterexample to "there is an unfolding
+        // that uses the sharpest edge at each vertex"
         private void doCannedThingHexesSpiral()
         {
             if (true)
             {
                 // s = how much bigger each edge is from the previous
                 //double s = 1.05;
+                //double s = 1.01;
+                double s = 1.005;
                 //double s = 1.001;
-                double s = 1.;
+                //double s = 1.;
                 double sliceAngle;
                 {
                     // In the initial 6 slice pie,
@@ -1497,6 +1717,63 @@ public class ShephardsPlayApplet
             }
         } // doCannedThingHexesSpiral
 
+        // counterexample to "there is an unfolding
+        // that uses the dullest edge on each face", // almost
+        private void doCannedThingHexesSpiralOther()
+        {
+            double verts[][] = new double[16][];
+
+            // choice at:
+            //     6 (0 or 1)
+            //     8 (1 or 2)
+            //    12 (2 or 3)
+            //    14 (3 or 4)
+            //    
+            double r = .9;
+            verts[0] = new double[]{0,0};
+            verts[1] = new double[]{.9,0};
+            verts[2] = completeTriangle(verts[0], verts[1],
+                                        .9, 1.);
+            verts[3] = completeTriangle(verts[0], verts[2],
+                                        1., .9);
+            verts[4] = completeTriangle(verts[0], verts[3],
+                                        .9, 1.);
+            verts[5] = completeTriangle(verts[0], verts[4],
+                                        .9, 1.);
+            verts[6] = completeTriangle(verts[0], verts[5],
+                                        .9, 1.);
+            verts[7] = completeTriangle(verts[1], verts[6],
+                                        .9, 1.);
+            verts[8] = completeTriangle(verts[1], verts[7],
+                                        .9, 1.);
+            verts[9] = completeTriangle(verts[1], verts[8],
+                                        .9, 1.);
+            verts[10] = completeTriangle(verts[2], verts[9],
+                                         .9, 1.);
+            verts[11] = completeTriangle(verts[2], verts[10],
+                                         .9, 1.);
+            verts[12] = completeTriangle(verts[3], verts[11],
+                                         .9, 1.);
+            verts[13] = completeTriangle(verts[3], verts[12],
+                                         .9, 1.);
+            verts[14] = completeTriangle(verts[4], verts[13],
+                                         .9, 1.);
+            verts[15] = completeTriangle(verts[4], verts[14],
+                                         .9, 1.);
+
+            VecMath.mxs(verts, verts, .75/VecMath.norm(verts[verts.length-1]));
+
+            int faces[][] = {};
+            mesh = new Mesh(verts, faces);
+            delaunayize();
+            // swap the edge between 2 and 12
+            mesh.swapDiagonal((Mesh.Edge)mesh.edges.get(mesh.indexOfClosestEdge(VecMath.lerp(verts[2], verts[12], .5))), false, true);
+            // swap the edge between 3 and 14
+            mesh.swapDiagonal((Mesh.Edge)mesh.edges.get(mesh.indexOfClosestEdge(VecMath.lerp(verts[3], verts[14], .5))), false, true);
+        } // doCannedThingHexesSpiralOther
+
+
+
         //
         // Make it so we get keyboard focus on startup,
         // without having to click first.  Thanks, Melinda!
@@ -1599,6 +1876,7 @@ public class ShephardsPlayApplet
 
             //
             // Try optimizing the heights...
+            // XXX paint is a funky place for this
             //
             if (doOptimize)
             {
@@ -1620,6 +1898,8 @@ public class ShephardsPlayApplet
                 //
                 mg.setColor(java.awt.Color.red);
                 double dualVerts[][] = new double[mesh.edges.size()][];
+                mostRecentDualVerts = dualVerts;
+                double dualVertAreas[] = new double[mesh.edges.size()];
                 FORIDOWN (iEdge, mesh.edges.size())
                 {
                     if (dualVerts[iEdge] != null)
@@ -1635,11 +1915,12 @@ public class ShephardsPlayApplet
                     Mesh.Vertex v1 = e1.initialVertex();
                     Mesh.Vertex v2 = e2.initialVertex();
 
+                    double dualVertArea = twiceTriArea(v0.x,v0.y,
+                                                       v1.x,v1.y,
+                                                       v2.x,v2.y);
                     if (!doShowInsideOutDualVerts)
                     {
-                        if (twiceTriArea(v0.x,v0.y,
-                                         v1.x,v1.y,
-                                         v2.x,v2.y) < 0)
+                        if (dualVertArea < 0)
                             continue; // the triangle is inside out; it's the boundary
                     }
 
@@ -1671,6 +1952,9 @@ public class ShephardsPlayApplet
                     dualVerts[ind0] = dualVert;
                     dualVerts[ind1] = dualVert;
                     dualVerts[ind2] = dualVert;
+                    dualVertAreas[ind0] = dualVertArea;
+                    dualVertAreas[ind1] = dualVertArea;
+                    dualVertAreas[ind2] = dualVertArea;
                 }
 
                 //
@@ -1829,6 +2113,47 @@ public class ShephardsPlayApplet
 
                     }
                 }
+
+                if (true)
+                {
+                    //
+                    // Draw center of curvature
+                    // of selected dual vertices
+                    //
+
+                    // First check for validity (they are fragile)
+                    FORI (i, selectedDualVertIndices.length)
+                    {
+                        int ind = selectedDualVertIndices[i];
+                        if (dualVerts[ind] == null)
+                        {
+                            selectedDualVertIndices = new int[] {};
+                            System.out.println("BAM!");
+                            break;
+                        }
+                    }
+
+                    if (selectedDualVertIndices.length >= 1)
+                    {
+                        mg.setColor(java.awt.Color.green);
+                        double areaSum = 0.;
+                        double moment[] = {0.,0.};
+                        FORI (i, selectedDualVertIndices.length)
+                        {
+                            int ind = selectedDualVertIndices[i];
+                            mg.drawPoint(dualVerts[ind][0],
+                                         dualVerts[ind][1], 5);
+                            VecMath.vpsxv(moment,
+                                          moment,
+                                          dualVertAreas[ind], dualVerts[ind]);
+                            areaSum += dualVertAreas[ind];
+                        }
+                        double avg[] = VecMath.sxv(1./areaSum, moment);
+                        mg.drawPoint(avg[0],
+                                     avg[1], 7);
+                        //PRINTVEC(avg);
+                    }
+                }
             }
 
             //
@@ -1939,7 +2264,7 @@ public class ShephardsPlayApplet
             if (rubberBandingNewEdge)
             {
                 mg.setColor(java.awt.Color.white);
-                Mesh.Vertex v0 = (Mesh.Vertex)mesh.verts.get(selectedVertIndex);
+                Mesh.Vertex v0 = (Mesh.Vertex)mesh.verts.get(beingDraggedVertIndex);
                 mg.drawLine(v0.x, v0.y,
                             prevP[0], prevP[1], doAntiAliasing);
             } // if (rubberBandingNewEdge)
@@ -2524,8 +2849,9 @@ public class ShephardsPlayApplet
                 return closestVertIndex; // -1 if none
             } // indexOfClosestVert
 
-            public int indexOfClosestEdge(double x, double y)
+            public int indexOfClosestEdge(double point[/*2*/])
             {
+                double x = point[0], y = point[1];
                 double closestDistSqrd = Double.POSITIVE_INFINITY;
                 int closestEdgeIndex = -1;
                 FORI (iEdge, edges.size()) // beginning to end, so we choose first of equal
@@ -3097,11 +3423,13 @@ public class ShephardsPlayApplet
                 public Mesh mesh;
                 public boolean doOptimize;
                 public int optimizationTypeIndex;
-                public State(Mesh mesh, boolean doOptimize, int optimizationTypeIndex)
+                public int selectedDualVertIndices[];
+                public State(Mesh mesh, boolean doOptimize, int optimizationTypeIndex, int selectedDualVertIndices[])
                 {
                     this.mesh = new Mesh(mesh);
                     this.doOptimize = doOptimize;
                     this.optimizationTypeIndex = optimizationTypeIndex;
+                    this.selectedDualVertIndices = VecMath.copyvec(selectedDualVertIndices);
                 }
             }
             public State before;
@@ -3252,8 +3580,9 @@ public class ShephardsPlayApplet
     //
         private UndoTreeSquirrel undoTreeSquirrel = new UndoTreeSquirrel();
         private Mesh mesh = new Mesh();
-        private int selectedVertIndex = -1;
+        private int beingDraggedVertIndex = -1;
         private boolean rubberBandingNewEdge = false;
+        private int[] selectedDualVertIndices = {};
         private boolean doOptimize = false;
             private static final int OPTIMIZE_BARYCENTRICS_LEAST_SQUARES = 0;
             private static final int OPTIMIZE_BARYCENTRICS_INFINITY_NORM = 1;
@@ -3285,6 +3614,7 @@ public class ShephardsPlayApplet
         private boolean doShowPositiveOrthantnessVisualization = false; // XXX total hack-- it's cool but put it somewhere else!!
         private int showTriangles = 2; // 0: nothing, 1: verts, 2: and tris
         private boolean continuouslyDelaunayize = false; // XXX need an interface for this!
+        private double mostRecentDualVerts[][] = null;
 
     //
     // Applet-generic member variables...
