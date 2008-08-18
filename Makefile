@@ -4,8 +4,12 @@
 JAVAROOT=/usr/java/j2sdk1.4.2
 JAVAC=${JAVAROOT}/bin/javac
 
+# XXX is this not working currently?
 #JAVAROOT=/usr/java/j2sdk1.4.2
 #JAVAC=jikes +P -source 1.4 -classpath ${JAVAROOT}/jre/lib/rt.jar
+
+#JAVAROOT=/opt/blackdown-jdk-1.4.2.03
+#JAVAC=${JAVAROOT}/bin/javac
 
 
 
