@@ -21,7 +21,7 @@ JAR_CONTAINS = *.class *.prejava macros.h Makefile javacpp javarenumber
 
 # XXX ARGH! why doesn't it work using -classpath .:./donhatchsw.jar ???
 # XXX doing this instead for now, making com a symlink
-# XXX to a dir that contains all the donhatchsw class files
+# XXX to a dir that contains all the donhatchsw class files.
 JAR_CONTAINS += com
 
 .PHONY: all
@@ -45,9 +45,28 @@ CPPFLAGS += -Wall -Werror
 	# on third hand, it bombs with Couldn't open GraphicsAntiAliasingSetter$*.class because that one has no subclasses... argh.
 	#@./javarenumber -v -1 $*'$$'*.class
 
+# Separate renumber target since renumbering all the subclass files
+# on every recompile is slow :-(.  Usually I run "make renumber"
+# after an exception, and then run the program again so I will get
+# a stack trace with line numbers from the .prejava files instead of
+# the .java files.
+
+${JARFILE}.is_renumbered: $(JAR_DEPENDS_ON)
+	./javarenumber -v -1 *.class
+	${JAVAROOT}/bin/jar -cfm $(JARFILE).is_renumbered META-INF/MANIFEST.MF ${JAR_CONTAINS}
+	touch $@
+.PHONY: renumber
+renumber: $(JARFILE).is_renumbered
+
+
 MyGraphics.class: macros.h Makefile donhatchsw.jar
 GraphicsAntiAliasingSetter.class: macros.h Makefile donhatchsw.jar
 ShephardsPlayApplet.class: macros.h Makefile donhatchsw.jar
+
+SENDFILES = index.php $(JARFILE)
+.PHONY: send
+send: renumber
+	sh -c "scp $(SENDFILES) hatch@plunk.org:public_html/ShephardsPlayApplet/."
 
 .PHONY: clean
 clean:
