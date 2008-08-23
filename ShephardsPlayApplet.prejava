@@ -171,9 +171,9 @@ public class ShephardsPlayApplet
             //doCannedThingHexesSpiral(); // XXX get rid of this probably
             //doCannedThingNetless9(); // XXX get rid of this probably
             //doCannedThingEyeball(); // XXX get rid of this probably
-            doCannedThingNetless8(); // XXX get rid of this probably
+            //doCannedThingNetless8(); // XXX get rid of this probably
             //doCannedThingCrackKiller(); // XXX get rid of this probably
-            //doCannedThingHexesSpiralOther(); // XXX get rid of this probably
+            doCannedThingHexesSpiralOther(); // XXX get rid of this probably
             //doCannedThingNetless888(); // XXX get rid of this probably
             //doCannedThingNetless8Symmetric(); // XXX get rid of this probably
             //doCannedThingNetless8Optimized(); // XXX get rid of this probably
@@ -2117,58 +2117,61 @@ public class ShephardsPlayApplet
         } // doCannedThingHexesSpiral
 
         // counterexample to "there is an unfolding
-        // that uses the dullest edge on each face", // almost
+        // that uses the dullest edge on each face", // almost... needs some height adjustments... just hit O to optimize?
         private void doCannedThingHexesSpiralOther()
         {
-            double verts[][] = new double[16][];
+            int nVerts = 50;
+            double r = .7;
+            double R = 1.;
 
-            // choice at:
-            //     6 (0 or 1)
-            //     8 (1 or 2)
-            //    12 (2 or 3)
-            //    14 (3 or 4)
-            //    
-            double r = .9;
-            verts[0] = new double[]{0,0};
-            verts[1] = new double[]{.9,0};
-            verts[2] = completeTriangle(verts[0], verts[1],
-                                        .9, 1.);
-            verts[3] = completeTriangle(verts[0], verts[2],
-                                        1., .9);
-            verts[4] = completeTriangle(verts[0], verts[3],
-                                        .9, 1.);
-            verts[5] = completeTriangle(verts[0], verts[4],
-                                        .9, 1.);
-            verts[6] = completeTriangle(verts[0], verts[5],
-                                        .9, 1.);
-            verts[7] = completeTriangle(verts[1], verts[6],
-                                        .9, 1.);
-            verts[8] = completeTriangle(verts[1], verts[7],
-                                        .9, 1.);
-            verts[9] = completeTriangle(verts[1], verts[8],
-                                        .9, 1.);
-            verts[10] = completeTriangle(verts[2], verts[9],
-                                         .9, 1.);
-            verts[11] = completeTriangle(verts[2], verts[10],
-                                         .9, 1.);
-            verts[12] = completeTriangle(verts[3], verts[11],
-                                         .9, 1.);
-            verts[13] = completeTriangle(verts[3], verts[12],
-                                         .9, 1.);
-            verts[14] = completeTriangle(verts[4], verts[13],
-                                         .9, 1.);
-            verts[15] = completeTriangle(verts[4], verts[14],
-                                         .9, 1.);
+            ArrayList vertsList = new ArrayList();
+            vertsList.add(new double[]{0,0});
+            vertsList.add(new double[]{r,0});
+            vertsList.add(completeTriangle((double[])vertsList.get(0),
+                                       (double[])vertsList.get(1), r, R));
 
-            VecMath.mxs(verts, verts, .75/VecMath.norm(verts[verts.length-1]));
+            ArrayList facesList = new ArrayList();
+            facesList.add(new int[]{0,1,2});
 
-            int faces[][] = {};
+
+            int oldestOnBoundary = 0;
+            while (vertsList.size() < nVerts)
+            {
+                double newVertex[] = completeTriangle((double[])vertsList.get(oldestOnBoundary),
+                                                      (double[])vertsList.get(vertsList.size()-1),
+                                                      r, R);
+                if (VecMath.distsqrd((double[])vertsList.get(oldestOnBoundary+1),
+                                     newVertex) <= R*R)
+                {
+                    facesList.add(new int[]{oldestOnBoundary+1,
+                                       oldestOnBoundary,
+                                       vertsList.size()-1});
+                    oldestOnBoundary++;
+                }
+                else
+                {
+                    vertsList.add(newVertex);
+                    facesList.add(new int[]{oldestOnBoundary,
+                                       vertsList.size()-2,
+                                       vertsList.size()-1});
+                }
+            }
+            // Now add the inside out one
+            int insideOutFace[] = new int[vertsList.size() - oldestOnBoundary];
+            FORI (i, insideOutFace.length)
+                insideOutFace[i] = vertsList.size()-1-i;
+            facesList.add(insideOutFace);
+
+            double verts[][] = new double[vertsList.size()][];
+            vertsList.toArray(verts);
+            int faces[][] = new int[facesList.size()][];
+            facesList.toArray(faces);
+
+            VecMath.mxs(verts, verts,
+                        .75/VecMath.norm(verts[verts.length-1]));
+
             mesh = new Mesh(verts, faces);
-            delaunayize();
-            // swap the edge between 2 and 12
-            mesh.swapDiagonal((Mesh.Edge)mesh.edges.get(mesh.indexOfClosestEdge(VecMath.lerp(verts[2], verts[12], .5))), false, true);
-            // swap the edge between 3 and 14
-            mesh.swapDiagonal((Mesh.Edge)mesh.edges.get(mesh.indexOfClosestEdge(VecMath.lerp(verts[3], verts[14], .5))), false, true);
+            delaunayize(); // so faces were unnecessary, oh well
         } // doCannedThingHexesSpiralOther
 
 
