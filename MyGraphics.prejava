@@ -163,14 +163,276 @@ public class MyGraphics
                        (int)(x1 * scaleX + translateX),
                        (int)(y1 * scaleY + translateY));
         }
-    }
+    } // drawLineNonClipped
+
+    public void drawLineClipped(double x0, double y0, double x1, double y1,
+                                boolean antiAlias,
+                                double clipX0, double clipX1, double clipY0, double clipY1,
+                                double slack)
+    {
+        if (true)
+        {
+            // debug by setting clip to half what it was
+            clipX0 *= .95;
+            clipX1 *= .95;
+            clipY0 *= .95;
+            clipY1 *= .95;
+        }
+
+        {
+            double temp;
+            // make the line left to right
+            if (x0 > x1)
+            {
+                SWAP(x0, x1, temp);
+                SWAP(y0, y1, temp);
+            }
+            else if (x0 == x1 && y0 == y1)
+                return;
+            if (clipX0 > clipX1)
+                SWAP(clipX0, clipX1, temp);
+            if (clipY0 > clipY1)
+                SWAP(clipY0, clipY1, temp);
+        }
+
+        if (false) // this works, but can be optimized better
+        {
+            double t0, t1;
+            if (y0 <= y1)
+            {
+                // Positive slope
+                //if (true) {drawLineNonClipped(x0, y0, x1, y1, antiAlias); return;}
+                //if (true) return;
+
+                //t0 = MAX((clipX0-x0)/(x1-x0), (clipY0-y0)/(y1-y0));
+                // t0 = (clipX0-x0)/(x1-x0) >= (clipY0-y0)/(y1-y0) ? (clipX0-x0)/(x1-x0) : (clipY0-y0)/(y1-y0);
+                t0 = (clipX0-x0)*(y1-y0) >= (clipY0-y0)*(x1-x0) ? (clipX0-x0)/(x1-x0) : (clipY0-y0)/(y1-y0);
+
+                //t1 = MIN((clipX1-x0)/(x1-x0), (clipY1-y0)/(y1-y0));
+                t1 = (clipX1-x0)*(y1-y0) <= (clipY1-y0)*(x1-x0) ? (clipX1-x0)/(x1-x0) : (clipY1-y0)/(y1-y0);
+            }
+            else
+            {
+                // Negative slope
+                //if (true) {drawLineNonClipped(x0, y0, x1, y1, antiAlias); return;}
+                //if (true) return;
+
+                //t0 = MAX((clipX0-x0)/(x1-x0), (clipY1-y0)/(y1-y0));
+                //t0 = MAX((clipX0-x0)/(x1-x0), (y0-clipY1)/(y0-y1));
+                t0 = (clipX0-x0)*(y0-y1) >= (y0-clipY1)*(x1-x0) ? (clipX0-x0)/(x1-x0) : (y0-clipY1)/(y0-y1);
+
+                //t1 = MIN((clipX1-x0)/(x1-x0), (clipY0-y0)/(y1-y0));
+                //t1 = MIN((clipX1-x0)/(x1-x0), (y0-clipY0)/(y0-y1));
+                t1 = (clipX1-x0)*(y0-y1) <= (y0-clipY0)*(x1-x0) ? (clipX1-x0)/(x1-x0) : (y0-clipY0)/(y0-y1);
+            }
+            t0 = MAX(t0, 0);
+            t1 = MIN(t1, 1);
+            if (t1 > t0)
+                drawLineNonClipped(LERP(x0, x1, t0),
+                                   LERP(y0, y1, t0),
+                                   LERP(x0, x1, t1),
+                                   LERP(y0, y1, t1),
+                                   antiAlias);
+        }
+        else
+        {
+            // super optimized
+            // XXX in progress
+            double clippedx0, clippedy0, clippedx1, clippedy1;
+            if (y1 >= y0)
+            {
+                // Non-negative slope
+                if (x1 <= clipX0
+                 || x0 >= clipX1
+                 || y1 <= clipY0
+                 || y0 >= clipY1)
+                    return;
+                if (x0 < clipX0 - slack)
+                {
+                    if (y0 < clipY0 - slack)
+                    {
+                        if ((clipX0-x0)*(y1-y0) >= (clipY0-y0)*(x1-x0))
+                        {
+                            // Clip to clipX0
+                            clippedy0 = LERP(y0, y1, (clipX0-x0)/(x1-x0));
+                            clippedx0 = clipX0;
+                        }
+                        else
+                        {
+                            // Clip to clipY0
+                            clippedx0 = LERP(x0, x1, (clipY0-y0)/(y1-y0));
+                            clippedy0 = clipY0;
+                        }
+                    }
+                    else
+                    {
+                        // Clip to clipX0
+                        clippedy0 = LERP(y0, y1, (clipX0-x0)/(x1-x0));
+                        clippedx0 = clipX0;
+                    }
+                }
+                else if (y0 < clipY0 - slack)
+                {
+                    // Clip to clipY0
+                    clippedx0 = LERP(x0, x1, (clipY0-y0)/(y1-y0));
+                    clippedy0 = clipY0;
+                }
+                else
+                {
+                    clippedx0 = x0;
+                    clippedy0 = y0;
+                }
+                if (x1 > clipX1 + slack)
+                {
+                    if (y1 > clipY1 + slack)
+                    {
+                        if ((clipX1-x0)*(y1-y0) <= (clipY1-y0)/(x1-x0))
+                        {
+                            // Clip to clipX1
+                            clippedy1 = LERP(y0, y1, (clipX1-x0)/(x1-x0));
+                            clippedx1 = clipX1;
+                        }
+                        else
+                        {
+                            // Clip to clipY1
+                            clippedx1 = LERP(x0, x1, (clipY1-y0)/(y1-y0));
+                            clippedy1 = clipY1;
+                        }
+                    }
+                    else
+                    {
+                        // Clip to clipX1
+                        clippedy1 = LERP(y0, y1, (clipX1-x0)/(x1-x0));
+                        clippedx1 = clipX1;
+                    }
+                }
+                else if (y1 > clipY1 + slack)
+                {
+                    // Clip to clipY1
+                    clippedx1 = LERP(x0, x1, (clipY1-y0)/(y1-y0));
+                    clippedy1 = clipY1;
+                }
+                else
+                {
+                    clippedx1 = x1;
+                    clippedy1 = y1;
+                }
+                if (clippedx0 > clippedx1
+                 && clippedy0 > clippedy1)
+                    return;
+            }
+            else // y1 < y0
+            {
+                //if (true) return;
+
+                // Negative slope
+                if (x1 <= clipX0
+                 || x0 >= clipX1
+                 || y0 <= clipY0  // since y0 == max(y0,y1)
+                 || y1 >= clipY1) // since y1 == min(y0,y1)
+                    return;
+                if (x0 < clipX0 - slack)
+                {
+                    if (y0 > clipY1 + slack)
+                    {
+                        if ((clipX0-x0)*(y0-y1) >= (y0-clipY1)*(x1-x0))
+                        {
+                            // Clip to clipX0
+                            clippedy0 = LERP(y0, y1, (clipX0-x0)/(x1-x0));
+                            clippedx0 = clipX0;
+                        }
+                        else
+                        {
+                            // Clip to clipY1
+                            clippedx0 = LERP(x0, x1, (clipY1-y0)/(y1-y0));
+                            clippedy0 = clipY1;
+                        }
+                    }
+                    else
+                    {
+                        // Clip to clipX0
+                        clippedy0 = LERP(y0, y1, (clipX0-x0)/(x1-x0));
+                        clippedx0 = clipX0;
+                    }
+                }
+                else if (y0 > clipY1 + slack)
+                {
+                    // Clip to clipY1
+                    clippedx0 = LERP(x0, x1, (clipY1-y0)/(y1-y0));
+                    clippedy0 = clipY1;
+                }
+                else
+                {
+                    clippedx0 = x0;
+                    clippedy0 = y0;
+                }
+                if (x1 > clipX1 + slack)
+                {
+                    if (y1 < clipY0 - slack)
+                    {
+                        // if (clipX1-x0)/(x1-x0) <= (clipY0-y0)/(y1-y0) but y1-y0 < 0
+                        if ((clipX1-x0)*(y0-y1) <= (y0-clipY0)*(x1-x0))
+                        {
+                            // Clip to clipX1
+                            clippedy1 = LERP(y0, y1, (clipX1-x0)/(x1-x0));
+                            clippedx1 = clipX1;
+                        }
+                        else
+                        {
+                            // hits this case when should hit other casse!
+
+                            // Clip to clipY0
+                            clippedx1 = LERP(x0, x1, (clipY0-y0)/(y1-y0));
+                            clippedy1 = clipY0;
+                        }
+                    }
+                    else
+                    {
+                        // Clip to clipX1
+                        clippedy1 = LERP(y0, y1, (clipX1-x0)/(x1-x0));
+                        clippedx1 = clipX1;
+                    }
+                }
+                else if (y1 < clipY0 - slack)
+                {
+                    // Clip to clipY0
+                    clippedx1 = LERP(x0, x1, (clipY0-y0)/(y1-y0));
+                    clippedy1 = clipY0;
+                }
+                else
+                {
+                    clippedx1 = x1;
+                    clippedy1 = y1;
+                }
+                if (false)
+                {
+                    clippedx0 = x0;
+                    clippedx1 = x1;
+                    clippedy0 = y0;
+                    clippedy1 = y1;
+                }
+                if (clippedx0 > clippedx1
+                 && clippedy0 < clippedy1)
+                    return;
+            }
+            drawLineNonClipped(clippedx0, clippedy0, clippedx1, clippedy1,
+                               antiAlias);
+        }
+    } // drawLineClipped
 
     public void drawLine(double x0, double y0, double x1, double y1,
                          boolean antiAlias)
     {
-        // XXX clip!
-        drawLineNonClipped(x0, y0, x1, y1, antiAlias);
-    }
+        // clip; it sucks without clipping
+        // XXX should decide if clip is needed without divides, if possible
+        drawLineClipped(x0, y0, x1, y1,
+                        antiAlias,
+                        (0-translateX)/scaleX,
+                        (gsize.width-translateX)/scaleX,
+                        (0-translateY)/scaleY,
+                        (gsize.height-translateY)/scaleY,
+                        2./((Math.abs(scaleX)+Math.abs(scaleY))*.5));   // 2 pixels
+    } // drawLine
 
     public void drawPoint(double x, double y, int nPixels)
     {
