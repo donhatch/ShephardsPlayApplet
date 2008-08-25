@@ -172,10 +172,10 @@ public class ShephardsPlayApplet
             //doCannedThingNetless9(); // XXX get rid of this probably
             //doCannedThingEyeball(); // XXX get rid of this probably
             //doCannedThingNetless8(); // XXX get rid of this probably
-            //doCannedThingCrackKiller(); // XXX get rid of this probably
+            doCannedThingCrackKiller(); // XXX get rid of this probably
             //doCannedThingHexesSpiralOther(); // XXX get rid of this probably
             //doCannedThingNetless888(); // XXX get rid of this probably
-            doCannedThingNetless8Symmetric(); // XXX get rid of this probably
+            //doCannedThingNetless8Symmetric(); // XXX get rid of this probably
             //doCannedThingNetless8Optimized(); // XXX get rid of this probably
 
             if (eventVerbose >= 1) System.out.println("out init");
@@ -846,6 +846,26 @@ public class ShephardsPlayApplet
                     repaint();
                     break;
                 }
+                case '|': // left-to-right flip whole diagram
+                {
+                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                    mesh.flipLeftRight();
+                    // should be no need to re-delaunayize
+                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                    undoTreeSquirrel.Do(new UndoItem(before, after));
+                    repaint();
+                    break;
+                }
+                case '_': // up-to-down flip whole diagram
+                {
+                    UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                    mesh.flipUpDown();
+                    // should be no need to re-delaunayize
+                    UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                    undoTreeSquirrel.Do(new UndoItem(before, after));
+                    repaint();
+                    break;
+                }
 
                 case 's': // swap diagonal
                 {
@@ -1105,6 +1125,8 @@ public class ShephardsPlayApplet
                     System.out.println("    'B' - toggle doDoubleBuffer");
                     System.out.println("    'i'/'+'/'=' - zoom in");
                     System.out.println("    'o'/'-' - zoom out");
+                    System.out.println("    '|' - flip left-right");
+                    System.out.println("    '_' - flip up-down");
                     System.out.println("    's' - swap a diagonal");
                     System.out.println("    ctrl-'s' - swap a diagonal if the result is more Delaunay");
                     System.out.println("    ctrl-shift-'s' - Delaunay triangulate");
@@ -1935,7 +1957,6 @@ public class ShephardsPlayApplet
             mesh = new Mesh(verts, faces);
         } // doCannedThingEyeball
 
-        // XXX unused, didn't need it after all
         private static double[] triangleApex(double v0[], double ang0,
                                              double v1[], double ang1)
         {
@@ -1956,26 +1977,158 @@ public class ShephardsPlayApplet
             // Solve A v2 == b
             return VecMath.invmxv(A, b);
         } // triangleApex
+
         private void doCannedThingCrackKiller()
         {
-            double verts[][] = new double[5][];
-            double angle0 = DTOR(180);
-            double angleIncr = DTOR(-65);
+            double angle0 = DTOR(180.);
+            double angleIncr = DTOR(-(360/8. - .01));
             double length0 = .1;
-            double lengthMultiplier = 5;
+            double lengthMultiplier = 2; // would be nice to be more scientific
+            int nSpokes = 9;
+
+            double verts[][] = new double[nSpokes+1][];
+
             verts[0] = new double[]{0,0};
-            FORI (i, 4)
+            FORI (i, nSpokes)
             {
                 double length = length0 * Math.pow(lengthMultiplier, i);
                 double ang = angle0 + i*angleIncr;
                 verts[i+1] = new double[]{length*Math.cos(ang),
                                           length*Math.sin(ang)};
             }
+            int faces[][] = new int[nSpokes+1][];
+            FORI (i, nSpokes)
+            {
+                faces[i] = new int[] {
+                    1+i,
+                    0,
+                    1+(i+1)%nSpokes,
+                };
+            }
+            faces[nSpokes] = new int[nSpokes];
+            FORI (i, nSpokes)
+                faces[nSpokes][i] = 1+i;
 
-            int faces[][] = {};
+            PRINTARRAY(faces);
+
             mesh = new Mesh(verts, faces);
-            delaunayize();
+
+            // optimize
+            {
+                double optimalVertexHeights[] = mesh.findOptimalVertexHeights(
+                                OPTIMIZE_LENGTHS_LEAST_SQUARES);
+                FORIDOWN (iVert, mesh.verts.size())
+                    ((Mesh.Vertex)mesh.verts.get(iVert)).h = optimalVertexHeights[iVert];
+            }
+
+            exploreCrackHead(mesh, 1, 0);
         } // doCannedThingCrackKiller
+
+            // little private utility
+            private static double getTriCenterAndArea(Mesh.Edge edge,
+                                                      double triCenter[])
+            {
+                assert(edge.next().next().next() == edge);
+                Mesh.Vertex v0 = edge.initialVertex();
+                Mesh.Vertex v1 = edge.finalVertex();
+                Mesh.Vertex v2 = edge.next().finalVertex();
+                double twiceTriArea = twiceTriangleArea(v0.x,v0.y,
+                                                        v1.x,v1.y,
+                                                        v2.x,v2.y);
+                assert(twiceTriArea > 0);
+                SolveForDualPoint(v0.x, v0.y, v0.h - .5 * (SQR(v0.x)+SQR(v0.y)),
+                                  v1.x, v1.y, v1.h - .5 * (SQR(v1.x)+SQR(v1.y)),
+                                  v2.x, v2.y, v2.h - .5 * (SQR(v2.x)+SQR(v2.y)),
+                                  triCenter);
+                return .5*twiceTriArea;
+            } // getTriCenterAndArea
+
+        // Test whether the crack killer is really a crack killer
+        private static boolean exploreCrackHead(Mesh mesh,
+                                                int i0, int i1) // from and to of tri edge that goes from left to right of first crack edge
+        {
+            System.out.println("    Exploring crack head, starting with left->right "+i0+"->"+i1+"");
+            // Find the initial edge
+            Mesh.Edge firstTriEdge = null;
+            FORI (iEdge, mesh.edges.size())
+            {
+                Mesh.Edge edge = (Mesh.Edge)mesh.edges.get(iEdge);
+                if (edge.initialVertex().myIndex() == i0
+                 && edge.finalVertex().myIndex() == i1)
+                {
+                    assert(firstTriEdge == null);
+                    firstTriEdge = edge;
+                }
+            }
+            assert(firstTriEdge != null);
+
+            double totalCenter[] = {0.,0.};
+            double totalArea = 0.;
+            Mesh.Edge thisTriEdge = firstTriEdge;
+
+            while (true)
+            {
+                double prevTriCenter[] = new double[3]; // SolveForDualPoint needs 3
+                double prevTriArea = getTriCenterAndArea(thisTriEdge.opposite(),
+                                                         prevTriCenter);
+                // Update totalCenter and totalArea
+                VecMath.lerp(2, totalCenter,
+                             totalCenter, prevTriCenter,
+                             prevTriArea / (totalArea + prevTriArea));
+                totalArea += prevTriArea;
+
+                PRINT(totalArea);
+                PRINTVEC(totalCenter);
+
+                // gag, duplicate work, whatever
+                double nextTriCenter[] = new double[2];
+                getTriCenterAndArea(thisTriEdge,
+                                    nextTriCenter);
+                PRINTVEC(nextTriCenter);
+
+                // totalCenter and totalArea are now the total
+                // for all crack vertices BEFORE this tri edge.
+
+                Mesh.Vertex v0 = thisTriEdge.initialVertex();
+                Mesh.Vertex v1 = thisTriEdge.finalVertex();
+                Mesh.Vertex v2 = thisTriEdge.next().finalVertex();
+                System.out.println("    at tri edge "+v0.myIndex()+"->"+v1.myIndex()+"");
+                System.out.println("        left next tri edge: "+v0.myIndex()+"->"+v2.myIndex()+"");
+                System.out.println("        right next tri edge: "+v2.myIndex()+"->"+v1.myIndex()+"");
+                assert(thisTriEdge.next().next().next() == thisTriEdge);
+                double leftNextTriEdgeNormal[] = VecMath.normalize(VecMath.xv2(new double[]{v2.x-v0.x, v2.y-v0.y}));
+                double rightNextTriEdgeNormal[] = VecMath.normalize(VecMath.xv2(new double[]{v1.x-v2.x, v1.y-v2.y}));
+                PRINTVEC(leftNextTriEdgeNormal);
+                PRINTVEC(rightNextTriEdgeNormal);
+                double leftHeight = VecMath.dot(VecMath.vmv(totalCenter, nextTriCenter), leftNextTriEdgeNormal);
+                double rightHeight = VecMath.dot(VecMath.vmv(totalCenter, nextTriCenter), rightNextTriEdgeNormal);
+                PRINT(leftHeight);
+                PRINT(rightHeight);
+                assert(leftHeight != 0.);
+                assert(rightHeight != 0.);
+                assert(leftHeight < 0 || rightHeight < 0);
+                if (leftHeight < 0 && rightHeight > 0)
+                {
+                    System.out.println("        left is good, right is bad, choosing left");
+                    thisTriEdge = thisTriEdge.next().next().opposite();
+                    assert(thisTriEdge.initialVertex() == v0);
+                    assert(thisTriEdge.finalVertex() == v2);
+                }
+                else if (rightHeight < 0 && leftHeight > 0)
+                {
+                    System.out.println("        right is good, left is bad, choosing right");
+                    thisTriEdge = thisTriEdge.next().opposite();
+                    assert(thisTriEdge.initialVertex() == v2);
+                    assert(thisTriEdge.finalVertex() == v1);
+                }
+                else
+                {
+                    System.out.println("    NO CLEAR CHOICE");
+                    return false; // failure
+                }
+            }
+
+        } // exploreCrackHead
 
         // Generalization of netless9.
         // counterexample to "there is an unfolding
@@ -2527,7 +2680,8 @@ public class ShephardsPlayApplet
                     FORI (i, selectedDualVertIndices.length)
                     {
                         int ind = selectedDualVertIndices[i];
-                        if (dualVerts[ind] == null)
+                        if (ind >= dualVerts.length
+                         || dualVerts[ind] == null)
                         {
                             selectedDualVertIndices = new int[] {};
                             System.out.println("BAM!");
@@ -2744,6 +2898,15 @@ public class ShephardsPlayApplet
             if (g != frontBufferGraphics)
             {
                 frontBufferGraphics.drawImage(backBufferImage, 0, 0, this);
+            }
+
+            if (false) // hack-- uncomment this to mess around with crackkiller
+            {
+                if (((Mesh.Vertex)mesh.verts.get(1)).x
+                  < ((Mesh.Vertex)mesh.verts.get(0)).x)
+                    exploreCrackHead(mesh, 1, 0);
+                else
+                    exploreCrackHead(mesh, 0, 1);
             }
 
 	    if (eventVerbose >= 1) System.out.println("out paint");
@@ -3731,6 +3894,53 @@ public class ShephardsPlayApplet
                 return optimalVertexHeights;
             } // findOptimalVertexHeights
 
+            private void flipLeftRight()
+            {
+                FORIDOWN (iVert, verts.size())
+                {
+                    Mesh.Vertex vert = (Mesh.Vertex)verts.get(iVert);
+                    vert.x *= -1.;
+                }
+                // XXX rest is dup code
+                Mesh.Vertex finalInitials[] = new Mesh.Vertex[edges.size()];
+                FORIDOWN(iEdge, edges.size())
+                {
+                    Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
+                    finalInitials[iEdge] = edge.finalVertex();
+                }
+                FORIDOWN(iEdge, edges.size())
+                {
+                    Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
+                    Mesh.Edge tempEdge;
+                    SWAP(edge._next, edge._prev, tempEdge);
+                    edge._initialVertex = finalInitials[iEdge];
+                }
+                sanityCheck();
+            } // flipLeftRight
+            private void flipUpDown()
+            {
+                FORIDOWN (iVert, verts.size())
+                {
+                    Mesh.Vertex vert = (Mesh.Vertex)verts.get(iVert);
+                    vert.y *= -1.;
+                }
+                // XXX rest is dup code
+                Mesh.Vertex finalInitials[] = new Mesh.Vertex[edges.size()];
+                FORIDOWN(iEdge, edges.size())
+                {
+                    Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
+                    finalInitials[iEdge] = edge.finalVertex();
+                }
+                FORIDOWN(iEdge, edges.size())
+                {
+                    Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
+                    Mesh.Edge tempEdge;
+                    SWAP(edge._next, edge._prev, tempEdge);
+                    edge._initialVertex = finalInitials[iEdge];
+                }
+                sanityCheck();
+            } // flipUpDown
+
             private Mesh()
             {
             }
@@ -4127,7 +4337,7 @@ public class ShephardsPlayApplet
         frame.resize(512, 512);
         frame.show();
 
-        Misc.printPlatonicSolidVertexCurvatures();
+        //Misc.printPlatonicSolidVertexCurvatures();
 
         System.out.println("out main");
     } // main
