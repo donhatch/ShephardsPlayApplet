@@ -25,6 +25,7 @@
 #define PRINT7(x0,x1,x2,x3,x4,x5,x6) {PRINT_(x0);PRINT6(x1,x2,x3,x4,x5,x6);}
 #define PRINTSUB(x,i) System.out.println("    " + #x + "["+(i)+"] = " + (x)[i])
 #define PRINTSUBSUB(x,i,j) System.out.println("    " + #x + "["+(i)+"]["+(j)+"] = " + (x)[i][j])
+#define PRINTSUBSUBSUB(x,i,j,k) System.out.println("    " + #x + "["+(i)+"]["+(j)+"]["+(k)+"] = " + (x)[i][j][k])
 #define PRINTVEC(x) System.out.println(#x + " = " + VecMath.toString(x))
 #define PRINTMATROW(x,i) System.out.println("    " + #x + "["+(i)+"] = " + VecMath.toString((x)[i]))
 #define PRINTMAT(x) System.out.println(#x + " =\n" + VecMath.toString(x))
@@ -35,11 +36,14 @@
 #define ABS(x) ((x) < 0 ? -(x) : (x))
 #define HYPOTSQRD(a,b) (((a)*(a))+((b)*(b)))
 #define LERP(a,b,t) ((a) + (t)*((b)-(a)))
+#define SMOOTH(timeFrac) ((Math.sin(((timeFrac) - .5) * Math.PI) + 1) / 2)
 #define SWAP(a,b,temp) {temp=(a);a=(b);b=(temp);}
 #define MIN(a,b) ((a)<=(b)?(a):(b))
 #define MAX(a,b) ((a)>=(b)?(a):(b))
 #define MIN3(a,b,c) ((a)<=(b)?MIN(a,c):MIN(b,c))
 #define MAX3(a,b,c) ((a)>=(b)?MAX(a,c):MAX(b,c))
+#define MID3(a,b,c) ((a)<=(b)?((b)<=(c)?(b):(a)>=(c)?(a):(c)) \
+                             :((a)<=(c)?(a):(b)>=(c)?(b):(c)))
 #define MIN4(a,b,c,d) ((a)<=(b)?MIN3(a,c,d):MIN3(b,c,d))
 #define MAX4(a,b,c,d) ((a)>=(b)?MAX3(a,c,d):MAX3(b,c,d))
 #define MINI(a,b) ((a)<=(b)?0:1)
@@ -48,6 +52,8 @@
                               :(b)<=(c)?1:2)
 #define MAXI3(a,b,c) ((a)>=(b)?(a)>=(c)?0:2 \
                               :(b)>=(c)?1:2)
+#define MIDI3(a,b,c) ((a)<=(b)?((b)<=(c)?1:(a)>=(c)?0:2) \
+                              :((a)<=(c)?0:(b)>=(c)?1:2))
 #define CLAMP(x,a,b) ((x)<=(a)?(a):(x)>=(b)?(b):(x))
 #define BIT(x,i) (((x)>>(i))&1)
 #define SQR(x) ((x)*(x))
