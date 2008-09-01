@@ -56,6 +56,7 @@ import com.donhatchsw.util.LinearProgramming;
 import com.donhatchsw.util.UndoTreeSquirrel;
 import com.donhatchsw.util.TriangulationOptimizer;
 import com.donhatchsw.util.Minimizer;
+import com.donhatchsw.util.Listenable;
 import com.donhatchsw.compat.ArrayList;
 import com.donhatchsw.awt.Row;
 import com.donhatchsw.awt.Col;
@@ -146,13 +147,122 @@ public class ShephardsPlayApplet
     //
         public ShephardsPlayApplet()
         {
+            final java.awt.GridBagConstraints stretchx = new java.awt.GridBagConstraints(){{fill=HORIZONTAL;weightx=1.;}};
+            final java.awt.GridBagConstraints stretchxy = new java.awt.GridBagConstraints(){{fill=BOTH;weightx=weighty=1.;}};
+
             setLayout(new ColLayout());
+
             add(theCanvas = new TheCanvas() {
                 },
-                new java.awt.GridBagConstraints(){{fill=BOTH;weightx=weighty=1.;}} // stretch in y
+                stretchxy
             );
+
             add(new Row() {{
-            });
+                    add(new java.awt.Checkbox("Optimize", doOptimize.get()) {
+                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                        {
+                            addItemListener(new java.awt.event.ItemListener() {
+                                public void itemStateChanged(java.awt.event.ItemEvent e)
+                                {
+                                    UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+                                    doOptimize.set(getState());
+                                    System.out.println("doOptimize -> "+doOptimize.get());
+                                    if (continuouslyDelaunayize) delaunayize();
+                                    UndoItem.State after = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+                                    undoTreeSquirrel.Do(new UndoItem(before, after));
+                                    theCanvas.repaint();
+                                }
+                            });
+                            doOptimize.addListener(doOptimizeListener = new Listenable.Listener() {
+                                public void valueChanged()
+                                {
+                                    setState(doOptimize.get()); // of the checkbox
+                                }
+                            });
+                        }
+                    });
+                    add(new java.awt.Choice() {
+                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                        {
+                            FORI (i, optimizationTypeNames.length)
+                                insert(optimizationTypeNames[availableOptimizationTypes[i]], i);
+                            select(optimizationTypeIndex.get());
+                            addItemListener(new java.awt.event.ItemListener() {
+                                public void itemStateChanged(java.awt.event.ItemEvent e)
+                                {
+                                    UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+
+
+                                    optimizationTypeIndex.set(getSelectedIndex());
+                                    optimizationType = availableOptimizationTypes[optimizationTypeIndex.get()];
+                                    System.out.println("optimizationType -> "+optimizationTypeNames[optimizationType]);
+
+
+                                    if (continuouslyDelaunayize) delaunayize();
+                                    UndoItem.State after = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+                                    undoTreeSquirrel.Do(new UndoItem(before, after));
+                                    theCanvas.repaint();
+                                }
+                            });
+                            optimizationTypeIndex.addListener(optimizationTypeIndexListener = new Listenable.Listener() {
+                                public void valueChanged()
+                                {
+                                    select(optimizationTypeIndex.get());
+                                }
+                            });
+                        }
+                    });
+                    add(new java.awt.Label(""), stretchxy);
+                    add(new java.awt.Button("Undo") {
+                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                    {
+                        addActionListener(new java.awt.event.ActionListener() {
+                            public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem item = (UndoItem)undoTreeSquirrel.undo();
+                                if (item != null)
+                                {
+                                    mesh = new Mesh(item.before.mesh);
+                                    doOptimize.set(item.before.doOptimize);
+                                    optimizationTypeIndex.set(item.before.optimizationTypeIndex);
+                                    optimizationType = availableOptimizationTypes[optimizationTypeIndex.get()];
+                                    selectedDualVertIndices = VecMath.copyvec(item.before.selectedDualVertIndices);
+                                }
+                                else
+                                {
+                                    System.out.println("Nothing to undo!");
+                                }
+                                theCanvas.repaint();
+                            }
+                        });
+                    }});
+                    add(new java.awt.Button("Redo") {
+                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                    {
+                        addActionListener(new java.awt.event.ActionListener() {
+                            public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem item = (UndoItem)undoTreeSquirrel.redo();
+                                if (item != null)
+                                {
+                                    mesh = new Mesh(item.after.mesh);
+                                    doOptimize.set(item.after.doOptimize);
+                                    optimizationTypeIndex.set(item.after.optimizationTypeIndex);
+                                    optimizationType = availableOptimizationTypes[optimizationTypeIndex.get()];
+                                    selectedDualVertIndices = VecMath.copyvec(item.after.selectedDualVertIndices);
+                                }
+                                else
+                                {
+                                    System.out.println("Nothing to redo!");
+                                }
+                                theCanvas.repaint();
+                            }
+                        });
+                    }});
+                }},
+                stretchx
+            );
+
             add(new Row() {{
 
                 add(new java.awt.Button("Clear") {
@@ -161,14 +271,14 @@ public class ShephardsPlayApplet
                     addActionListener(new java.awt.event.ActionListener() {
                         public void actionPerformed(java.awt.event.ActionEvent e)
                         {
-                            UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                            UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
 
                             mesh = new Mesh();
                             translateFudgeX = 0; // doesn't get undone properly
                             translateFudgeY = 0; // doesn't get undone properly
                             if (continuouslyDelaunayize) delaunayize();
 
-                            UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                            UndoItem.State after = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                             undoTreeSquirrel.Do(new UndoItem(before, after));
 
                             theCanvas.repaint();
@@ -182,11 +292,11 @@ public class ShephardsPlayApplet
                     addActionListener(new java.awt.event.ActionListener() {
                         public void actionPerformed(java.awt.event.ActionEvent e)
                         {
-                            UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                            UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
 
                             doCannedThingNetless8();
 
-                            UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                            UndoItem.State after = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                             undoTreeSquirrel.Do(new UndoItem(before, after));
 
                             theCanvas.repaint();
@@ -200,11 +310,11 @@ public class ShephardsPlayApplet
                     addActionListener(new java.awt.event.ActionListener() {
                         public void actionPerformed(java.awt.event.ActionEvent e)
                         {
-                            UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                            UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
 
                             doCannedThingNetless9();
 
-                            UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                            UndoItem.State after = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                             undoTreeSquirrel.Do(new UndoItem(before, after));
 
                             theCanvas.repaint();
@@ -218,11 +328,11 @@ public class ShephardsPlayApplet
                     addActionListener(new java.awt.event.ActionListener() {
                         public void actionPerformed(java.awt.event.ActionEvent e)
                         {
-                            UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                            UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
 
                             doCannedThingCrackKiller();
 
-                            UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                            UndoItem.State after = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                             undoTreeSquirrel.Do(new UndoItem(before, after));
 
                             theCanvas.repaint();
@@ -236,11 +346,11 @@ public class ShephardsPlayApplet
                     addActionListener(new java.awt.event.ActionListener() {
                         public void actionPerformed(java.awt.event.ActionEvent e)
                         {
-                            UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                            UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
 
                             doCannedThingSweepKiller();
 
-                            UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                            UndoItem.State after = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                             undoTreeSquirrel.Do(new UndoItem(before, after));
 
                             theCanvas.repaint();
@@ -249,7 +359,27 @@ public class ShephardsPlayApplet
                 }});
 
             }});
+
+            //randomlyColorize(this);
         } // ShephardsPlayApplet ctor
+
+        private static void randomlyColorize(java.awt.Component c)
+        {
+            c.setBackground(new java.awt.Color((float)Math.random(),
+                                               (float)Math.random(),
+                                               (float)Math.random()));
+            c.setForeground(new java.awt.Color((float)Math.random(),
+                                               (float)Math.random(),
+                                               (float)Math.random()));
+            if (c instanceof java.awt.Container)
+            {
+                java.awt.Container C = (java.awt.Container)c;
+                int n = C.getComponentCount();
+                for (int i = 0; i < n; ++i)
+                    randomlyColorize(C.getComponent(i));
+            }
+        } // randomlyColorize
+
 
         public void init()
         {
@@ -258,7 +388,7 @@ public class ShephardsPlayApplet
 
             // These (and eventVerbose) can be specified on the command line as, e.g. doLabels=true
             doLabels = getParameterBoolean("doLabels", doLabels);
-            doOptimize = getParameterBoolean("doOptimize", doOptimize);
+            doOptimize.set(getParameterBoolean("doOptimize", doOptimize.get()));
             doShowPositiveOrthantnessVisualization = getParameterBoolean("doShowPositiveOrthantnessVisualization", doShowPositiveOrthantnessVisualization);
             // XXX this is kind of messed up, we don't get to know whether the user misspelled something
 
@@ -365,7 +495,7 @@ public class ShephardsPlayApplet
                 double thisP[] = new double[2];
                 mostRecentGraphics.pick(e.getX(), e.getY(), thisP);
 
-                stateWhenPressed = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                stateWhenPressed = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
 
                 int whichButton = getButton(e);
                 if (whichButton == java_awt_event_MouseEvent_BUTTON1)
@@ -622,7 +752,7 @@ public class ShephardsPlayApplet
 
                 if (stateWhenPressed != null)
                 {
-                    UndoItem.State stateWhenReleased = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                    UndoItem.State stateWhenReleased = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                     undoTreeSquirrel.Do(new UndoItem(stateWhenPressed, stateWhenReleased));
                     stateWhenPressed = null;
                 }
@@ -794,11 +924,11 @@ public class ShephardsPlayApplet
                 {
                     case java.awt.event.KeyEvent.VK_UP:
                     {
-                        UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
-                        if (doOptimize)
+                        UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+                        if (doOptimize.get())
                         {
-                            doOptimize ^= true;
-                            System.out.println("doOptimize -> "+doOptimize+" ('O' to turn back on)");
+                            doOptimize.set(false);
+                            System.out.println("doOptimize -> "+doOptimize.get()+" ('O' to turn back on)");
                         }
                         System.out.print("Up");
                         System.out.flush();
@@ -811,18 +941,18 @@ public class ShephardsPlayApplet
                             ((Mesh.Vertex)mesh.verts.get(iVert)).h += incr;
                         System.out.println("    verts["+iVert+"].h -> "+((Mesh.Vertex)mesh.verts.get(iVert)).h);
                         if (continuouslyDelaunayize) delaunayize();
-                        UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State after = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
                         break;
                     }
                     case java.awt.event.KeyEvent.VK_DOWN:
                     {
-                        UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
-                        if (doOptimize)
+                        UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+                        if (doOptimize.get())
                         {
-                            doOptimize ^= true;
-                            System.out.println("doOptimize -> "+doOptimize+" ('O' to turn back on)");
+                            doOptimize.set(false);
+                            System.out.println("doOptimize -> "+doOptimize.get()+" ('O' to turn back on)");
                         }
                         System.out.print("Down");
                         System.out.flush();
@@ -834,7 +964,7 @@ public class ShephardsPlayApplet
                         else
                             ((Mesh.Vertex)mesh.verts.get(iVert)).h -= incr;
                         if (continuouslyDelaunayize) delaunayize();
-                        UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State after = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
                         break;
@@ -922,7 +1052,7 @@ public class ShephardsPlayApplet
 
                     case 'i': case '+': case '=': // zoom in
                     {
-                        UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         double scale = Math.sqrt(2.);
                         FORIDOWN (iVert, mesh.verts.size())
                         {
@@ -936,14 +1066,14 @@ public class ShephardsPlayApplet
                         translateFudgeY *= scale;
 
                         // should be no need to re-delaunayize
-                        UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State after = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
                         break;
                     }
                     case 'o': case '-':           // zoom out
                     {
-                        UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         double scale = Math.sqrt(.5);
                         FORIDOWN (iVert, mesh.verts.size())
                         {
@@ -956,14 +1086,14 @@ public class ShephardsPlayApplet
                         translateFudgeX *= scale;
                         translateFudgeY *= scale;
                         // should be no need to re-delaunayize
-                        UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State after = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
                         break;
                     }
                     case 'f': // frame
                     {
-                        UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
 
                         {
                             double minx = Double.POSITIVE_INFINITY;
@@ -997,27 +1127,27 @@ public class ShephardsPlayApplet
                         }
 
                         // should be no need to re-delaunayize
-                        UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State after = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
                         break;
                     }
                     case '|': // left-to-right flip whole diagram
                     {
-                        UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         mesh.flipLeftRight();
                         // should be no need to re-delaunayize
-                        UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State after = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
                         break;
                     }
                     case '_': // up-to-down flip whole diagram
                     {
-                        UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         mesh.flipUpDown();
                         // should be no need to re-delaunayize
-                        UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State after = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
                         break;
@@ -1025,7 +1155,7 @@ public class ShephardsPlayApplet
 
                     case 's': // swap diagonal
                     {
-                        UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         int closestEdgeIndex = mesh.indexOfClosestEdge(prevP);
                         if (closestEdgeIndex != -1)
                         {
@@ -1034,7 +1164,7 @@ public class ShephardsPlayApplet
                             mesh.sanityCheck();
                         }
                         if (continuouslyDelaunayize) delaunayize();
-                        UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State after = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
                         break;
@@ -1043,7 +1173,7 @@ public class ShephardsPlayApplet
                     case CTRL('s'): // swap diagonal but only if it makes it closer to delaunay
                     {
                         // Swap diagonal but only if it makes it closer to delaunay
-                        UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         if (e.isShiftDown())
                             delaunayize();
                         else
@@ -1057,7 +1187,7 @@ public class ShephardsPlayApplet
                             }
                             if (continuouslyDelaunayize) delaunayize(); // silly, it will just undo the swap in this case
                         }
-                        UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State after = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
                         break;
@@ -1065,7 +1195,7 @@ public class ShephardsPlayApplet
 
                     case 'w': // toggle closest dual vertex for weighting (think of better mnemonic)
                     {
-                        UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         if (mostRecentDualVerts != null)
                         {
                             double closestDistSqrd = Double.POSITIVE_INFINITY;
@@ -1096,14 +1226,14 @@ public class ShephardsPlayApplet
                                 selectedDualVertIndices = (int[])Arrays.append(selectedDualVertIndices, closestIndex);
                             }
                         }
-                        UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State after = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
                         break;
                     }
                     case 'd': // delete closest edge
                     {
-                        UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         int closestEdgeIndex = mesh.indexOfClosestEdge(prevP);
                         if (closestEdgeIndex != -1)
                         {
@@ -1112,23 +1242,23 @@ public class ShephardsPlayApplet
                             mesh.sanityCheck();
                         }
                         if (continuouslyDelaunayize) delaunayize();
-                        UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State after = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
                         break;
                     }
                     case 'S': // turn off optimize, and re-sphereize
                     {
-                        UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
-                        if (doOptimize)
+                        UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+                        if (doOptimize.get())
                         {
-                            doOptimize ^= true;
-                            System.out.println("doOptimize -> "+doOptimize+" ('O' to turn back on)");
+                            doOptimize.set(false);
+                            System.out.println("doOptimize -> "+doOptimize.get()+" ('O' to turn back on)");
                         }
                         FORIDOWN (iVert, mesh.verts.size())
                             ((Mesh.Vertex)mesh.verts.get(iVert)).h = 0.;
                         if (continuouslyDelaunayize) delaunayize();
-                        UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State after = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
                         break;
@@ -1142,11 +1272,11 @@ public class ShephardsPlayApplet
 
                     case 'O': // toggle doOptimize
                     {
-                        UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
-                        doOptimize ^= true;
-                        System.out.println("doOptimize -> "+doOptimize);
+                        UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+                        doOptimize.set(!doOptimize.get());
+                        System.out.println("doOptimize -> "+doOptimize.get());
                         if (continuouslyDelaunayize) delaunayize();
-                        UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State after = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
                         break;
@@ -1175,9 +1305,9 @@ public class ShephardsPlayApplet
                         if (item != null)
                         {
                             mesh = new Mesh(item.before.mesh);
-                            doOptimize = item.before.doOptimize;
-                            optimizationTypeIndex = item.before.optimizationTypeIndex;
-                            optimizationType = availableOptimizationTypes[optimizationTypeIndex];
+                            doOptimize.set(item.before.doOptimize);
+                            optimizationTypeIndex.set(item.before.optimizationTypeIndex);
+                            optimizationType = availableOptimizationTypes[optimizationTypeIndex.get()];
                             selectedDualVertIndices = VecMath.copyvec(item.before.selectedDualVertIndices);
                         }
                         else
@@ -1193,9 +1323,9 @@ public class ShephardsPlayApplet
                         if (item != null)
                         {
                             mesh = new Mesh(item.after.mesh);
-                            doOptimize = item.after.doOptimize;
-                            optimizationTypeIndex = item.after.optimizationTypeIndex;
-                            optimizationType = availableOptimizationTypes[optimizationTypeIndex];
+                            doOptimize.set(item.after.doOptimize);
+                            optimizationTypeIndex.set(item.after.optimizationTypeIndex);
+                            optimizationType = availableOptimizationTypes[optimizationTypeIndex.get()];
                             selectedDualVertIndices = VecMath.copyvec(item.after.selectedDualVertIndices);
                         }
                         else
@@ -1207,12 +1337,12 @@ public class ShephardsPlayApplet
                     }
                     case 'c': // clear
                     {
-                        UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         mesh = new Mesh();
                         translateFudgeX = 0; // doesn't get undone properly
                         translateFudgeY = 0; // doesn't get undone properly
                         if (continuouslyDelaunayize) delaunayize();
-                        UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State after = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
                         break;
@@ -1237,16 +1367,16 @@ public class ShephardsPlayApplet
                             FORI (i, mostRecentDualVerts.length)
                                 System.out.println("    mostRecentDualVerts["+i+"] = "+VecMath.toString(mostRecentDualVerts[i])+"");
                         }
-                        UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         doCannedThingNetless8Optimized();
-                        UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State after = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
                         break;
                     }
                     case 'q':
                     {
-                        UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         netless8OptimizationIndex++;
                         PRINT(netless8OptimizationIndex);
                         netless8OptimizationIndex %= netless8OptimizationPath.length;
@@ -1259,7 +1389,7 @@ public class ShephardsPlayApplet
                         }
 
 
-                        UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State after = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
                         break;
@@ -1314,8 +1444,8 @@ public class ShephardsPlayApplet
                         break;
 
                     case CTRL('o'): // cycle optimizationType
-                        optimizationTypeIndex = (optimizationTypeIndex+1)%availableOptimizationTypes.length;
-                        optimizationType = availableOptimizationTypes[optimizationTypeIndex];
+                        optimizationTypeIndex.set((optimizationTypeIndex.get()+1)%availableOptimizationTypes.length);
+                        optimizationType = availableOptimizationTypes[optimizationTypeIndex.get()];
                         System.out.println("optimizationType -> "+optimizationTypeNames[optimizationType]);
                         theCanvas.repaint();
                         break;
@@ -1328,7 +1458,7 @@ public class ShephardsPlayApplet
 
                     case CTRL('c'): // very special case canned... netless9 example
                     {
-                        UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
 
                         if (e.isAltDown())
                             doCannedThingHexesSpiral();
@@ -1336,17 +1466,17 @@ public class ShephardsPlayApplet
                             doCannedThingNetless9();
 
                         if (continuouslyDelaunayize) delaunayize();
-                        UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State after = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
                         break;
                     }
                     case CTRL('e'): // very special case canned eyeball example
                     {
-                        UndoItem.State before = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         doCannedThingEyeball();
                         if (continuouslyDelaunayize) delaunayize();
-                        UndoItem.State after = new UndoItem.State(mesh, doOptimize, optimizationTypeIndex, selectedDualVertIndices);
+                        UndoItem.State after = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
                         break;
@@ -1463,7 +1593,7 @@ public class ShephardsPlayApplet
                 // Try optimizing the heights...
                 // XXX paint is a funky place for this
                 //
-                if (doOptimize)
+                if (doOptimize.get())
                     mesh.findAndApplyOptimalVertexHeights(optimizationType);
 
                 //
@@ -4472,7 +4602,12 @@ public class ShephardsPlayApplet
         private int beingDraggedVertIndex = -1;
         private boolean rubberBandingNewEdge = false;
         private int[] selectedDualVertIndices = {};
-        private boolean doOptimize = false;
+
+        // XXX is there an easier way to associate that stuff with a certain object? maybe be able to just pass this object to addListener, and make it automatically remove the listener when I go away?
+        private Listenable.Listener doOptimizeListener = null;
+        private Listenable.Listener optimizationTypeIndexListener = null;
+
+        private Listenable.Boolean doOptimize = new Listenable.Boolean(false);
             private static final int OPTIMIZE_BARYCENTRICS_LEAST_SQUARES = 0;
             private static final int OPTIMIZE_BARYCENTRICS_INFINITY_NORM = 1;
             private static final int OPTIMIZE_BARYCENTRICS_MAX_MIN = 2;
@@ -4492,8 +4627,8 @@ public class ShephardsPlayApplet
                 OPTIMIZE_LENGTHS_LEAST_SQUARES,
                 OPTIMIZE_LENGTHS_INFINITY_NORM,
             };
-        private int optimizationTypeIndex = 0;
-        int optimizationType = availableOptimizationTypes[optimizationTypeIndex];
+        private Listenable.Int optimizationTypeIndex = new Listenable.Int(0, availableOptimizationTypes.length-1, 0); // min, max, default
+        int optimizationType = availableOptimizationTypes[optimizationTypeIndex.get()];
         private java.awt.Canvas theCanvas = null;
 
         // hack
