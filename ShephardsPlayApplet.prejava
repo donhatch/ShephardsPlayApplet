@@ -58,6 +58,7 @@ import com.donhatchsw.util.TriangulationOptimizer;
 import com.donhatchsw.util.Minimizer;
 import com.donhatchsw.util.Listenable;
 import com.donhatchsw.compat.ArrayList;
+import com.donhatchsw.compat.IntArrayList;
 import com.donhatchsw.awt.Row;
 import com.donhatchsw.awt.Col;
 import com.donhatchsw.awt.RowLayout;
@@ -313,6 +314,42 @@ public class ShephardsPlayApplet
             );
 
             add(new Row() {{
+
+                    add(new java.awt.Button("Load DUMP.off") {
+                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                    {
+                        addActionListener(new java.awt.event.ActionListener() {
+                            public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+
+                                load("DUMP.off");
+
+                                UndoItem.State after = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+                                undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                theCanvas.repaint();
+                            }
+                        });
+                    }});
+
+                    add(new java.awt.Button("Save DUMP.off") {
+                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                    {
+                        addActionListener(new java.awt.event.ActionListener() {
+                            public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                save("DUMP.off");
+                            }
+                        });
+                    }});
+
+                    add(new java.awt.Label(""), stretchx);
+                }},
+                stretchx
+            );
+
+            add(new Row() {{
                     add(new java.awt.Checkbox("Optimize", doOptimize.get()) {
                         public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
                         {
@@ -437,6 +474,160 @@ public class ShephardsPlayApplet
                     randomlyColorize(C.getComponent(i));
             }
         } // randomlyColorize
+
+        public void save(String fileName)
+        {
+            System.out.println("Saving to "+fileName+"... ");
+            System.out.flush();
+            try {
+                java.io.PrintWriter writer = new java.io.PrintWriter(new java.io.BufferedWriter(new java.io.FileWriter(fileName)));
+
+                // XXX want \n\r no matter which platform I'm on!
+
+                writer.println("OFF");
+
+                // count faces
+                int nFaces;
+                {
+                    boolean didEdge[] = new boolean[mesh.edges.size()]; // all false
+                    nFaces = 0; // and counting
+                    int nEdges = mesh.edges.size();
+                    FORI (iEdge, nEdges)
+                    {
+                        if (didEdge[iEdge])
+                            continue;
+                        nFaces++;
+                        Mesh.Edge e = (Mesh.Edge)mesh.edges.get(iEdge);
+                        while (!didEdge[e.myIndex()])
+                        {
+                            didEdge[e.myIndex()] = true;
+                            e = e.next();
+                        }
+                    }
+                }
+                writer.println("" + mesh.verts.size()
+                            + " " + nFaces
+                            + " " + 0);
+                FORI (iVert, mesh.verts.size())
+                {
+                    Mesh.Vertex vert = (Mesh.Vertex)mesh.verts.get(iVert);
+                    writer.println("" + vert.x + " " + vert.y + " " + vert.h);
+                }
+                {
+                    boolean didEdge[] = new boolean[mesh.edges.size()]; // all false
+                    int nEdges = mesh.edges.size();
+                    IntArrayList vertsThisFace = new IntArrayList();
+                    FORI (iEdge, nEdges)
+                    {
+                        if (didEdge[iEdge])
+                            continue;
+                        vertsThisFace.clear();
+                        Mesh.Edge e = (Mesh.Edge)mesh.edges.get(iEdge);
+                        while (!didEdge[e.myIndex()])
+                        {
+                            didEdge[e.myIndex()] = true;
+                            vertsThisFace.add(e.initialVertex().myIndex());
+                            e = e.next();
+                        }
+                        writer.print("" + vertsThisFace.size());
+                        FORI (iVertThisFace, vertsThisFace.size())
+                            writer.print(" " + vertsThisFace.get(iVertThisFace));
+                        writer.println();
+                    }
+                }
+
+                writer.flush();
+                writer.close();
+            }
+            catch (Exception exc)
+            {
+                System.out.println("save to file "+fileName+" failed:" + exc);
+            }
+            System.out.println("done.");
+        } // save
+        public void load(String fileName)
+        {
+            System.out.print("Loading from "+fileName+"... ");
+            System.out.flush();
+            try {
+                java.io.LineNumberReader reader = new java.io.LineNumberReader(new java.io.FileReader(fileName)); // LineNumberReader is already a buffered reader
+                String line;
+                if ((line = reader.readLine()) == null)
+                {
+                    reader.close();
+                    throw new Exception("premature EOF expecting OFF");
+                }
+                if (!line.equals("OFF"))
+                {
+                    reader.close();
+                    throw new Exception("expected OFF, got \""+line+"\"");
+                }
+                if ((line = reader.readLine()) == null)
+                {
+                    reader.close();
+                    throw new Exception("premature EOF expecting number of verts, faces, 0");
+                }
+                String[] tokens = line.split("\\s");
+                if (tokens.length != 3)
+                {
+                    reader.close();
+                    throw new Exception("expected number of verts, number of faces, 0, got \""+line+"\"");
+                }
+                int nVerts = Integer.parseInt(tokens[0]);
+                int nFaces = Integer.parseInt(tokens[1]);
+                int zero = Integer.parseInt(tokens[2]);
+                double verts[][] = new double[nVerts][3];
+                int faces[][] = new int[nFaces][];
+
+                FORI (iVert, nVerts)
+                {
+                    if ((line = reader.readLine()) == null)
+                    {
+                        reader.close();
+                        throw new Exception("premature EOF trying to read vertex "+iVert+"/"+nVerts+"");
+                    }
+                    tokens = line.split("\\s");
+                    if (tokens.length != 3)
+                    {
+                        reader.close();
+                        throw new Exception("expected 3 floating point numbers, got \""+line+"\"");
+                    }
+                    FORI (i, 3)
+                        verts[iVert][i] = Double.parseDouble(tokens[i]);
+                }
+                FORI (iFace, nFaces)
+                {
+                    if ((line = reader.readLine()) == null)
+                    {
+                        reader.close();
+                        throw new Exception("premature EOF trying to read face "+iFace+"/"+nFaces+"");
+                    }
+                    tokens = line.split("\\s");
+                    if (tokens.length == 0)
+                    {
+                        reader.close();
+                        throw new Exception("expected a face, got \""+line+"\"");
+                    }
+                    int faceSize = Integer.parseInt(tokens[0]);
+                    if (tokens.length != 1 + faceSize)
+                    {
+                        reader.close();
+                        throw new Exception("expected a face, got \""+line+"\" (wrong number of indices)");
+                    }
+                    faces[iFace] = new int[faceSize];
+                    FORI (i, faceSize)
+                        faces[iFace][i] = Integer.parseInt(tokens[i+1]);
+                }
+                reader.close();
+
+                mesh = new Mesh(verts, faces);
+            }
+            catch (Exception exc)
+            {
+                //exc.printStackTrace();
+                System.out.println("load from file "+fileName+" failed:" + exc);            }
+            System.out.println("done.");
+        } // load
 
 
         public void init()
@@ -4797,7 +4988,7 @@ public class ShephardsPlayApplet
         applet.start();
 
         frame.move(400, 20);
-        frame.resize(512, 512);
+        frame.resize(700, 500);
         frame.show();
 
         //Misc.printPlatonicSolidVertexCurvatures();
