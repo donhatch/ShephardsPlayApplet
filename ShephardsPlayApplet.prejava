@@ -2616,15 +2616,15 @@ public class ShephardsPlayApplet
                     };
                     mesh = new Mesh(verts, faces);
                 }
-                if (false)
+                if (true)
                 {
                     //double topTilt = DTOR(2.);
                     //double topTilt = DTOR(45.);
                     //double topTilt = Math.atan2(1,2);
                     //double topTilt = Math.atan2(1,2)/2;
                     double topTilt = Math.atan2(1,4);
-                    double q = 50;
-                    double qq = 100;
+                    double q = 500;
+                    double qq = 600;
                     double verts[][] = {
                         {0,0},     // 0
                         {0,7+7*Math.tan(topTilt)}, // 1
@@ -2636,11 +2636,16 @@ public class ShephardsPlayApplet
                         {-15,3},  // 7
                         {14.5+q*Math.cos(DTOR(30.)), 1.5-q*Math.sin(DTOR(30.))},  // 8
                         {-14.5-q*Math.cos(DTOR(30.)), 1.5-q*Math.sin(DTOR(30.))},  // 9
+#define DO_OUTER
+#ifdef DO_OUTER
                         {14.5+qq*Math.cos(DTOR(30.)), 1.5-qq*Math.sin(DTOR(30.))},  // 10
                         {-14.5-qq*Math.cos(DTOR(30.)), 1.5-qq*Math.sin(DTOR(30.))},  // 11
                         {0,50}, // 12     (will be adjusted)
+#endif // DO_OUTER
                     };
+#ifdef DO_OUTER
                     verts[12][1] = verts[10][1] + Math.sqrt(3.)*verts[10][0];
+#endif // DO_OUTER
                     int faces[][] = {
                         {1,0,2},
                         {0,1,3},
@@ -2651,13 +2656,16 @@ public class ShephardsPlayApplet
                         {6,4,8},
                         {5,7,9},
 
-                        //{0,5,9,7,3,1,2,6,8,4},
+#ifndef DO_OUTER // if NOT doing outer
+                        {0,5,9,7,3,1,2,6,8,4},
+#endif // DO_OUTER
 
+#ifdef DO_OUTER
+                        {6,8,10},
+                        {9,7,11},
                         {10,0,11},
-                        {10,6,8},
                         {10,8,4},
                         {10,4,0},
-                        {11,9,7},
                         {11,5,9},
                         {11,0,5},
 
@@ -2669,8 +2677,9 @@ public class ShephardsPlayApplet
                         {12,1,2},
                         {12,2,6},
                         {12,6,10},
+#endif // DO_OUTER
                     };
-                    // corresponding to the triangular faces...
+                    // corresponding to the triangular faces... (some of them)
                     double desiredDualVerts[][] = {
                         {1,3},
                         {-1,3},
@@ -2680,12 +2689,17 @@ public class ShephardsPlayApplet
                         {-9,7},
                         {12,6},
                         {-12,6},
+#ifdef DO_OUTER
+                        {12+.5*Math.cos(RTOD(60.))/Math.sin(RTOD(60.)), 6.5}, // this one is only approximate
+                        {-12-.5*Math.cos(RTOD(60.))/Math.sin(RTOD(60.)), 6.5}, // this one is only approximate
+#endif
                     };
-                    // adjust heights to make the dual verts right
+                    // make room for heights in the array
                     FORI (iVert, verts.length)
                         if (verts[iVert].length == 2)
                             verts[iVert] = (double[])Arrays.append(verts[iVert], 0.);
-                    FORI (iVert, desiredDualVerts.length-2)
+                    // adjust heights to make the dual verts right
+                    FORI (iVert, desiredDualVerts.length+2)
                     {
                         if (iVert == 0)
                             verts[iVert][2] = 0.;
@@ -2694,12 +2708,12 @@ public class ShephardsPlayApplet
                             // Get the y coord of desiredDualVerts[0] right
                             double sampleResultVerts[][] = new double[2][3];
                             int iDualVert = 0;
+                            double v0[] = verts[faces[iDualVert][0]];
+                            double v1[] = verts[faces[iDualVert][1]];
+                            double v2[] = verts[faces[iDualVert][2]];
                             FORI (iSample, 2)
                             {
                                 verts[iVert][2] = (double)iSample; // 0. or 1.
-                                double v0[] = verts[faces[iDualVert][0]];
-                                double v1[] = verts[faces[iDualVert][1]];
-                                double v2[] = verts[faces[iDualVert][2]];
                                 SolveForDualPoint(v0[0],v0[1],v0[2] - .5 * (SQR(v0[0])+SQR(v0[1])),
                                                   v1[0],v1[1],v1[2] - .5 * (SQR(v1[0])+SQR(v1[1])),
                                                   v2[0],v2[1],v2[2] - .5 * (SQR(v2[0])+SQR(v2[1])),
@@ -2709,18 +2723,28 @@ public class ShephardsPlayApplet
                             double toSample1[] = VecMath.vmv(2, sampleResultVerts[1], sampleResultVerts[0]);
                             double t = toDesired[1] / toSample1[1];
                             verts[iVert][2] = t;
+
+                            // check...
+                            double finalResultVert[] = new double[3];
+                            SolveForDualPoint(v0[0],v0[1],v0[2] - .5 * (SQR(v0[0])+SQR(v0[1])),
+                                              v1[0],v1[1],v1[2] - .5 * (SQR(v1[0])+SQR(v1[1])),
+                                              v2[0],v2[1],v2[2] - .5 * (SQR(v2[0])+SQR(v2[1])),
+                                              finalResultVert);
+                            //PRINTVEC(desiredDualVerts[iDualVert]);
+                            //PRINTVEC(finalResultVert);
+                            assert(Math.abs(desiredDualVerts[iDualVert][1]-finalResultVert[1]) <= 1e-6);
                         }
                         else
                         {
                             assert(faces[iVert-2][2] == iVert);
                             double sampleResultVerts[][] = new double[2][3];
                             int iDualVert = iVert-2;
+                            double v0[] = verts[faces[iDualVert][0]];
+                            double v1[] = verts[faces[iDualVert][1]];
+                            double v2[] = verts[faces[iDualVert][2]];
                             FORI (iSample, 2)
                             {
                                 verts[iVert][2] = (double)iSample; // 0. or 1.
-                                double v0[] = verts[faces[iDualVert][0]];
-                                double v1[] = verts[faces[iDualVert][1]];
-                                double v2[] = verts[faces[iDualVert][2]];
                                 SolveForDualPoint(v0[0],v0[1],v0[2] - .5 * (SQR(v0[0])+SQR(v0[1])),
                                                   v1[0],v1[1],v1[2] - .5 * (SQR(v1[0])+SQR(v1[1])),
                                                   v2[0],v2[1],v2[2] - .5 * (SQR(v2[0])+SQR(v2[1])),
@@ -2730,8 +2754,25 @@ public class ShephardsPlayApplet
                             double toSample1[] = VecMath.vmv(2, sampleResultVerts[1], sampleResultVerts[0]);
                             double t = VecMath.dot(2, toDesired,toSample1) / VecMath.dot(2, toSample1,toSample1);
                             verts[iVert][2] = t;
+
+                            // check...
+                            double finalResultVert[] = new double[3];
+                            SolveForDualPoint(v0[0],v0[1],v0[2] - .5 * (SQR(v0[0])+SQR(v0[1])),
+                                              v1[0],v1[1],v1[2] - .5 * (SQR(v1[0])+SQR(v1[1])),
+                                              v2[0],v2[1],v2[2] - .5 * (SQR(v2[0])+SQR(v2[1])),
+                                              finalResultVert);
+                            PRINTVEC(desiredDualVerts[iDualVert]);
+                            PRINTVEC(finalResultVert);
+                            //assert(VecMath.dist(desiredDualVerts[iDualVert], finalResultVert) <= 1e-6);
                         }
                     }
+#ifdef DO_OUTER
+                    // apex height is same as other outer heights
+                    //PRINT(verts[10][2]);
+                    //PRINT(verts[11][2]);
+                    assert(Math.abs(verts[11][2]-verts[10][2]) <= 1e-12);
+                    verts[12][2] = verts[11][2];
+#endif
                     FORI (iVert, verts.length)
                     {
                         double scale = .05;
