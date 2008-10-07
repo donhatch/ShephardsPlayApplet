@@ -586,7 +586,7 @@ public class ShephardsPlayApplet
                 java.io.PrintWriter writer = new java.io.PrintWriter(new java.io.BufferedWriter(new java.io.FileWriter(fileName)));
                 // XXX want \n\r no matter which platform I'm on!
 
-                PRINTARRAY(mostRecentDualVerts);
+                //PRINTARRAY(mostRecentDualVerts);
                 FORI (iDualVert, mostRecentDualVerts.length)
                 {
                     if (mostRecentDualVerts[iDualVert] != null)
@@ -2756,16 +2756,24 @@ public class ShephardsPlayApplet
             {
                 if (true)
                 {
-                    double scale = 1/300.;
+                    double scale = 1/60000.;
 
-                    double q = 10; // for working
+                    //double q = 10; // for working
                     //double q = 100; // the real thing
-                    double qq = 200; // XXX should be scaled by q and thing q gets multiplied by I think
+                    double q = 60; // try not so extreme
+                    //double qq = 30;
+                    //double qq = 300; // the real thing
+                    double qq = 180; // try not so extreme
+                    double fudgeUp = 0; // fraction of big triangle height to move big triangle up
                     double verts[][] = {
                         {0,0},      // 0
                         {0,7},      // 1
                         {14,28},    // 2
                         {-14,28},   // 3
+
+                        //VecMath.lerp(new double[]{7,14},new double[]{392,78},.8}, // 4
+
+
 
                         {392,-98},  // 4
                         {-392,-98}, // 5
@@ -2775,11 +2783,18 @@ public class ShephardsPlayApplet
 
                         {q*395, -83},  // 8
                         {-q*395, -83}, // 9
-                        {q*395 + qq, -83 + qq},  // 10
-                        {-q*395 - qq, -83 + qq}, // 11
-                        {q*395 + qq, -83 - qq},  // 12
-                        {-q*395 - qq, -83 - qq}, // 13
+                        {q*395, -83 + .25*q*395}, // 10
+                        {-q*395, -83 + .25*q*395}, // 11
+
+                        {q*395 + qq*395, -83 - qq*395}, // 12
+                        {-q*395 - qq*395, -83 - qq*395}, // 13
+
+                        {0, 1000}, // 14 -- will be adjusted
                     };
+                    verts[14][1] = verts[12][1] + Math.sqrt(3.)*verts[12][0];
+                    verts[12][1] += fudgeUp * verts[12][0];
+                    verts[13][1] += fudgeUp * verts[12][0];
+                    verts[14][1] += fudgeUp * verts[12][0];
 
                     int faces[][] = {
                         {1,0,2},
@@ -2795,14 +2810,47 @@ public class ShephardsPlayApplet
                         {6,8,10},
                         {9,7,11},
 
+                        {4,0,12},
+                        {0,5,13},
+
+
+                        {2,10,14}, // moved up from below so can match with a desiredDualVert
+
+
+
+
                         {8,4,12},
                         {5,9,13},
-
 
                         {10,8,12},
                         {9,11,13},
 
-                        {0,5,13,11,7,3,2,6,10,12,4},
+                        {0,13,12},
+
+                        {13,11,14},
+
+                        /*
+                        {11,7,14},
+                        {7,3,14},
+                        */
+                        {11,7,3},
+                        {11,3,14},
+
+                        {3,2,14},
+
+
+                        /*
+                        {2,6,14},
+                        {6,10,14},
+                        */
+                        {2,6,10},
+                        //{2,10,14}, // moving this up
+
+                        {10,12,14},
+                        {12,13,14},
+
+
+                        //{0,5,9,11,7,3,2,6,10,8,4},
                     };
                     // corresponding to the triangular faces... (some of them)
                     double desiredDualVerts[][] = {
@@ -2819,11 +2867,30 @@ public class ShephardsPlayApplet
                         {19,25.5},
                         {-19,25.5},
 
-                        {19,24.75},
-                        {-19,24.75},
+                        {4,-4},
+                        {-4,-4},
+
+                        //{14,46}, // approx
+                        //{15,42}, // approx
+                        {16,38}, // approx
                     };
                     VecMath.mxs(desiredDualVerts, desiredDualVerts,
-                                100.);
+                                80.);
+
+                    boolean doBackface = true;
+                    if (doBackface)
+                    {
+                        verts = (double[][])Arrays.append(verts,
+                                                          VecMath.bary(verts[verts.length-3],
+                                                                       verts[verts.length-2], 1/3.,
+                                                                       verts[verts.length-1], 1/3.));
+                        verts[verts.length-1] = (double[])Arrays.append(verts[verts.length-1], -1./(scale*scale)); // shameless hardcoding
+                        // Replace the last face with 3 faces
+                        int oldLastFace[] = faces[faces.length-1];
+                        faces[faces.length-1] = new int[]{oldLastFace[0],oldLastFace[1],verts.length-1};
+                        faces = (int[][])Arrays.append(faces, new int[]{oldLastFace[1],oldLastFace[2],verts.length-1});
+                        faces = (int[][])Arrays.append(faces, new int[]{oldLastFace[2],oldLastFace[0],verts.length-1});
+                    }
 
                     // make room for heights in the array
                     FORI (iVert, verts.length)
@@ -5089,6 +5156,41 @@ public class ShephardsPlayApplet
             private Mesh(double vertPositions[][],
                          int faceIndices[][])
             {
+                {
+                    // Sanity check face indices,
+                    // since it's really hard to debug later
+                    // if they are insane...
+                    java.util.HashSet boundary = new java.util.HashSet();
+                    FORI (iFace, faceIndices.length)
+                        FORI (iVertThisFace, faceIndices[iFace].length)
+                        {
+                            int v0 = faceIndices[iFace][iVertThisFace];
+                            int v1 = faceIndices[iFace][(iVertThisFace+1)%faceIndices[iFace].length];
+                            assert(INRANGE(0 <=, v0, < vertPositions.length));
+                            assert(INRANGE(0 <=, v1, < vertPositions.length));
+                            String v0_v1 = ""+v0+"_"+v1;
+                            String v1_v0 = ""+v1+"_"+v0;
+                            if (boundary.contains(v0_v1))
+                            {
+                                System.out.println("ERROR in Mesh ctor: "+v0_v1+" appears twice");
+                                assert(false);
+                            }
+                            if (!boundary.remove(v1_v0))
+                                boundary.add(v0_v1);
+                        }
+                    if (!boundary.isEmpty())
+                    {
+                        System.out.println("ERROR in Mesh ctor: unmatched edge(s):");
+                        java.util.Iterator iter = boundary.iterator();
+                        String v0_v1 = (String)iter.next();
+                        while (iter.hasNext())
+                        {
+                            System.out.println("    "+v0_v1);
+                        }
+                        assert(false);
+                    }
+                }
+
                 FORI (i, vertPositions.length)
                 {
                     // adds itself to verts...
