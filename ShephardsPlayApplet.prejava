@@ -881,6 +881,15 @@ public class ShephardsPlayApplet
                 stateWhenPressed = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
 
                 int whichButton = getButton(e);
+
+                if (whichButton != java_awt_event_MouseEvent_BUTTON2) // no need to clear selection when just dragging
+                {
+                    if (selectedDualVertIndices.length > 0
+                     && selectedDualVertIndices.length == nUniqueMostRecentDualVerts)
+                        selectAllDualVertsAtNextOpportunity = true;
+                    selectedDualVertIndices = new int[] {};
+                }
+
                 if (whichButton == java_awt_event_MouseEvent_BUTTON1)
                 {
                     button1IsDown = true;
@@ -1540,6 +1549,26 @@ public class ShephardsPlayApplet
                     case 's': // swap diagonal
                     {
                         UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+                        //
+                        // Really would like everything selected
+                        // that was selected before,
+                        // except for the two dual verts that changed...
+                        // the new two should both be selected
+                        // if the original two were selected,
+                        // or both unselected otherwise.
+                        // But we don't really have any way to get the
+                        // correspondence.  In fact we have no clue
+                        // what the new verts will look like at all,
+                        // til they get drawn.
+                        // So for now, just set a flag saying
+                        // we want them all selected,
+                        // if they were all selected before.
+                        //
+                        if (selectedDualVertIndices.length == nUniqueMostRecentDualVerts)
+                            selectAllDualVertsAtNextOpportunity = true;
+                        selectedDualVertIndices = new int[] {};
+
+
                         int closestEdgeIndex = mesh.indexOfClosestEdge(prevP);
                         if (closestEdgeIndex != -1)
                         {
@@ -1548,6 +1577,7 @@ public class ShephardsPlayApplet
                             mesh.sanityCheck();
                         }
                         if (continuouslyDelaunayize) delaunayize();
+
                         UndoItem.State after = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
@@ -1558,14 +1588,20 @@ public class ShephardsPlayApplet
                     {
                         // Swap diagonal but only if it makes it closer to delaunay
                         UndoItem.State before = new UndoItem.State(mesh, doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+                        if (selectedDualVertIndices.length == nUniqueMostRecentDualVerts)
+                            selectAllDualVertsAtNextOpportunity = true;
+                        selectedDualVertIndices = new int[] {};
+
                         if (e.isShiftDown())
+                        {
                             delaunayize();
+                        }
                         else
                         {
                             int closestEdgeIndex = mesh.indexOfClosestEdge(prevP);
                             if (closestEdgeIndex != -1)
                             {
-                                System.out.println("Swapping diagonal edge e"+closestEdgeIndex);
+                                System.out.println("Swapping diagonal edge e"+closestEdgeIndex+" if it would improve it");
                                 mesh.swapDiagonal((Mesh.Edge)mesh.edges.get(closestEdgeIndex), true, true);
                                 mesh.sanityCheck();
                             }
@@ -1584,6 +1620,7 @@ public class ShephardsPlayApplet
                         {
                             double closestDistSqrd = Double.POSITIVE_INFINITY;
                             int closestIndex = -1;
+                            PRINT(mostRecentDualVerts.length);
                             FORI (iDualVert, mostRecentDualVerts.length) // beginning to end, so we choose first of equal
                             {
                                 if (mostRecentDualVerts[iDualVert] == null)
@@ -1953,6 +1990,7 @@ public class ShephardsPlayApplet
                     mg.setColor(java.awt.Color.red);
                     double dualVerts[][] = new double[mesh.edges.size()][];
                     mostRecentDualVerts = dualVerts;
+                    nUniqueMostRecentDualVerts = 0;
                     double dualVertAreas[] = new double[mesh.edges.size()];
                     FORIDOWN (iEdge, mesh.edges.size())
                     {
@@ -2003,13 +2041,19 @@ public class ShephardsPlayApplet
                         assert(dualVerts[ind0] == null);
                         assert(dualVerts[ind1] == null);
                         assert(dualVerts[ind2] == null);
+                        // Set all three to the same
                         dualVerts[ind0] = dualVert;
                         dualVerts[ind1] = dualVert;
                         dualVerts[ind2] = dualVert;
                         dualVertAreas[ind0] = dualVertArea;
                         dualVertAreas[ind1] = dualVertArea;
                         dualVertAreas[ind2] = dualVertArea;
+
+                        nUniqueMostRecentDualVerts++;
+                        if (selectAllDualVertsAtNextOpportunity)
+                            selectedDualVertIndices = (int[])Arrays.append(selectedDualVertIndices, MIN3(ind0,ind1,ind2));
                     }
+                    selectAllDualVertsAtNextOpportunity = false;
 
                     //
                     // Now try connecting the dual verts
@@ -5454,6 +5498,7 @@ public class ShephardsPlayApplet
         private int beingDraggedVertIndex = -1;
         private boolean rubberBandingNewEdge = false;
         private int[] selectedDualVertIndices = {};
+        private boolean selectAllDualVertsAtNextOpportunity = false;
 
         // XXX is there an easier way to associate that stuff with a certain object? maybe be able to just pass this object to addListener, and make it automatically remove the listener when I go away?
         private Listenable.Listener doOptimizeListener = null;
@@ -5508,6 +5553,7 @@ public class ShephardsPlayApplet
         private boolean doDoubleBuffer = true;
         private java.awt.Image backBufferImage = null;
         private MyGraphics mostRecentGraphics = null;
+        private int nUniqueMostRecentDualVerts = 0;
         private double translateFudgeX = 0.;
         private double translateFudgeY = 0.; // no api for changing, currently
 
