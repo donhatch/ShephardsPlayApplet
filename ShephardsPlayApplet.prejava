@@ -2063,20 +2063,20 @@ public class ShephardsPlayApplet
                 {
                     //
                     // Draw and store the dual verts...
-                    // dualVerts[iEdge] is the vertex to the left of edges[iEdge].
+                    // leftDualVerts[iEdge] is the vertex to the left of edges[iEdge].
                     // (so each dual vert appears 3 times in the list).
                     //
                     if (showNet)
                         mg.setColor(java.awt.Color.green);
                     else
                         mg.setColor(java.awt.Color.red);
-                    double dualVerts[][] = new double[mesh.edges.size()][];
-                    mostRecentDualVerts = dualVerts;
+                    double leftDualVerts[][] = new double[mesh.edges.size()][];
+                    mostRecentDualVerts = leftDualVerts;
                     nUniqueMostRecentDualVerts = 0;
                     double dualVertAreas[] = new double[mesh.edges.size()];
                     FORIDOWN (iEdge, mesh.edges.size())
                     {
-                        if (dualVerts[iEdge] != null)
+                        if (leftDualVerts[iEdge] != null)
                             continue; // already did this triangle
 
                         Mesh.Edge e0 = (Mesh.Edge)mesh.edges.get(iEdge);
@@ -2120,13 +2120,13 @@ public class ShephardsPlayApplet
                         int ind0 = iEdge;
                         int ind1 = e1.myIndex();
                         int ind2 = e2.myIndex();
-                        assert(dualVerts[ind0] == null);
-                        assert(dualVerts[ind1] == null);
-                        assert(dualVerts[ind2] == null);
+                        assert(leftDualVerts[ind0] == null);
+                        assert(leftDualVerts[ind1] == null);
+                        assert(leftDualVerts[ind2] == null);
                         // Set all three to the same
-                        dualVerts[ind0] = dualVert;
-                        dualVerts[ind1] = dualVert;
-                        dualVerts[ind2] = dualVert;
+                        leftDualVerts[ind0] = dualVert;
+                        leftDualVerts[ind1] = dualVert;
+                        leftDualVerts[ind2] = dualVert;
                         dualVertAreas[ind0] = dualVertArea;
                         dualVertAreas[ind1] = dualVertArea;
                         dualVertAreas[ind2] = dualVertArea;
@@ -2139,17 +2139,19 @@ public class ShephardsPlayApplet
 
 
                     //
-                    // If we are going to make some dual edges bold,
-                    // decide which ones.
-                    // For now, sweep upwards.
+                    // If showing net, compute a net.
+                    // For now, sweep upwards,
+                    // color good edges green and off-balance ones red.
                     //
-                    boolean makeDualEdgeBold[] = null;
+                    boolean dualEdgeIsCut[] = null;
+                    boolean dualEdgeIsOffBalanceCut[] = null;
                     if (showNet)
                     {
-                        makeDualEdgeBold = new boolean[mesh.edges.size()]; // all false initially
+                        dualEdgeIsCut = new boolean[mesh.edges.size()]; // all false initially
+                        dualEdgeIsOffBalanceCut = new boolean[mesh.edges.size()]; // all false initially
                         FORIDOWN (iEdge, mesh.edges.size())
                         {
-                            if (dualVerts[iEdge] == null)
+                            if (leftDualVerts[iEdge] == null)
                                 continue; // not a triangle, or inside out
                             Mesh.Edge e0 = (Mesh.Edge)mesh.edges.get(iEdge);
                             Mesh.Edge e1 = e0.next();
@@ -2167,11 +2169,11 @@ public class ShephardsPlayApplet
                                 {triVerts[2].x, triVerts[2].y},
                             };
 
-                            double triCenterDualVert[] = dualVerts[e0.myIndex()];
+                            double triCenterDualVert[] = leftDualVerts[e0.myIndex()];
                             double threeDualVerts[][] = {
-                                dualVerts[e0.opposite().myIndex()],
-                                dualVerts[e1.opposite().myIndex()],
-                                dualVerts[e2.opposite().myIndex()],
+                                leftDualVerts[e0.opposite().myIndex()],
+                                leftDualVerts[e1.opposite().myIndex()],
+                                leftDualVerts[e2.opposite().myIndex()],
                             };
                             double unitNormals[][] = new double[3][2];
                             FORI (i, 3)
@@ -2209,8 +2211,8 @@ public class ShephardsPlayApplet
 
                             Mesh.Edge e = bestSide==0 ? e0 : bestSide==1 ? e1 : e2;
                             // remember each edge gets drawn in each direction, so we have to set the flag on both of them
-                            makeDualEdgeBold[e.myIndex()] = true;
-                            makeDualEdgeBold[e.opposite().myIndex()] = true;
+                            dualEdgeIsCut[e.myIndex()] = true;
+                            dualEdgeIsCut[e.opposite().myIndex()] = true;
                         }
                     }
 
@@ -2219,14 +2221,14 @@ public class ShephardsPlayApplet
                     // 
                     FORIDOWN (iEdge, mesh.edges.size())
                     {
-                        if (dualVerts[iEdge] == null)
+                        if (leftDualVerts[iEdge] == null)
                             continue; // not a triangle, or inside out
                         Mesh.Edge edge = (Mesh.Edge)mesh.edges.get(iEdge);
                         int jEdge = edge.opposite().myIndex();
 
-                        if (makeDualEdgeBold != null)
+                        if (dualEdgeIsCut != null)
                         {
-                            if (makeDualEdgeBold[iEdge])
+                            if (dualEdgeIsCut[iEdge])
                             {
                                 mg.setColor(java.awt.Color.green);
                             }
@@ -2236,11 +2238,11 @@ public class ShephardsPlayApplet
                             }
                         }
 
-                        if (dualVerts[jEdge] != null)
+                        if (leftDualVerts[jEdge] != null)
                         {
                             if (iEdge < jEdge) // don't bother drawing it in both directions
-                                mg.drawLine(dualVerts[iEdge][0],dualVerts[iEdge][1],
-                                            dualVerts[jEdge][0],dualVerts[jEdge][1],
+                                mg.drawLine(leftDualVerts[iEdge][0],leftDualVerts[iEdge][1],
+                                            leftDualVerts[jEdge][0],leftDualVerts[jEdge][1],
                                             doAntiAliasing);
                         }
                         else
@@ -2254,10 +2256,10 @@ public class ShephardsPlayApplet
                                                      VecMath.vmv(v0, v1));
                             VecMath.normalize(toEdgeVec, toEdgeVec);
                             double rayLength = 1.; // for edges to infinity
-                            //double destPoint[] = VecMath.vpsxv(2, dualVerts[iEdge], rayLength, toEdgeVec); // XXX argh, version that allows specifying length doesn't exist yet, and without that it gets confused because dualVerts[iEdge] has length 3
-                            double destPoint[] = {dualVerts[iEdge][0]+rayLength*toEdgeVec[0],
-                                                  dualVerts[iEdge][1]+rayLength*toEdgeVec[1]};
-                            mg.drawLine(dualVerts[iEdge][0],dualVerts[iEdge][1],
+                            //double destPoint[] = VecMath.vpsxv(2, leftDualVerts[iEdge], rayLength, toEdgeVec); // XXX argh, version that allows specifying length doesn't exist yet, and without that it gets confused because leftDualVerts[iEdge] has length 3
+                            double destPoint[] = {leftDualVerts[iEdge][0]+rayLength*toEdgeVec[0],
+                                                  leftDualVerts[iEdge][1]+rayLength*toEdgeVec[1]};
+                            mg.drawLine(leftDualVerts[iEdge][0],leftDualVerts[iEdge][1],
                                         destPoint[0],destPoint[1],
                                         doAntiAliasing);
                                                                  
@@ -2278,7 +2280,7 @@ public class ShephardsPlayApplet
                     {
                         Mesh.Edge edge = (Mesh.Edge)mesh.edges.get(iEdge);
                         if (edge.next() == edge.opposite()) // check in only one of the two directions
-                        //if (dualVerts[iEdge] == null && dualVerts[edge.opposite().myIndex()] == null && iEdge < edge.opposite().myIndex())
+                        //if (leftDualVerts[iEdge] == null && leftDualVerts[edge.opposite().myIndex()] == null && iEdge < edge.opposite().myIndex())
                         {
                             double v0[] = {edge.initialVertex().x,
                                            edge.initialVertex().y};
@@ -2315,7 +2317,7 @@ public class ShephardsPlayApplet
                             mg.setColor(java.awt.Color.green);
                         FORIDOWN (iEdge, mesh.edges.size())
                         {
-                            if (dualVerts[iEdge] == null)
+                            if (leftDualVerts[iEdge] == null)
                                 continue; // not a triangle, or inside out
                             Mesh.Edge e0 = (Mesh.Edge)mesh.edges.get(iEdge);
                             Mesh.Edge e1 = e0.next();
@@ -2329,7 +2331,7 @@ public class ShephardsPlayApplet
                                 sideLengths[i] = Math.sqrt(SQR(triVerts[i].x-triVerts[(i+1)%3].x)
                                                          + SQR(triVerts[i].y-triVerts[(i+1)%3].y));
                             int bestSide = MAXI3(sideLengths[0], sideLengths[1], sideLengths[2]);
-                            double triCenterDualVert[] = dualVerts[e0.myIndex()];
+                            double triCenterDualVert[] = leftDualVerts[e0.myIndex()];
                             double v0[] = {triVerts[bestSide].x, triVerts[bestSide].y};
                             double v1[] = {triVerts[(bestSide+1)%3].x, triVerts[(bestSide+1)%3].y};
                             double toEdgeVec[] = VecMath.xv2(
@@ -2350,7 +2352,7 @@ public class ShephardsPlayApplet
                         mg.setColor(java.awt.Color.cyan);
                         FORIDOWN (iEdge, mesh.edges.size())
                         {
-                            if (dualVerts[iEdge] == null)
+                            if (leftDualVerts[iEdge] == null)
                                 continue; // not a triangle, or inside out
 
                             Mesh.Edge e0 = (Mesh.Edge)mesh.edges.get(iEdge);
@@ -2360,11 +2362,11 @@ public class ShephardsPlayApplet
                             Mesh.Vertex triVerts[] = {e0.initialVertex(),
                                                       e1.initialVertex(),
                                                       e2.initialVertex()};
-                            double triCenterDualVert[] = dualVerts[e0.myIndex()];
+                            double triCenterDualVert[] = leftDualVerts[e0.myIndex()];
                             double neighborDualVerts[][] = {
-                                dualVerts[e0.opposite().myIndex()],
-                                dualVerts[e1.opposite().myIndex()],
-                                dualVerts[e2.opposite().myIndex()],
+                                leftDualVerts[e0.opposite().myIndex()],
+                                leftDualVerts[e1.opposite().myIndex()],
+                                leftDualVerts[e2.opposite().myIndex()],
                             };
                             double dualSideLengths[] = new double[3];
                             FORI (i, 3)
@@ -2403,8 +2405,8 @@ public class ShephardsPlayApplet
                         FORI (i, selectedDualVertIndices.length)
                         {
                             int ind = selectedDualVertIndices[i];
-                            if (ind >= dualVerts.length
-                             || dualVerts[ind] == null)
+                            if (ind >= leftDualVerts.length
+                             || leftDualVerts[ind] == null)
                             {
                                 selectedDualVertIndices = new int[] {};
                                 System.out.println("BAM!");
@@ -2423,11 +2425,11 @@ public class ShephardsPlayApplet
                             FORI (i, selectedDualVertIndices.length)
                             {
                                 int ind = selectedDualVertIndices[i];
-                                mg.drawPoint(dualVerts[ind][0],
-                                             dualVerts[ind][1], 5);
+                                mg.drawPoint(leftDualVerts[ind][0],
+                                             leftDualVerts[ind][1], 5);
                                 VecMath.vpsxv(moment,
                                               moment,
-                                              dualVertAreas[ind], dualVerts[ind]);
+                                              dualVertAreas[ind], leftDualVerts[ind]);
                                 areaSum += dualVertAreas[ind];
                             }
                             double avg[] = VecMath.sxv(1./areaSum, moment);
@@ -3430,8 +3432,8 @@ public class ShephardsPlayApplet
                         public double apply(double params[])
                         {
                             double verts[][] = paramsToVerts(params);
-                            double dualVerts[][] = vertsToDualVertsInNetless8(verts);
-                            double dualEdgeLengths[] = vertsAndDualVertsToDualEdgeLengths(verts, dualVerts);
+                            double leftDualVerts[][] = vertsToDualVertsInNetless8(verts);
+                            double dualEdgeLengths[] = vertsAndDualVertsToDualEdgeLengths(verts, leftDualVerts);
 
                             double dualEdgeLengthExponent = 2.;
                             double triAreaExponent = 1.;
@@ -3476,15 +3478,15 @@ public class ShephardsPlayApplet
                                         return Double.POSITIVE_INFINITY;
                                     totalArea += area;
                                     VecMath.vpsxv(center,
-                                                  center, area, dualVerts[dualVertsBeingAveraged[i]]);
+                                                  center, area, leftDualVerts[dualVertsBeingAveraged[i]]);
                                 }
                                 VecMath.vxs(center, center, 1./totalArea);
 
                                 double height = VecMath.dot(
                                     2,
-                                    VecMath.normalize(VecMath.vmv(dualVerts[4],
-                                                                  dualVerts[1])),
-                                    VecMath.vmv(center, dualVerts[1]));
+                                    VecMath.normalize(VecMath.vmv(leftDualVerts[4],
+                                                                  leftDualVerts[1])),
+                                    VecMath.vmv(center, leftDualVerts[1]));
                                 if (height <= 0.)
                                     return Double.POSITIVE_INFINITY;
                                 answer += 1./Math.pow(height, angleExponent);
@@ -3589,8 +3591,8 @@ public class ShephardsPlayApplet
                 {
                     // Could optimize the hell out of this,
                     // by caching the linear transform
-                    double dualVerts[][] = new double[tris.length][3];
-                    FORI (iDualVert, dualVerts.length)
+                    double leftDualVerts[][] = new double[tris.length][3];
+                    FORI (iDualVert, leftDualVerts.length)
                     {
                         int tri[] = tris[iDualVert];
                         double x0 = verts[tri[0]][0];
@@ -3605,16 +3607,16 @@ public class ShephardsPlayApplet
                         SolveForDualPoint(x0,y0,h0 - .5 * (SQR(x0)+SQR(y0)),
                                           x1,y1,h1 - .5 * (SQR(x1)+SQR(y1)),
                                           x2,y2,h2 - .5 * (SQR(x2)+SQR(y2)),
-                                          dualVerts[iDualVert]);
+                                          leftDualVerts[iDualVert]);
                     }
-                    return dualVerts;
+                    return leftDualVerts;
                 } // vertsToDualVertsInNetless8
 
 
                 private static int edge2verts[/*9*/][/*2*/] = null; // from, to
                 private static int edge2tris[/*9*/][/*2*/] = null; // left, right
 
-                private static double[] vertsAndDualVertsToDualEdgeLengths(double verts[][], double dualVerts[][])
+                private static double[] vertsAndDualVertsToDualEdgeLengths(double verts[][], double leftDualVerts[][])
                 {
                     if (edge2verts == null)
                     {
@@ -3651,8 +3653,8 @@ public class ShephardsPlayApplet
                     {
                         double fromVert[] = verts[edge2verts[iEdge][0]];
                         double toVert[] = verts[edge2verts[iEdge][1]];
-                        double leftDualVert[] = dualVerts[edge2tris[iEdge][0]];
-                        double rightDualVert[] = dualVerts[edge2tris[iEdge][1]];
+                        double leftDualVert[] = leftDualVerts[edge2tris[iEdge][0]];
+                        double rightDualVert[] = leftDualVerts[edge2tris[iEdge][1]];
                         assert(fromVert != toVert);
                         assert(leftDualVert != rightDualVert);
                         dualEdgeLengths[iEdge] = VecMath.dist(2,
