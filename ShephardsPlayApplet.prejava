@@ -302,7 +302,24 @@ public class ShephardsPlayApplet
                             {
                                 UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
 
-                                doCannedThingSweepKiller();
+                                doCannedThingSweepKiller0();
+
+                                UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+                                undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                theCanvas.repaint();
+                            }
+                        });
+                    }});
+                    add(new java.awt.Button("Sweep Killer 1") {
+                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                    {
+                        addActionListener(new java.awt.event.ActionListener() {
+                            public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+
+                                doCannedThingSweepKiller1();
 
                                 UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                                 undoTreeSquirrel.Do(new UndoItem(before, after));
@@ -590,6 +607,7 @@ public class ShephardsPlayApplet
             System.out.println("    'l' - toggle doLabels");
             System.out.println("    'a' - toggle doArrowsTowardsSharpestDihedrals (green)");
             System.out.println("    alt-'a' - toggle doArrowsTowardsShortestEdges (cyan)");
+            System.out.println("    'n' - toggle showNet");
             System.out.println("    'S' - turn off optimize, and re-spherize");
             System.out.println("    'd' - delete closest edge");
             System.out.println("    ctrl-'i' - toggle doShowInsideOutDualVerts");
@@ -834,10 +852,11 @@ public class ShephardsPlayApplet
             //doCannedThingNetless888(); // XXX get rid of this probably
             //doCannedThingNetless8Symmetric(); // XXX get rid of this probably
             //doCannedThingNetless8Optimized(); // XXX get rid of this probably
-            //doCannedThingSweepKiller(); // XXX get rid of this probably
+            //doCannedThingSweepKiller0(); // XXX get rid of this probably
+            doCannedThingSweepKiller1(); // XXX get rid of this probably
             //doCannedThingAlgorithm5Killer0(); // XXX get rid of this probably
             //doCannedThingAlgorithm5Killer1(); // XXX get rid of this probably
-            doCannedThingBlindLagoonExitKiller(); // XXX get rid of this probably
+            //doCannedThingBlindLagoonExitKiller(); // XXX get rid of this probably
 
             if (eventVerbose >= 1) System.out.println("out init");
         } // init
@@ -1487,6 +1506,12 @@ public class ShephardsPlayApplet
                         theCanvas.repaint();
                         break;
 
+                    case 'n': // toggle showNet
+                        showNet ^= true;
+                        System.out.print("showNet -> "+showNet);
+                        theCanvas.repaint();
+                        break;
+
                     case 'B': // toggle doDoubleBuffer
                         doDoubleBuffer ^= true;
                         System.out.println("doDoubleBuffer -> "+doDoubleBuffer);
@@ -1957,7 +1982,7 @@ public class ShephardsPlayApplet
             }
 
 
-            // PAINT
+            // PAINT/DISPLAY/DRAW
             public void paint(java.awt.Graphics frontBufferGraphics)
             {
                 if (eventVerbose >= 1) System.out.println("in paint");
@@ -2038,8 +2063,13 @@ public class ShephardsPlayApplet
                 {
                     //
                     // Draw and store the dual verts...
+                    // dualVerts[iEdge] is the vertex to the left of edges[iEdge].
+                    // (so each dual vert appears 3 times in the list).
                     //
-                    mg.setColor(java.awt.Color.red);
+                    if (showNet)
+                        mg.setColor(java.awt.Color.green);
+                    else
+                        mg.setColor(java.awt.Color.red);
                     double dualVerts[][] = new double[mesh.edges.size()][];
                     mostRecentDualVerts = dualVerts;
                     nUniqueMostRecentDualVerts = 0;
@@ -2107,6 +2137,83 @@ public class ShephardsPlayApplet
                     }
                     selectAllDualVertsAtNextOpportunity = false;
 
+
+                    //
+                    // If we are going to make some dual edges bold,
+                    // decide which ones.
+                    // For now, sweep upwards.
+                    //
+                    boolean makeDualEdgeBold[] = null;
+                    if (showNet)
+                    {
+                        makeDualEdgeBold = new boolean[mesh.edges.size()]; // all false initially
+                        FORIDOWN (iEdge, mesh.edges.size())
+                        {
+                            if (dualVerts[iEdge] == null)
+                                continue; // not a triangle, or inside out
+                            Mesh.Edge e0 = (Mesh.Edge)mesh.edges.get(iEdge);
+                            Mesh.Edge e1 = e0.next();
+                            Mesh.Edge e2 = e1.next();
+                            assert(e2.next() == e0);
+
+                            // not really needed unless there's a ray, but whatever.
+                            // also there's probably a more direct way of getting at a particular edge
+                            Mesh.Vertex triVerts[] = {e0.initialVertex(),
+                                                      e1.initialVertex(),
+                                                      e2.initialVertex()};
+                            double triVertsCoords[][] = {
+                                {triVerts[0].x, triVerts[0].y},
+                                {triVerts[1].x, triVerts[1].y},
+                                {triVerts[2].x, triVerts[2].y},
+                            };
+
+                            double triCenterDualVert[] = dualVerts[e0.myIndex()];
+                            double threeDualVerts[][] = {
+                                dualVerts[e0.opposite().myIndex()],
+                                dualVerts[e1.opposite().myIndex()],
+                                dualVerts[e2.opposite().myIndex()],
+                            };
+                            double unitNormals[][] = new double[3][2];
+                            FORI (i, 3)
+                            {
+                                if (threeDualVerts[i] != null)
+                                {
+                                    VecMath.normalize(unitNormals[i], VecMath.vmv(2, threeDualVerts[i], triCenterDualVert));
+                                }
+                                else
+                                    VecMath.normalize(unitNormals[i], VecMath.xv2(VecMath.vmv(triVertsCoords[i], triVertsCoords[(i+1)%3])));
+                            }
+
+                            int bestSide = MAXI3(unitNormals[0][1],
+                                                 unitNormals[1][1],
+                                                 unitNormals[2][1]);
+                            // Hack to simulate symbolic perterbation
+                            // by an infinitesimal rotation counterclockwise
+                            {
+                                if (EQ(unitNormals[bestSide][1], unitNormals[(bestSide+1)%3][1], 1e-6)
+                                 && LT(unitNormals[bestSide][0], unitNormals[(bestSide+1)%3][0], 1e-6))
+                                {
+                                    bestSide = (bestSide+1)%3;
+                                    if (EQ(unitNormals[bestSide][1], unitNormals[(bestSide+1)%3][1], 1e-6)
+                                     && LT(unitNormals[bestSide][0], unitNormals[(bestSide+1)%3][0], 1e-6))
+                                        bestSide = (bestSide+1)%3;
+                                }
+                                else
+                                {
+                                    if (EQ(unitNormals[bestSide][1], unitNormals[(bestSide+2)%3][1], 1e-6)
+                                     && LT(unitNormals[bestSide][0], unitNormals[(bestSide+2)%3][0], 1e-6))
+                                        bestSide = (bestSide+2)%3;
+                                }
+                            }
+
+
+                            Mesh.Edge e = bestSide==0 ? e0 : bestSide==1 ? e1 : e2;
+                            // remember each edge gets drawn in each direction, so we have to set the flag on both of them
+                            makeDualEdgeBold[e.myIndex()] = true;
+                            makeDualEdgeBold[e.opposite().myIndex()] = true;
+                        }
+                    }
+
                     //
                     // Now try connecting the dual verts
                     // 
@@ -2116,11 +2223,25 @@ public class ShephardsPlayApplet
                             continue; // not a triangle, or inside out
                         Mesh.Edge edge = (Mesh.Edge)mesh.edges.get(iEdge);
                         int jEdge = edge.opposite().myIndex();
+
+                        if (makeDualEdgeBold != null)
+                        {
+                            if (makeDualEdgeBold[iEdge])
+                            {
+                                mg.setColor(java.awt.Color.green);
+                            }
+                            else
+                            {
+                                mg.setColor(java.awt.Color.blue);
+                            }
+                        }
+
                         if (dualVerts[jEdge] != null)
                         {
-                            mg.drawLine(dualVerts[iEdge][0],dualVerts[iEdge][1],
-                                        dualVerts[jEdge][0],dualVerts[jEdge][1],
-                                        doAntiAliasing);
+                            if (iEdge < jEdge) // don't bother drawing it in both directions
+                                mg.drawLine(dualVerts[iEdge][0],dualVerts[iEdge][1],
+                                            dualVerts[jEdge][0],dualVerts[jEdge][1],
+                                            doAntiAliasing);
                         }
                         else
                         {
@@ -2149,6 +2270,10 @@ public class ShephardsPlayApplet
                     // at each isolated edge or whisker.
                     // XXX should do this along hairs... or maybe every edge that is not on a triangle on either side? nah
                     //
+                    if (showNet)
+                        mg.setColor(java.awt.Color.green);
+                    else
+                        mg.setColor(java.awt.Color.red);
                     FORIDOWN (iEdge, mesh.edges.size())
                     {
                         Mesh.Edge edge = (Mesh.Edge)mesh.edges.get(iEdge);
@@ -2184,7 +2309,10 @@ public class ShephardsPlayApplet
                     //
                     if (doArrowsTowardsSharpestDihedrals)
                     {
-                        mg.setColor(java.awt.Color.green);
+                        if (showNet)
+                            mg.setColor(java.awt.Color.red);
+                        else
+                            mg.setColor(java.awt.Color.green);
                         FORIDOWN (iEdge, mesh.edges.size())
                         {
                             if (dualVerts[iEdge] == null)
@@ -2201,7 +2329,7 @@ public class ShephardsPlayApplet
                                 sideLengths[i] = Math.sqrt(SQR(triVerts[i].x-triVerts[(i+1)%3].x)
                                                          + SQR(triVerts[i].y-triVerts[(i+1)%3].y));
                             int bestSide = MAXI3(sideLengths[0], sideLengths[1], sideLengths[2]);
-                            double triCenterDualVert[] = dualVerts[e0.myIndex()]; // huh? using an edge index to index into the dual verts?
+                            double triCenterDualVert[] = dualVerts[e0.myIndex()];
                             double v0[] = {triVerts[bestSide].x, triVerts[bestSide].y};
                             double v1[] = {triVerts[(bestSide+1)%3].x, triVerts[(bestSide+1)%3].y};
                             double toEdgeVec[] = VecMath.xv2(
@@ -2286,7 +2414,10 @@ public class ShephardsPlayApplet
 
                         if (selectedDualVertIndices.length >= 1)
                         {
-                            mg.setColor(java.awt.Color.green);
+                            if (showNet)
+                                mg.setColor(java.awt.Color.red);
+                            else
+                                mg.setColor(java.awt.Color.green);
                             double areaSum = 0.;
                             double moment[] = {0.,0.};
                             FORI (i, selectedDualVertIndices.length)
@@ -3143,7 +3274,7 @@ public class ShephardsPlayApplet
             // Counterexample to entire class of sweep algorithms
             // that cut each vertex to a higher vertex.
             // It contains two netless8's.
-            private void doCannedThingSweepKiller()
+            private void doCannedThingSweepKiller0()
             {
                 // cheap way of getting verts of netless8
                 doCannedThingNetless8();
@@ -3213,7 +3344,57 @@ public class ShephardsPlayApplet
                 ((Mesh.Vertex)mesh.verts.get(3)).y += 1/1024.;
                 ((Mesh.Vertex)mesh.verts.get(8)).y += 1/1024.;
 
-            } // doCannedThingSweepKiller
+            } // doCannedThingSweepKiller0
+
+            // Counterexample to entire class of sweep algorithms
+            // that cut each vertex to a higher vertex.
+            // Slightly simpler than SweepKiller0.
+            private void doCannedThingSweepKiller1()
+            {
+                double verts[][] = {
+                    {0,0,0},
+                    {9,-9,0},
+                    {6,-3,0},
+                    {7,24,0},
+                    {-7,24,0},
+                    {-6,-3,0},
+                    {-9,-9,0},
+
+                    {7,-6,0},
+                    {3,-2,0},
+
+                    {-3,-2,0},
+                    {-7,-6,0},
+                };
+                int faces[][] = {
+                    //{0,1,2},
+                    {0,1,8},
+                    {1,7,8},
+                    {1,2,7},
+                    {2,0,8},
+                    {2,8,7},
+
+                    //{6,0,5},
+                    {0,5,9},
+                    {0,9,6},
+                    {5,10,9},
+                    {5,6,10},
+                    {9,10,6},
+
+                    {1,3,2},
+                    {2,3,0},
+                    {0,3,4},
+                    {0,4,5},
+                    {4,6,5},
+                    {0,6,1},
+                    {1,6,4,3},
+                };
+                VecMath.mpv(verts, verts, new double[]{.1,.1,0});
+                mesh = new Mesh(verts, faces);
+                mesh.findAndApplyOptimalVertexHeights(OPTIMIZE_LENGTHS_INFINITY_NORM);
+                // argh, requires panning the whole picture around randomly a bit in order for it to come out symmetric
+
+            } // doCannedThingSweepKiller1
 
 
             private static class Netless8OptimizationStuff
@@ -5629,6 +5810,7 @@ public class ShephardsPlayApplet
 
         private boolean doShowPositiveOrthantnessVisualization = false; // XXX total hack-- it's cool but put it somewhere else!!
         private int showTriangles = 2; // 0: nothing, 1: verts, 2: and tris
+        private boolean showNet = false;
         private double mostRecentDualVerts[][] = null;
 
     //
@@ -5726,7 +5908,7 @@ public class ShephardsPlayApplet
         applet.start();
 
         frame.move(400, 20);
-        frame.resize(1000, 500);
+        frame.resize(1100, 500);
         frame.show();
 
         //Misc.printPlatonicSolidVertexCurvatures();
