@@ -1794,6 +1794,36 @@ public class ShephardsPlayApplet
                         break;
                     }
 
+                    case CTRL('d'): // swap primal and dual
+                    {
+                        UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+
+                        boolean heightsWereAllZero = true;
+                        FORI (iVert, mesh.verts.size())
+                            if (((Mesh.Vertex)mesh.verts.get(iVert)).h != 0.)
+                            {
+                                heightsWereAllZero = false;
+                                break;
+                            }
+
+                        mesh = makeDualMesh(mesh);
+
+                        // this seems to make it a bit better, though I don't really understand.
+                        if (heightsWereAllZero)
+                        {
+                            FORI (iVert, mesh.verts.size())
+                                ((Mesh.Vertex)mesh.verts.get(iVert)).h = 0.;
+                        }
+
+                        selectedDualVertIndices = new int[] {};
+                        translateFudgeX = 0; // doesn't get undone properly
+                        translateFudgeY = 0; // doesn't get undone properly
+                        if (doContinuouslyDelaunayize.get()) delaunayize();
+                        UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+                        undoTreeSquirrel.Do(new UndoItem(before, after));
+                        theCanvas.repaint();
+                        break;
+                    }
 
                     case 'u': case CTRL('z'): // undo
                     {
@@ -5599,6 +5629,10 @@ public class ShephardsPlayApplet
             {
                 return new Edge(andBack);
             }
+            Vertex newVertex(double x, double y, double h)
+            {
+                return new Vertex(x, y, h);
+            }
 
 
         } // class Mesh
@@ -5615,11 +5649,103 @@ public class ShephardsPlayApplet
             Mesh dual = new Mesh();
             int nEdges = primal.edges.size();
             FORI (iEdge, nEdges)
-                dual.newEdge(false); // adds itself to edges
+                dual.newEdge(false); // adds itself to dual.edges
             assert(dual.edges.size() == nEdges);
-            //{
-                //Edge primalEdge = (Edge)primal.edges.get(iEdge);
-            //}
+            FORI (iEdge, nEdges)
+            {
+                Mesh.Edge dualEdge = (Mesh.Edge)dual.edges.get(iEdge);
+                Mesh.Edge primalEdge = (Mesh.Edge)primal.edges.get(iEdge);
+                dualEdge._opposite = (Mesh.Edge)dual.edges.get(primalEdge._opposite._myIndex);
+                if (false)
+                {
+                    // regions of CCW faces correspond
+                    // to CCW faces in dual.
+                    // If we do this, then applying makeDualMesh twice
+                    // will reverse all the edges,
+                    // I think.
+                    dualEdge._next = (Mesh.Edge)dual.edges.get(primalEdge._prev._opposite._myIndex);
+                    dualEdge._prev = (Mesh.Edge)dual.edges.get(primalEdge._opposite._next._myIndex);
+                }
+                else
+                {
+                    // regions of CCW faces in primal
+                    // correspond to CW faces in dual.
+                    // If we do this, then makeDualMesh(makeDualMesh(mesh))
+                    // should return something identical to the original,
+                    // I think.
+                    // XXX Odd, this seems to behave better all around (I expected rays to go in wrong direction,
+                    // but it works better than the other way... should think about why
+                    dualEdge._next = (Mesh.Edge)dual.edges.get(primalEdge._next._opposite._myIndex);
+                    dualEdge._prev = (Mesh.Edge)dual.edges.get(primalEdge._opposite._prev._myIndex);
+                }
+            }
+
+            //
+            // Find all the dual vertices.
+            // These correspond to primal faces.
+            //
+            FORI (iEdge, nEdges)
+            {
+                Mesh.Edge dualEdge0 = (Mesh.Edge)dual.edges.get(iEdge);
+                if (dualEdge0._opposite._initialVertex != null)
+                    continue; // did this one already
+
+                Mesh.Edge primalEdge0 = (Mesh.Edge)primal.edges.get(iEdge);
+
+                //
+                // Triangulate,
+                // using primalEdge0's initial vertex as the hub.
+                // The final dual vertex will be the triangle-area-weighted average
+                // of the circumcenters of the triangles.
+                // (the answer is the same regardless of triangulation...
+                // at least for the x,y part.  not sure what this does to the h part.)
+                //
+                double twiceTotalArea = 0.;
+                double totalCenter[] = new double[3]; // zero initially   XXX should set it to center of edge?  not sure
+
+                double triCenter[] = new double[3]; // scratch for loop
+                Mesh.Vertex v0 = primalEdge0._initialVertex;
+                for (Mesh.Edge primalEdge = primalEdge0.next();
+                     primalEdge.finalVertex() != v0;
+                     primalEdge = primalEdge.next())
+                {
+                    Mesh.Vertex v1 = primalEdge.initialVertex();
+                    Mesh.Vertex v2 = primalEdge.finalVertex();
+                    SolveForDualPoint(v0.x, v0.y, v0.h - .5 * (SQR(v0.x)+SQR(v0.y)),
+                                      v1.x, v1.y, v1.h - .5 * (SQR(v1.x)+SQR(v1.y)),
+                                      v2.x, v2.y, v2.h - .5 * (SQR(v2.x)+SQR(v2.y)),
+                                      triCenter);
+
+                    double twiceTriArea = twiceTriangleArea(v0.x,v0.y,
+                                                            v1.x,v1.y,
+                                                            v2.x,v2.y);
+                    twiceTotalArea += twiceTriArea;
+                    if (twiceTotalArea != 0.)
+                        VecMath.lerp(totalCenter,
+                                     totalCenter, triCenter, twiceTriArea/twiceTotalArea);
+                    else
+                    {
+                        // Leave center where it is.
+                        // it has zero weight at this point,
+                        // but maybe it's a sensible answer
+                        // in the case that there were two triangles that cancelled.
+                    }
+                }
+
+                Mesh.Vertex dualVert = dual.newVertex(totalCenter[0],
+                                                      totalCenter[1],
+                                                      totalCenter[2]);
+
+                // Set dualVert to be the *final* (i.e. initial vertex of opposite)
+                // of each dual edge ending at it.
+                for (Mesh.Edge dualEdge = dualEdge0;
+                     dualEdge._opposite._initialVertex == null;
+                     dualEdge = dualEdge._next._opposite)
+                {
+                    dualEdge._opposite._initialVertex = dualVert;
+                }
+            }
+
             return dual;
         } // makeDualMesh()
 
