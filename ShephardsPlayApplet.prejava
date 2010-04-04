@@ -648,13 +648,16 @@ public class ShephardsPlayApplet
                 java.io.PrintWriter writer = new java.io.PrintWriter(new java.io.BufferedWriter(new java.io.FileWriter(fileName)));
                 // XXX want \r\n no matter which platform I'm on, I think
 
-                //PRINTARRAY(mostRecentLeftDualVerts);
-                FORI (iDualVert, mostRecentLeftDualVerts.length)
+                int nDualVerts = mostRecentDualMesh.verts.size();
+                FORI (iDualVert, nDualVerts)
                 {
-                    if (mostRecentLeftDualVerts[iDualVert] != null)
-                        writer.println("        {" + mostRecentLeftDualVerts[iDualVert][0]
-                                   + ", " + mostRecentLeftDualVerts[iDualVert][1]
-                                   + ", " + mostRecentLeftDualVerts[iDualVert][2]
+                    Mesh.Vertex dualVert = (Mesh.Vertex)mostRecentDualMesh.verts.get(iDualVert);
+                    if (dualVert.arity == 3
+                     && (doShowInsideOutDualVerts
+                      || dualVert.weight >= 0))
+                        writer.println("        {" + dualVert.x
+                                   + ", " + dualVert.y
+                                   + ", " + dualVert.h
                                    + "},");
                     else
                         writer.println("null");
@@ -952,7 +955,7 @@ public class ShephardsPlayApplet
                 if (whichButton != java_awt_event_MouseEvent_BUTTON2) // no need to clear selection when just dragging
                 {
                     if (selectedDualVertIndices.length > 0
-                     && selectedDualVertIndices.length == nUniqueMostRecentLeftDualVerts)
+                     && selectedDualVertIndices.length == nDrawnDualVerts)
                         selectAllDualVertsAtNextOpportunity = true;
                     selectedDualVertIndices = new int[] {};
                 }
@@ -1485,7 +1488,7 @@ public class ShephardsPlayApplet
 
                     case 'n': // toggle showNet
                         showNet ^= true;
-                        System.out.print("showNet -> "+showNet);
+                        System.out.println("showNet -> "+showNet);
                         theCanvas.repaint();
                         break;
 
@@ -1612,7 +1615,7 @@ public class ShephardsPlayApplet
                         // we want them all selected,
                         // if they were all selected before.
                         //
-                        if (selectedDualVertIndices.length == nUniqueMostRecentLeftDualVerts)
+                        if (selectedDualVertIndices.length == nDrawnDualVerts)
                             selectAllDualVertsAtNextOpportunity = true;
                         selectedDualVertIndices = new int[] {};
 
@@ -1636,7 +1639,7 @@ public class ShephardsPlayApplet
                     {
                         // Swap diagonal but only if it makes it closer to delaunay
                         UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
-                        if (selectedDualVertIndices.length == nUniqueMostRecentLeftDualVerts)
+                        if (selectedDualVertIndices.length == nDrawnDualVerts)
                             selectAllDualVertsAtNextOpportunity = true;
                         selectedDualVertIndices = new int[] {};
 
@@ -1664,19 +1667,23 @@ public class ShephardsPlayApplet
                     case 'w': // toggle closest dual vertex for weighting (think of better mnemonic)
                     {
                         UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
-                        if (mostRecentLeftDualVerts != null)
+                        if (mostRecentDualMesh != null)
                         {
                             double closestDistSqrd = Double.POSITIVE_INFINITY;
                             int closestIndex = -1;
-                            PRINT(mostRecentLeftDualVerts.length);
-                            FORI (iDualVert, mostRecentLeftDualVerts.length) // beginning to end, so we choose first of equal
+                            int nDualVerts = mostRecentDualMesh.verts.size();
+                            PRINT(nDualVerts);
+                            FORI (iDualVert, nDualVerts) // beginnng to end, so we choose first of equal
                             {
-                                if (mostRecentLeftDualVerts[iDualVert] == null)
-                                    continue; // that array has some nulls
-                                if (closestIndex != -1
-                                 && mostRecentLeftDualVerts[iDualVert] == mostRecentLeftDualVerts[closestIndex])
-                                    continue; // each is represented 3 times, only use the first
-                                double thisDistSqrd = VecMath.distsqrd(prevP, mostRecentLeftDualVerts[iDualVert]);
+                                Mesh.Vertex dualVert = (Mesh.Vertex)mostRecentDualMesh.verts.get(iDualVert);
+                                if (dualVert.arity != 3)
+                                    continue; // not a triangle
+                                if (!doShowInsideOutDualVerts)
+                                {
+                                    if (dualVert.weight < 0)
+                                        continue; // the triangle is inside out; it's the boundary
+                                }
+                                double thisDistSqrd = VecMath.distsqrd(prevP, new double[]{dualVert.x,dualVert.y});
                                 if (thisDistSqrd < closestDistSqrd)
                                 {
                                     closestDistSqrd = thisDistSqrd;
@@ -1848,48 +1855,6 @@ public class ShephardsPlayApplet
                     {
                         System.out.println("Aww.");
                         System.exit(1);
-                    }
-
-                    case 'Q': // XXX HACK
-                    {
-                        {
-                            double verts[][] = new double[mesh.verts.size()][3];
-                            FORI (i, verts.length)
-                            {
-                                verts[i][0] = ((Mesh.Vertex)mesh.verts.get(i)).x;
-                                verts[i][1] = ((Mesh.Vertex)mesh.verts.get(i)).y;
-                                verts[i][2] = ((Mesh.Vertex)mesh.verts.get(i)).h;
-                                System.out.println("    verts["+i+"] = "+VecMath.toString(verts[i])+"");
-                            }
-                            FORI (i, mostRecentLeftDualVerts.length)
-                                System.out.println("    mostRecentLeftDualVerts["+i+"] = "+VecMath.toString(mostRecentLeftDualVerts[i])+"");
-                        }
-                        UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
-                        doCannedThingNetless8Optimized();
-                        UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
-                        undoTreeSquirrel.Do(new UndoItem(before, after));
-                        theCanvas.repaint();
-                        break;
-                    }
-                    case 'q':
-                    {
-                        UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
-                        netless8OptimizationIndex++;
-                        PRINT(netless8OptimizationIndex);
-                        netless8OptimizationIndex %= netless8OptimizationPath.length;
-                        double verts[][] = netless8OptimizationPath[netless8OptimizationIndex];
-                        FORI (iVert, 6)
-                        {
-                            ((Mesh.Vertex)mesh.verts.get(iVert)).x = verts[iVert][0];
-                            ((Mesh.Vertex)mesh.verts.get(iVert)).y = verts[iVert][1];
-                            ((Mesh.Vertex)mesh.verts.get(iVert)).h = verts[iVert][2];
-                        }
-
-
-                        UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
-                        undoTreeSquirrel.Do(new UndoItem(before, after));
-                        theCanvas.repaint();
-                        break;
                     }
 
                     case 'h': // help
@@ -2070,58 +2035,26 @@ public class ShephardsPlayApplet
                     else
                         mg.setColor(java.awt.Color.red);
                     Mesh dualMesh = makeDualMesh(mesh);
+                    mostRecentDualMesh = dualMesh;
 
-                    // gradually phasing this out I think, in favor of just using dualMesh for everything
-                    double leftDualVerts[][] = new double[mesh.edges.size()][];
-                    mostRecentLeftDualVerts = leftDualVerts;
-                    nUniqueMostRecentLeftDualVerts = 0;
-                    double dualVertAreas[] = new double[mesh.edges.size()];
-                    FORIDOWN(iEdge, mesh.edges.size())
+                    FORIDOWN(iDualVert, dualMesh.verts.size())
                     {
-                        if (leftDualVerts[iEdge] != null)
-                            continue; // already did this triangle
-                        Mesh.Edge dualEdge = (Mesh.Edge)dualMesh.edges.get(iEdge);
-                        Mesh.Vertex leftVert = dualEdge.finalVertex();
-                        if (leftVert.arity != 3)
-                            continue; // not a triangle
+                        Mesh.Vertex dualVert = (Mesh.Vertex)dualMesh.verts.get(iDualVert);
+                        if (dualVert.arity != 3)
+                            continue; // primal face was not a triangle
                         if (!doShowInsideOutDualVerts)
                         {
-                            if (leftVert.weight < 0)
+                            if (dualVert.weight < 0)
                                 continue; // the triangle is inside out; it's the boundary
                         }
 
-                        double dualVert[] = {
-                            leftVert.x,
-                            leftVert.y,
-                            leftVert.h,
-                        };
-
                         //System.out.println("    drawing dual vert at "+Arrays.toStringCompact(dualVert));
-                        mg.drawPoint(dualVert[0],
-                                     dualVert[1], 5);
+                        mg.drawPoint(dualVert.x,
+                                     dualVert.y, 5);
 
-                        Mesh.Edge e0 = (Mesh.Edge)mesh.edges.get(iEdge);
-                        Mesh.Edge e1 = e0.next();
-                        Mesh.Edge e2 = e1.next();
-                        assert(e2.next() == e0);
-
-                        int ind0 = iEdge;
-                        int ind1 = e1.myIndex();
-                        int ind2 = e2.myIndex();
-                        assert(leftDualVerts[ind0] == null);
-                        assert(leftDualVerts[ind1] == null);
-                        assert(leftDualVerts[ind2] == null);
-                        // Set all three to the same
-                        leftDualVerts[ind0] = dualVert;
-                        leftDualVerts[ind1] = dualVert;
-                        leftDualVerts[ind2] = dualVert;
-                        dualVertAreas[ind0] = leftVert.weight;
-                        dualVertAreas[ind1] = leftVert.weight;
-                        dualVertAreas[ind2] = leftVert.weight;
-
-                        nUniqueMostRecentLeftDualVerts++;
+                        nDrawnDualVerts++;
                         if (selectAllDualVertsAtNextOpportunity)
-                            selectedDualVertIndices = (int[])Arrays.append(selectedDualVertIndices, MIN3(ind0,ind1,ind2));
+                            selectedDualVertIndices = (int[])Arrays.append(selectedDualVertIndices, iDualVert);
                     }
                     selectAllDualVertsAtNextOpportunity = false;
 
@@ -2131,6 +2064,8 @@ public class ShephardsPlayApplet
                     // For now, sweep upwards,
                     // color good edges green and off-balance ones red.
                     //
+                    // TODO: re-implement this properly in terms of dualMesh
+                    //
                     boolean dualEdgeIsCut[] = null;
                     boolean dualEdgeIsOffBalanceCut[] = null;
                     if (showNet)
@@ -2139,8 +2074,14 @@ public class ShephardsPlayApplet
                         dualEdgeIsOffBalanceCut = new boolean[mesh.edges.size()]; // all false initially
                         FORIDOWN (iEdge, mesh.edges.size())
                         {
-                            if (leftDualVerts[iEdge] == null)
-                                continue; // not a triangle, or inside out
+                            Mesh.Vertex triCenterDualVert = ((Mesh.Edge)dualMesh.edges.get(iEdge)).finalVertex();
+                            if (triCenterDualVert.arity != 3)
+                                continue; // primal face was not a triangle
+                            if (!doShowInsideOutDualVerts)
+                            {
+                                if (triCenterDualVert.weight < 0)
+                                    continue; // the triangle is inside out; it's the boundary
+                            }
                             Mesh.Edge e0 = (Mesh.Edge)mesh.edges.get(iEdge);
                             Mesh.Edge e1 = e0.next();
                             Mesh.Edge e2 = e1.next();
@@ -2157,21 +2098,34 @@ public class ShephardsPlayApplet
                                 {triVerts[2].x, triVerts[2].y},
                             };
 
-                            double triCenterDualVert[] = leftDualVerts[e0.myIndex()];
-                            double threeDualVerts[][] = {
-                                leftDualVerts[e0.opposite().myIndex()],
-                                leftDualVerts[e1.opposite().myIndex()],
-                                leftDualVerts[e2.opposite().myIndex()],
+                            Mesh.Vertex threeDualVerts[] = {
+                                ((Mesh.Edge)dualMesh.edges.get(e0.myIndex())).finalVertex(),
+                                ((Mesh.Edge)dualMesh.edges.get(e1.myIndex())).finalVertex(),
+                                ((Mesh.Edge)dualMesh.edges.get(e2.myIndex())).finalVertex(),
                             };
+
+                            double triCenterDualVertCoords[] = {triCenterDualVert.x,
+                                                                triCenterDualVert.y};
+                            double threeDualVertsCoords[][] = new double[3][2];
                             double unitNormals[][] = new double[3][2];
+
                             FORI (i, 3)
                             {
-                                if (threeDualVerts[i] != null)
+                                if (threeDualVerts[i].arity == 3
+                                 && (doShowInsideOutDualVerts
+                                  || threeDualVerts[i].weight >= 0))
                                 {
-                                    VecMath.normalize(unitNormals[i], VecMath.vmv(2, threeDualVerts[i], triCenterDualVert));
+                                    VecMath.normalize(unitNormals[i],
+                                                      VecMath.vmv(2, threeDualVertsCoords[i],
+                                                                     new double[]{threeDualVerts[i].x,
+                                                                                  threeDualVerts[i].y}));
                                 }
                                 else
-                                    VecMath.normalize(unitNormals[i], VecMath.xv2(VecMath.vmv(triVertsCoords[i], triVertsCoords[(i+1)%3])));
+                                {
+                                    VecMath.normalize(unitNormals[i],
+                                                      VecMath.xv2(VecMath.vmv(triVertsCoords[i],
+                                                                              triVertsCoords[(i+1)%3])));
+                                }
                             }
 
                             int bestSide = MAXI3(unitNormals[0][1],
@@ -2209,8 +2163,15 @@ public class ShephardsPlayApplet
                     // 
                     FORIDOWN (iEdge, mesh.edges.size())
                     {
-                        if (leftDualVerts[iEdge] == null)
-                            continue; // not a triangle, or inside out
+                        Mesh.Edge dualEdge = (Mesh.Edge)dualMesh.edges.get(iEdge);
+                        Mesh.Vertex leftDualVert = dualEdge.finalVertex();
+                        if (leftDualVert.arity != 3)
+                            continue; // primal face was not a triangle
+                        if (!doShowInsideOutDualVerts)
+                        {
+                            if (leftDualVert.weight < 0)
+                                continue; // the triangle is inside out; it's the boundary
+                        }
                         Mesh.Edge edge = (Mesh.Edge)mesh.edges.get(iEdge);
                         int jEdge = edge.opposite().myIndex();
 
@@ -2226,15 +2187,29 @@ public class ShephardsPlayApplet
                             }
                         }
 
-                        if (leftDualVerts[jEdge] != null)
+                        Mesh.Vertex rightDualVert = dualEdge.initialVertex();
+
+                        if (rightDualVert.arity == 3
+                         && (doShowInsideOutDualVerts
+                          || rightDualVert.weight >= 0))
                         {
+                            /*
+                            assert(leftDualVerts[jEdge] != null);
                             if (iEdge < jEdge) // don't bother drawing it in both directions
                                 mg.drawLine(leftDualVerts[iEdge][0],leftDualVerts[iEdge][1],
                                             leftDualVerts[jEdge][0],leftDualVerts[jEdge][1],
                                             doAntiAliasing);
+                            */
+                            if (leftDualVert.myIndex() < rightDualVert.myIndex()) // don't bother drawing it in both directions
+                                mg.drawLine(leftDualVert.x, leftDualVert.y,
+                                            rightDualVert.x, rightDualVert.y,
+                                            doAntiAliasing);
                         }
                         else
                         {
+                            /*
+                            assert(leftDualVerts[jEdge] == null);
+                            */
                             // Draw a ray out to infinity
                             double v0[] = {edge.initialVertex().x,
                                            edge.initialVertex().y};
@@ -2245,9 +2220,13 @@ public class ShephardsPlayApplet
                             VecMath.normalize(toEdgeVec, toEdgeVec);
                             double rayLength = 1.; // for edges to infinity
                             //double destPoint[] = VecMath.vpsxv(2, leftDualVerts[iEdge], rayLength, toEdgeVec); // XXX argh, version that allows specifying length doesn't exist yet, and without that it gets confused because leftDualVerts[iEdge] has length 3
+                            /*
                             double destPoint[] = {leftDualVerts[iEdge][0]+rayLength*toEdgeVec[0],
                                                   leftDualVerts[iEdge][1]+rayLength*toEdgeVec[1]};
-                            mg.drawLine(leftDualVerts[iEdge][0],leftDualVerts[iEdge][1],
+                            */
+                            double destPoint[] = {leftDualVert.x + rayLength*toEdgeVec[0],
+                                                  leftDualVert.y + rayLength*toEdgeVec[1]};
+                            mg.drawLine(leftDualVert.x, leftDualVert.y,
                                         destPoint[0],destPoint[1],
                                         doAntiAliasing);
                                                                  
@@ -2305,8 +2284,12 @@ public class ShephardsPlayApplet
                             mg.setColor(java.awt.Color.green);
                         FORIDOWN (iEdge, mesh.edges.size())
                         {
-                            if (leftDualVerts[iEdge] == null)
-                                continue; // not a triangle, or inside out
+                            Mesh.Vertex triCenterDualVert = ((Mesh.Edge)dualMesh.edges.get(iEdge)).finalVertex();
+                            if (triCenterDualVert.arity != 3
+                             || (!doShowInsideOutDualVerts
+                              && triCenterDualVert.weight < 0))
+                                continue; // primary face was not a triangle, or inside out
+
                             Mesh.Edge e0 = (Mesh.Edge)mesh.edges.get(iEdge);
                             Mesh.Edge e1 = e0.next();
                             Mesh.Edge e2 = e1.next();
@@ -2319,7 +2302,7 @@ public class ShephardsPlayApplet
                                 sideLengths[i] = Math.sqrt(SQR(triVerts[i].x-triVerts[(i+1)%3].x)
                                                          + SQR(triVerts[i].y-triVerts[(i+1)%3].y));
                             int bestSide = MAXI3(sideLengths[0], sideLengths[1], sideLengths[2]);
-                            double triCenterDualVert[] = leftDualVerts[e0.myIndex()];
+
                             double v0[] = {triVerts[bestSide].x, triVerts[bestSide].y};
                             double v1[] = {triVerts[(bestSide+1)%3].x, triVerts[(bestSide+1)%3].y};
                             double toEdgeVec[] = VecMath.xv2(
@@ -2327,8 +2310,8 @@ public class ShephardsPlayApplet
                             VecMath.normalize(toEdgeVec, toEdgeVec);
                             // XXX be smarter!  maybe 1/3 of the way along the edge, or somethin
                             double whereToDrawMark[] = {
-                                triCenterDualVert[0] + .02 * toEdgeVec[0],
-                                triCenterDualVert[1] + .02 * toEdgeVec[1],
+                                triCenterDualVert.x + .02 * toEdgeVec[0],
+                                triCenterDualVert.y + .02 * toEdgeVec[1],
                             };
                             //VecMath.vpsxv(whereToDrawMark, whereToDrawMark, .004, VecMath.random(2));
                             mg.drawPoint(whereToDrawMark[0],
@@ -2337,11 +2320,15 @@ public class ShephardsPlayApplet
                     }
                     if (doArrowsTowardsShortestEdges)
                     {
+                        // XXX we do this in 3 ways, possibly getting different answer each time, in case of a tie... should fix that
                         mg.setColor(java.awt.Color.cyan);
                         FORIDOWN (iEdge, mesh.edges.size())
                         {
-                            if (leftDualVerts[iEdge] == null)
-                                continue; // not a triangle, or inside out
+                            Mesh.Vertex triCenterDualVert = ((Mesh.Edge)dualMesh.edges.get(iEdge)).finalVertex();
+                            if (triCenterDualVert.arity != 3
+                             || (!doShowInsideOutDualVerts
+                              && triCenterDualVert.weight < 0.))
+                                continue; // primary face was not a triangle, or inside out
 
                             Mesh.Edge e0 = (Mesh.Edge)mesh.edges.get(iEdge);
                             Mesh.Edge e1 = e0.next();
@@ -2350,19 +2337,24 @@ public class ShephardsPlayApplet
                             Mesh.Vertex triVerts[] = {e0.initialVertex(),
                                                       e1.initialVertex(),
                                                       e2.initialVertex()};
-                            double triCenterDualVert[] = leftDualVerts[e0.myIndex()];
-                            double neighborDualVerts[][] = {
-                                leftDualVerts[e0.opposite().myIndex()],
-                                leftDualVerts[e1.opposite().myIndex()],
-                                leftDualVerts[e2.opposite().myIndex()],
+                            double triCenterDualVertCoords[] = {triCenterDualVert.x, triCenterDualVert.y};
+                            Mesh.Vertex neighborDualVerts[] = {
+                                ((Mesh.Edge)dualMesh.edges.get(e0.myIndex())).initialVertex(),
+                                ((Mesh.Edge)dualMesh.edges.get(e1.myIndex())).initialVertex(),
+                                ((Mesh.Edge)dualMesh.edges.get(e2.myIndex())).initialVertex(),
                             };
+
                             double dualSideLengths[] = new double[3];
                             FORI (i, 3)
                             {
-                                if (neighborDualVerts[i] == null)
+                                if (neighborDualVerts[i].arity != 3
+                                 || (!doShowInsideOutDualVerts
+                                  && neighborDualVerts[i].weight < 0.))
                                     dualSideLengths[i] = Double.POSITIVE_INFINITY;
                                 else
-                                    dualSideLengths[i] = VecMath.dist(triCenterDualVert, neighborDualVerts[i]);
+                                    dualSideLengths[i] = VecMath.dist(triCenterDualVertCoords,
+                                                                      new double[]{neighborDualVerts[i].x,
+                                                                                   neighborDualVerts[i].y});
                             }
                             int bestSide = MINI3(dualSideLengths[0], dualSideLengths[1], dualSideLengths[2]);
                             double v0[] = {triVerts[bestSide].x, triVerts[bestSide].y};
@@ -2372,8 +2364,8 @@ public class ShephardsPlayApplet
                             VecMath.normalize(toEdgeVec, toEdgeVec);
                             // XXX be smarter!  maybe 1/3 of the way along the edge, or somethin
                             double whereToDrawMark[] = {
-                                triCenterDualVert[0] + .02 * toEdgeVec[0],
-                                triCenterDualVert[1] + .02 * toEdgeVec[1],
+                                triCenterDualVert.x + .02 * toEdgeVec[0],
+                                triCenterDualVert.y + .02 * toEdgeVec[1],
                             };
                             //VecMath.vpsxv(whereToDrawMark, whereToDrawMark, .005, VecMath.random(2));
                             mg.drawPoint(whereToDrawMark[0],
@@ -2393,8 +2385,12 @@ public class ShephardsPlayApplet
                         FORI (i, selectedDualVertIndices.length)
                         {
                             int ind = selectedDualVertIndices[i];
-                            if (ind >= leftDualVerts.length
-                             || leftDualVerts[ind] == null)
+                            //if (ind >= leftDualVerts.length
+                            // || leftDualVerts[ind] == null)
+                            if (ind >= dualMesh.verts.size()
+                             || ((Mesh.Vertex)dualMesh.verts.get(ind)).arity != 3
+                             || (!doShowInsideOutDualVerts
+                              && ((Mesh.Vertex)dualMesh.verts.get(ind)).weight < 0))
                             {
                                 selectedDualVertIndices = new int[] {};
                                 System.out.println("BAM!");
@@ -2410,15 +2406,19 @@ public class ShephardsPlayApplet
                                 mg.setColor(java.awt.Color.green);
                             double areaSum = 0.;
                             double moment[] = {0.,0.};
+                            double dualVertCoords[] = new double[2]; // scratch for loop
                             FORI (i, selectedDualVertIndices.length)
                             {
                                 int ind = selectedDualVertIndices[i];
-                                mg.drawPoint(leftDualVerts[ind][0],
-                                             leftDualVerts[ind][1], 5);
+                                Mesh.Vertex dualVert = (Mesh.Vertex)dualMesh.verts.get(ind);
+                                mg.drawPoint(dualVert.x,
+                                             dualVert.y, 5);
+                                dualVertCoords[0] = dualVert.x;
+                                dualVertCoords[1] = dualVert.y;
                                 VecMath.vpsxv(moment,
                                               moment,
-                                              dualVertAreas[ind], leftDualVerts[ind]);
-                                areaSum += dualVertAreas[ind];
+                                              dualVert.weight, dualVertCoords);
+                                areaSum += dualVert.weight;
                             }
                             double avg[] = VecMath.sxv(1./areaSum, moment);
                             mg.drawPoint(avg[0],
@@ -2653,7 +2653,8 @@ public class ShephardsPlayApplet
             {
                 // Not exactly sure what I'm doing, but the following is safer than doing nothing, in the case that all dual verts are selected (e.g. if we're here because of an up or down arrow key, with doContinuouslyDelaunayize on)
                 if (selectedDualVertIndices.length > 0
-                 && selectedDualVertIndices.length == nUniqueMostRecentLeftDualVerts)
+                 && mostRecentDualMesh != null
+                 && selectedDualVertIndices.length == mostRecentDualMesh.verts.size())
                 {
                     selectAllDualVertsAtNextOpportunity = true;
                     selectedDualVertIndices = new int[] {};
@@ -5968,7 +5969,7 @@ public class ShephardsPlayApplet
         private boolean doShowPositiveOrthantnessVisualization = false; // XXX total hack-- it's cool but put it somewhere else!!
         private int showTriangles = 2; // 0: nothing, 1: verts, 2: and tris
         private boolean showNet = false;
-        private double mostRecentLeftDualVerts[][] = null;
+        private Mesh mostRecentDualMesh = null;
 
     //
     // Applet-generic member variables...
@@ -5981,7 +5982,7 @@ public class ShephardsPlayApplet
         private boolean doDoubleBuffer = true;
         private java.awt.Image backBufferImage = null;
         private MyGraphics mostRecentGraphics = null;
-        private int nUniqueMostRecentLeftDualVerts = 0;
+        private int nDrawnDualVerts = 0;
 
         private double prevP[] = null;
 
