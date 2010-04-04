@@ -2069,44 +2069,42 @@ public class ShephardsPlayApplet
                         mg.setColor(java.awt.Color.green);
                     else
                         mg.setColor(java.awt.Color.red);
+                    Mesh dualMesh = makeDualMesh(mesh);
+
+                    // gradually phasing this out I think, in favor of just using dualMesh for everything
                     double leftDualVerts[][] = new double[mesh.edges.size()][];
                     mostRecentLeftDualVerts = leftDualVerts;
                     nUniqueMostRecentLeftDualVerts = 0;
                     double dualVertAreas[] = new double[mesh.edges.size()];
-                    FORIDOWN (iEdge, mesh.edges.size())
+                    FORIDOWN(iEdge, mesh.edges.size())
                     {
                         if (leftDualVerts[iEdge] != null)
                             continue; // already did this triangle
-
-                        Mesh.Edge e0 = (Mesh.Edge)mesh.edges.get(iEdge);
-                        Mesh.Edge e1 = e0.next();
-                        Mesh.Edge e2 = e1.next();
-                        if (e2.next() != e0)
+                        Mesh.Edge dualEdge = (Mesh.Edge)dualMesh.edges.get(iEdge);
+                        Mesh.Vertex leftVert = dualEdge.finalVertex();
+                        if (leftVert.arity != 3)
                             continue; // not a triangle
-
-                        Mesh.Vertex v0 = e0.initialVertex();
-                        Mesh.Vertex v1 = e1.initialVertex();
-                        Mesh.Vertex v2 = e2.initialVertex();
-
-                        double dualVertArea = twiceTriangleArea(v0.x,v0.y,
-                                                                v1.x,v1.y,
-                                                                v2.x,v2.y);
                         if (!doShowInsideOutDualVerts)
                         {
-                            if (dualVertArea < 0)
+                            if (leftVert.weight < 0)
                                 continue; // the triangle is inside out; it's the boundary
                         }
 
-                        double dualVert[] = new double[3];
-                        SolveForDualPoint(v0.x, v0.y, v0.h - .5 * (SQR(v0.x)+SQR(v0.y)),
-                                          v1.x, v1.y, v1.h - .5 * (SQR(v1.x)+SQR(v1.y)),
-                                          v2.x, v2.y, v2.h - .5 * (SQR(v2.x)+SQR(v2.y)),
-                                          dualVert);
-                        dualVert[2] += .5 * (SQR(dualVert[0])+SQR(dualVert[1]));
+                        double dualVert[] = {
+                            leftVert.x,
+                            leftVert.y,
+                            leftVert.h,
+                        };
 
                         //System.out.println("    drawing dual vert at "+Arrays.toStringCompact(dualVert));
                         mg.drawPoint(dualVert[0],
                                      dualVert[1], 5);
+
+                        Mesh.Edge e0 = (Mesh.Edge)mesh.edges.get(iEdge);
+                        Mesh.Edge e1 = e0.next();
+                        Mesh.Edge e2 = e1.next();
+                        assert(e2.next() == e0);
+
                         int ind0 = iEdge;
                         int ind1 = e1.myIndex();
                         int ind2 = e2.myIndex();
@@ -2117,9 +2115,9 @@ public class ShephardsPlayApplet
                         leftDualVerts[ind0] = dualVert;
                         leftDualVerts[ind1] = dualVert;
                         leftDualVerts[ind2] = dualVert;
-                        dualVertAreas[ind0] = dualVertArea;
-                        dualVertAreas[ind1] = dualVertArea;
-                        dualVertAreas[ind2] = dualVertArea;
+                        dualVertAreas[ind0] = leftVert.weight;
+                        dualVertAreas[ind1] = leftVert.weight;
+                        dualVertAreas[ind2] = leftVert.weight;
 
                         nUniqueMostRecentLeftDualVerts++;
                         if (selectAllDualVertsAtNextOpportunity)
@@ -4195,7 +4193,7 @@ public class ShephardsPlayApplet
                     //PRINTVEC(totalCenter);
 
                     // gag, duplicate work, whatever
-                    double nextTriCenter[] = new double[2];
+                    double nextTriCenter[] = new double[3]; // SolveForDualPoint needs 3
                     getTriCenterAndArea(thisTriEdge,
                                         nextTriCenter);
                     //PRINTVEC(nextTriCenter);
@@ -4479,6 +4477,8 @@ public class ShephardsPlayApplet
             {
                 public double x, y, h; // x, y, "height"
                 public double weight = 1.; // optional, if this is a compute dual vertex, this should be the original triangle area
+                public int arity = 0; // number of edges having this vertex as initial vertex
+
                 private int _myIndex = -1;
                 public Vertex(double x, double y, double h)
                 {
@@ -4561,7 +4561,9 @@ public class ShephardsPlayApplet
 
                 public void setInitialVertex(Vertex v)
                 {
+                    assert(_initialVertex == null);
                     _initialVertex = v;
+                    _initialVertex.arity++;
                 }
 
                 public void setOpposite(Edge opposite, boolean andBack)
@@ -4621,7 +4623,7 @@ public class ShephardsPlayApplet
                     edgeToIndex.put(edge, new Integer(iEdge));
                 }
 
-                boolean sawVertAsInitial[] = new boolean[nVerts]; // all false
+                int nTimesSawVertAsInitial[] = new int[nVerts]; // all zero
                 boolean sawEdgeAsOpposite[] = new boolean[nEdges]; // all false
                 boolean sawEdgeAsNext[] = new boolean[nEdges]; // all false
                 boolean sawEdgeAsPrev[] = new boolean[nEdges]; // all false
@@ -4648,7 +4650,7 @@ public class ShephardsPlayApplet
                     int prevIndex = ((Integer)edgeToIndex.get(e.prev())).intValue();
 
                     // Okay for a vert to be initial more than once...
-                    sawVertAsInitial[initialVertIndex] = true;
+                    nTimesSawVertAsInitial[initialVertIndex]++;
 
                     // But not the others...
                     assert(!sawEdgeAsOpposite[oppositeIndex]);
@@ -4661,8 +4663,7 @@ public class ShephardsPlayApplet
 
                 FORI (iVert, nVerts)
                 {
-                    if (false) // can have isolated verts
-                        assert(sawVertAsInitial[iVert]);
+                    assert(nTimesSawVertAsInitial[iVert] == ((Mesh.Vertex)verts.get(iVert)).arity);
                 }
                 FORI (iEdge, nEdges)
                 {
@@ -4906,6 +4907,12 @@ public class ShephardsPlayApplet
                 int j = e.opposite().myIndex();
                 edges.remove(j);
                 fixEdgeIndices(j);
+
+                e._initialVertex.arity--;
+                e._initialVertex = null;
+
+                e.opposite()._initialVertex.arity--;
+                e.opposite()._initialVertex = null;
             }
             public void deleteVertex(Vertex v)
             {
@@ -4919,6 +4926,7 @@ public class ShephardsPlayApplet
                         iEdge--; // so when we increment we get back to here
                     }
                 }
+                assert(v.arity == 0);
                 int iVert = v.myIndex();
                 verts.remove(iVert);
                 fixVertIndices(iVert);
@@ -5456,7 +5464,9 @@ public class ShephardsPlayApplet
                     Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
                     Mesh.Edge tempEdge;
                     SWAP(edge._next, edge._prev, tempEdge);
+                    assert(edge._initialVertex == null);
                     edge._initialVertex = finalInitials[iEdge];
+                    edge._initialVertex.arity++;
                 }
                 sanityCheck();
             } // flipLeftRight
@@ -5479,7 +5489,9 @@ public class ShephardsPlayApplet
                     Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
                     Mesh.Edge tempEdge;
                     SWAP(edge._next, edge._prev, tempEdge);
+                    assert(edge._initialVertex == null);
                     edge._initialVertex = finalInitials[iEdge];
+                    edge._initialVertex.arity++;
                 }
                 sanityCheck();
             } // flipUpDown
@@ -5587,7 +5599,9 @@ public class ShephardsPlayApplet
                 {
                     Edge edge = (Edge)edges.get(iEdge);
                     Edge originalEdge = (Edge)original.edges.get(iEdge);
+                    assert(edge._initialVertex == null);
                     edge._initialVertex = (Vertex)verts.get(originalEdge._initialVertex._myIndex);
+                    edge._initialVertex.arity++;
                     edge._opposite = (Edge)edges.get(originalEdge._opposite._myIndex);
                     edge._prev = (Edge)edges.get(originalEdge._prev._myIndex);
                     edge._next = (Edge)edges.get(originalEdge._next._myIndex);
@@ -5620,6 +5634,8 @@ public class ShephardsPlayApplet
         // and the dual vertex will be set to the weighted average
         // of the vertices computed from each triangle.
         // Indexing of dual edges is same as indexing of original edges.
+        // The dual edge points from right to left,
+        // with respect to the forward direction of the primal edge.
         //
         public Mesh makeDualMesh(Mesh primal)
         {
@@ -5716,7 +5732,9 @@ public class ShephardsPlayApplet
                      dualEdge._opposite._initialVertex == null;
                      dualEdge = dualEdge._next._opposite)
                 {
+                    assert(dualEdge._opposite._initialVertex == null);
                     dualEdge._opposite._initialVertex = dualVert;
+                    dualEdge._opposite._initialVertex.arity++;
                 }
             }
 
