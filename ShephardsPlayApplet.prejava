@@ -2134,7 +2134,19 @@ public class ShephardsPlayApplet
                             dualEdgeIsCut[e.myIndex()] = true;
                             dualEdgeIsCut[e.opposite().myIndex()] = true;
 
-                            dualVertIndexToParentEdge[triCenterDualVert.myIndex()] = ((Mesh.Edge)dualMesh.edges.get(e.myIndex())).opposite();
+                            // Set parent... but only if it's really higher,
+                            // to avoid a cycle in the graph
+                            {
+                                Mesh.Edge maybeParentEdge = ((Mesh.Edge)dualMesh.edges.get(e.myIndex())).opposite();
+                                Mesh.Vertex maybeParentDualVert = maybeParentEdge.finalVertex();
+                                if (maybeParentDualVert != null
+                                 && (GT(maybeParentDualVert.y, triCenterDualVert.y, 1e-6)
+                                  || (EQ(maybeParentDualVert.y, triCenterDualVert.y, 1e-6)
+                                   && (GT(maybeParentDualVert.x, triCenterDualVert.x, 1e-6)
+                                    || (EQ(maybeParentDualVert.x, triCenterDualVert.x, 1e-6)
+                                     && maybeParentDualVert.myIndex() > triCenterDualVert.myIndex())))))
+                                    dualVertIndexToParentEdge[triCenterDualVert.myIndex()] = maybeParentEdge;
+                            }
                         }
 
                         //
@@ -2173,6 +2185,8 @@ public class ShephardsPlayApplet
                             {
                                 Mesh.Vertex dualVert = (Mesh.Vertex)dualMesh.verts.get(iDualVert);
                                 Mesh.Edge dualEdge = dualVertIndexToParentEdge[iDualVert];
+                                if (dualEdge == null)
+                                    continue; // this is the root / highest node
                                 assert(dualEdge.initialVertex().myIndex() == iDualVert);
                                 if (VecMath.dot(dualEdge.direction,
                                                 VecMath.vmv(centersStrictlyBelowEachDualVertex[iDualVert],
