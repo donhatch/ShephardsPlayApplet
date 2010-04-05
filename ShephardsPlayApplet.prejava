@@ -14,6 +14,9 @@ User should be able to:
     middle drag - move a vertex
     's' - swap a diagonal
 
+BUG:
+    - rays don't turn red when bad... wtf?
+      
 TO DO:
     - +/- should maybe look at undo and redo stack, and use it if possible, to save memory
     - when ctrl or alt is down, should divide everything up into maximal
@@ -855,11 +858,12 @@ public class ShephardsPlayApplet
             //doCannedThingNetless8Symmetric();
             //doCannedThingNetless8Optimized();
             //doCannedThingSweepKiller0();
-            doCannedThingSweepKiller1();
+            //doCannedThingSweepKiller1();
             //doCannedThingAlgorithm5Killer0();
             //doCannedThingAlgorithm5Killer1();
             //doCannedThingBlindLagoonExitKiller();
             //doBlueNoiseThing();
+            load("DUMP.off");
 
             if (eventVerbose >= 1) System.out.println("out init");
         } // init
@@ -1966,6 +1970,162 @@ public class ShephardsPlayApplet
                 paint(g);
             }
 
+                // recursive work function
+                // should be static but "inner classes cannot have static declarations", wtf???
+                private void _accumulateWeightAndCenter(int iDualVert,
+                                                        double weightStrictlyBelowEachDualVertex[],
+                                                        double centerStrictlyBelowEachDualVertex[][],
+                                                        Mesh.Edge dualVertIndexToFirstChildEdge[],
+                                                        Mesh.Edge edgeIndexToNextSiblingEdge[])
+                {
+                    if (centerStrictlyBelowEachDualVertex[iDualVert] != null)
+                        return; // already did this one
+                    double weightStrictlyBelow = 0.;
+                    double centerStrictlyBelow[] = {0., 0.};
+                    for (Mesh.Edge childEdge = dualVertIndexToFirstChildEdge[iDualVert];
+                         childEdge != null;
+                         childEdge = edgeIndexToNextSiblingEdge[childEdge.myIndex()])
+                    {
+                         Mesh.Vertex childVert = childEdge.finalVertex();
+                         double childVertCoords[] = {childVert.x, childVert.y};
+                         int childVertexIndex = childEdge.finalVertex().myIndex();
+                         _accumulateWeightAndCenter(childVertexIndex,
+                                                    weightStrictlyBelowEachDualVertex,
+                                                    centerStrictlyBelowEachDualVertex,
+                                                    dualVertIndexToFirstChildEdge,
+                                                    edgeIndexToNextSiblingEdge);
+
+                         System.out.println("    accumulating weight "+childVert.weight+" into vert "+iDualVert+"");
+                         weightStrictlyBelow += childVert.weight;
+                         VecMath.lerp(centerStrictlyBelow,
+                                      centerStrictlyBelow,
+                                      childVertCoords,
+                                      childVert.weight/weightStrictlyBelow);
+
+                         weightStrictlyBelow += weightStrictlyBelowEachDualVertex[childVertexIndex];
+                         VecMath.lerp(centerStrictlyBelow,
+                                      centerStrictlyBelow,
+                                      centerStrictlyBelowEachDualVertex[childVertexIndex],
+                                      weightStrictlyBelowEachDualVertex[childVertexIndex]/weightStrictlyBelow);
+                    }
+                    weightStrictlyBelowEachDualVertex[iDualVert] = weightStrictlyBelow;
+                    centerStrictlyBelowEachDualVertex[iDualVert] = centerStrictlyBelow;
+                } // _accumulateWeightAndCenter
+
+
+                // common code used twice
+                private void drawLabels(MyGraphics mg,
+                                        Mesh mesh,
+                                        boolean isDualMesh)
+                {
+                    boolean trySmartVertexAngles = true;
+
+                    double smartVertexAngles[] = null;
+                    if (trySmartVertexAngles)
+                    {
+                        int nVerts = mesh.verts.size();
+                        int nEdges = mesh.edges.size();
+                        smartVertexAngles = new double[nVerts]; // initialized to 0
+
+                        FORI (iEdge0, nEdges)
+                        {
+                            Mesh.Edge edge0 = (Mesh.Edge)mesh.edges.get(iEdge0);
+                            Mesh.Vertex vert = edge0.initialVertex();
+                            if (vert == null)
+                                continue;
+                            if (smartVertexAngles[vert.myIndex()] != 0.)
+                                continue; // already saw this one for sure
+
+                            double biggestGap = -1.;
+                            double angOfBiggestGap = 0.;
+                            // walk CCW around vertex
+                            Mesh.Edge thisEdge = edge0;
+                            Mesh.Edge nextEdge;
+                            do {
+                                assert(thisEdge.initialVertex() == vert);
+                                nextEdge = thisEdge.prev().opposite();
+                                double nextAng =
+                                    nextEdge.direction != null
+                                  ? Math.atan2(nextEdge.direction[1],
+                                               nextEdge.direction[0])
+                                  : Math.atan2(nextEdge.finalVertex().y-nextEdge.initialVertex().y,
+                                               nextEdge.finalVertex().x-nextEdge.initialVertex().x);
+                                double thisAng =
+                                    thisEdge.direction != null
+                                  ? Math.atan2(thisEdge.direction[1],
+                                               thisEdge.direction[0])
+                                  : Math.atan2(thisEdge.finalVertex().y-thisEdge.initialVertex().y,
+                                               thisEdge.finalVertex().x-thisEdge.initialVertex().x);
+                                double thisGap = nextAng - thisAng;
+                                if (isDualMesh)
+                                    thisGap = -thisGap;
+                                if (thisGap < 0)
+                                    thisGap += 2*Math.PI;
+                                if (thisGap > biggestGap)
+                                {
+                                    biggestGap = thisGap;
+                                    angOfBiggestGap = thisAng+thisGap/2;
+                                }
+                            } while ((thisEdge = nextEdge) != edge0);
+                            if (isDualMesh)
+                                angOfBiggestGap = -angOfBiggestGap;
+                            smartVertexAngles[vert.myIndex()] = angOfBiggestGap;
+                        }
+                    }
+
+
+
+                    if (true)
+                    {
+                        ArrayList verts = mesh.verts;
+                        FORIDOWN (iVert, verts.size())
+                        {
+                            Mesh.Vertex vert = (Mesh.Vertex)verts.get(iVert);
+                            double x = vert.x;
+                            double y = vert.y;
+                            double ang;
+                            if (trySmartVertexAngles)
+                            {
+                                ang = smartVertexAngles[iVert];
+                            }
+                            else
+                            {
+                                ang = Math.random() * 2*Math.PI;
+                            }
+                            double offr = 5/mg.getScaleX(); // pixels
+                            double offx = offr*Math.cos(ang);
+                            double offy = offr*Math.sin(ang);
+                            double offmax = MAX(ABS(offx),ABS(offy));
+
+                            mg.drawString("v"+iVert,
+                                          x+offx,
+                                          y+offy,
+                                          -offx/offmax, offy/offmax);
+                        }
+                    }
+
+                    if (false) // edges are too busy, maybe should be separate option
+                    {
+                        ArrayList edges = mesh.edges;
+                        FORIDOWN (iEdge, edges.size())
+                        {
+                            Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
+                            Mesh.Vertex v0 = edge.initialVertex();
+                            Mesh.Vertex v1 = edge.finalVertex();
+                            double x = (v0.x+v1.x)/2;
+                            double y = (v0.y+v1.y)/2;
+                            double ang = Math.PI/2 + Math.atan2(v1.y-v0.y, v1.x-v0.x);
+                            double offr = 2/mg.getScaleX(); // pixels
+                            double offx = offr*Math.cos(ang);
+                            double offy = offr*Math.sin(ang);
+                            double offmax = MAX(ABS(offx),ABS(offy));
+                            mg.drawString("e"+iEdge,
+                                          x+offx,
+                                          y+offy,
+                                          -offx/offmax, offy/offmax);
+                        }
+                    }
+                } // drawLabels
 
             // PAINT/DISPLAY/DRAW
             public void paint(java.awt.Graphics frontBufferGraphics)
@@ -2191,47 +2351,74 @@ public class ShephardsPlayApplet
 
                         //
                         // Now figure out which ones are off balance.
-                        // Should really topsort for an efficient sweep...
-                        // for now, it's O(n^2)
                         //
-
                         int nDualVerts = dualMesh.verts.size();
-                        double weightsStrictlyBelowEachDualVertex[] = new double[nDualVerts]; // initially 0's
-                        double centersStrictlyBelowEachDualVertex[][] = new double[nDualVerts][2]; // initially 0's
-                        FORI (iDualVert, nDualVerts)
+                        int nDualEdges = dualMesh.edges.size();
+                        double weightStrictlyBelowEachDualVertex[] = new double[nDualVerts]; // initially 0's
+                        double centerStrictlyBelowEachDualVertex[][] = new double[nDualVerts][]; // initially nulls
+                        if (true)
                         {
-                            // Add its weight and center to every vertex strictly above it
-                            Mesh.Vertex dualVert = (Mesh.Vertex)dualMesh.verts.get(iDualVert);
-                            double dualVertCoords[] = {dualVert.x, dualVert.y};
-                            Mesh.Edge dualEdge = dualVertIndexToParentEdge[iDualVert];
-
-                            while (dualEdge != null
-                                && dualEdge.finalVertex() != null)
+                            // Simple way, O(n^2)
+                            FORI (iDualVert, nDualVerts)
+                                centerStrictlyBelowEachDualVertex[iDualVert] = new double[2];
+                            FORI (iDualVert, nDualVerts)
                             {
-                                int jDualVert = dualEdge.finalVertex().myIndex();
-                                //System.out.println("    adding weight of "+iDualVert+" to "+jDualVert+"");
-                                weightsStrictlyBelowEachDualVertex[jDualVert] += dualVert.weight;
-                                VecMath.lerp(centersStrictlyBelowEachDualVertex[jDualVert],
-                                             centersStrictlyBelowEachDualVertex[jDualVert],
-                                             dualVertCoords,
-                                             dualVert.weight/weightsStrictlyBelowEachDualVertex[jDualVert]);
-                                dualEdge = dualVertIndexToParentEdge[jDualVert];
+                                // Add its weight and center to every vertex strictly above it
+                                Mesh.Vertex dualVert = (Mesh.Vertex)dualMesh.verts.get(iDualVert);
+                                double dualVertCoords[] = {dualVert.x, dualVert.y};
+                                Mesh.Edge dualEdge = dualVertIndexToParentEdge[iDualVert];
+
+                                while (dualEdge != null
+                                    && dualEdge.finalVertex() != null)
+                                {
+                                    int jDualVert = dualEdge.finalVertex().myIndex();
+                                    //System.out.println("    adding weight of "+iDualVert+" to "+jDualVert+"");
+                                    weightStrictlyBelowEachDualVertex[jDualVert] += dualVert.weight;
+                                    VecMath.lerp(centerStrictlyBelowEachDualVertex[jDualVert],
+                                                 centerStrictlyBelowEachDualVertex[jDualVert],
+                                                 dualVertCoords,
+                                                 dualVert.weight/weightStrictlyBelowEachDualVertex[jDualVert]);
+                                    dualEdge = dualVertIndexToParentEdge[jDualVert];
+                                }
                             }
+                        }
+                        else
+                        {
+                            // Smarter way, O(n)
+                            Mesh.Edge dualVertIndexToFirstChildEdge[] = new Mesh.Edge[nDualVerts]; // nulls initially
+                            Mesh.Edge edgeIndexToNextSiblingEdge[] = new Mesh.Edge[nDualEdges]; // nulls initially
+                            FORI (iDualVert, nDualVerts)
+                            {
+                                Mesh.Edge upwardDualEdge = dualVertIndexToParentEdge[iDualVert];
+                                if (upwardDualEdge == null)
+                                    continue; // this dual vert is the root
+                                assert(upwardDualEdge.initialVertex().myIndex() == iDualVert);
+                                Mesh.Edge downwardDualEdge = upwardDualEdge.opposite();
+                                Mesh.Vertex parentDualVertex = downwardDualEdge.initialVertex();
+                                edgeIndexToNextSiblingEdge[downwardDualEdge.myIndex()] = dualVertIndexToFirstChildEdge[parentDualVertex.myIndex()];
+                                dualVertIndexToFirstChildEdge[parentDualVertex.myIndex()] = downwardDualEdge;
+                            }
+                            FORI (iDualVert, nDualVerts)
+                                _accumulateWeightAndCenter(iDualVert,
+                                                           weightStrictlyBelowEachDualVertex,
+                                                           centerStrictlyBelowEachDualVertex,
+                                                           dualVertIndexToFirstChildEdge,
+                                                           edgeIndexToNextSiblingEdge);
                         }
 
                         FORI (iDualVert, nDualVerts)
                         {
-                            if (weightsStrictlyBelowEachDualVertex[iDualVert] != 0.)
+                            if (weightStrictlyBelowEachDualVertex[iDualVert] != 0.)
                             {
-                                Mesh.Vertex dualVert = (Mesh.Vertex)dualMesh.verts.get(iDualVert);
                                 Mesh.Edge dualEdge = dualVertIndexToParentEdge[iDualVert];
                                 if (dualEdge == null)
                                     continue; // this is the root / highest node
-                                assert(dualEdge.initialVertex().myIndex() == iDualVert);
+                                Mesh.Vertex dualVert = dualEdge.initialVertex();
+                                assert(dualVert.myIndex() == iDualVert);
                                 if (dualVert.weight < 0.)
                                     continue; // nodes on the boundary are automatically okay
                                 if (VecMath.dot(dualEdge.direction,
-                                                VecMath.vmv(centersStrictlyBelowEachDualVertex[iDualVert],
+                                                VecMath.vmv(centerStrictlyBelowEachDualVertex[iDualVert],
                                                             new double[]{dualVert.x,
                                                                          dualVert.y})) > 0.)
                                 {
@@ -2518,100 +2705,9 @@ public class ShephardsPlayApplet
                 if (doLabels)
                 {
                     mg.setColor(java.awt.Color.white);
-
-                    boolean trySmartVertexAngles = true;
-
-                    double smartVertexAngles[] = null;
-                    if (trySmartVertexAngles)
-                    {
-                        int nVerts = mesh.verts.size();
-                        int nEdges = mesh.edges.size();
-                        smartVertexAngles = new double[nVerts]; // initialized to 0
-
-                        FORI (iEdge0, nEdges)
-                        {
-                            Mesh.Edge edge0 = (Mesh.Edge)mesh.edges.get(iEdge0);
-                            Mesh.Vertex vert = edge0.initialVertex();
-                            if (smartVertexAngles[vert.myIndex()] != 0.)
-                                continue; // already saw this one for sure
-
-                            double biggestGap = -1.;
-                            double angOfBiggestGap = 0.;
-                            // walk CCW around vertex
-                            Mesh.Edge thisEdge = edge0;
-                            Mesh.Edge nextEdge;
-                            do {
-                                assert(thisEdge.initialVertex() == vert);
-                                nextEdge = thisEdge.prev().opposite();
-                                double nextAng = Math.atan2(nextEdge.finalVertex().y-nextEdge.initialVertex().y,
-                                                            nextEdge.finalVertex().x-nextEdge.initialVertex().x);
-                                double thisAng = Math.atan2(thisEdge.finalVertex().y-thisEdge.initialVertex().y,
-                                                            thisEdge.finalVertex().x-thisEdge.initialVertex().x);
-                                double thisGap = nextAng - thisAng;
-                                if (thisGap < 0)
-                                    thisGap += 2*Math.PI;
-                                if (thisGap > biggestGap)
-                                {
-                                    biggestGap = thisGap;
-                                    angOfBiggestGap = thisAng+thisGap/2;
-                                }
-                            } while ((thisEdge = nextEdge) != edge0);
-                            smartVertexAngles[vert.myIndex()] = angOfBiggestGap;
-                        }
-                    }
-
-
-
-                    if (true)
-                    {
-                        ArrayList verts = mesh.verts;
-                        FORIDOWN (iVert, verts.size())
-                        {
-                            Mesh.Vertex vert = (Mesh.Vertex)verts.get(iVert);
-                            double x = vert.x;
-                            double y = vert.y;
-                            double ang;
-                            if (trySmartVertexAngles)
-                            {
-                                ang = smartVertexAngles[iVert];
-                            }
-                            else
-                            {
-                                ang = Math.random() * 2*Math.PI;
-                            }
-                            double offr = 5/mg.getScaleX(); // pixels
-                            double offx = offr*Math.cos(ang);
-                            double offy = offr*Math.sin(ang);
-                            double offmax = MAX(ABS(offx),ABS(offy));
-
-                            mg.drawString("v"+iVert,
-                                          x+offx,
-                                          y+offy,
-                                          -offx/offmax, offy/offmax);
-                        }
-                    }
-
-                    if (false) // edges are too busy, maybe should be separate option
-                    {
-                        ArrayList edges = mesh.edges;
-                        FORIDOWN (iEdge, edges.size())
-                        {
-                            Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
-                            Mesh.Vertex v0 = edge.initialVertex();
-                            Mesh.Vertex v1 = edge.finalVertex();
-                            double x = (v0.x+v1.x)/2;
-                            double y = (v0.y+v1.y)/2;
-                            double ang = Math.PI/2 + Math.atan2(v1.y-v0.y, v1.x-v0.x);
-                            double offr = 2/mg.getScaleX(); // pixels
-                            double offx = offr*Math.cos(ang);
-                            double offy = offr*Math.sin(ang);
-                            double offmax = MAX(ABS(offx),ABS(offy));
-                            mg.drawString("e"+iEdge,
-                                          x+offx,
-                                          y+offy,
-                                          -offx/offmax, offy/offmax);
-                        }
-                    }
+                    drawLabels(mg, mesh, false);
+                    mg.setColor(java.awt.Color.red);
+                    drawLabels(mg, mostRecentDualMesh, true);
                 } // if (doLabels)
 
                 //
