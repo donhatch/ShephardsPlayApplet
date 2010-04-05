@@ -14,9 +14,6 @@ User should be able to:
     middle drag - move a vertex
     's' - swap a diagonal
 
-BUG:
-    - rays don't turn red when bad... wtf?
-      
 TO DO:
     - +/- should maybe look at undo and redo stack, and use it if possible, to save memory
     - when ctrl or alt is down, should divide everything up into maximal
@@ -2259,6 +2256,8 @@ public class ShephardsPlayApplet
                             Mesh.Vertex triCenterDualVert = ((Mesh.Edge)dualMesh.edges.get(iEdge)).finalVertex();
                             if (triCenterDualVert == null)
                                 continue; // primal face was not a triangle, or inside out
+                            if (dualVertIndexToParentEdge[triCenterDualVert.myIndex()] != null)
+                                continue; // definitely already did this vertex  XXX but root vertex stays null so it will be done 3 times :-(
 
                             Mesh.Edge e0 = (Mesh.Edge)mesh.edges.get(iEdge);
                             Mesh.Edge e1 = e0.next();
@@ -2334,17 +2333,14 @@ public class ShephardsPlayApplet
                             dualEdgeIsCut[e.myIndex()] = true;
                             dualEdgeIsCut[e.opposite().myIndex()] = true;
 
-                            // Set parent... but only if it's really higher,
+                            // Set parent... but only if the edge
+                            // is really upwards.
                             // to avoid a cycle in the graph
                             {
                                 Mesh.Edge maybeParentEdge = ((Mesh.Edge)dualMesh.edges.get(e.myIndex())).opposite();
-                                Mesh.Vertex maybeParentDualVert = maybeParentEdge.finalVertex();
-                                if (maybeParentDualVert != null
-                                 && (GT(maybeParentDualVert.y, triCenterDualVert.y, 1e-6)
-                                  || (EQ(maybeParentDualVert.y, triCenterDualVert.y, 1e-6)
-                                   && (GT(maybeParentDualVert.x, triCenterDualVert.x, 1e-6)
-                                    || (EQ(maybeParentDualVert.x, triCenterDualVert.x, 1e-6)
-                                     && maybeParentDualVert.myIndex() > triCenterDualVert.myIndex())))))
+                                if (GT(maybeParentEdge.direction[1], 0, 1e-6)
+                                 || (EQ(maybeParentEdge.direction[1], 0, 1e-6)
+                                  && maybeParentEdge.direction[0] > 0.))
                                     dualVertIndexToParentEdge[triCenterDualVert.myIndex()] = maybeParentEdge;
                             }
                         }
