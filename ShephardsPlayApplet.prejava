@@ -15,6 +15,7 @@ User should be able to:
     's' - swap a diagonal
 
 TO DO:
+    - +/- should maybe look at undo and redo stack, and use it if possible, to save memory
     - when ctrl or alt is down, should divide everything up into maximal
       symmetry maybe-- so we are working in a cell of a kaleidescope
 
@@ -854,11 +855,11 @@ public class ShephardsPlayApplet
             //doCannedThingNetless8Symmetric();
             //doCannedThingNetless8Optimized();
             //doCannedThingSweepKiller0();
-            //doCannedThingSweepKiller1();
+            doCannedThingSweepKiller1();
             //doCannedThingAlgorithm5Killer0();
             //doCannedThingAlgorithm5Killer1();
             //doCannedThingBlindLagoonExitKiller();
-            doBlueNoiseThing();
+            //doBlueNoiseThing();
 
             if (eventVerbose >= 1) System.out.println("out init");
         } // init
@@ -3300,8 +3301,8 @@ public class ShephardsPlayApplet
             private void doBlueNoiseThing()
             {
                 double stubbornness = 100;
-                double overlappingDiskRadiusX = .05;
-                double overlappingDiskRadiusY = .05;
+                double overlappingDiskRadiusX = .01;
+                double overlappingDiskRadiusY = .01;
                 double verts[][] = generateBlueNoiseOnUnitSquare(stubbornness,
                                                                  overlappingDiskRadiusX,
                                                                  overlappingDiskRadiusY);
@@ -5893,6 +5894,8 @@ public class ShephardsPlayApplet
                                                                 double overlappingDiskRadiusX,
                                                                 double overlappingDiskRadiusY) // radius of disks that half-overlap.  this is twice the radius of disks that don't overlap.
         {
+            System.out.println("    in generateBlueNoiseOnUnitSquare");
+            long t0millis = System.currentTimeMillis();
             // adding margin of 2*overlappingDiskRadius and then throwing it away afterwards
             // should be enough to avoid any boundary artifacts.
             // XXX add another 2 so we don't need to check... ?
@@ -5906,7 +5909,8 @@ public class ShephardsPlayApplet
             int nWorkCellsY = (int)Math.ceil((maxY-minY)/overlappingDiskRadiusY);
             PRINT(nWorkCellsX);
             PRINT(nWorkCellsY);
-            double cells[][][][] = new double[nWorkCellsY][nWorkCellsX][0][];
+            double cells[][][][] = new double[nWorkCellsY][nWorkCellsX][6][2];
+            int cellSizes[][] = new int[nWorkCellsY][nWorkCellsX]; // zeros initially
             int nSuccesses = 0;
             int nTries;
             for (nTries = 0;
@@ -5930,7 +5934,8 @@ public class ShephardsPlayApplet
                     for (int iX = iX0; iX <= iX1 && !bad; ++iX)
                     {
                         double cell[][] = cells[iY][iX];
-                        for (int i = 0; i < cell.length; ++i)
+                        double cellSize = cellSizes[iY][iX];
+                        for (int i = 0; i < cellSize; ++i)
                         {
                             double q[] = cell[i];
                             // if distance from q to new point < .5
@@ -5948,7 +5953,9 @@ public class ShephardsPlayApplet
                     int iY = (int)y;
                     iX = CLAMP(iX, 0, nWorkCellsX-1);
                     iY = CLAMP(iY, 0, nWorkCellsY-1);
-                    cells[iY][iX] = (double[][])Arrays.append(cells[iY][iX], new double[]{x, y}); // expect at most 6 per cell
+                    double entry[] = cells[iY][iX][cellSizes[iY][iX]++];
+                    entry[0] = x;
+                    entry[1] = y;
                     nSuccesses++;
                 }
             }
@@ -5964,7 +5971,8 @@ public class ShephardsPlayApplet
             FORI (iY, nWorkCellsY-2*margin)
             {
                 double cell[][] = cells[iY+margin][iX+margin];
-                for (int i = 0; i < cell.length; ++i)
+                double cellSize = cellSizes[iY+margin][iX+margin];
+                for (int i = 0; i < cellSize; ++i)
                 {
                     double scratch[] = cell[i]; 
                     answer[iAnswer] = scratch;
@@ -5979,6 +5987,9 @@ public class ShephardsPlayApplet
             if (margin == 0)
                 assert(iInCells == answer.length);
             answer = (double[][])Arrays.subarray(answer, 0, iAnswer);
+            long t1millis = System.currentTimeMillis();
+            double seconds = (t1millis-t0millis) * 1e-3;
+            System.out.println("    out generateBlueNoiseOnUnitSquare ("+seconds+" seconds)");
             return answer;
         } // generateBlueNoiseOnUnitSquare
 
