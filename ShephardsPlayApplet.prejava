@@ -2430,6 +2430,95 @@ public class ShephardsPlayApplet
                                 }
                             }
                         }
+
+                        if (true)
+                        {
+                            // Start to try to make a data structure
+                            // for net surgery.
+                            Mesh.Edge nextDualEdgeInCutTree[] = new Mesh.Edge[nDualEdges];
+
+                            FORI (iDualEdge, nDualEdges)
+                            {
+                                Mesh.Edge dualEdge = (Mesh.Edge)dualMesh.edges.get(iDualEdge);
+                                // Is this dual edge a cut?
+                                // well, could look it up in the dualEdgeIsCut
+                                // array, but we don't need that
+                                Mesh.Vertex initialVertex = dualEdge.initialVertex();
+                                Mesh.Vertex finalVertex = dualEdge.finalVertex();
+                                boolean isCut = (initialVertex != null
+                                              && dualVertIndexToParentEdge[initialVertex.myIndex()] == dualEdge)
+                                             || (finalVertex != null
+                                              && dualVertIndexToParentEdge[finalVertex.myIndex()] == dualEdge.opposite());
+                                if (!isCut)
+                                    continue;
+
+                                for (Mesh.Edge next = dualEdge.next();
+                                     ;
+                                     next = next.opposite().next())
+                                {
+                                    Mesh.Vertex nextInitialVertex = next.initialVertex();
+                                    Mesh.Vertex nextFinalVertex = next.finalVertex();
+                                    boolean nextIsCut = (nextInitialVertex != null
+                                                      && dualVertIndexToParentEdge[nextInitialVertex.myIndex()] == next)
+                                                     || (nextFinalVertex != null
+                                                      && dualVertIndexToParentEdge[nextFinalVertex.myIndex()] == next.opposite());
+                                    if (nextIsCut)
+                                    {
+                                        nextDualEdgeInCutTree[iDualEdge] = next;
+                                        break;
+                                    }
+                                    assert(next.opposite() != dualEdge); // that would be endless loop... must have found a next by now, since an edge should be a cut iff its opposite is a cut
+                                }
+                            }
+
+                            FORI (iDualEdge, nDualEdges)
+                            {
+                                assert((nextDualEdgeInCutTree[iDualEdge] != null)
+                                    == dualEdgeIsCut[iDualEdge]);
+                            }
+
+                            if (false)
+                            {
+                                // Print it out
+                                System.out.println("Walking around net tree:");
+                                boolean seen[] = new boolean[nDualEdges]; // false initially
+                                FORI (iPass, 2)
+                                {
+                                    FORI (iDualEdge, nDualEdges)
+                                    {
+                                        if (nextDualEdgeInCutTree[iDualEdge] == null)
+                                            continue; // not a cut
+                                        if (seen[iDualEdge])
+                                            continue;
+                                        assert(iPass == 0); // should have got everything in pass 0
+                                        Mesh.Edge dualEdge = (Mesh.Edge)dualMesh.edges.get(iDualEdge);
+                                        if (dualEdge.initialVertex() != null
+                                         && dualVertIndexToParentEdge[dualEdge.initialVertex().myIndex()] != null)
+                                            continue; // start connected components with roots (including or non-vertices) only XXX would be good to start with the extremal child, but that's hard to figure out
+                                        System.out.print("    ");
+                                        while (true)
+                                        {
+                                            System.out.print("(");
+                                            if (dualEdge.initialVertex() != null)
+                                                System.out.print(""+dualEdge.initialVertex().myIndex());
+                                            else
+                                                System.out.print("null");
+                                            System.out.print("->");
+                                            if (dualEdge.finalVertex() != null)
+                                                System.out.print(""+dualEdge.finalVertex().myIndex());
+                                            else
+                                                System.out.print("null");
+                                            System.out.print(")");
+                                            seen[dualEdge.myIndex()] = true;
+                                            dualEdge = nextDualEdgeInCutTree[dualEdge.myIndex()];
+                                            if (dualEdge.myIndex() == iDualEdge)
+                                                break;
+                                        }
+                                        System.out.println();
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     //
@@ -2702,8 +2791,11 @@ public class ShephardsPlayApplet
                 //
                 if (doLabels)
                 {
-                    mg.setColor(java.awt.Color.white);
-                    drawLabels(mg, mesh, false);
+                    if (showTriangles >= 1)
+                    {
+                        mg.setColor(java.awt.Color.white);
+                        drawLabels(mg, mesh, false);
+                    }
                     mg.setColor(java.awt.Color.red);
                     drawLabels(mg, mostRecentDualMesh, true);
                 } // if (doLabels)
@@ -3395,8 +3487,8 @@ public class ShephardsPlayApplet
             private void doBlueNoiseThing()
             {
                 double stubbornness = 100;
-                double overlappingDiskRadiusX = .01;
-                double overlappingDiskRadiusY = .01;
+                double overlappingDiskRadiusX = .1;
+                double overlappingDiskRadiusY = .1;
                 double verts[][] = generateBlueNoiseOnUnitSquare(stubbornness,
                                                                  overlappingDiskRadiusX,
                                                                  overlappingDiskRadiusY);
