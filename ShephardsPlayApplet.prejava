@@ -844,20 +844,21 @@ public class ShephardsPlayApplet
 
             graphicsAntiAliasingSetter = new GraphicsAntiAliasingSetter();
 
-            //doCannedThingHexesSpiral(); // XXX get rid of this probably
-            //doCannedThingNetless9(); // XXX get rid of this probably
-            //doCannedThingEyeball(); // XXX get rid of this probably
-            //doCannedThingNetless8(); // XXX get rid of this probably
-            //doCannedThingCrackKiller(); // XXX get rid of this probably
-            //doCannedThingHexesSpiralOther(); // XXX get rid of this probably
-            //doCannedThingNetless888(); // XXX get rid of this probably
-            //doCannedThingNetless8Symmetric(); // XXX get rid of this probably
-            //doCannedThingNetless8Optimized(); // XXX get rid of this probably
-            //doCannedThingSweepKiller0(); // XXX get rid of this probably
-            doCannedThingSweepKiller1(); // XXX get rid of this probably
-            //doCannedThingAlgorithm5Killer0(); // XXX get rid of this probably
-            //doCannedThingAlgorithm5Killer1(); // XXX get rid of this probably
-            //doCannedThingBlindLagoonExitKiller(); // XXX get rid of this probably
+            //doCannedThingHexesSpiral();
+            //doCannedThingNetless9();
+            //doCannedThingEyeball();
+            //doCannedThingNetless8();
+            //doCannedThingCrackKiller();
+            //doCannedThingHexesSpiralOther();
+            //doCannedThingNetless888();
+            //doCannedThingNetless8Symmetric();
+            //doCannedThingNetless8Optimized();
+            //doCannedThingSweepKiller0();
+            //doCannedThingSweepKiller1();
+            //doCannedThingAlgorithm5Killer0();
+            //doCannedThingAlgorithm5Killer1();
+            //doCannedThingBlindLagoonExitKiller();
+            doBlueNoiseThing();
 
             if (eventVerbose >= 1) System.out.println("out init");
         } // init
@@ -913,7 +914,7 @@ public class ShephardsPlayApplet
             return java_awt_event_MouseEvent_BUTTON1;
         } // getButton
 
-        class TheCanvas
+        private class TheCanvas
             extends java.awt.Canvas
             implements java.awt.event.MouseListener,
                        java.awt.event.MouseMotionListener,
@@ -1511,7 +1512,9 @@ public class ShephardsPlayApplet
                             vert.h *= scale*scale;
                         }
 
-                        // should be no need to re-delaunayize
+                        // should be no need to re-delaunayize, unless control is down
+                        if (e.isControlDown())
+                            if (doContinuouslyDelaunayize.get()) delaunayize();
                         UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
@@ -1529,7 +1532,9 @@ public class ShephardsPlayApplet
                             vert.y *= scale;
                             vert.h *= scale*scale;
                         }
-                        // should be no need to re-delaunayize
+                        // should be no need to re-delaunayize, unless control is down
+                        if (e.isControlDown())
+                            if (doContinuouslyDelaunayize.get()) delaunayize();
                         UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
@@ -1882,6 +1887,19 @@ public class ShephardsPlayApplet
                         theCanvas.repaint();
                         break;
 
+                    case CTRL('b'): // blue noise pattern
+                    {
+                        UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+
+                        doBlueNoiseThing();
+
+                        if (doContinuouslyDelaunayize.get()) delaunayize();
+                        UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+                        undoTreeSquirrel.Do(new UndoItem(before, after));
+                        theCanvas.repaint();
+                        break;
+                    }
+
                     case CTRL('c'): // very special case canned... netless9 example
                     {
                         UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
@@ -2068,8 +2086,6 @@ public class ShephardsPlayApplet
                     // For now, sweep upwards,
                     // color good edges green and off-balance ones red.
                     //
-                    // TODO: re-implement this properly in terms of dualMesh
-                    //
                     boolean dualEdgeIsCut[] = null;
                     boolean dualEdgeIsOffBalanceCut[] = null;
                     if (showNet)
@@ -2114,6 +2130,29 @@ public class ShephardsPlayApplet
                                     if (EQ(threeDirections[bestSide][1], threeDirections[(bestSide+2)%3][1], 1e-6)
                                      && LT(threeDirections[bestSide][0], threeDirections[(bestSide+2)%3][0], 1e-6))
                                         bestSide = (bestSide+2)%3;
+                                }
+                            }
+                            if (true)
+                            {
+                                // Hack to ensure that a negative-weight (assume that means boundary)
+                                // vertex never has a positive-weight vertex as parent
+                                Mesh.Edge threeEdges[] = {
+                                    ((Mesh.Edge)dualMesh.edges.get(e0.myIndex())).opposite(),
+                                    ((Mesh.Edge)dualMesh.edges.get(e1.myIndex())).opposite(),
+                                    ((Mesh.Edge)dualMesh.edges.get(e2.myIndex())).opposite(),
+                                };
+                                if (triCenterDualVert.weight < 0.
+                                 && threeEdges[bestSide].finalVertex() != null
+                                 && threeEdges[bestSide].finalVertex().weight >= 0.)
+                                {
+                                    int origBestSide = bestSide;
+                                    bestSide = (threeDirections[(bestSide+1)%3][1] >= threeDirections[(bestSide+2)%3][1] ? (bestSide+1)%3 : (bestSide+2)%3);
+                                    if (triCenterDualVert.weight < 0.
+                                     && threeEdges[bestSide].finalVertex() != null
+                                     && threeEdges[bestSide].finalVertex().weight >= 0.)
+                                    {
+                                        bestSide = 3 - bestSide - origBestSide;
+                                    }
                                 }
                             }
 
@@ -2188,6 +2227,8 @@ public class ShephardsPlayApplet
                                 if (dualEdge == null)
                                     continue; // this is the root / highest node
                                 assert(dualEdge.initialVertex().myIndex() == iDualVert);
+                                if (dualVert.weight < 0.)
+                                    continue; // nodes on the boundary are automatically okay
                                 if (VecMath.dot(dualEdge.direction,
                                                 VecMath.vmv(centersStrictlyBelowEachDualVertex[iDualVert],
                                                             new double[]{dualVert.x,
@@ -2208,6 +2249,11 @@ public class ShephardsPlayApplet
                     //
                     // Now try connecting the dual verts
                     // 
+                    //java.awt.Color darkBlue = new java.awt.Color(0,0,127);
+                    //java.awt.Color darkBlue = new java.awt.Color(0,0,192);
+                    java.awt.Color darkBlue = new java.awt.Color(0.f,0.f,3/4.f);
+                    //java.awt.Color darkBlue = new java.awt.Color(0.f,0.f,7/8.f);
+                    //java.awt.Color darkBlue = new java.awt.Color(0.f,0.f,1.f);
                     FORIDOWN (iEdge, mesh.edges.size())
                     {
                         Mesh.Edge dualEdge = (Mesh.Edge)dualMesh.edges.get(iEdge);
@@ -2229,7 +2275,8 @@ public class ShephardsPlayApplet
                             }
                             else
                             {
-                                mg.setColor(java.awt.Color.blue);
+                                //mg.setColor(java.awt.Color.blue);
+                                mg.setColor(darkBlue);
                             }
                         }
 
@@ -3249,6 +3296,20 @@ public class ShephardsPlayApplet
                     mesh = new Mesh(verts, faces);
                 }
             } // doCannedThingAlgorithm5Killer
+
+            private void doBlueNoiseThing()
+            {
+                double stubbornness = 100;
+                double overlappingDiskRadiusX = .05;
+                double overlappingDiskRadiusY = .05;
+                double verts[][] = generateBlueNoiseOnUnitSquare(stubbornness,
+                                                                 overlappingDiskRadiusX,
+                                                                 overlappingDiskRadiusY);
+                VecMath.mmv(verts, verts, new double[]{.5,.5});
+                FORI (iVert, verts.length)
+                    verts[iVert] = (double[])Arrays.append(verts[iVert], 0.); // make room for heights
+                mesh = new Mesh(verts, new int[][]{});
+            } // doBlueNoiseThing
 
             private void doCannedThingBlindLagoonExitKiller()
             {
@@ -5826,6 +5887,100 @@ public class ShephardsPlayApplet
             return dual;
         } // makeDualMesh()
 
+
+
+        private static double[][] generateBlueNoiseOnUnitSquare(double stubbornness,
+                                                                double overlappingDiskRadiusX,
+                                                                double overlappingDiskRadiusY) // radius of disks that half-overlap.  this is twice the radius of disks that don't overlap.
+        {
+            // adding margin of 2*overlappingDiskRadius and then throwing it away afterwards
+            // should be enough to avoid any boundary artifacts.
+            // XXX add another 2 so we don't need to check... ?
+            double minX = -2*overlappingDiskRadiusX;
+            double maxX = 1+2*overlappingDiskRadiusX;
+            double minY = -2*overlappingDiskRadiusY;
+            double maxY = 1+2*overlappingDiskRadiusY;
+
+            // we work with cells of size 1, in which overlappingDiskRadius is .5 (nonoverlapping disk radius is 1)
+            int nWorkCellsX = (int)Math.ceil((maxX-minX)/overlappingDiskRadiusX);
+            int nWorkCellsY = (int)Math.ceil((maxY-minY)/overlappingDiskRadiusY);
+            PRINT(nWorkCellsX);
+            PRINT(nWorkCellsY);
+            double cells[][][][] = new double[nWorkCellsY][nWorkCellsX][0][];
+            int nSuccesses = 0;
+            int nTries;
+            for (nTries = 0;
+                 nTries==0
+              || nTries < nSuccesses * stubbornness;  // first one is guaranteed to be a success
+                 ++nTries)
+            {
+                double x = Math.random() * nWorkCellsX;
+                double y = Math.random() * nWorkCellsY;
+                int iX1 = (int)(x+.5);
+                int iX0 = iX1-1;
+                int iY1 = (int)(y+.5);
+                int iY0 = iY1-1;
+                iX0 = CLAMP(iX0, 0, nWorkCellsX-1);
+                iX1 = CLAMP(iX1, 0, nWorkCellsX-1);
+                iY0 = CLAMP(iY0, 0, nWorkCellsY-1);
+                iY1 = CLAMP(iY1, 0, nWorkCellsY-1);
+                boolean bad = false;
+                for (int iY = iY0; iY <= iY1 && !bad; ++iY)
+                {
+                    for (int iX = iX0; iX <= iX1 && !bad; ++iX)
+                    {
+                        double cell[][] = cells[iY][iX];
+                        for (int i = 0; i < cell.length; ++i)
+                        {
+                            double q[] = cell[i];
+                            // if distance from q to new point < .5
+                            if (SQR(x-q[0])+SQR(y-q[1]) < .25)
+                            {
+                                bad = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (!bad)
+                {
+                    int iX = (int)x;
+                    int iY = (int)y;
+                    iX = CLAMP(iX, 0, nWorkCellsX-1);
+                    iY = CLAMP(iY, 0, nWorkCellsY-1);
+                    cells[iY][iX] = (double[][])Arrays.append(cells[iY][iX], new double[]{x, y}); // expect at most 6 per cell
+                    nSuccesses++;
+                }
+            }
+
+            PRINT(nTries);
+            PRINT(nSuccesses);
+
+            double answer[][] = new double[nSuccesses][];
+            int iInCells = 0;
+            int iAnswer = 0;
+            int margin = 1; // should be 1, can set to 0 to see the margin too
+            FORI (iX, nWorkCellsX-2*margin)
+            FORI (iY, nWorkCellsY-2*margin)
+            {
+                double cell[][] = cells[iY+margin][iX+margin];
+                for (int i = 0; i < cell.length; ++i)
+                {
+                    double scratch[] = cell[i]; 
+                    answer[iAnswer] = scratch;
+                    scratch[0] = LERP(minX, maxX, scratch[0]/nWorkCellsX);
+                    scratch[1] = LERP(minY, maxY, scratch[1]/nWorkCellsY);
+                    if (INRANGE(0 <=, scratch[0], <= 1)
+                     && INRANGE(0 <=, scratch[1], <= 1))
+                        iAnswer++;
+                    iInCells++;
+                }
+            }
+            if (margin == 0)
+                assert(iInCells == answer.length);
+            answer = (double[][])Arrays.subarray(answer, 0, iAnswer);
+            return answer;
+        } // generateBlueNoiseOnUnitSquare
 
 
         // Holds the information needed to undo and redo a mesh editing operation.
