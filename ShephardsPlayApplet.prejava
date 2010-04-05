@@ -2206,9 +2206,8 @@ public class ShephardsPlayApplet
                 if (true)
                 {
                     //
-                    // Draw and store the dual verts...
-                    // leftDualVerts[iEdge] is the vertex to the left of edges[iEdge].
-                    // (so each dual vert appears 3 times in the list).
+                    // Compute and store the dual mesh...
+                    // XXX weird place to do it, in draw
                     //
                     if (showNet)
                         mg.setColor(java.awt.Color.green);
@@ -2248,6 +2247,9 @@ public class ShephardsPlayApplet
                     //
                     boolean dualEdgeIsCut[] = null;
                     boolean dualEdgeIsOffBalanceCut[] = null;
+                    // Hack for now... just one
+                    Mesh.Edge theBadLagoonExitToDraw = null;
+                    Mesh.Edge theGoodLagoonExitToDraw = null;
                     if (showNet)
                     {
                         dualEdgeIsCut = new boolean[mesh.edges.size()]; // all false initially
@@ -2518,9 +2520,68 @@ public class ShephardsPlayApplet
                                     }
                                 }
                             }
+
+                            // Try to do one surgery.
+                            System.out.println("Trying surgery...");
+                            FORI (iDualEdge, nDualEdges)
+                            {
+                                Mesh.Edge dualEdge = (Mesh.Edge)dualMesh.edges.get(iDualEdge);
+                                Mesh.Vertex initialVertex = dualEdge.initialVertex();
+                                if (dualEdgeIsOffBalanceCut[iDualEdge]
+                                 && initialVertex != null
+                                 && dualVertIndexToParentEdge[initialVertex.myIndex()] == dualEdge)
+                                {
+                                    // It's an upward off-balance cut.
+                                    // Starting with its opposite, walk around the lagoon
+                                    // until we find a good exit.
+
+                                    double lagoonCenter[] =
+                                        VecMath.lerp(centerStrictlyBelowEachDualVertex[initialVertex.myIndex()],
+                                                     new double[]{initialVertex.x, initialVertex.y},
+                                                     initialVertex.weight/(initialVertex.weight+weightStrictlyBelowEachDualVertex[initialVertex.myIndex()]));
+                                    Mesh.Edge goodLagoonExitEdge = null;
+                                    // begin with dualEdge.opposite() even though it's not really in the lagoon, so that we'll see the first exit from the same vertex if there is one
+                                    for (
+                                         //Mesh.Edge lagoonEdge = nextDualEdgeInCutTree[dualEdge.opposite().myIndex()];
+                                         Mesh.Edge lagoonEdge = dualEdge.opposite();
+                                         lagoonEdge != dualEdge;
+                                         lagoonEdge = nextDualEdgeInCutTree[lagoonEdge.myIndex()])
+                                    {
+                                        if (lagoonEdge.next() != nextDualEdgeInCutTree[lagoonEdge.myIndex()])
+                                        {
+                                            // lagoonEdge.next() is a lagoon exit.
+                                            // See whether it's a good one.
+                                            Mesh.Edge lagoonExitEdge = lagoonEdge.next();
+                                            Mesh.Vertex lagoonExitVertex = lagoonExitEdge.initialVertex();
+                                            boolean isGoodExit = VecMath.dot(lagoonExitEdge.direction,
+                                                                             VecMath.vmv(lagoonCenter,
+                                                                                         new double[]{lagoonExitVertex.x,
+                                                                                                      lagoonExitVertex.y})) <= 0;
+                                            if (isGoodExit)
+                                            {
+                                                goodLagoonExitEdge = lagoonExitEdge;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    if (goodLagoonExitEdge != null)
+                                    {
+                                        System.out.println("        bad cut "+dualEdge+" could be replaced by "+goodLagoonExitEdge+"");
+                                        theBadLagoonExitToDraw = dualEdge;
+                                        theGoodLagoonExitToDraw = goodLagoonExitEdge;
+                                    }
+                                    else
+                                    {
+                                        System.out.println("        bad cut "+dualEdge+" can't be replaced!?");
+                                        assert(false);
+                                    }
+                                }
+                            }
                         }
                     }
 
+                    PRINT(theBadLagoonExitToDraw);
+                    PRINT(theGoodLagoonExitToDraw);
                     //
                     // Now try connecting the dual verts
                     // 
@@ -2540,7 +2601,17 @@ public class ShephardsPlayApplet
 
                         if (dualEdgeIsCut != null)
                         {
-                            if (dualEdgeIsOffBalanceCut[iEdge])
+                            if (dualEdge == theBadLagoonExitToDraw
+                             || dualEdge.opposite() == theBadLagoonExitToDraw)
+                            {
+                                mg.setColor(java.awt.Color.magenta); // red turning blue
+                            }
+                            else if (dualEdge == theGoodLagoonExitToDraw
+                                  || dualEdge.opposite() == theGoodLagoonExitToDraw)
+                            {
+                                mg.setColor(java.awt.Color.cyan); // blue turning green
+                            }
+                            else if (dualEdgeIsOffBalanceCut[iEdge])
                             {
                                 mg.setColor(java.awt.Color.red);
                             }
@@ -2559,13 +2630,6 @@ public class ShephardsPlayApplet
 
                         if (rightDualVert != null)
                         {
-                            /*
-                            assert(leftDualVerts[jEdge] != null);
-                            if (iEdge < jEdge) // don't bother drawing it in both directions
-                                mg.drawLine(leftDualVerts[iEdge][0],leftDualVerts[iEdge][1],
-                                            leftDualVerts[jEdge][0],leftDualVerts[jEdge][1],
-                                            doAntiAliasing);
-                            */
                             if (leftDualVert.myIndex() < rightDualVert.myIndex()) // don't bother drawing it in both directions
                                 mg.drawLine(leftDualVert.x, leftDualVert.y,
                                             rightDualVert.x, rightDualVert.y,
@@ -2573,9 +2637,6 @@ public class ShephardsPlayApplet
                         }
                         else
                         {
-                            /*
-                            assert(leftDualVerts[jEdge] == null);
-                            */
                             // Draw a ray out to infinity
                             double v0[] = {edge.initialVertex().x,
                                            edge.initialVertex().y};
@@ -2585,11 +2646,6 @@ public class ShephardsPlayApplet
                                                      VecMath.vmv(v0, v1));
                             VecMath.normalize(toEdgeVec, toEdgeVec);
                             double rayLength = 1.; // for edges to infinity
-                            //double destPoint[] = VecMath.vpsxv(2, leftDualVerts[iEdge], rayLength, toEdgeVec); // XXX argh, version that allows specifying length doesn't exist yet, and without that it gets confused because leftDualVerts[iEdge] has length 3
-                            /*
-                            double destPoint[] = {leftDualVerts[iEdge][0]+rayLength*toEdgeVec[0],
-                                                  leftDualVerts[iEdge][1]+rayLength*toEdgeVec[1]};
-                            */
                             double destPoint[] = {leftDualVert.x + rayLength*toEdgeVec[0],
                                                   leftDualVert.y + rayLength*toEdgeVec[1]};
                             mg.drawLine(leftDualVert.x, leftDualVert.y,
@@ -2612,7 +2668,7 @@ public class ShephardsPlayApplet
                     FORIDOWN (iEdge, mesh.edges.size())
                     {
                         Mesh.Edge edge = (Mesh.Edge)mesh.edges.get(iEdge);
-                        if (edge.next() == edge.opposite()) // check in only one of the two directions
+                        if (edge.next() == edge.opposite()) // check in only one of the two directions XXX am I doing this?  might have broken it
                         //if (leftDualVerts[iEdge] == null && leftDualVerts[edge.opposite().myIndex()] == null && iEdge < edge.opposite().myIndex())
                         {
                             double v0[] = {edge.initialVertex().x,
@@ -2745,10 +2801,8 @@ public class ShephardsPlayApplet
                         FORI (i, selectedDualVertIndices.length)
                         {
                             int ind = selectedDualVertIndices[i];
-                            //if (ind >= leftDualVerts.length
-                            // || leftDualVerts[ind] == null)
                             if (ind >= dualMesh.verts.size()
-                                || dualMesh.verts.get(ind) == null)
+                             || dualMesh.verts.get(ind) == null)
                             {
                                 selectedDualVertIndices = new int[] {};
                                 System.out.println("BAM!");
@@ -4869,6 +4923,21 @@ public class ShephardsPlayApplet
                     _prev = prev;
                     if (andBack)
                         prev.setNext(this, false);
+                }
+
+                public String toString()
+                {
+                    StringBuffer sb = new StringBuffer();
+                    if (initialVertex() != null)
+                        sb.append(initialVertex().myIndex());
+                    else
+                        sb.append("null");
+                    sb.append("->");
+                    if (finalVertex() != null)
+                        sb.append(finalVertex().myIndex());
+                    else
+                        sb.append("null");
+                    return sb.toString();
                 }
 
             } // public class Edge
