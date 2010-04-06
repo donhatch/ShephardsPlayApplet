@@ -1377,6 +1377,15 @@ public class ShephardsPlayApplet
                 {
                     double thisP[] = new double[2];
                     mostRecentGraphics.pick(e.getX(), e.getY(), thisP);
+                    if (showNet)
+                    {
+                        int closestDualEdgeIndex = mostRecentDualMesh.indexOfClosestEdge(thisP);
+                        if (closestDualEdgeIndex != highlightedDualEdgeIndex)
+                        {
+                            highlightedDualEdgeIndex = closestDualEdgeIndex;
+                            theCanvas.repaint();
+                        }
+                    }
                     prevP = thisP;
                 }
 
@@ -2249,7 +2258,7 @@ public class ShephardsPlayApplet
                     boolean dualEdgeIsOffBalanceCut[] = null;
                     // Hack for now... just one
                     Mesh.Edge theBadLagoonExitToDraw = null;
-                    Mesh.Edge theGoodLagoonExitToDraw = null;
+                    ArrayList offBalanceEdgeToGoodLagoonExits[] = new ArrayList[dualMesh.edges.size()]; // all nulls initially
                     if (showNet)
                     {
                         dualEdgeIsCut = new boolean[mesh.edges.size()]; // all false initially
@@ -2521,8 +2530,36 @@ public class ShephardsPlayApplet
                                 }
                             }
 
-                            // Try to do one surgery.
-                            System.out.println("Trying surgery...");
+                            // ARGH! this doesn't work for good lagoon exits, which is what I wrote it for... TODO: remove it if it's not good for anything
+                            class EdgesPartition
+                            {
+                                private Mesh.Edge firsts[];
+                                private Mesh.Edge nexts[];
+                                public EdgesPartition(int n,
+                                                      Mesh mesh)
+                                {
+                                    firsts = new Mesh.Edge[n];
+                                    nexts = new Mesh.Edge[mesh.edges.size()];
+                                }
+                                public Mesh.Edge first(int i)
+                                {
+                                    return firsts[i];
+                                }
+                                public Mesh.Edge next(Mesh.Edge e)
+                                {
+                                    return nexts[e.myIndex()];
+                                }
+                                public void add(int i, Mesh.Edge e)
+                                {
+                                    assert(nexts[e.myIndex()] == null);
+                                    nexts[e.myIndex()] = firsts[i];
+                                    firsts[i] = e;
+                                }
+                            }; // EdgesPartition
+
+
+                            // Try to do some surgery.
+                            //System.out.println("Trying surgery...");
                             FORI (iDualEdge, nDualEdges)
                             {
                                 Mesh.Edge dualEdge = (Mesh.Edge)dualMesh.edges.get(iDualEdge);
@@ -2534,24 +2571,23 @@ public class ShephardsPlayApplet
                                     // It's an upward off-balance cut.
                                     // Starting with its opposite, walk around the lagoon
                                     // until we find a good exit.
+                                    // In fact, record them all.
+                                    offBalanceEdgeToGoodLagoonExits[dualEdge.myIndex()] = new ArrayList();
 
                                     double lagoonCenter[] =
                                         VecMath.lerp(centerStrictlyBelowEachDualVertex[initialVertex.myIndex()],
                                                      new double[]{initialVertex.x, initialVertex.y},
                                                      initialVertex.weight/(initialVertex.weight+weightStrictlyBelowEachDualVertex[initialVertex.myIndex()]));
-                                    Mesh.Edge goodLagoonExitEdge = null;
                                     // begin with dualEdge.opposite() even though it's not really in the lagoon, so that we'll see the first exit from the same vertex if there is one
-                                    for (
-                                         //Mesh.Edge lagoonEdge = nextDualEdgeInCutTree[dualEdge.opposite().myIndex()];
-                                         Mesh.Edge lagoonEdge = dualEdge.opposite();
+                                    for (Mesh.Edge lagoonEdge = dualEdge.opposite();
                                          lagoonEdge != dualEdge;
                                          lagoonEdge = nextDualEdgeInCutTree[lagoonEdge.myIndex()])
                                     {
-                                        if (lagoonEdge.next() != nextDualEdgeInCutTree[lagoonEdge.myIndex()])
+                                        for (Mesh.Edge lagoonExitEdge = lagoonEdge.next();
+                                             lagoonExitEdge != nextDualEdgeInCutTree[lagoonEdge.myIndex()];
+                                             lagoonExitEdge = lagoonExitEdge.opposite().next())
                                         {
-                                            // lagoonEdge.next() is a lagoon exit.
-                                            // See whether it's a good one.
-                                            Mesh.Edge lagoonExitEdge = lagoonEdge.next();
+                                            // found a lagoon exit... see if it's a good one.
                                             Mesh.Vertex lagoonExitVertex = lagoonExitEdge.initialVertex();
                                             boolean isGoodExit = VecMath.dot(lagoonExitEdge.direction,
                                                                              VecMath.vmv(lagoonCenter,
@@ -2559,20 +2595,28 @@ public class ShephardsPlayApplet
                                                                                                       lagoonExitVertex.y})) <= 0;
                                             if (isGoodExit)
                                             {
-                                                goodLagoonExitEdge = lagoonExitEdge;
-                                                break;
+                                                offBalanceEdgeToGoodLagoonExits[iDualEdge].add(lagoonExitEdge);
+                                                // could break here since we found one, if that's the way we were doing things
                                             }
                                         }
                                     }
-                                    if (goodLagoonExitEdge != null)
+                                    if (false)
                                     {
-                                        System.out.println("        bad cut "+dualEdge+" could be replaced by "+goodLagoonExitEdge+"");
-                                        theBadLagoonExitToDraw = dualEdge;
-                                        theGoodLagoonExitToDraw = goodLagoonExitEdge;
+                                        System.out.print("        bad cut "+dualEdge+" could be replaced by: ");
+                                        FORI (iGoodExit, offBalanceEdgeToGoodLagoonExits[iDualEdge].size())
+                                        {
+                                            Mesh.Edge goodExit = (Mesh.Edge)offBalanceEdgeToGoodLagoonExits[iDualEdge].get(iGoodExit);
+                                            System.out.print(" " + goodExit);
+                                        }
+                                        System.out.println();
                                     }
-                                    else
+
+                                    if (dualEdge.myIndex() == highlightedDualEdgeIndex
+                                     || dualEdge.opposite().myIndex() == highlightedDualEdgeIndex)
+                                        theBadLagoonExitToDraw = dualEdge;
+                                    if (offBalanceEdgeToGoodLagoonExits[iDualEdge].size() < 2)
                                     {
-                                        System.out.println("        bad cut "+dualEdge+" can't be replaced!?");
+                                        System.out.println("        HEY!!! bad cut "+dualEdge+" has only "+offBalanceEdgeToGoodLagoonExits[iDualEdge].size()+" good lagoon exits! That's impossible!");
                                         assert(false);
                                     }
                                 }
@@ -2580,8 +2624,8 @@ public class ShephardsPlayApplet
                         }
                     }
 
-                    PRINT(theBadLagoonExitToDraw);
-                    PRINT(theGoodLagoonExitToDraw);
+                    //PRINT(theBadLagoonExitToDraw);
+
                     //
                     // Now try connecting the dual verts
                     // 
@@ -2606,8 +2650,9 @@ public class ShephardsPlayApplet
                             {
                                 mg.setColor(java.awt.Color.magenta); // red turning blue
                             }
-                            else if (dualEdge == theGoodLagoonExitToDraw
-                                  || dualEdge.opposite() == theGoodLagoonExitToDraw)
+                            else if (theBadLagoonExitToDraw != null
+                                  && (offBalanceEdgeToGoodLagoonExits[theBadLagoonExitToDraw.myIndex()].indexOf(dualEdge) != -1
+                                   || offBalanceEdgeToGoodLagoonExits[theBadLagoonExitToDraw.myIndex()].indexOf(dualEdge.opposite()) != -1))
                             {
                                 mg.setColor(java.awt.Color.cyan); // blue turning green
                             }
@@ -5314,11 +5359,19 @@ public class ShephardsPlayApplet
                 FORI (iEdge, edges.size()) // beginning to end, so we choose first of equal
                 {
                     Edge edge = (Edge)edges.get(iEdge);
-                    double thisDistSqrd = distSqrdFromPointToSeg(x,y,
-                                             edge.initialVertex().x,
-                                             edge.initialVertex().y,
-                                             edge.finalVertex().x,
-                                             edge.finalVertex().y);
+                    double thisDistSqrd =
+                        edge.initialVertex() == null ? Double.POSITIVE_INFINITY : // no need to deal with edges whose initial vertex is NULL and final vertex isn't, since we'll encounter its opposite anyway
+                        edge.finalVertex() == null ? distSqrdFromPointToRay(x,y,
+                                                                            edge.initialVertex().x,
+                                                                            edge.initialVertex().y,
+                                                                            edge.direction[0],
+                                                                            edge.direction[1]) :
+                        edge.initialVertex().myIndex() > edge.finalVertex().myIndex() ? Double.POSITIVE_INFINITY
+                                                    : distSqrdFromPointToSeg(x,y,
+                                                                             edge.initialVertex().x,
+                                                                             edge.initialVertex().y,
+                                                                             edge.finalVertex().x,
+                                                                             edge.finalVertex().y);
                     if (thisDistSqrd < closestDistSqrd)
                     {
                         closestDistSqrd = thisDistSqrd;
@@ -6421,6 +6474,20 @@ public class ShephardsPlayApplet
             double vprojectedOntoV1[] = VecMath.sxv(t, v1);
             return VecMath.distsqrd(v, vprojectedOntoV1);
         }
+        private static double distSqrdFromPointToRay(double x, double y,
+                                                     double x0, double y0,
+                                                     double xDir, double yDir) // need not be unit length
+        {
+            double v[] = {x-x0,y-y0};
+            double v1[] = {xDir, yDir};
+            if (VecMath.normsqrd(v1) == 0.)
+                return VecMath.normsqrd(v);
+            double t = VecMath.dot(v,v1)
+                     / VecMath.dot(v1,v1);
+            t = MAX(t, 0.);
+            double vprojectedOntoV1[] = VecMath.sxv(t, v1);
+            return VecMath.distsqrd(v, vprojectedOntoV1);
+        }
 
     //
     // App-specific variables...
@@ -6475,6 +6542,7 @@ public class ShephardsPlayApplet
         private int showTriangles = 2; // 0: nothing, 1: verts, 2: and tris
         private boolean showNet = false;
         private Mesh mostRecentDualMesh = null;
+        private int highlightedDualEdgeIndex = -1;
 
     //
     // Applet-generic member variables...
