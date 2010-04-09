@@ -2364,6 +2364,7 @@ public class ShephardsPlayApplet
                         //
                         // Now figure out which ones are off balance.
                         //
+                        // accumulate weights...
                         int nDualVerts = dualMesh.verts.size();
                         int nDualEdges = dualMesh.edges.size();
                         double weightStrictlyBelowEachDualVertex[] = new double[nDualVerts]; // initially 0's
@@ -2447,8 +2448,10 @@ public class ShephardsPlayApplet
 
                         if (true)
                         {
+                            //
                             // Start to try to make a data structure
                             // for net surgery.
+                            //
                             Mesh.Edge nextDualEdgeInCutTree[] = new Mesh.Edge[nDualEdges];
 
                             FORI (iDualEdge, nDualEdges)
@@ -2533,7 +2536,7 @@ public class ShephardsPlayApplet
                                 }
                             }
 
-                            // ARGH! this doesn't work for good lagoon exits, which is what I wrote it for... TODO: remove it if it's not good for anything
+                            // ARGH! this doesn't work for good lagoon exits, which is what I wrote it for, since those are not a partition!  (cyan edge can be exit for more than one lagoon)... TODO: remove it if it's not good for anything
                             class EdgesPartition
                             {
                                 private Mesh.Edge firsts[];
@@ -2571,6 +2574,7 @@ public class ShephardsPlayApplet
                                  && initialVertex != null
                                  && dualVertIndexToParentEdge[initialVertex.myIndex()] == dualEdge)
                                 {
+                                    //System.out.println("    Looking for alternatives to bad exit "+dualEdge+"");
                                     // It's an upward off-balance cut.
                                     // Starting with its opposite, walk around the lagoon
                                     // until we find a good exit.
@@ -2592,14 +2596,37 @@ public class ShephardsPlayApplet
                                         {
                                             // found a lagoon exit... see if it's a good one.
                                             Mesh.Vertex lagoonExitVertex = lagoonExitEdge.initialVertex();
-                                            boolean isGoodExit = VecMath.dot(lagoonExitEdge.direction,
-                                                                             VecMath.vmv(lagoonCenter,
-                                                                                         new double[]{lagoonExitVertex.x,
-                                                                                                      lagoonExitVertex.y})) <= 0;
-                                            if (isGoodExit)
+                                            boolean isGood = VecMath.dot(lagoonExitEdge.direction,
+                                                                         VecMath.vmv(lagoonCenter,
+                                                                                     new double[]{lagoonExitVertex.x,
+                                                                                                  lagoonExitVertex.y})) <= 0;
+                                            if (isGood)
                                             {
-                                                offBalanceEdgeToGoodLagoonExits[iDualEdge].add(lagoonExitEdge);
-                                                // could break here since we found one, if that's the way we were doing things
+                                                // At this point we're not sure if it's an exit.
+                                                // Scan upwards to see if we find dualEdge.
+                                                // if we do, then we're in the same lagoon.
+                                                // (note, it would be more efficient asymptotically
+                                                // to just turn on a bit for every node in the lagoon,
+                                                // but this is simple for now, and probably not a bottleneck)
+                                                boolean isExit = true; // until proven otherwise
+                                                if (lagoonExitEdge.finalVertex() != null)
+                                                {
+                                                    //System.out.println("        is "+initialVertex.myIndex()+" downstream from "+lagoonExitEdge.finalVertex().myIndex()+"?");
+                                                    for (int jVertex = lagoonExitEdge.finalVertex().myIndex();
+                                                         dualVertIndexToParentEdge[jVertex] != null && dualVertIndexToParentEdge[jVertex].finalVertex() != null;
+                                                         jVertex = dualVertIndexToParentEdge[jVertex].finalVertex().myIndex())
+                                                        if (jVertex == initialVertex.myIndex()) // the original bad lagoon exit vertex
+                                                        {
+                                                            isExit = false;
+                                                            //System.out.println("            oops! found vertex "+initialVertex.myIndex()+" scanning upwards from "+lagoonExitVertex.myIndex()+"");
+                                                            break;
+                                                        }
+                                                }
+                                                if (isExit)
+                                                {
+                                                    offBalanceEdgeToGoodLagoonExits[iDualEdge].add(lagoonExitEdge);
+                                                    // could break here since we found one, if that's the way we were doing things
+                                                }
                                             }
                                         }
                                     }
