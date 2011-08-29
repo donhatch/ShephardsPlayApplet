@@ -27,7 +27,6 @@ TO DO:
 
     - translateFudge is backwards I think
 
-    - make optimization not pop when different tri covers origin
     - think about which optimization types to retain if any
         - maybe optimization should always be max min length, but choice should be how to match scale and translate afterwards
 
@@ -3188,6 +3187,7 @@ public class ShephardsPlayApplet
                                     }
                                 }
                             }
+#endif // NOTYET
                         }
                     }
                 }
@@ -3202,7 +3202,7 @@ public class ShephardsPlayApplet
                         mg.setColor(java.awt.Color.white);
                         drawLabels(mg, mesh, false);
                     }
-                    mg.setColor(dualColor);
+                    mg.setColor(java.awt.Color.red);
                     drawLabels(mg, mostRecentDualMesh, true);
 
                     // draw a subtle dot at the origin
@@ -6195,6 +6195,7 @@ public class ShephardsPlayApplet
                                 PRINTVEC(VecMath.vpv(VecMath.vxm(leastSquaresSolution,A), result0));
                                 PRINT(VecMath.sum(VecMath.vpv(VecMath.vxm(leastSquaresSolution,A), result0)));
                             }
+
                         }
                         else if (optimizationType == OPTIMIZE_LENGTHS_SUM)
                         {
@@ -6256,6 +6257,60 @@ public class ShephardsPlayApplet
                 }
                 FORI (iDependentVert, dependentVertIndices.length)
                     optimalVertexHeights[dependentVertIndices[iDependentVert]] = 0.;
+
+
+                if (true)
+                {
+                    // Now we want to adjust the solution
+                    // so that the dual verts are shifted in the plane
+                    // so that the average of the dual verts
+                    // is equal to the average of the original verts.
+                    // (This is somewhat arbitrary,
+                    // but at least it makes the dual translate with the primal)
+                    double[] avgPrimal = new double[2]; // zero initially
+                    {
+                        FORI (iVert, verts.size())
+                        {
+                            Vertex vert = (Vertex)verts.get(iVert);
+                            avgPrimal[0] += vert.x;
+                            avgPrimal[1] += vert.y;
+                        }
+                        VecMath.vxs(avgPrimal, avgPrimal, 1./verts.size());
+                    }
+                    double[] avgDual = new double[2]; // zero initially
+                    {
+                        double scratchDualVert[] = new double[3];
+                        FORI (iDualVert, nDualVerts)
+                        {
+                            int iVert0 = dualVert2verts[iDualVert][0];
+                            int iVert1 = dualVert2verts[iDualVert][1];
+                            int iVert2 = dualVert2verts[iDualVert][2];
+                            Vertex v0 = (Vertex)verts.get(iVert0);
+                            Vertex v1 = (Vertex)verts.get(iVert1);
+                            Vertex v2 = (Vertex)verts.get(iVert2);
+                            double h0 = optimalVertexHeights[iVert0];
+                            double h1 = optimalVertexHeights[iVert1];
+                            double h2 = optimalVertexHeights[iVert2];
+                            SolveForDualPoint(v0.x,v0.y,h0 - .5 * (SQR(v0.x)+SQR(v0.y)),
+                                              v1.x,v1.y,h1 - .5 * (SQR(v1.x)+SQR(v1.y)),
+                                              v2.x,v2.y,h2 - .5 * (SQR(v2.x)+SQR(v2.y)),
+                                              scratchDualVert);
+                            VecMath.vpv(2, avgDual, avgDual, scratchDualVert); // only 2 of 3
+                        }
+                        VecMath.vxs(avgDual, avgDual, 1./nDualVerts);
+                    }
+                    double[] desiredDelta = VecMath.vmv(avgPrimal, avgDual);
+                    PRINTVEC(avgPrimal);
+                    PRINTVEC(avgDual);
+                    PRINTVEC(desiredDelta);
+                    FORI (iVert, optimalVertexHeights.length)
+                    {
+                        Vertex vert = (Vertex)verts.get(iVert);
+                        optimalVertexHeights[iVert] -= vert.x * desiredDelta[0]
+                                                     + vert.y * desiredDelta[1];
+                    }
+                }
+
 
                 if (nonEventVerbose >= 1)
                     System.out.println("out findOptimalVertexHeights");
