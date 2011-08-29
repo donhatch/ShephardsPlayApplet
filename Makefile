@@ -1,15 +1,20 @@
 #JAVAROOT=/usr/java/jdk1.5.0
 #JAVAC=${JAVAROOT}/bin/javac
 
-JAVAROOT=/usr/java/j2sdk1.4.2
-JAVAC=${JAVAROOT}/bin/javac
+#JAVAROOT=/usr/java/j2sdk1.4.2
+#JAVAC=${JAVAROOT}/bin/javac
 
-# XXX is this not working currently?
 #JAVAROOT=/usr/java/j2sdk1.4.2
 #JAVAC=jikes +P -source 1.4 -classpath ${JAVAROOT}/jre/lib/rt.jar
 
 #JAVAROOT=/opt/blackdown-jdk-1.4.2.03
 #JAVAC=${JAVAROOT}/bin/javac
+
+#JAVAC=javac1.2
+#JAVAROOT=c:/jdk1.2.2
+
+JAVAC=javac1.3
+JAVAROOT=c:/jdk1.3.1_20
 
 
 
@@ -25,7 +30,7 @@ JAR_CONTAINS = *.class *.prejava macros.h Makefile javacpp javarenumber
 
 # XXX ARGH! why doesn't it work using -classpath .:./donhatchsw.jar ???
 # XXX doing this instead for now, making com a symlink
-# XXX to a dir that contains all the donhatchsw class files.
+# XXX to a dir that contains all the donhatchsw class files
 JAR_CONTAINS += com
 
 .PHONY: all
@@ -42,12 +47,16 @@ CPPFLAGS += -Wall -Werror
 
 .SUFFIXES: .prejava .java .class
 .prejava.class:
-	./javacpp ${CPPFLAGS} ${JAVAC} -classpath ".:./donhatchsw.jar" $*.prejava
-	./javarenumber -v 0 $*.class
+        # The following is the way to do it on linux I think
+	#javacpp ${CPPFLAGS} ${JAVAC} -classpath ".:./donhatchsw.jar" $*.prejava
+        # Need to do the following instead on cygwin... ?
+	javacpp ${CPPFLAGS} ${JAVAC} $*.prejava
+
+	javarenumber -v 0 $*.class
 	# too slow... only do this in the production version
 	# on second thought, try it, for now...
 	# on third hand, it bombs with Couldn't open GraphicsAntiAliasingSetter$*.class because that one has no subclasses... argh.
-	#@./javarenumber -v -1 $*'$$'*.class
+	#@javarenumber -v -1 $*'$$'*.class
 
 # Separate renumber target since renumbering all the subclass files
 # on every recompile is slow :-(.  Usually I run "make renumber"
@@ -56,7 +65,7 @@ CPPFLAGS += -Wall -Werror
 # the .java files.
 
 ${JARFILE}.is_renumbered: $(JAR_DEPENDS_ON)
-	./javarenumber -v -1 *.class
+	javarenumber -v -1 *.class
 	${JAVAROOT}/bin/jar -cfm $(JARFILE).is_renumbered META-INF/MANIFEST.MF ${JAR_CONTAINS}
 	touch $@
 .PHONY: renumber
