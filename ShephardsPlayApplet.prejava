@@ -20,10 +20,13 @@ BUG:
     - the cyan edges sometimes go from the lagoon to itself-- need to get rid of those
 
 TO DO:
+    - improve kaleidescope:
+        - detect and use center
+        - detect and use complete symmetry group
+        - key to increase or decrease period (requires vertex in center
+        - snap closest image to exact image? hmm, not sure
+
     - +/- should maybe look at undo and redo stack, and use it if possible, to save memory
-    - auto mirror, auto circular symmetry? how?
-    - when ctrl or alt is down, should divide everything up into maximal
-      symmetry maybe-- so we are working in a cell of a kaleidescope>
 
     - ability to snap to integer grid?
 
@@ -46,6 +49,7 @@ TO DO:
         - also, during swap, if both relevant ones selected, make them both selected again
     - BUG: figure out how to make it not repaint continuously when resizing (my other appets too)
     - BUG: when only part of window gets exposed, only the exposed part gets painted?  hmm, not sure I have control over this
+    - BUG: can't reconnect an isolated vertex to the rest
     - look at this, maybe clues about positive octant penalty functions...
         http://www.cs.indiana.edu/~yingfeng/ABSURDIST/javadoc/penalty/PenaltyMinimizer.html
       something about "translating into a positive orthant problem" and "optimizing over the positive orthant"
@@ -687,10 +691,11 @@ public class ShephardsPlayApplet
             System.out.println("===================================================================");
             System.out.println("Mouse:");
             System.out.println("    left click: add a vertex and drag it");
-            System.out.println("    middle drag: move a vertex");
+            System.out.println("    middle drag: drag a vertex");
             System.out.println("    right click: delete a vertex");
             System.out.println("    shift-middle drag: pan entire picture");
-            System.out.println("    control-left drag: create new edge between two vertices");
+            System.out.println("    shift-left drag: create new edge between two vertices");
+            System.out.println("    ctrl-left and ctrl-middle: add/drag vertex and all reflections of it");
             System.out.println("Keys:");
             System.out.println("    'V' - cycle verbosity (to java console or system output)");
             System.out.println("    ' ' - just repaint");
@@ -1074,7 +1079,7 @@ public class ShephardsPlayApplet
                 {
                     button1IsDown = true;
 
-                    if (e.isControlDown())
+                    if (e.isShiftDown())
                     {
                         //
                         // Add an edge from the closest vertex
@@ -1097,153 +1102,174 @@ public class ShephardsPlayApplet
                         beingDraggedVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1]);
                         rubberBandingNewEdge = true;
                     }
-                    else // control is not down
+                    else // shift is not down
                     {
                         //
                         // Add a vertex
                         //
-                        System.out.println("    Adding a vertex at "+thisP[0]+" "+thisP[1]+" "+0+"");
-                        mesh.addIsolatedVertex(thisP[0], thisP[1], 0);
 
-                        ArrayList verts = mesh.verts;
-                        ArrayList edges = mesh.edges;
-                        if (verts.size() >= 2)
+                        double vertsToAdd[][] = {
+                            thisP,
+                        };
+
+                        if (e.isControlDown())
                         {
-                            //
-                            // If are no edges at all, add an edge.
-                            // XXX this is kind of lame when there were more than one isolated vertex, should connect to them all
-                            //
-                            if (edges.size() == 0)
+                            // add a mirror image.
+                            // prepend instead of appending, so that the last thing we do
+                            // is the one that will be dragged.
+                            vertsToAdd = (double[][])Arrays.concat(new double[][]{{-thisP[0], thisP[1]}}, vertsToAdd);
+                            // TODO: detect entire symmetry group
+                        }
+
+                        FORI (iVertToAdd, vertsToAdd.length)
+                        {
+                            double vertToAdd[] = vertsToAdd[iVertToAdd];
+                            double x = vertToAdd[0];
+                            double y = vertToAdd[1];
+
+                            System.out.println("    Adding a vertex at "+x+" "+y+" "+0+"");
+                            mesh.addIsolatedVertex(x, y, 0);
+
+                            ArrayList verts = mesh.verts;
+                            ArrayList edges = mesh.edges;
+                            if (verts.size() >= 2)
                             {
-                                System.out.println("Adding an edge between two verts");
-                                mesh.addEdgeBetweenTwoIsolatedVertices((Mesh.Vertex)verts.get(verts.size()-2),
-                                                                       (Mesh.Vertex)verts.get(verts.size()-1));
-                            }
-                            else // edges.size() >= 1
-                            {
-                                // There was already an edge.
-                                // Find out which face we are on
-                                // (all triangles CCW), and kis that face.
-                                // if we are not inside any face by that criterion,
-                                // then assume we are inside the outer face
-                                // and connect the new vertex to every vertex
-                                // that's visible from it.
                                 //
-                                boolean kissed = false;
-                                double twiceMostNegativeFaceArea = Double.POSITIVE_INFINITY;
-                                Mesh.Edge edgeOnMostNegativeFace = null;
-                                // XXX traverses each face of size n n times!  need to keep track of what we've done already
-                                int nEdges = mesh.edges.size();
-                                FORI (iEdge, nEdges)
+                                // If are no edges at all, add an edge.
+                                // XXX this is kind of lame when there were more than one isolated vertex, should connect to them all
+                                //
+                                if (edges.size() == 0)
                                 {
-                                    boolean thisFaceIsGoodSoFar = true;
-                                    Mesh.Edge edgeI = (Mesh.Edge)mesh.edges.get(iEdge);
-                                    double twiceThisFaceArea = 0.;
-                                    for (Mesh.Edge edge = edgeI;;)
-                                    {
-                                        double twiceThisTriArea = twiceTriangleArea(
-                                                                thisP[0],thisP[1],
-                                                                edge.initialVertex().x,
-                                                                edge.initialVertex().y,
-                                                                edge.finalVertex().x,
-                                                                edge.finalVertex().y);
-                                        if (twiceThisTriArea < 0)
-                                        {
-                                            thisFaceIsGoodSoFar = false; // it's bad!
-                                        }
-                                        twiceThisFaceArea += twiceThisTriArea;
-
-                                        if ((edge = edge.next()) == edgeI)
-                                            break;
-                                    }
-                                    if (thisFaceIsGoodSoFar)
-                                    {
-                                        // I'm inside this face;
-                                        // kis it and done
-                                        mesh.kisIsolatedVertex((Mesh.Vertex)verts.get(verts.size()-1),
-                                                               edgeI);
-                                        kissed = true;
-                                        break;
-                                    }
-                                    if (twiceThisFaceArea < twiceMostNegativeFaceArea)
-                                    {
-                                        twiceMostNegativeFaceArea = twiceThisFaceArea;
-                                        edgeOnMostNegativeFace = edgeI;
-                                    }
+                                    System.out.println("Adding an edge between two verts");
+                                    mesh.addEdgeBetweenTwoIsolatedVertices((Mesh.Vertex)verts.get(verts.size()-2),
+                                                                           (Mesh.Vertex)verts.get(verts.size()-1));
                                 }
-                                if (!kissed)
+                                else // edges.size() >= 1
                                 {
-                                    System.out.println("In the outer face");
+                                    // There was already an edge.
+                                    // Find out which face we are on
+                                    // (all triangles CCW), and kis that face.
+                                    // if we are not inside any face by that criterion,
+                                    // then assume we are inside the outer face
+                                    // and connect the new vertex to every vertex
+                                    // that's visible from it.
                                     //
-                                    // It wasn't inside any face.
-                                    // Assume it's in the outer face.
-                                    // In this case,
-                                    // make a kiss to the outer face
-                                    // and then delete all newly added edges
-                                    // that cross the boundary of the outer face.
-                                    //
-
-                                    ArrayList/*<Mesh.Edge>*/ oldOuterFaceBoundary = new ArrayList();
-                                    for (Mesh.Edge edge = edgeOnMostNegativeFace;;)
+                                    boolean kissed = false;
+                                    double twiceMostNegativeFaceArea = Double.POSITIVE_INFINITY;
+                                    Mesh.Edge edgeOnMostNegativeFace = null;
+                                    // XXX traverses each face of size n n times!  need to keep track of what we've done already
+                                    int nEdges = mesh.edges.size();
+                                    FORI (iEdge, nEdges)
                                     {
-                                        oldOuterFaceBoundary.add(edge);
-                                        if ((edge = edge.next()) == edgeOnMostNegativeFace)
-                                            break;
-                                    }
-                                    int oldOuterFaceBoundarySize = oldOuterFaceBoundary.size();
-
-                                    int oldNumEdges = mesh.edges.size();
-                                    mesh.kisIsolatedVertex((Mesh.Vertex)verts.get(verts.size()-1),
-                                                           edgeOnMostNegativeFace);
-                                    if (!e.isShiftDown()) // XXX TODO: document that shift-left kisses whole boundary
-                                    {
-                                        for (int iEdge = oldNumEdges;
-                                             iEdge < mesh.edges.size();
-                                             iEdge += 2) // only do one of an edge and its opposite
+                                        boolean thisFaceIsGoodSoFar = true;
+                                        Mesh.Edge edgeI = (Mesh.Edge)mesh.edges.get(iEdge);
+                                        double twiceThisFaceArea = 0.;
+                                        for (Mesh.Edge edge = edgeI;;)
                                         {
-                                            for (int iOldBoundaryEdge = 0;
-                                                 iOldBoundaryEdge < oldOuterFaceBoundarySize;
-                                                 ++iOldBoundaryEdge)
+                                            double twiceThisTriArea = twiceTriangleArea(
+                                                                    x, y,
+                                                                    edge.initialVertex().x,
+                                                                    edge.initialVertex().y,
+                                                                    edge.finalVertex().x,
+                                                                    edge.finalVertex().y);
+                                            if (twiceThisTriArea < 0)
                                             {
-                                                Mesh.Edge oldEdge = (Mesh.Edge)oldOuterFaceBoundary.get(iOldBoundaryEdge);
-                                                Mesh.Edge newEdge = (Mesh.Edge)mesh.edges.get(iEdge);
+                                                thisFaceIsGoodSoFar = false; // it's bad!
+                                            }
+                                            twiceThisFaceArea += twiceThisTriArea;
 
-                                                if (newEdge.initialVertex() == oldEdge.initialVertex()
-                                                 || newEdge.initialVertex() == oldEdge.finalVertex()
-                                                 || newEdge.finalVertex() == oldEdge.initialVertex()
-                                                 || newEdge.finalVertex() == oldEdge.finalVertex())
-                                                    continue;
-                                                //System.out.println("    Seeing whether new edge v"+newEdge.initialVertex().myIndex()+" -> v"+newEdge.finalVertex().myIndex()+" crosses old boundary edges v"+oldEdge.initialVertex().myIndex()+" -> v"+oldEdge.finalVertex().myIndex()+"");
-                                                if (edgesCrossOrCloseToIt(
-                                                                oldEdge.initialVertex().x,
-                                                                oldEdge.initialVertex().y,
-                                                                oldEdge.finalVertex().x,
-                                                                oldEdge.finalVertex().y,
-                                                                newEdge.initialVertex().x,
-                                                                newEdge.initialVertex().y,
-                                                                newEdge.finalVertex().x,
-                                                                newEdge.finalVertex().y,
-                                                                1e-6))
+                                            if ((edge = edge.next()) == edgeI)
+                                                break;
+                                        }
+                                        if (thisFaceIsGoodSoFar)
+                                        {
+                                            // I'm inside this face;
+                                            // kis it and done
+                                            mesh.kisIsolatedVertex((Mesh.Vertex)verts.get(verts.size()-1),
+                                                                   edgeI);
+                                            kissed = true;
+                                            break;
+                                        }
+                                        if (twiceThisFaceArea < twiceMostNegativeFaceArea)
+                                        {
+                                            twiceMostNegativeFaceArea = twiceThisFaceArea;
+                                            edgeOnMostNegativeFace = edgeI;
+                                        }
+                                    }
+                                    if (!kissed)
+                                    {
+                                        System.out.println("In the outer face");
+                                        //
+                                        // It wasn't inside any face.
+                                        // Assume it's in the outer face.
+                                        // In this case,
+                                        // make a kiss to the outer face
+                                        // and then delete all newly added edges
+                                        // that cross the boundary of the outer face.
+                                        //
+
+                                        ArrayList/*<Mesh.Edge>*/ oldOuterFaceBoundary = new ArrayList();
+                                        for (Mesh.Edge edge = edgeOnMostNegativeFace;;)
+                                        {
+                                            oldOuterFaceBoundary.add(edge);
+                                            if ((edge = edge.next()) == edgeOnMostNegativeFace)
+                                                break;
+                                        }
+                                        int oldOuterFaceBoundarySize = oldOuterFaceBoundary.size();
+
+                                        int oldNumEdges = mesh.edges.size();
+                                        mesh.kisIsolatedVertex((Mesh.Vertex)verts.get(verts.size()-1),
+                                                               edgeOnMostNegativeFace);
+                                        if (!e.isShiftDown()) // XXX TODO: document that shift-left kisses whole boundary
+                                        {
+                                            for (int iEdge = oldNumEdges;
+                                                 iEdge < mesh.edges.size();
+                                                 iEdge += 2) // only do one of an edge and its opposite
+                                            {
+                                                for (int iOldBoundaryEdge = 0;
+                                                     iOldBoundaryEdge < oldOuterFaceBoundarySize;
+                                                     ++iOldBoundaryEdge)
                                                 {
-                                                    //System.out.println("        It does.");
-                                                    mesh.deleteEdge(newEdge);
-                                                    iEdge -= 2; // so we don't skip the one that gets moved into the deleted spot
-                                                    break;
-                                                }
-                                                else
-                                                {
-                                                    //System.out.println("        It doesn't.");
+                                                    Mesh.Edge oldEdge = (Mesh.Edge)oldOuterFaceBoundary.get(iOldBoundaryEdge);
+                                                    Mesh.Edge newEdge = (Mesh.Edge)mesh.edges.get(iEdge);
+
+                                                    if (newEdge.initialVertex() == oldEdge.initialVertex()
+                                                     || newEdge.initialVertex() == oldEdge.finalVertex()
+                                                     || newEdge.finalVertex() == oldEdge.initialVertex()
+                                                     || newEdge.finalVertex() == oldEdge.finalVertex())
+                                                        continue;
+                                                    //System.out.println("    Seeing whether new edge v"+newEdge.initialVertex().myIndex()+" -> v"+newEdge.finalVertex().myIndex()+" crosses old boundary edges v"+oldEdge.initialVertex().myIndex()+" -> v"+oldEdge.finalVertex().myIndex()+"");
+                                                    if (edgesCrossOrCloseToIt(
+                                                                    oldEdge.initialVertex().x,
+                                                                    oldEdge.initialVertex().y,
+                                                                    oldEdge.finalVertex().x,
+                                                                    oldEdge.finalVertex().y,
+                                                                    newEdge.initialVertex().x,
+                                                                    newEdge.initialVertex().y,
+                                                                    newEdge.finalVertex().x,
+                                                                    newEdge.finalVertex().y,
+                                                                    1e-6))
+                                                    {
+                                                        //System.out.println("        It does.");
+                                                        mesh.deleteEdge(newEdge);
+                                                        iEdge -= 2; // so we don't skip the one that gets moved into the deleted spot
+                                                        break;
+                                                    }
+                                                    else
+                                                    {
+                                                        //System.out.println("        It doesn't.");
+                                                    }
                                                 }
                                             }
                                         }
                                     }
-                                }
-                            } // if verts.length >= 3
-                        } // if verts.size() >= 2 after adding the new vertex
+                                } // if verts.length >= 3
+                            } // if verts.size() >= 2 after adding the new vertex
 
-                        mesh.sanityCheck();
+                            mesh.sanityCheck();
 
-                        beingDraggedVertIndex = verts.size()-1;
+                            beingDraggedVertIndex = verts.size()-1;
+                        }
                     }
                 }
                 else if (whichButton == java_awt_event_MouseEvent_BUTTON2)
@@ -1385,6 +1411,7 @@ public class ShephardsPlayApplet
                                 // Drag all 6 points of kaleidoscope
 
                                 // XXX should do it around whatever center we can find
+                                // XXX should do it with whatever rotational periodicity we can find
 
                                 // rotation by 120 degrees, row-oriented
                                 double A[][] = {
@@ -1413,6 +1440,12 @@ public class ShephardsPlayApplet
                                     newVertPositions[i][1] = ((Mesh.Vertex)mesh.verts.get(i)).y;
                                 }
 
+                                // Whenever we can find a reflected image vertex in a mirror,
+                                // apply the reflected dv to the reflected image vertex.
+                                // In particular, if the vertex is its own image,
+                                // that means the mirror passes through it;
+                                // this will end up constraining it to the mirror
+                                // (and moving it twice as far along the mirror as otherwise, which is fine).
                                 FORI (iGroup, group.length)
                                 {
                                     double image[] = VecMath.vxm(v,group[iGroup]);
@@ -1426,6 +1459,7 @@ public class ShephardsPlayApplet
 
                                     if (VecMath.equals(image, imageVertPosition, 1e-6))
                                     {
+                                        // TODO: snap imageVertPosition to image, to prevent drift away from symmetry?
                                         double imageTweak[] = VecMath.vxm(dv, group[iGroup]);
                                         VecMath.vpv(newVertPositions[iImage],
                                                     newVertPositions[iImage],
