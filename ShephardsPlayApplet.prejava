@@ -3099,6 +3099,8 @@ public class ShephardsPlayApplet
                             {
                                 //
                                 // Highlight the "good" ways out of the lagoon.
+                                // This is a bit silly since we are recalculating and redrawing
+                                // lines we already drew...
                                 //
 
                                 // first identify the edges out of the lagoon...
@@ -3115,41 +3117,81 @@ public class ShephardsPlayApplet
                                 FORI (iEdge, mesh.edges.size())
                                 {
                                     int iDualVert = iEdge;
-                                    int jDualVert = ((Mesh.Edge)mesh.edges.get(iEdge)).opposite().myIndex();
-                                    if (isSelectedDualVert[iDualVert] || isSelectedDualVert[jDualVert])
+                                    Mesh.Edge edge = (Mesh.Edge)mesh.edges.get(iEdge);
+                                    int jDualVert = edge.opposite().myIndex();
+                                    if (isSelectedDualVert[iDualVert]
+                                     || isSelectedDualVert[jDualVert])
                                     {
-                                        if (dualVerts[iDualVert] == null
-                                         || dualVerts[jDualVert] == null)
-                                            continue; // XXX TODO: do infinite edges
-
-                                        if (isSelectedDualVert[iDualVert] && isSelectedDualVert[jDualVert])
+                                        if (dualVerts[iDualVert] != null
+                                         && dualVerts[jDualVert] != null)
                                         {
-                                            mg.setColor(dualColorBothSelected); // both selected
-                                        }
-                                        else
-                                        {
-                                            // one selected, one not.
-                                            // is it a good exit?
-                                            int iIn = isSelectedDualVert[iDualVert] ? iDualVert : jDualVert;
-                                            int iOut = isSelectedDualVert[iDualVert] ? jDualVert : iDualVert;
-                                            double goodness = VecMath.dot(VecMath.vmv(2, dualVerts[iOut],dualVerts[iIn]),
-                                                                          VecMath.vmv(2, avg, dualVerts[iIn]));
-                                            if (LEQ(goodness, 0., SQR(1e-6)))
-                                                mg.setColor(dualColorOneSelectedGood);
+                                            if (isSelectedDualVert[iDualVert] && isSelectedDualVert[jDualVert])
+                                            {
+                                                if (iDualVert > jDualVert)
+                                                    continue; // only need to do it in canonical dir
+                                                mg.setColor(dualColorBothSelected); // both selected
+                                            }
                                             else
-                                                mg.setColor(dualColorOneSelectedBad);
+                                            {
+                                                // one selected, one not.
+                                                // is it a good exit?
+                                                int iIn = isSelectedDualVert[iDualVert] ? iDualVert : jDualVert;
+                                                int iOut = isSelectedDualVert[iDualVert] ? jDualVert : iDualVert;
+                                                double goodness = VecMath.dot(VecMath.vmv(2, dualVerts[iOut],dualVerts[iIn]),
+                                                                              VecMath.vmv(2, avg, dualVerts[iIn]));
+                                                if (LEQ(goodness, 0., SQR(1e-6)))
+                                                    mg.setColor(dualColorOneSelectedGood);
+                                                else
+                                                    mg.setColor(dualColorOneSelectedBad);
+                                            }
+                                            mg.drawLine(dualVerts[iDualVert][0],dualVerts[iDualVert][1],
+                                                        dualVerts[jDualVert][0],dualVerts[jDualVert][1],
+                                                        doAntiAliasing);
                                         }
-                                        mg.drawLine(dualVerts[iDualVert][0],dualVerts[iDualVert][1],
-                                                    dualVerts[jDualVert][0],dualVerts[jDualVert][1],
-                                                    doAntiAliasing);
+                                        else if (dualVerts[iDualVert] != null) // we'll get the other one on the opposite edge
+                                        {
+                                            double v0[] = {edge.initialVertex().x,
+                                                           edge.initialVertex().y};
+                                            double v1[] = {edge.finalVertex().x,
+                                                           edge.finalVertex().y};
+                                            double toEdgeVec[] = VecMath.xv2(
+                                                                     VecMath.vmv(v0, v1));
+                                            VecMath.normalize(toEdgeVec, toEdgeVec);
+                                            double rayLength = 1.; // for edges to infinity
+                                            //double destPoint[] = VecMath.vpsxv(2, dualVerts[iEdge], rayLength, toEdgeVec); // XXX argh, version that allows specifying length doesn't exist yet, and without that it gets confused because dualVerts[iEdge] has length 3
+                                            double destPoint[] = {dualVerts[iEdge][0]+rayLength*toEdgeVec[0],
+                                                                  dualVerts[iEdge][1]+rayLength*toEdgeVec[1]};
+
+                                            if (isSelectedDualVert[iDualVert] && isSelectedDualVert[jDualVert])
+                                            {
+                                                mg.setColor(dualColorBothSelected); // both selected
+                                            }
+                                            else
+                                            {
+                                                // is it a good exit?
+                                                double goodness = VecMath.dot(toEdgeVec,
+                                                                              VecMath.vmv(2, avg, dualVerts[iEdge]));
+                                                if (LEQ(goodness, 0., SQR(1e-6)))
+                                                    mg.setColor(dualColorOneSelectedGood);
+                                                else
+                                                    mg.setColor(dualColorOneSelectedBad);
+                                            }
+
+                                            mg.drawLine(dualVerts[iEdge][0],dualVerts[iEdge][1],
+                                                        destPoint[0],destPoint[1],
+                                                        doAntiAliasing);
+                                        }
                                     }
                                 }
                             }
+<<<<<<< ShephardsPlayApplet.prejava
 #endif
 
 
 
 
+=======
+>>>>>>> 1/ShephardsPlayApplet.prejava.1.7
                         }
                     }
                 }
