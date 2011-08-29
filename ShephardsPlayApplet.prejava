@@ -20,11 +20,17 @@ BUG:
     - the cyan edges sometimes go from the lagoon to itself-- need to get rid of those
 
 TO DO:
+
+    - make optimization not pop when different tri covers origin
+    - think about which optimization types to retain if any
+        - maybe optimization should always be max min length, but choice should be how to match scale and translate afterwards
+
     - improve kaleidescope:
         - detect and use center
         - detect and use complete symmetry group
-        - key to increase or decrease period (requires vertex in center
+        - key to increase or decrease period (requires vertex in center?)
         - snap closest image to exact image? hmm, not sure
+        - mode to place new verts in kaleidescope? (draw dots at images of cursor?)
 
     - +/- should maybe look at undo and redo stack, and use it if possible, to save memory
 
@@ -1413,6 +1419,7 @@ public class ShephardsPlayApplet
                                 // XXX should do it around whatever center we can find
                                 // XXX should do it with whatever rotational periodicity we can find
 
+#if 1
                                 // rotation by 120 degrees, row-oriented
                                 double A[][] = {
                                    { Math.cos(DTOR(120)), Math.sin(DTOR(120))},
@@ -1428,6 +1435,22 @@ public class ShephardsPlayApplet
                                 double AB[][] = VecMath.mxm(A,B);
                                 double AAB[][] = VecMath.mxm(AA,B);
                                 double group[][][] = {I,A,AA,B,AB,AAB};
+#endif
+#if 0
+                                // rotation by 180 degrees, row-oriented
+                                double A[][] = {
+                                   { Math.cos(DTOR(180)), Math.sin(DTOR(180))},
+                                   {-Math.sin(DTOR(180)), Math.cos(DTOR(180))},
+                                };
+                                // left-right reflection
+                                double B[][] = {
+                                    {-1,0},
+                                    {0,1},
+                                };
+                                double I[][] = VecMath.mxm(A,A);
+                                double group[][][] = {I,A};
+#endif
+
                                 double v[] = {((Mesh.Vertex)mesh.verts.get(beingDraggedVertIndex)).x,
                                               ((Mesh.Vertex)mesh.verts.get(beingDraggedVertIndex)).y};
                                 double dv[] = VecMath.vmv(thisP, prevP);
@@ -3125,6 +3148,10 @@ public class ShephardsPlayApplet
                     }
                     mg.setColor(java.awt.Color.red);
                     drawLabels(mg, mostRecentDualMesh, true);
+
+                    // draw a subtle dot at the origin
+                    mg.setColor(java.awt.Color.white);
+                    mg.drawPoint(0., 0., 1);
                 } // if (doLabels)
 
                 //
@@ -5629,7 +5656,7 @@ public class ShephardsPlayApplet
                     return new double[verts.size()]; // zeros
 
                 if (nonEventVerbose >= 1)
-                    System.out.println("In findOptimalVertexHeights");
+                    System.out.println("in findOptimalVertexHeights");
 
                 int nDependentVerts = 3;
                 int dependentVertIndices[] = {0,1,2};
@@ -5665,6 +5692,7 @@ public class ShephardsPlayApplet
                 // XXX just hard code for now
                 double desiredDualEdgeLength = .25;
 
+                // edge2dualVert[iEdge] will be the dual vert on the left of edges[iEdge]
                 int edge2dualVert[] = VecMath.fillvec(edges.size(), -1);
                 int nDualVerts;
                 {
@@ -5673,19 +5701,33 @@ public class ShephardsPlayApplet
                     {
                         if (edge2dualVert[iEdge] != -1)
                             continue; // already saw some other edge on this tri
-                        Edge edge = (Edge)edges.get(iEdge);
-                        Edge edge1 = edge.next();
-                        Edge edge2 = edge1.next();
-                        boolean thisIsATri = (edge2.next() == edge);
-                        if (thisIsATri)
-                        {
-                            edge2dualVert[iEdge] = nDualVerts;
-                            edge2dualVert[edge1.myIndex()] = nDualVerts;
-                            edge2dualVert[edge2.myIndex()] = nDualVerts;
-                            nDualVerts++;
-                        }
+                        Edge e0 = (Edge)edges.get(iEdge);
+                        Edge e1 = e0.next();
+                        Edge e2 = e1.next();
+                        boolean thisIsATri = (e2.next() == e0);
+                        if (!thisIsATri)
+                            continue;
+
+                        Mesh.Vertex v0 = e0.initialVertex();
+                        Mesh.Vertex v1 = e1.initialVertex();
+                        Mesh.Vertex v2 = e2.initialVertex();
+
+                        double dualVertArea = twiceTriangleArea(v0.x,v0.y,
+                                                                v1.x,v1.y,
+                                                                v2.x,v2.y);
+                        if (dualVertArea < 0.)
+                            continue; // triangle is inside out
+
+                        edge2dualVert[iEdge] = nDualVerts;
+                        edge2dualVert[e1.myIndex()] = nDualVerts;
+                        edge2dualVert[e2.myIndex()] = nDualVerts;
+                        nDualVerts++;
                     }
                 }
+                if (nonEventVerbose >= 1)
+                    PRINT(nDualVerts);
+
+                // there is only one dual edge per pair (edge,edge.opposite()).
                 int edge2dualEdge[] = VecMath.fillvec(edges.size(), -1);
                 int nDualEdges;
                 {
@@ -5707,6 +5749,8 @@ public class ShephardsPlayApplet
                         }
                     }
                 }
+                if (nonEventVerbose >= 1)
+                    PRINT(nDualEdges);
 
                 int dualVert2verts[][] = VecMath.fillmat(nDualVerts, 3, -1);
                 int dualEdge2edge[] = VecMath.fillvec(nDualEdges, -1); // XXX not used?
@@ -5756,6 +5800,12 @@ public class ShephardsPlayApplet
                     dependentVertIndices = new int[] {0};
                 }
 
+                if (nonEventVerbose >= 1)
+                {
+                    PRINTVEC(dependentVertIndices);
+                }
+
+
                 int nIndependentVerts = verts.size() - nDependentVerts;
 
                 if (nIndependentVerts > (optimizingBarycentrics ? 2*nDualVerts : nDualEdges))
@@ -5781,6 +5831,11 @@ public class ShephardsPlayApplet
                             vert2independentVert[iVert] = -1;
                     }
                     assert(iIndependentVert == nIndependentVerts);
+                }
+                if (nonEventVerbose >= 1)
+                {
+                    PRINTVEC(vert2independentVert);
+                    PRINTVEC(independentVert2verts);
                 }
 
 
@@ -5975,7 +6030,6 @@ public class ShephardsPlayApplet
                                 }
                             }
                         }
-                        //PRINTMAT(sampleResultLengths);
                         sampleResultVectors = sampleResultLengths;
                     }
                     desiredResultVector = VecMath.fillvec(nDualEdges, desiredDualEdgeLength);
@@ -6019,6 +6073,7 @@ public class ShephardsPlayApplet
                             leastSquaresSolution = new double[sampleResultVectors.length-1];
                             if (nonEventVerbose >= 1)
                             {
+                                assert(desiredDualEdgeLength == .25);
                                 System.out.print("    Solving lengths infinity norm from all .25's...");
                                 System.out.flush();
                             }
@@ -6027,6 +6082,70 @@ public class ShephardsPlayApplet
                                 System.out.println("    done.");
                             if (result != 0)
                                 System.out.println("WARNING: LPSolve returned "+result);
+                        }
+                        else if (optimizationType == OPTIMIZE_LENGTHS_MAX_MIN)
+                        {
+                            double[] result0 = sampleResultVectors[sampleResultVectors.length-1];
+
+                            leastSquaresSolution = new double[sampleResultVectors.length-1];
+                            if (nonEventVerbose >= 1)
+                            {
+                                System.out.print("    Solving lengths maximizing minimum with sum 1...");
+                                System.out.flush();
+                            }
+
+                            // Set desired sum to be the sum of the primal edge lengths
+                            // (to get something roughly commensurate, that scales with the original)
+                            double desiredSum = 0.;
+                            FORI (iEdge, edges.size())
+                            {
+                                Edge edge = (Edge)edges.get(iEdge);
+                                if (edge.myIndex() > edge.opposite().myIndex())
+                                    continue; // only use canonical one of the two
+                                Vertex v0 = edge.initialVertex();
+                                Vertex v1 = edge.finalVertex();
+                                desiredSum += Math.sqrt(SQR(v1.x-v0.x) + SQR(v1.y-v0.y));
+                            }
+                            if (nonEventVerbose >= 1)
+                                PRINT(desiredSum);
+
+                            // Want solution column vector x
+                            // that satisfies [1,1,...,1] (transpose(A) x + result0) = desiredSum
+                            //           i.e. [1,1,...,1] (transpose(A) x) + sum(result0) = desiredSum
+                            //           i.e. [1,1,...,1] (transpose(A) x) = desiredSum - sum(result0)
+                            // and maximizes the minimum element of transpose(A) x + result0.
+
+                            double AA[][] = {VecMath.mxv(A, VecMath.fillvec(A[0].length, 1.))};
+                            double bb[] = {desiredSum - VecMath.sum(result0)};
+                            int result = LinearProgramming.maximizeMinimum(leastSquaresSolution,
+                                                                           AA, bb, // AA x = bb
+                                                                           VecMath.transpose(A), VecMath.sxv(-1.,result0)); // maximize min of A^T x + result0
+                            if (nonEventVerbose >= 1)
+                                System.out.println("    done.");
+                            if (result != 0)
+                                System.out.println("WARNING: maximizeMinumumAffine returned "+result);
+
+                            if (nonEventVerbose >= 1)
+                            {
+                                PRINTMAT(AA);
+                                PRINTVEC(bb);
+                                PRINTVEC(VecMath.vmv(VecMath.mxv(AA, leastSquaresSolution), bb));
+                                PRINTVEC(leastSquaresSolution);
+                                PRINTVEC(VecMath.vxm(leastSquaresSolution, A));
+                                PRINTVEC(VecMath.vpv(VecMath.vxm(leastSquaresSolution,A), result0));
+                                PRINT(VecMath.sum(VecMath.vpv(VecMath.vxm(leastSquaresSolution,A), result0)));
+                            }
+                        }
+                        else if (optimizationType == OPTIMIZE_LENGTHS_SUM)
+                        {
+                            if (nonEventVerbose >= 1)
+                            {
+                                assert(desiredDualEdgeLength == .25);
+                                System.out.print("    Solving lengths minimizing sum with each length >= .25...");
+                                System.out.flush();
+                            }
+                            // XXX not implemented yet
+                            assert(false);
                         }
                         else
                             assert(false);
@@ -6079,7 +6198,7 @@ public class ShephardsPlayApplet
                     optimalVertexHeights[dependentVertIndices[iDependentVert]] = 0.;
 
                 if (nonEventVerbose >= 1)
-                    System.out.println("Out findOptimalVertexHeights");
+                    System.out.println("out findOptimalVertexHeights");
 
                 return optimalVertexHeights;
             } // findOptimalVertexHeights
@@ -6764,12 +6883,16 @@ public class ShephardsPlayApplet
             private static final int OPTIMIZE_BARYCENTRICS_MAX_MIN = 2;
             private static final int OPTIMIZE_LENGTHS_LEAST_SQUARES = 3;
             private static final int OPTIMIZE_LENGTHS_INFINITY_NORM = 4;
+            private static final int OPTIMIZE_LENGTHS_MAX_MIN = 5;
+            private static final int OPTIMIZE_LENGTHS_SUM = 6;
             private static final String optimizationTypeNames[] = {
                 "OPTIMIZE_BARYCENTRICS_LEAST_SQUARES from all 1/3's",
                 "OPTIMIZE_BARYCENTRICS_INFINITY_NORM from all 1/3's",
                 "OPTIMIZE_BARYCENTRICS_MAX_MIN",
                 "OPTIMIZE_LENGTHS_LEAST_SQUARES from all .25's",
                 "OPTIMIZE_LENGTHS_INFINITY_NORM from all .25's",
+                "OPTIMIZE_LENGTHS_MAX_MIN with fixed sum",
+                //"OPTIMIZE_LENGTHS_SUM with every edge length >= .25",
             };
             private static final int availableOptimizationTypes[] = {
                 OPTIMIZE_BARYCENTRICS_LEAST_SQUARES,
@@ -6777,8 +6900,10 @@ public class ShephardsPlayApplet
                 OPTIMIZE_BARYCENTRICS_MAX_MIN,
                 OPTIMIZE_LENGTHS_LEAST_SQUARES,
                 OPTIMIZE_LENGTHS_INFINITY_NORM,
+                OPTIMIZE_LENGTHS_MAX_MIN,
+                //OPTIMIZE_LENGTHS_SUM,
             };
-        private Listenable.Int optimizationTypeIndex = new Listenable.Int(0, availableOptimizationTypes.length-1, 0); // min, max, default
+        private Listenable.Int optimizationTypeIndex = new Listenable.Int(0, availableOptimizationTypes.length-1, OPTIMIZE_LENGTHS_MAX_MIN); // min, max, default
         int optimizationType = availableOptimizationTypes[optimizationTypeIndex.get()];
         private java.awt.Canvas theCanvas = null;
 
