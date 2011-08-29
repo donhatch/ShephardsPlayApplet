@@ -21,6 +21,8 @@ BUG:
 
 TO DO:
 
+    - color infinite edges with balanceness (not just finite ones)
+
     - make optimization not pop when different tri covers origin
     - think about which optimization types to retain if any
         - maybe optimization should always be max min length, but choice should be how to match scale and translate afterwards
@@ -2382,14 +2384,28 @@ public class ShephardsPlayApplet
                 //
                 if (true)
                 {
+                    java.awt.Color lightBlue = new java.awt.Color(128,128,255);
+                    /*
+                    java.awt.Color dualVertSelectionColor = java.awt.Color.green;
+                    java.awt.Color dualColor = java.awt.Color.red;
+                    java.awt.Color dualColorBothSelected = lightBlue;
+                    java.awt.Color dualColorOneSelectedBad = java.awt.Color.magenta;
+                    java.awt.Color dualColorOneSelectedGood = java.awt.Color.green;
+                    */
+                    java.awt.Color dualVertSelectionColor = java.awt.Color.yellow;
+                    java.awt.Color dualColor = lightBlue;
+                    java.awt.Color dualColorBothSelected = java.awt.Color.yellow;
+                    java.awt.Color dualColorOneSelectedBad = java.awt.Color.red;
+                    java.awt.Color dualColorOneSelectedGood = java.awt.Color.green;
+
                     //
                     // Compute and store the dual mesh...
                     // XXX weird place to do it, in draw
                     //
                     if (showNet)
-                        mg.setColor(java.awt.Color.green);
+                        mg.setColor(dualVertSelectionColor);
                     else
-                        mg.setColor(java.awt.Color.red);
+                        mg.setColor(dualColor);
                     Mesh dualMesh = makeDualMesh(mesh,
                                                  false, // includeNonArity3,
                                                  doShowInsideOutDualVerts);
@@ -2903,9 +2919,9 @@ public class ShephardsPlayApplet
                     // XXX should do this along hairs... or maybe every edge that is not on a triangle on either side? nah
                     //
                     if (showNet)
-                        mg.setColor(java.awt.Color.green);
+                        mg.setColor(dualVertSelectionColor);
                     else
-                        mg.setColor(java.awt.Color.red);
+                        mg.setColor(dualColor);
                     FORIDOWN (iEdge, mesh.edges.size())
                     {
                         Mesh.Edge edge = (Mesh.Edge)mesh.edges.get(iEdge);
@@ -2942,9 +2958,9 @@ public class ShephardsPlayApplet
                     if (doArrowsTowardsSharpestDihedrals)
                     {
                         if (showNet)
-                            mg.setColor(java.awt.Color.red);
+                            mg.setColor(dualColor);
                         else
-                            mg.setColor(java.awt.Color.green);
+                            mg.setColor(dualVertSelectionColor);
                         FORIDOWN (iEdge, mesh.edges.size())
                         {
                             Mesh.Vertex triCenterDualVert = ((Mesh.Edge)dualMesh.edges.get(iEdge)).finalVertex();
@@ -3054,9 +3070,9 @@ public class ShephardsPlayApplet
                         if (selectedDualVertIndices.length >= 1)
                         {
                             if (showNet)
-                                mg.setColor(java.awt.Color.red);
+                                mg.setColor(dualColor);
                             else
-                                mg.setColor(java.awt.Color.green);
+                                mg.setColor(dualVertSelectionColor);
                             double areaSum = 0.;
                             double moment[] = {0.,0.};
                             double dualVertCoords[] = new double[2]; // scratch for loop
@@ -3107,7 +3123,9 @@ public class ShephardsPlayApplet
                                             continue; // XXX TODO: do infinite edges
 
                                         if (isSelectedDualVert[iDualVert] && isSelectedDualVert[jDualVert])
-                                            mg.setColor(java.awt.Color.blue); // both selected
+                                        {
+                                            mg.setColor(dualColorBothSelected); // both selected
+                                        }
                                         else
                                         {
                                             // one selected, one not.
@@ -3117,9 +3135,9 @@ public class ShephardsPlayApplet
                                             double goodness = VecMath.dot(VecMath.vmv(2, dualVerts[iOut],dualVerts[iIn]),
                                                                           VecMath.vmv(2, avg, dualVerts[iIn]));
                                             if (LEQ(goodness, 0., SQR(1e-6)))
-                                                mg.setColor(java.awt.Color.green);
+                                                mg.setColor(dualColorOneSelectedGood);
                                             else
-                                                mg.setColor(java.awt.Color.magenta);
+                                                mg.setColor(dualColorOneSelectedBad);
                                         }
                                         mg.drawLine(dualVerts[iDualVert][0],dualVerts[iDualVert][1],
                                                     dualVerts[jDualVert][0],dualVerts[jDualVert][1],
@@ -3146,7 +3164,7 @@ public class ShephardsPlayApplet
                         mg.setColor(java.awt.Color.white);
                         drawLabels(mg, mesh, false);
                     }
-                    mg.setColor(java.awt.Color.red);
+                    mg.setColor(dualColor);
                     drawLabels(mg, mostRecentDualMesh, true);
 
                     // draw a subtle dot at the origin
@@ -6115,15 +6133,19 @@ public class ShephardsPlayApplet
                             //           i.e. [1,1,...,1] (transpose(A) x) = desiredSum - sum(result0)
                             // and maximizes the minimum element of transpose(A) x + result0.
 
-                            double AA[][] = {VecMath.mxv(A, VecMath.fillvec(A[0].length, 1.))};
+                            double AA[][] = {VecMath.mxv(A, VecMath.fillvec(nDualEdges, 1.))};
                             double bb[] = {desiredSum - VecMath.sum(result0)};
-                            int result = LinearProgramming.maximizeMinimum(leastSquaresSolution,
+                            double CC[][] = VecMath.transpose(A);
+                            double dd[] = VecMath.sxv(-1.,result0);
+                            int result =
+                                         leastSquaresSolution.length == 0 ? 0 : // XXX TODO: FIX maximizeMiniumum so it returns 0 instead of -1 in this case!
+                                         LinearProgramming.maximizeMinimum(leastSquaresSolution,
                                                                            AA, bb, // AA x = bb
-                                                                           VecMath.transpose(A), VecMath.sxv(-1.,result0)); // maximize min of A^T x + result0
+                                                                           CC, dd); // maximize min of CC x - dd, i.e. A^T x + result0
                             if (nonEventVerbose >= 1)
                                 System.out.println("    done.");
                             if (result != 0)
-                                System.out.println("WARNING: maximizeMinumumAffine returned "+result);
+                                System.out.println("WARNING: maximizeMinumum returned "+result);
 
                             if (nonEventVerbose >= 1)
                             {
