@@ -26,8 +26,6 @@ TO DO:
     - get a nice color scheme
     - show perpendicular of edges, somehow, so can see when off balance
 
-    - translateFudge is backwards I think
-
     - think about which optimization types to retain if any
         - maybe optimization should always be max min length, but choice should be how to match scale and translate afterwards
 
@@ -1996,7 +1994,7 @@ public class ShephardsPlayApplet
                             }
 
                         mesh = makeDualMesh(mesh,
-                                            true,  // includeNonArity3
+                                            true,  // includeNonArity3 (so we get full mesh)
                                             true); // includeInsideOut
 
                         // this seems to make it a bit better, though I don't really understand.
@@ -2435,8 +2433,6 @@ public class ShephardsPlayApplet
                     FORIDOWN(iDualVert, dualMesh.verts.size())
                     {
                         Mesh.Vertex dualVert = (Mesh.Vertex)dualMesh.verts.get(iDualVert);
-                        if (dualVert.arity != 3)
-                            continue; // primal face was not a triangle
                         if (!doShowInsideOutDualVerts)
                         {
                             if (dualVert.weight < 0)
@@ -6666,6 +6662,23 @@ public class ShephardsPlayApplet
                  && (includeInsideOut
                   || twiceTotalArea >= 0.))
                 {
+                    if (true)
+                    {
+                        // See what happens if I solve for dual point with more than 3 verts...
+                        // XXX experiment with this more, maybe make user control for includeNonArity3 and non-arity-3 strategy
+                        double coords[][] = new double[dualVertArity][3];
+                        Mesh.Edge primalEdge = primalEdge0;
+                        FORI (i, dualVertArity)
+                        {
+                            Mesh.Vertex v = primalEdge.initialVertex();
+                            coords[i][0] = v.x;
+                            coords[i][1] = v.y;
+                            coords[i][2] = v.h - .5 * (SQR(v.x)+SQR(v.y));
+                            primalEdge = primalEdge.next();
+                        }
+                        SolveForDualPoint(coords, totalCenter);
+                    }
+
                     Mesh.Vertex dualVert = dual.newVertex(totalCenter[0],
                                                           totalCenter[1],
                                                           totalCenter[2]);
@@ -6931,10 +6944,27 @@ public class ShephardsPlayApplet
                 VecMath.invmxv(result,M,b);
             else // result.length == 2, just copy the first two
                 VecMath.copyvec(result, VecMath.invmxv(M,b));
-
-          
-
         } // SolveForDualPoint
+
+        // Experimenting with when it's more than a triangle... invmxv will do a least-squares solve,
+        // which will be what we want in the case the input is coplanar
+        private static void SolveForDualPoint(double coords[][/*3*/],
+                                              double result[])
+        {
+            double M[][] = new double[coords.length][3];
+            double b[] = new double[coords.length];
+            FORI (i, coords.length)
+            {
+                M[i][0] = coords[i][0];
+                M[i][1] = coords[i][1];
+                M[i][2] = 1.;
+                b[i] = -coords[i][2];
+            }
+            if (result.length == 3)
+                VecMath.invmxv(result,M,b);
+            else // result.length == 2, just copy the first two
+                VecMath.copyvec(result, VecMath.invmxv(M,b));
+        } // SolveForDualPoint, more than 3 inputs
 
         // Calculate the angle C, opposite side c,
         // given side lengths a, b, c,
