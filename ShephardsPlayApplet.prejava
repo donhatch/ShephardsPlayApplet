@@ -355,6 +355,23 @@ public class ShephardsPlayApplet
                             }
                         });
                     }});
+                    add(new java.awt.Button("Sweep Killer 2") {
+                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                    {
+                        addActionListener(new java.awt.event.ActionListener() {
+                            public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+
+                                doCannedThingSweepKiller2();
+
+                                UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+                                undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                theCanvas.repaint();
+                            }
+                        });
+                    }});
 
                     add(new java.awt.Button("Algorithm5 Killer0") {
                         public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
@@ -4061,6 +4078,48 @@ public class ShephardsPlayApplet
 
             } // doCannedThingSweepKiller1
 
+            // Counterexample to entire class of sweep algorithms
+            // that cut each vertex to a higher vertex.
+            // Slightly simpler than SweepKiller1.
+            private void doCannedThingSweepKiller2()
+            {
+                double verts[][] = {
+                    {0,0,0},
+                    {9,-9,0},
+                    {6,-3,0},
+                    {7,24,0},
+                    {-7,24,0},
+                    {-6,-3,0},
+                    {-9,-9,0},
+                    {3,-2,0},
+                    {-3,-2,0},
+                };
+
+                int faces[][] = {
+                    {0,1,7},
+                    {1,2,7},
+                    {2,0,7},
+
+                    {0,5,8},
+                    {0,8,6},
+                    {5,6,8},
+
+                    {1,3,2},
+                    {2,3,0},
+                    {0,3,4},
+                    {0,4,5},
+                    {4,6,5},
+                    {0,6,1},
+                    {1,6,4,3},
+                };
+                // argh, requires panning the whole picture around randomly a bit in order for it to come out symmetric...
+                VecMath.mpv(verts, verts, new double[]{.1,.1,0});
+                mesh = new Mesh(verts, faces);
+                mesh.findAndApplyOptimalVertexHeights(OPTIMIZE_LENGTHS_INFINITY_NORM);
+                // XXX argh, still requires use to set OPTIMIZE_LENGTHS_INFINITY_NORM and turn on and off Optimize, otherwise the dual picture is tiny... why??
+
+            } // doCannedThingSweepKiller2
+
 
             private static class Netless8OptimizationStuff
             {
@@ -4950,7 +5009,8 @@ public class ShephardsPlayApplet
                     //int nVerts = 19;
                     //int nVerts = 18;
                     //int nVerts = 100;
-                    int nVerts = 500;
+                    int nVerts = 300;
+                    //int nVerts = 500;
                     //int nVerts = 1000;
                     double verts[][] = new double[nVerts][3];
                     int nNeighbors[] = new int[nVerts]; // zeros
@@ -5452,7 +5512,7 @@ public class ShephardsPlayApplet
                     }
                 }
 
-                if (false)
+                if (true)
                 {
                     // This works, but leaves dual verts in a different order
                     deleteEdge(e);
@@ -5460,6 +5520,10 @@ public class ShephardsPlayApplet
                 }
                 else
                 {
+                    // TODO: why did this work in temp branch but fails here?
+                    // OH, it's because the assertion in setInitialVertex is new.
+                    // hmm, can try to fix it, or just get rid of this case since it was somewhat ill-advised anyway.
+
                     // Aww fooey, still in different order :-(
                     beforeThatEdge.setNext(beforeThisEdge.prev(), true);
                     beforeThisEdge.setNext(beforeThatEdge.prev(), true);
