@@ -435,6 +435,24 @@ public class ShephardsPlayApplet
                     });
                 }});
 
+                add(new java.awt.Button("Far Lagoon Killer") {
+                    public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                {
+                    addActionListener(new java.awt.event.ActionListener() {
+                        public void actionPerformed(java.awt.event.ActionEvent e)
+                        {
+                            UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+
+                            doCannedThingFarthestLagoonExitKiller();
+
+                            UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+                            undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                            theCanvas.repaint();
+                        }
+                    });
+                }});
+
             }}, stretchx); // first row of buttons
 
             add(new Row() {{ // second row: col, table, col
@@ -1258,8 +1276,9 @@ public class ShephardsPlayApplet
             //doCannedThingAlgorithm5Killer0();
             //doCannedThingAlgorithm5Killer1();
             //doCannedThingBlindLagoonExitKiller();
+            doCannedThingFarthestLagoonExitKiller();
             //doBlueNoiseThing();
-            load("DUMP.off");
+            //load("DUMP.off");
 
             if (eventVerbose >= 1) System.out.println("out init");
         } // init
@@ -2089,12 +2108,12 @@ public class ShephardsPlayApplet
                             int indInd = Arrays.indexOf(selectedDualVertIndices, closestIndex);
                             if (indInd != -1)
                             {
-                                System.out.println("    deselecting dual vert "+closestIndex+"");
+                                System.out.println("    deselecting dual vert "+closestIndex+" (weight = "+((Mesh.Vertex)mostRecentDualMesh.verts.get(closestIndex)).weight+")");
                                 selectedDualVertIndices = (int[])Arrays.delete(selectedDualVertIndices, indInd);
                             }
                             else
                             {
-                                System.out.println("    selecting dual vert "+closestIndex+"");
+                                System.out.println("    selecting dual vert "+closestIndex+" (weight = "+((Mesh.Vertex)mostRecentDualMesh.verts.get(closestIndex)).weight+")");
                                 selectedDualVertIndices = (int[])Arrays.append(selectedDualVertIndices, closestIndex);
                             }
                         }
@@ -2113,7 +2132,7 @@ public class ShephardsPlayApplet
                             mesh.deleteEdge((Mesh.Edge)mesh.edges.get(closestEdgeIndex));
                             mesh.sanityCheck();
                         }
-                        if (doContinuouslyDelaunayize.get()) delaunayize();
+                        doContinuouslyDelaunayize.set(false);
                         UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
@@ -2277,6 +2296,47 @@ public class ShephardsPlayApplet
                         System.out.println("nonEventVerbose -> "+nonEventVerbose);
                         theCanvas.repaint();
                         break;
+
+                    case '7':
+                    {
+                        int oldIndex = netless8OptimizationIndex;
+                        netless8OptimizationIndex = MOD(netless8OptimizationIndex-1, netless8OptimizationPath.length);
+                        System.out.println("netless8OptimizationIndex "+oldIndex+" -> "+netless8OptimizationIndex+"");
+
+                        if (mesh.verts.size() == 6)
+                        {
+                            double verts[][] = netless8OptimizationPath[netless8OptimizationIndex];
+                            FORI (iVert, 6)
+                            {
+                                ((Mesh.Vertex)mesh.verts.get(iVert)).x = verts[iVert][0];
+                                ((Mesh.Vertex)mesh.verts.get(iVert)).y = verts[iVert][1];
+                                ((Mesh.Vertex)mesh.verts.get(iVert)).h = verts[iVert][2];
+                            }
+                        }
+
+                        theCanvas.repaint();
+                        break;
+                    }
+                    case '8':
+                    {
+                        int oldIndex = netless8OptimizationIndex;
+                        netless8OptimizationIndex = (netless8OptimizationIndex+1) % netless8OptimizationPath.length;
+                        System.out.println("netless8OptimizationIndex "+oldIndex+" -> "+netless8OptimizationIndex+"");
+
+                        if (mesh.verts.size() == 6)
+                        {
+                            double verts[][] = netless8OptimizationPath[netless8OptimizationIndex];
+                            FORI (iVert, 6)
+                            {
+                                ((Mesh.Vertex)mesh.verts.get(iVert)).x = verts[iVert][0];
+                                ((Mesh.Vertex)mesh.verts.get(iVert)).y = verts[iVert][1];
+                                ((Mesh.Vertex)mesh.verts.get(iVert)).h = verts[iVert][2];
+                            }
+                        }
+
+                        theCanvas.repaint();
+                        break;
+                    }
 
                     case CTRL('b'): // blue noise pattern
                     {
@@ -2589,6 +2649,29 @@ public class ShephardsPlayApplet
                 //
                 if (doOptimize.get())
                     mesh.findAndApplyOptimalVertexHeights(optimizationType);
+
+                boolean doMakeVert0CoplanarWith145 = false;
+                if (doMakeVert0CoplanarWith145)
+                {
+                    // XXX total hack
+                    Mesh.Vertex v0 = (Mesh.Vertex)mesh.verts.get(0);
+                    Mesh.Vertex v1 = (Mesh.Vertex)mesh.verts.get(1);
+                    Mesh.Vertex v4 = (Mesh.Vertex)mesh.verts.get(4);
+                    Mesh.Vertex v5 = (Mesh.Vertex)mesh.verts.get(5);
+                    double A[] = {v1.x, v1.y, v1.h - .5 * (SQR(v1.x) + SQR(v1.y))};
+                    double B[] = {v4.x, v4.y, v4.h - .5 * (SQR(v4.x) + SQR(v4.y))};
+                    double C[] = {v5.x, v5.y, v5.h - .5 * (SQR(v5.x) + SQR(v5.y))};
+                    double N[] = VecMath.vxv3(VecMath.vmv(B,A),
+                                              VecMath.vmv(C,A));
+                    double desiredDot = VecMath.dot(N,A);
+                    double D[] = {v0.x, v0.y, v0.h};
+                    // Find D[2] such that N dot D == desiredDot
+                    // I.e. N[0]*D[0] + N[1]*D[1] + N[2]*D[2] == desiredDot
+                    D[2] = (desiredDot - (N[0]*D[0] + N[1]*D[1])) / N[2];
+
+                    v0.h = D[2];
+                    v0.h += .5 * (SQR(v0.x) + SQR(v0.y));
+                }
 
                 //
                 // Draw the dual diagram in color...
@@ -3540,7 +3623,7 @@ public class ShephardsPlayApplet
                 //PRINTARRAY(verts);
                 //PRINTARRAY(vertsForHull);
                 // normalize to range -1..1 in all three dimensions
-                double bbox[][] = VecMath.bbox(verts);
+                double bbox[][] = VecMath.bbox(vertsForHull);
                 if (bbox != null)
                 {
                     FORI (iDim, 3)
@@ -4113,6 +4196,43 @@ public class ShephardsPlayApplet
                 mesh = new Mesh(verts, faces);
             } // doCannedThingBlindLagoonExitKiller
 
+            //
+            // Farthest-from-center lagoon exiting goes into an endless loop:
+            //     A is the upper-left horizontal edge
+            //     B is the west-most infinite edge
+            //     C is the southeast side (longest internal edge)
+            // Bad exit A -> farthest good exit B
+            // Bad exit C -> farthest good exit A
+            // Bad exit B -> farthest good exit C
+            // and we're back to the beginning.
+            // XXX not quite right, since there are other off-balances besides A at the beginning
+            //
+            private void doCannedThingFarthestLagoonExitKiller()
+            {
+                double verts[][] = {
+                    {-0.46337935569353567, 0.26865162958810324, -0.62},
+                    {-1.063379355693535, -0.33134837041189785, 0},
+                    {-1.063379355693535, 0.8686516295881025, 0.21},
+                    {-0.46337935569353567, -1.1313483704118998, 0},
+                    {-1.1049570719534412, -0.36631240672751886, 0},
+                    {-2.198126636605885, 0.8750305099020652, 1.949},
+                    {-0.9274564524084122, -0.14600109270113257, -0.215},
+                };
+                int faces[][] = {
+                    {0, 1, 3},
+                    {1, 0, 6},
+                    {3, 1, 4},
+                    {6, 0, 2},
+                    {1, 6, 2},
+                    {4, 1, 5},
+                    {2, 5, 1},
+                    {0, 3, 4, 5, 2},
+                };
+                mesh = new Mesh(verts, faces);
+            } // doCannedThingFarthestLagoonExitKiller
+
+
+
             private void doCannedThingNetless8()
             {
                 double Eps = .04;
@@ -4684,6 +4804,16 @@ public class ShephardsPlayApplet
                 };
                 double verts[][] = generateVertices(vertsGenerators,
                                                     xforms);
+
+                if (true)
+                {
+                    // hack to make the order the same as for netless8
+                    double temp[] = verts[3];
+                    verts[3] = verts[4];
+                    verts[4] = verts[5];
+                    verts[5] = temp;
+                }
+
                 if (false)
                 {
                     // Hack to see what happens... maybe have key for this
@@ -7414,7 +7544,7 @@ public class ShephardsPlayApplet
         applet.start();
 
         frame.move(200, 20);
-        frame.resize(1150, 500);
+        frame.resize(1250, 500);
         frame.show();
 
         //Misc.printPlatonicSolidVertexCurvatures();
