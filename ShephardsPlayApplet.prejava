@@ -18,6 +18,8 @@ BUG:
     - 'n' for net, Optimize LENGTHS_INFINITY_NORM, Hexes Spiral -> infinite loop  (no it's not, it just takes a long time)
     - the cyan edges sometimes go from the lagoon to itself-- need to get rid of those
     - maximizeMinimum failing when optimizing the initial picture, whatever that is (it's not any more, hmm, maybe just forget this)
+    - makeDualMesh seems to be computing each triangle center 3 times,
+      and each quad center 4 times, etc.
 
 TO DO:
 
@@ -85,6 +87,7 @@ TO DO:
 
 
 import com.donhatchsw.util.Arrays;
+import com.donhatchsw.util.MyMath;
 import com.donhatchsw.util.VecMath;
 import com.donhatchsw.util.SortStuff;
 import com.donhatchsw.util.ConvexHull;
@@ -6977,6 +6980,7 @@ public class ShephardsPlayApplet
                             primalEdge = primalEdge.next();
                         }
                         SolveForDualPointActual(coords, totalCenter);
+                        totalCenter[2] += .5 * (SQR(totalCenter[0]) + SQR(totalCenter[1]));
                     }
 
                     Mesh.Vertex dualVert = dual.newVertex(totalCenter[0],
@@ -7011,6 +7015,7 @@ public class ShephardsPlayApplet
                     if (dualEdge.finalVertex() != null)
                     {
                         // it's a usual edge... get the direction by subtracting vertices
+                        // XXX but this is not robust? but it may be better in some senses, especially if we're doing non-triangles too
                         dualEdge.direction = VecMath.normalize(VecMath.vmv(
                             new double[]{dualEdge.finalVertex().x,
                                          dualEdge.finalVertex().y},
@@ -7033,6 +7038,91 @@ public class ShephardsPlayApplet
                     dualEdge._opposite.direction = VecMath.sxv(-1., dualEdge.direction);
                 }
             }
+
+            if (true)
+            {
+                // Experiment with predicting dual edge lengths.
+                // See if I can reduce it to a simple formula in terms of the original verts.
+                FORI (iEdge, nEdges)
+                {
+                    Mesh.Edge dualEdge = (Mesh.Edge)dual.edges.get(iEdge);
+                    Mesh.Vertex v0 = dualEdge.initialVertex();
+                    Mesh.Vertex v1 = dualEdge.finalVertex();
+                    if (v0 != null
+                     && v1 != null)
+                    {
+                        double actualDualEdgeLength = MyMath.hypot(v1.x-v0.x, v1.y-v0.y);
+                        PRINT(iEdge);
+                        PRINT(actualDualEdgeLength);
+
+                       /*
+
+                       D* 
+                        |\
+                        | \
+                        |  \
+                        |   \
+                        |  ^ \
+                       A*--|--*C
+                         \ |  |
+                          \   |
+                           \  |
+                            \ |
+                             \|
+                              *B
+                        */
+
+
+                        // primal edge dir is dual edge dir rotated 90 degrees clockwise
+                        Mesh.Edge primalEdge = (Mesh.Edge)primal.edges.get(iEdge);
+                        if (primalEdge.next().next().next() != primalEdge)
+                            continue; // not a triangle
+                        if (primalEdge.opposite().next().next().next() != primalEdge.opposite())
+                            continue; // neighbor not a triangle
+                        Mesh.Vertex A = primalEdge.initialVertex();
+                        Mesh.Vertex C = primalEdge.finalVertex();
+                        Mesh.Vertex D = primalEdge.next().finalVertex();
+                        Mesh.Vertex B = primalEdge.opposite().next().finalVertex();
+
+                        double v0coords[] = new double[3];
+                        double v1coords[] = new double[3];
+                        SolveForDualPoint(A.x, A.y, A.h,
+                                          B.x, B.y, B.h,
+                                          C.x, C.y, C.h,
+                                          v0coords);
+                        SolveForDualPoint(A.x, A.y, A.h,
+                                          C.x, C.y, C.h,
+                                          D.x, D.y, D.h,
+                                          v1coords);
+                        //PRINT(v0.x);
+                        //PRINT(v0.y);
+                        //PRINT(v0.h);
+                        //PRINTVEC(v0coords);
+                        //PRINT(v1.x);
+                        //PRINT(v1.y);
+                        //PRINT(v1.h);
+                        //PRINTVEC(v1coords);
+                        assert(EQ(v0.x, v0coords[0], 1e-6));
+                        assert(EQ(v0.y, v0coords[1], 1e-6));
+                        assert(EQ(v0.h, v0coords[2], 1e-6));
+                        assert(EQ(v1.x, v1coords[0], 1e-6));
+                        assert(EQ(v1.y, v1coords[1], 1e-6));
+                        assert(EQ(v1.h, v1coords[2], 1e-6));
+
+                        assert(EQ(VecMath.dist(2, v0coords, v1coords), actualDualEdgeLength, 1e-6));
+
+                        double edgeVec[] = new double[]{C.x-A.x, C.y-A.y};
+                        double dualEdgeVec[] = VecMath.xv2(edgeVec);
+                        double edgeLength = VecMath.norm(edgeVec);
+
+                        double v0dot = VecMath.dot(2, v0coords, dualEdgeVec);
+                        double v1dot = VecMath.dot(2, v1coords, dualEdgeVec);
+                        assert(EQ((v1dot-v0dot) / edgeLength, actualDualEdgeLength, 1e-6));
+
+                        // TODO: simplify simplify simplify
+                    }
+                }
+            } // end of length prediction
 
             return dual;
         } // makeDualMesh()
