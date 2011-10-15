@@ -98,6 +98,7 @@ import com.donhatchsw.util.Minimizer;
 import com.donhatchsw.util.Listenable;
 import com.donhatchsw.compat.ArrayList;
 import com.donhatchsw.compat.IntArrayList;
+import com.donhatchsw.compat.DoubleArrayList;
 import com.donhatchsw.awt.Row;
 import com.donhatchsw.awt.Col;
 import com.donhatchsw.awt.TablePanel;
@@ -1279,9 +1280,10 @@ public class ShephardsPlayApplet
             //doCannedThingAlgorithm5Killer0();
             //doCannedThingAlgorithm5Killer1();
             //doCannedThingBlindLagoonExitKiller();
-            doCannedThingFarthestLagoonExitKiller();
+            //doCannedThingFarthestLagoonExitKiller();
+            //doCannedThingFarthestLagoonExitKillerOptimized();
             //doBlueNoiseThing();
-            //load("DUMP.off");
+            load("DUMP.off");
 
             if (eventVerbose >= 1) System.out.println("out init");
         } // init
@@ -2305,44 +2307,33 @@ public class ShephardsPlayApplet
                         theCanvas.repaint();
                         break;
 
-                    case '7':
+                    case '7': case '&': case '8': case '*':
                     {
                         int oldIndex = netless8OptimizationIndex;
-                        netless8OptimizationIndex = MOD(netless8OptimizationIndex-1, netless8OptimizationPath.length);
+                        switch (c)
+                        {
+                            case '&': netless8OptimizationIndex = 0; break;
+                            case '7': netless8OptimizationIndex = MAX(netless8OptimizationIndex-1, 0); break;
+                            case '8': netless8OptimizationIndex = MIN(netless8OptimizationIndex+1, netless8OptimizationPath.length-1); break;
+                            case '*': netless8OptimizationIndex = netless8OptimizationPath.length-1; break;
+                        }
                         System.out.println("netless8OptimizationIndex "+oldIndex+" -> "+netless8OptimizationIndex+"");
 
-                        if (mesh.verts.size() == 6)
+                        if (netless8OptimizationIndex != oldIndex)
                         {
                             double verts[][] = netless8OptimizationPath[netless8OptimizationIndex];
-                            FORI (iVert, 6)
+                            if (mesh.verts.size() == verts.length)
                             {
-                                ((Mesh.Vertex)mesh.verts.get(iVert)).x = verts[iVert][0];
-                                ((Mesh.Vertex)mesh.verts.get(iVert)).y = verts[iVert][1];
-                                ((Mesh.Vertex)mesh.verts.get(iVert)).h = verts[iVert][2];
+                                FORI (iVert, verts.length)
+                                {
+                                    ((Mesh.Vertex)mesh.verts.get(iVert)).x = verts[iVert][0];
+                                    ((Mesh.Vertex)mesh.verts.get(iVert)).y = verts[iVert][1];
+                                    ((Mesh.Vertex)mesh.verts.get(iVert)).h = verts[iVert][2];
+                                }
                             }
+
+                            theCanvas.repaint();
                         }
-
-                        theCanvas.repaint();
-                        break;
-                    }
-                    case '8':
-                    {
-                        int oldIndex = netless8OptimizationIndex;
-                        netless8OptimizationIndex = (netless8OptimizationIndex+1) % netless8OptimizationPath.length;
-                        System.out.println("netless8OptimizationIndex "+oldIndex+" -> "+netless8OptimizationIndex+"");
-
-                        if (mesh.verts.size() == 6)
-                        {
-                            double verts[][] = netless8OptimizationPath[netless8OptimizationIndex];
-                            FORI (iVert, 6)
-                            {
-                                ((Mesh.Vertex)mesh.verts.get(iVert)).x = verts[iVert][0];
-                                ((Mesh.Vertex)mesh.verts.get(iVert)).y = verts[iVert][1];
-                                ((Mesh.Vertex)mesh.verts.get(iVert)).h = verts[iVert][2];
-                            }
-                        }
-
-                        theCanvas.repaint();
                         break;
                     }
 
@@ -2980,7 +2971,7 @@ public class ShephardsPlayApplet
                                 // Print it out
                                 System.out.println("Walking around net tree:");
                                 boolean seen[] = new boolean[nDualEdges]; // false initially
-                                FORI (iPass, 2)
+                                FORI (iPass, 3)
                                 {
                                     FORI (iDualEdge, nDualEdges)
                                     {
@@ -3474,7 +3465,17 @@ public class ShephardsPlayApplet
                     // draw a subtle dot at the origin
                     mg.setColor(java.awt.Color.white);
                     mg.drawPoint(0., 0., 1);
+
                 } // if (doLabels)
+
+                // if showing an optimization path, display a label
+                if (netless8OptimizationIndex != -1)
+                {
+                    mg.setColor(java.awt.Color.white);
+                    mg.drawString("Optimization step "+netless8OptimizationIndex+"/"+(netless8OptimizationPath.length-1)+":  goodness = "+netless8OptimizationPathGoodnesses[netless8OptimizationIndex],
+                                  -1., -1.,
+                                  -1., 1.1);
+                }
 
                 //
                 // Draw the rubber band last last
@@ -4224,7 +4225,108 @@ public class ShephardsPlayApplet
                     {3, 4, 5},
                 };
                 mesh = new Mesh(verts, faces);
+
             } // doCannedThingFarthestLagoonExitKiller
+
+            private void doCannedThingFarthestLagoonExitKillerOptimized()
+            {
+                doCannedThingFarthestLagoonExitKiller();
+
+                int fromsAndTos[][/*2*/][][/*3*/] = {
+                    {{{0,2,1}}, {{0,2,1},{0,1,3},{1,4,3},{3,4,5}}}, // edge A must be a bad exit of everything
+                    {{{0,1,3}}, {{0,1,3},{1,4,3},{3,4,5}}}, // upper inner edge must be good exit of 3-vert lagoon under it
+                    {{{1,4,3}}, {{1,4,3},{3,4,5}}}, // edge C (center) must be a good exit for 2-vert lagoon under it
+                    {{{3,4,5}}, {{0,2,1},{0,1,3},{1,4,3},{3,4,5}}}, // edge B must be a good exit of whole thing
+                    {{{3,4,5}}, {{0,2,1},{0,1,3},{1,4,3},{3,4,5}}}, // edge B's evil twin must be a bad exit of whole thing
+
+                    {{{0,1,3}}, {{0,2,1},{0,1,3}}}, // edge C (center) must be bad for upper 2-vert lagoon
+                    {{{0,2,1}}, {{0,2,1},{0,1,3}}}, // edge A must be good for upper 2-vert lagoon
+                    {{{0,2,1}}, {{0,2,1},{0,1,3}}}, // edge A's evil twin must be bad for upper 2-vert lagoon
+
+                    {{{3,4,5}}, {{1,4,3},{3,4,5}}}, // edge B must be bad for lower 2-vert lagoon
+                    {{{1,4,3}}, {{1,4,3},{3,4,5}}}, // edge C must be good for lower 2-vert lagoon
+                    {{{1,4,3}}, {{1,4,3},{3,4,5}}}, // west edge must be bad for lower 2-vert lagoon
+                };
+                int toLeftOfEdgeEndIndices[][] = {
+                    {1,2}, // edge A must be a bad exit of whole thing
+                    {0,1}, // upper inner edge must be good exit of 3-vert lagoon under it
+                    {3,1}, // edge C (center) must be a good exit for 2-vert lagoon under it
+                    {5,3}, // edge B must be a good exit of whole thing
+                    {5,4}, // edge B's evil twin must be a bad exit of whole thing
+
+                    {3,1}, // edge C (center) must be bad for upper 2-vert lagoon
+                    {2,1}, // edge A must be good for upper 2-vert lagoon
+                    {2,0}, // edge A's evil twin must be bad for upper 2-vert lagoon
+
+                    {3,5}, // edge B must be bad for lower 2-vert lagoon
+                    {3,1}, // edge C must be good for lower 2-vert lagoon
+                    {4,1}, // west edge must be bad for lower 2-vert lagoon
+                };
+                boolean mustBeFarthestExit[] = {
+                    false,
+                    false,
+                    false,
+                    true,
+                    false,
+
+                    false,
+                    true,
+                    false,
+
+                    false,
+                    true,
+                    false,
+                };
+
+
+                /*
+                nice spec might look something like:
+                    CCW lagoon boundary (can be in multiple pieces),   bad exits,    good exits, farthest exits
+
+                    {{{0,2,1,4,5,3}}, {{2,1},{4,5}}, {{5,3}}, {{5,3}} }, // whole thing: A bad, B's evil twin bad, B good,  B farthest good from cg
+                    {{{0,1,4,5,3}},   {},            {{0,1}}, {} }, // lower 3 vertices: upper inner edge good
+                    {{{1,4,5,3}},     {{5,3},{1,4}}, {{3,1}}, {{3,1}} }, // lower 2 vertices: B bad, west edge bad, C good,  C farthest good from cg
+                    {{{0,2,1,3}},     {{1,3},{0,2}}, {{2,1}}, {{2,1}} }, // upper 2 vertices: C bad, A's evil twin bad, A good,  A farthest good from cg
+
+
+                */
+
+
+                FORI (iPass, 10) // XXX experimenting... seems to do better with multiple restarts.
+                {
+                    System.out.println("-------------------------------------");
+                    PRINT(iPass);
+                    // doesn't seem to ever help much to consider edge lengths... weird.  also it's the 1-edgelength thing that hurts,  edgelength itself doesn't.  But, isn't that necessary to prevent it growing without bound?? dammit
+                    boolean considerEdgeLengths = true;
+                    Object optimizationPathVertsAndGoodnesses[/*2*/] = GeneralOptimizationStuff.optimizeVerts(mesh,
+                        fromsAndTos,
+                        toLeftOfEdgeEndIndices,
+                        mustBeFarthestExit,
+                        considerEdgeLengths);
+                    double optimizationPathVerts[][][] = (double[][][])optimizationPathVertsAndGoodnesses[0];
+                    double optimizationPathGoodnesses[] = (double[])optimizationPathVertsAndGoodnesses[1];
+                                                                            
+                    PRINT(optimizationPathVerts.length);
+                    double verts[][] = optimizationPathVerts[optimizationPathVerts.length-1];
+                    assert(verts.length == 6);
+                    FORI (iVert, verts.length)
+                    {
+                        Mesh.Vertex v = (Mesh.Vertex)mesh.verts.get(iVert);
+                        v.x = verts[iVert][0];
+                        v.y = verts[iVert][1];
+                        v.h = verts[iVert][2];
+                    }
+
+                    // XXX misnomer now
+                    netless8OptimizationPath = optimizationPathVerts;
+                    netless8OptimizationPathGoodnesses = optimizationPathGoodnesses;
+                    netless8OptimizationIndex = optimizationPathVerts.length-1;
+                    PRINT(optimizationPathVerts.length);
+                    //PRINTARRAY(optimizationPathGoodnesses);
+                    PRINT(iPass);
+                    System.out.println("-------------------------------------");
+                }
+            } // doCannedThingFarthestLagoonExitKillerOptimized
 
 
 
@@ -4428,13 +4530,482 @@ public class ShephardsPlayApplet
             } // doCannedThingSweepKiller2
 
 
+            // What is the signed distance along dir
+            // from the center-of-weight of fromTris
+            // to the center-of-weight of toTris?
+            // XXX should cache triangle areas and moments somewhere, especially since we typically compute all edge lengths using this, which computes moment of each tri twice.  Note that the triangle areas are simply the dual mesh weights. maybe dual mesh should be stored in "homogeneous" coords? i.e. [momentX, momentY, momentH, weight]
+            public static double separationAlongDirection(double primalVerts[][],
+                                                          int[][/*3*/] fromTris,
+                                                          int[][/*3*/] toTris,
+                                                          double dirX, double dirY)
+            {
+                //System.out.println("    in separationAlongDirection");
+                double dirDotFrom = 0., dirDotTo = 0.; // initialized only to shut up compiler
+                FORI (iTris, 2)
+                {
+                    int tris[][] = (iTris==0 ? fromTris : toTris);
+                    double totalTwiceTriArea = 0.;
+                    double dirDotTotalMoment = 0.;
+
+                    // XXX the following are just for debugging
+                    double totalMomentX = 0.;
+                    double totalMomentY = 0.;
+
+                    FORI (iTri, tris.length)
+                    {
+                        int tri[] = tris[iTri];
+                        /*
+                        Mesh.Vertex A = (Mesh.Vertex)mesh.verts.get(tri[0]);
+                        Mesh.Vertex B = (Mesh.Vertex)mesh.verts.get(tri[1]);
+                        Mesh.Vertex C = (Mesh.Vertex)mesh.verts.get(tri[2]);
+                        double Bx = B.x - A.x;
+                        double By = B.y - A.y;
+                        double Bh = B.h - A.h;
+                        double Cx = C.x - A.x;
+                        double Cy = C.y - A.y;
+                        double Ch = C.h - A.h;
+                        */
+                        double A[] = primalVerts[tri[0]];
+                        double B[] = primalVerts[tri[1]];
+                        double C[] = primalVerts[tri[2]];
+                        double Bx = B[0] - A[0];
+                        double By = B[1] - A[1];
+                        double Bh = B[2] - A[2];
+                        double Cx = C[0] - A[0];
+                        double Cy = C[1] - A[1];
+                        double Ch = C[2] - A[2];
+
+                        // convert virtual to actual, relative to A
+                        Bh -= .5 * (SQR(Bx) + SQR(By));
+                        Ch -= .5 * (SQR(Cx) + SQR(Cy));
+
+                        /*
+                            dirDotMoment = [dirX dirY] * [ Cy -By] * [-Bh]
+                                                         [-Cx  Bx]   [-Ch]
+                            (hmm, that has an interpretation in terms of triangle areas I think)
+                        */
+                        double momentX = -Cy*Bh + By*Ch;
+                        double momentY = Cx*Bh - Bx*Ch;
+
+                        double twiceTriArea = Bx*Cy - Cx*By;
+
+
+                        if (true)
+                        {
+                            // Really need to sum the moments in a common coord system: the origin (I think)...
+                            // fixed moment = (moment/twiceTriArea + A)*twiceTriArea
+                            //              = moment + A*twiceTriArea
+                            momentX += A[0] * twiceTriArea;
+                            momentY += A[1] * twiceTriArea;
+                        }
+
+
+                        double dirDotMoment = dirX * momentX
+                                            + dirY * momentY;
+
+
+                        totalTwiceTriArea += twiceTriArea;
+                        dirDotTotalMoment += dirDotMoment;
+
+                        totalMomentX += momentX;
+                        totalMomentY += momentY;
+                    }
+                    if (iTris == 0)
+                    {
+                        //System.out.println("from cg: "+(totalMomentX/totalTwiceTriArea)+" "+(totalMomentY/totalTwiceTriArea));
+                        dirDotFrom = dirDotTotalMoment / totalTwiceTriArea;
+                    }
+                    else
+                    {
+                        //System.out.println("to cg: "+(totalMomentX/totalTwiceTriArea)+" "+(totalMomentY/totalTwiceTriArea));
+                        dirDotTo   = dirDotTotalMoment / totalTwiceTriArea;
+                    }
+                }
+                //System.out.println("    out separationAlongDirection");
+                return (dirDotTo - dirDotFrom) / MyMath.hypot(dirX,dirY);
+            } // separationAlongDirection
+
+
+            // VecMath.synopsis might be brain damaged, not sure... try simpler way
+            static double simpleSynopsis(int n, double v[])
+            {
+                FORI (i, n)
+                    if (v[i] <= 0) // non-strict so we do it this way if on the boundary of the positive orthant
+                    {
+                        //
+                        // Outside the positive orthant,
+                        // return minus the euclidean distance
+                        // to the positive orthant.
+                        //
+                        double sum = 0.;
+                        for (; i < n; i++)
+                            if (v[i] < 0.)
+                                sum += v[i]*v[i];
+                        return -Math.sqrt(sum);
+                    }
+                //
+                // Inside the positive orthant, return the min.
+                //
+                return VecMath.min(n, v);
+            } // simpleSynopsis
+
+
+
+
+            // General optimization:
+            // maximize the minimum over:
+            //     - length of each primal edge
+            //     - length of each finite dual edge
+            //     - 1-length of each primal edge
+            //     - 1-length of each finite dual edge
+            //     - a set of specified goodness-of-balances
+            //
+            // can constrain three vertex heights to be zero, I think, and one vertex position
+            // (and maybe one coord of a second vertex's position)
+            //
+            private static class GeneralOptimizationStuff
+            {
+                // could be a method on mesh, or something
+                private static void getMeshVertCoords(Mesh mesh, double coords[/*nVerts*/][/*3*/])
+                {
+                    FORI (iVert, coords.length)
+                    {
+                        Mesh.Vertex v = (Mesh.Vertex)mesh.verts.get(iVert);
+                        coords[iVert][0] = v.x;
+                        coords[iVert][1] = v.y;
+                        coords[iVert][2] = v.h;
+                    }
+                }
+
+                private static double[] vertsToParams(double verts[][/*3*/])
+                {
+                    int nVerts = verts.length;
+                    double params[] = new double[nVerts*3 - 6];
+                    // verts to params...
+                    int iParam = 0;
+                    double x0, y0, h0, x1, y1, h1, h2; // XXX could store these so paramsToVerts doesn't have to keep looking them up
+                    FORI (iVert, nVerts)
+                    {
+                        double v[] = verts[iVert];
+                        if (iVert == 0)
+                        {
+                            x0 = v[0];
+                            y0 = v[1];
+                            h0 = v[2];
+                        }
+                        else if (iVert == 1)
+                        {
+                            params[iParam++] = MyMath.hypot(v[0]-verts[0][0], v[1]-verts[0][1]);
+                            x1 = v[0];
+                            y1 = v[1];
+                            h1 = v[2];
+                        }
+                        else if (iVert == 2)
+                        {
+                            params[iParam++] = v[0];
+                            params[iParam++] = v[1];
+                            h2 = v[2];
+                        }
+                        else
+                        {
+                            params[iParam++] = v[0];
+                            params[iParam++] = v[1];
+                            params[iParam++] = v[2];
+                        }
+                    }
+                    PRINT(params.length);
+                    PRINT(iParam);
+                    assert(iParam == params.length);
+                    return params;
+                }
+
+
+                // needs to be fast-- no memory allocations
+                private static void paramsToVerts(Mesh primal, // for verts that are fixed
+                                                  double params[], double verts[][])
+                {
+                    PRINT(params.length);
+                    PRINT(verts.length);
+                    int iParam = 0;
+
+                    Mesh.Vertex v0 = (Mesh.Vertex)primal.verts.get(0);
+                    Mesh.Vertex v1 = (Mesh.Vertex)primal.verts.get(1);
+                    Mesh.Vertex v2 = (Mesh.Vertex)primal.verts.get(2);
+
+                    verts[0][0] = v0.x;
+                    verts[0][1] = v0.y;
+                    verts[0][2] = v0.h;
+                    double origDist01 = MyMath.hypot(v1.x-v0.x, v1.y-v0.y);
+                    verts[1][0] = v0.x + (v1.x-v0.x)/origDist01 * params[iParam];
+                    verts[1][1] = v0.y + (v1.y-v0.y)/origDist01 * params[iParam];
+                    iParam++;
+                    verts[1][2] = v1.h;
+
+                    verts[2][0] = params[iParam++];
+                    verts[2][1] = params[iParam++];
+                    verts[2][2] = v2.h;
+
+                    for (int iVert = 3; iVert < verts.length; ++iVert)
+                    {
+                        verts[iVert][0] = params[iParam++];
+                        verts[iVert][1] = params[iParam++];
+                        verts[iVert][2] = params[iParam++];
+                    }
+                    assert(iParam == params.length);
+                } // paramsToVerts
+
+                private static String[] getParamNames(int nVerts)
+                {
+                    int iParam = 0;
+                    String paramNames[] = new String[nVerts * 3 - 6];
+                    paramNames[iParam++] = "dist01";
+                    paramNames[iParam++] = "x2";
+                    paramNames[iParam++] = "y2";
+                    for (int iVert = 3; iVert < nVerts; ++iVert)
+                    {
+                        paramNames[iParam++] = "x"+iVert;
+                        paramNames[iParam++] = "y"+iVert;
+                        paramNames[iParam++] = "h"+iVert;
+                    }
+                    assert(iParam == paramNames.length);
+                    return paramNames;
+                } // getParamNames
+
+
+
+
+                // Returns the optimization path, better and better verts,
+                // and the associated goodnesses.
+                public static Object[/*2*/] optimizeVerts(
+                    final Mesh primal,
+                    final int fromsAndTos[][/*2*/][][/*3*/],
+                    final int toLeftOfEdgeEndIndices[][/*2*/],
+                    final boolean mustBeFarthestExit[],
+                    final boolean considerEdgeLengths)
+                {
+                    assert(fromsAndTos.length        == toLeftOfEdgeEndIndices.length);
+                    assert(mustBeFarthestExit.length == toLeftOfEdgeEndIndices.length);
+
+                    int nVerts = primal.verts.size();
+                    final double scratchVerts[][] = new double[nVerts][3];
+                    getMeshVertCoords(primal, scratchVerts);
+
+
+                    // params are:
+                    //     dist from x0,y0 to x1,y1
+                    //     x2
+                    //     y2
+                    //     x3,y3,h3
+                    //     x4,y4,h4
+                    //     ...
+                    // fixed:
+                    //     x0
+                    //     y0
+                    //     h0
+                    //     direction from x0,y0 to x1,y1
+                    //     h1
+                    //     h2
+                    double initialGuessParams[] = vertsToParams(scratchVerts);
+                    int nParams = initialGuessParams.length;
+
+                    {
+                        // Sanity check-- convert back to verts, should get original verts again
+                        double shouldBeScratchVerts[][] = new double[nVerts][3];
+                        paramsToVerts(primal, initialGuessParams, shouldBeScratchVerts);
+                        PRINTMAT(scratchVerts);
+                        PRINTVEC(initialGuessParams);
+                        PRINTMAT(shouldBeScratchVerts);
+                        PRINTMAT(VecMath.mmm(shouldBeScratchVerts, scratchVerts));
+                        assert(VecMath.equals(shouldBeScratchVerts, scratchVerts, 1e-6));
+                    }
+
+                    final double saveBestParams[] = new double[nParams];
+                    final double saveBestValue[] = {Double.POSITIVE_INFINITY};
+                    final ArrayList optimizationPathList = new ArrayList();
+                    final DoubleArrayList optimizationPathGoodnessesList = new DoubleArrayList();
+
+                    Minimizer.VectorFunction fun = new Minimizer.VectorFunction() {
+                        // VectorFunction interface
+                        public double apply(double params[])
+                        {
+                            paramsToVerts(primal, params, scratchVerts);
+                            int nGoodness = 2*primal.edges.size()
+                                          + 2*primal.edges.size() // at most this many dual edge constraints
+                                          + fromsAndTos.length;
+                            double goodnessVector[] = new double[nGoodness];
+                            int iGoodness = 0;
+                            int nEdges = primal.edges.size();
+
+                            System.out.println("    -----------------------");
+
+                            if (considerEdgeLengths) // considering edge lengths seems to prevent some nice optimization paths.  hmm.  (it might be just the 1-edgelength component though)
+                            {
+                                // Edge lengths...
+                                FORI (iEdge, nEdges)
+                                {
+                                    Mesh.Edge edge = (Mesh.Edge)primal.edges.get(iEdge);
+                                    int i0 = edge.initialVertex().myIndex();
+                                    int i1 = edge.finalVertex().myIndex();
+                                    if (i0 < i1) // canonical order only
+                                    {
+                                        double edgeLength = MyMath.hypot(scratchVerts[i1][0]-scratchVerts[i0][0],
+                                                                         scratchVerts[i1][1]-scratchVerts[i0][1]);
+                                        System.out.println("        primal edge "+i0+"->"+i1+": "+edgeLength+"");
+                                        goodnessVector[iGoodness++] = edgeLength;
+                                        //goodnessVector[iGoodness++] = 1. - edgeLength;
+                                    }
+                                }
+                            }
+
+                            if (true)
+                            {
+                                // Dual edge lengths...
+                                FORI (iEdge, nEdges)
+                                {
+                                    // TODO: get the structure information beforehand
+                                    Mesh.Edge edge = (Mesh.Edge)primal.edges.get(iEdge);
+                                    Mesh.Vertex v0 = edge.initialVertex();
+                                    Mesh.Vertex v1 = edge.finalVertex();
+                                    if (v0 != null
+                                     && v1 != null
+                                     && v0.myIndex() < v1.myIndex()) // canonical order only
+                                    {
+                                       /*
+
+                                       D* 
+                                        |\
+                                        | \
+                                        |  \
+                                        |   \
+                                        |  ^ \
+                                       A*--|--*C
+                                         \ |  |
+                                          \   |
+                                           \  |
+                                            \ |
+                                             \|
+                                              *B
+                                        */
+
+
+                                        // primal edge dir (AC) is dual edge dir rotated 90 degrees clockwise
+                                        Mesh.Edge primalEdge = (Mesh.Edge)primal.edges.get(iEdge);
+                                        if (primalEdge.next().next() == primalEdge)
+                                        {
+                                            assert(false);
+                                            continue; // degenerate
+                                        }
+                                        if (primalEdge.next().next().next() != primalEdge)
+                                            continue; // not a triangle
+                                        if (primalEdge.opposite().next().next().next() != primalEdge.opposite())
+                                            continue; // neighbor not a triangle
+                                        Mesh.Vertex Avert = primalEdge.initialVertex();
+                                        Mesh.Vertex Cvert = primalEdge.finalVertex();
+                                        Mesh.Vertex Dvert = primalEdge.next().finalVertex();
+                                        Mesh.Vertex Bvert = primalEdge.opposite().next().finalVertex();
+
+
+                                        double Cx = Cvert.x - Avert.x;
+                                        double Cy = Cvert.y - Avert.y;
+                                        double dualEdgeVecX = -Cy;
+                                        double dualEdgeVecY = Cx;
+
+                                        double dualEdgeLength = separationAlongDirection(scratchVerts,
+                                                                                         new int[][] {{Avert.myIndex(),
+                                                                                                       Bvert.myIndex(),
+                                                                                                       Cvert.myIndex()}},
+                                                                                         new int[][] {{Avert.myIndex(),
+                                                                                                       Cvert.myIndex(),
+                                                                                                       Dvert.myIndex()}},
+                                                                                         dualEdgeVecX, dualEdgeVecY);
+                                        System.out.println("        dual edge "+v0.myIndex()+"->"+v1.myIndex()+": "+dualEdgeLength+"");
+                                        goodnessVector[iGoodness++] = dualEdgeLength;
+                                        goodnessVector[iGoodness++] = 1. - dualEdgeLength;
+                                    }
+                                }
+                            }
+
+                            if (true)
+                            {
+                                // General froms and tos...
+
+                                FORI (iFromAndTo, fromsAndTos.length)
+                                {
+                                    int from[][/*3*/] = fromsAndTos[iFromAndTo][0];
+                                    int   to[][/*3*/] = fromsAndTos[iFromAndTo][1];
+                                    double v0[] = scratchVerts[toLeftOfEdgeEndIndices[iFromAndTo][0]];
+                                    double v1[] = scratchVerts[toLeftOfEdgeEndIndices[iFromAndTo][1]];
+                                    double edgeVecX = v1[0] - v0[0];
+                                    double edgeVecY = v1[1] - v0[1];
+                                    double dualEdgeVecX = -edgeVecY;
+                                    double dualEdgeVecY =  edgeVecX;
+                                    double goodness = separationAlongDirection(scratchVerts,
+                                                                               from,
+                                                                               to,
+                                                                               dualEdgeVecX, dualEdgeVecY);
+                                    System.out.println("        another goodness: "+goodness);
+                                    goodnessVector[iGoodness++] = goodness;
+
+                                    if (mustBeFarthestExit[iFromAndTo])
+                                    {
+                                    }
+                                }
+                            }
+
+
+                            PRINT(nGoodness);
+                            PRINT(iGoodness);
+                            double synopsis = VecMath.synopsis(iGoodness, goodnessVector);
+                            //double synopsis = simpleSynopsis(iGoodness, goodnessVector);
+                            PRINTARRAY(Arrays.subarray(goodnessVector, 0, iGoodness));
+                            System.out.println("        synopsis = "+synopsis);
+                            double answer = -synopsis; // trying to maximize synopsis, trying to minimize answer
+
+                            if (answer < saveBestValue[0])
+                            {
+                                System.out.println("            improvement!");
+                                saveBestValue[0] = answer;
+                                optimizationPathList.add(Arrays.copy(scratchVerts, 2));
+                                optimizationPathGoodnessesList.add(synopsis);
+                            }
+                            System.out.println("    -----------------------");
+                            return answer;
+                        }
+                    }; // fun
+
+                    double initialDelta = .0001;
+                    //int maxCalls = 10*1000;
+                    int maxCalls = 1*1000;
+                    //int maxCalls = 500;
+                    //int maxCalls = 255;
+                    //int maxCalls = 100;
+                    //int maxCalls = 53;
+                    //int maxCalls = 10;
+                    //int maxCalls = 1;
+                    PRINT(fun.apply(initialGuessParams));
+                    String paramNames[] = getParamNames(primal.verts.size());
+                    double answerParams[] = Minimizer.minimize(fun,
+                                                               initialGuessParams,
+                                                               initialDelta,
+                                                               maxCalls,
+                                                               paramNames);
+                    // we don't really use that
+                    double optimizationPath[][][] = new double[optimizationPathList.size()][][];
+                    optimizationPathList.toArray(optimizationPath);
+                    double optimizationPathGoodnesses[] = new double[optimizationPathGoodnessesList.size()];
+                    optimizationPathGoodnessesList.toArray(optimizationPathGoodnesses);
+                    System.out.println("    out optimizeVerts");
+                    return new Object[] {optimizationPath, optimizationPathGoodnesses};
+                } // GeneralOptimizationStuff.optimizeVerts
+            } // class GeneralOptimizationStuff
+
             private static class Netless8OptimizationStuff
             {
                 // Returns the optimization path, better and better verts
-                public static double[][][] optimizeVerts(
+                public static double[][][] optimizeNetless8Verts(
                     double initialGuessVerts[][])
                 {
-                    System.out.println("    in optimizeVerts");
+                    System.out.println("    in optimizeNetless8Verts");
 
                     double initialGuessParams[] = vertsToParams(initialGuessVerts);
                     PRINTARRAY(initialGuessVerts);
@@ -4524,7 +5095,7 @@ public class ShephardsPlayApplet
                             if (answer < saveBestValue[0])
                             {
                                 saveBestValue[0] = answer;
-                                optimizationPathList.add(paramsToVerts(params));
+                                optimizationPathList.add(paramsToVerts(params)); // XXX TODO: um, why aren't we just adding verts?
                             }
                             return answer;
                         }
@@ -4545,9 +5116,9 @@ public class ShephardsPlayApplet
                     // we don't really use that
                     double optimizationPath[][][] = new double[optimizationPathList.size()][][];
                     optimizationPathList.toArray(optimizationPath);
-                    System.out.println("    out optimizeVerts");
+                    System.out.println("    out optimizeNetless8Verts");
                     return optimizationPath;
-                } // optimizeVerts
+                } // optimizeNetless8Verts
 
                 private static double[] vertsToParams(double verts[][])
                 {
@@ -4719,6 +5290,13 @@ public class ShephardsPlayApplet
                 PRINTARRAY(initialGuessVerts);
                 PRINTVEC(initialGuessVerts[4]);
 
+                if (false)
+                {
+                    // XXX TODO: why can't I put a fairly large number here?  not much of an optimization it seems :-(
+                    initialGuessVerts[2][0] += .01; // WRENCH-- see what happens
+                    initialGuessVerts[3][0] -= .02; // WRENCH-- see what happens
+                }
+
                 {
                     // scale so initial guess has radius 1
                     double xradius = Netless8OptimizationStuff.vertsToDualVertsInNetless8(initialGuessVerts)[0][0];
@@ -4740,7 +5318,7 @@ public class ShephardsPlayApplet
                 double initialGuessDualVerts[][] = Netless8OptimizationStuff.vertsToDualVertsInNetless8(initialGuessVerts);
 
 
-                double optimizationPathVerts[][][] = Netless8OptimizationStuff.optimizeVerts(
+                double optimizationPathVerts[][][] = Netless8OptimizationStuff.optimizeNetless8Verts(
                     initialGuessVerts);
                 double verts[][] = optimizationPathVerts[optimizationPathVerts.length-1];
                 FORI (iVert, 6)
@@ -5482,7 +6060,7 @@ public class ShephardsPlayApplet
             public class Vertex
             {
                 public double x, y, h; // x, y, "height"
-                public double weight = 1.; // optional, if this is a compute dual vertex, this should be the original triangle area
+                public double weight = 1.; // optional, if this is a computed dual vertex, this should be the original triangle area
                 public int arity = 0; // number of edges having this vertex as initial vertex
 
                 private int _myIndex = -1;
@@ -6889,21 +7467,23 @@ public class ShephardsPlayApplet
                 dualEdge._opposite = (Mesh.Edge)dual.edges.get(primalEdge._opposite._myIndex);
                 if (false)
                 {
-                    // regions of CCW faces correspond
-                    // to CCW faces in dual.
+                    // CCW faces in primal
+                    // produce CCW faces in dual.
                     // If we do this, then applying makeDualMesh twice
                     // will reverse all the edges,
                     // I think.
+                    // (assumimg doShowInsideOutDualVerts is true)
                     dualEdge._next = (Mesh.Edge)dual.edges.get(primalEdge._prev._opposite._myIndex);
                     dualEdge._prev = (Mesh.Edge)dual.edges.get(primalEdge._opposite._next._myIndex);
                 }
                 else
                 {
-                    // regions of CCW faces in primal
-                    // correspond to CW faces in dual.
+                    // CCW faces in primal
+                    // produce CW faces in dual.
                     // If we do this, then makeDualMesh(makeDualMesh(mesh))
                     // should return something identical to the original,
                     // I think.
+                    // (assumimg doShowInsideOutDualVerts is true)
                     // XXX Odd, this seems to behave better all around (I expected rays to go in wrong direction,
                     // but it works better than the other way... should think about why
                     dualEdge._next = (Mesh.Edge)dual.edges.get(primalEdge._next._opposite._myIndex);
@@ -7041,8 +7621,17 @@ public class ShephardsPlayApplet
 
             if (true)
             {
-                // Experiment with predicting dual edge lengths.
-                // See if I can reduce it to a simple formula in terms of the original verts.
+                // test separationAlongDirection() to make sure it predicts edge lengths properly.
+
+                double primalVerts[][] = new double[primal.verts.size()][3];
+                FORI (iVert, primalVerts.length)
+                {
+                    Mesh.Vertex vert = (Mesh.Vertex)primal.verts.get(iVert);
+                    primalVerts[iVert][0] = vert.x;
+                    primalVerts[iVert][1] = vert.y;
+                    primalVerts[iVert][2] = vert.h;
+                }
+
                 FORI (iEdge, nEdges)
                 {
                     Mesh.Edge dualEdge = (Mesh.Edge)dual.edges.get(iEdge);
@@ -7073,8 +7662,13 @@ public class ShephardsPlayApplet
                         */
 
 
-                        // primal edge dir is dual edge dir rotated 90 degrees clockwise
+                        // primal edge dir (AC) is dual edge dir rotated 90 degrees clockwise
                         Mesh.Edge primalEdge = (Mesh.Edge)primal.edges.get(iEdge);
+                        if (primalEdge.next().next() == primalEdge)
+                        {
+                            assert(false);
+                            continue; // degenerate
+                        }
                         if (primalEdge.next().next().next() != primalEdge)
                             continue; // not a triangle
                         if (primalEdge.opposite().next().next().next() != primalEdge.opposite())
@@ -7085,41 +7679,24 @@ public class ShephardsPlayApplet
                         Mesh.Vertex Bvert = primalEdge.opposite().next().finalVertex();
 
 
+                        double Cx = Cvert.x - Avert.x;
+                        double Cy = Cvert.y - Avert.y;
+                        double dualEdgeVecX = -Cy;
+                        double dualEdgeVecY = Cx;
 
-                        double Avirtual[] = {Avert.x, Avert.y, Avert.h};
-                        double Bvirtual[] = {Bvert.x, Bvert.y, Bvert.h};
-                        double Cvirtual[] = {Cvert.x, Cvert.y, Cvert.h};
-                        double Dvirtual[] = {Dvert.x, Dvert.y, Dvert.h};
-                        double ABvirtual[] = VecMath.vmv(Bvirtual, Avirtual);
-                        double ACvirtual[] = VecMath.vmv(Cvirtual, Avirtual);
-                        double ADvirtual[] = VecMath.vmv(Dvirtual, Avirtual);
-                        double ABactual[] = {ABvirtual[0], ABvirtual[1], ABvirtual[2] - .5 * (SQR(ABvirtual[0])+SQR(ABvirtual[1]))};
-                        double ACactual[] = {ACvirtual[0], ACvirtual[1], ACvirtual[2] - .5 * (SQR(ACvirtual[0])+SQR(ACvirtual[1]))};
-                        double ADactual[] = {ADvirtual[0], ADvirtual[1], ADvirtual[2] - .5 * (SQR(ADvirtual[0])+SQR(ADvirtual[1]))};
-
-
-                        double detM0 = ABactual[0]*ACactual[1] - ACactual[0]*ABactual[1];
-                        double Av0_times_detM0[] = {
-                            -ACactual[1]*ABactual[2] + ABactual[1]*ACactual[2],
-                             ACactual[0]*ABactual[2] - ABactual[0]*ACactual[2],
-                        };
-
-
-                        double detM1 = ACactual[0]*ADactual[1] - ADactual[0]*ACactual[1];
-                        double Av1_times_detM1[] = {
-                            -ADactual[1]*ACactual[2] + ACactual[1]*ADactual[2],
-                             ADactual[0]*ACactual[2] - ACactual[0]*ADactual[2],
-                        };
-
-                        double dualEdgeVec[] = VecMath.xv2(ACactual);
-                        //double edgeLength = VecMath.norm(2, ACactual); // ARGH!
-                        double edgeLength = VecMath.norm(VecMath.copyvec(2,ACactual));
-                        double dot0 = VecMath.dot(2, Av0_times_detM0, dualEdgeVec) / detM0;
-                        double dot1 = VecMath.dot(2, Av1_times_detM1, dualEdgeVec) / detM1;
-                        assert(EQ((dot1-dot0) / edgeLength, actualDualEdgeLength, 1e-6));
-                        PRINT("yeah!");
-
-                        // TODO: simplify simplify simplify
+                        double predictedDualEdgeLength = separationAlongDirection(primalVerts,
+                                                                                  new int[][] {{Avert.myIndex(),
+                                                                                                Bvert.myIndex(),
+                                                                                                Cvert.myIndex()}},
+                                                                                  new int[][] {{Dvert.myIndex(), // mix it up... start with D since that one's not at the same position along dir as A and C
+                                                                                                Avert.myIndex(),
+                                                                                                Cvert.myIndex()}},
+                                                                                  dualEdgeVecX, dualEdgeVecY);
+                        PRINT(actualDualEdgeLength);
+                        PRINT(predictedDualEdgeLength);
+                        assert(actualDualEdgeLength >= 0.);
+                        assert(EQ(ABS(predictedDualEdgeLength), actualDualEdgeLength, 1e-6));
+                        PRINT("yeah!!!!");
                     }
                 }
             } // end of length prediction
@@ -7346,8 +7923,94 @@ public class ShephardsPlayApplet
                                     x2, y2, h2 - .5 * (SQR(x2) + SQR(y2)),
                                     result);
             if (result.length == 3)
+            {
                 result[2] += .5 * (SQR(result[0]) + SQR(result[1]));
+
+                if (false)
+                {
+                    System.out.println("checking SolveForDualMomentAndArea");
+                    double dualMomentAndArea[] = new double[4];
+                    SolveForDualMomentAndArea(x0,y0,h0,
+                                              x1,y1,h1,
+                                              x2,y2,h2,
+                                              dualMomentAndArea);
+                    double A = dualMomentAndArea[3];
+                    PRINT(A);
+                    double shouldBeResult[] = {
+                        dualMomentAndArea[0] / A,
+                        dualMomentAndArea[1] / A,
+                        dualMomentAndArea[2] / (A*A),
+                    };
+                    PRINTVEC(result);
+                    PRINTVEC(shouldBeResult);
+                    assert(VecMath.equals(shouldBeResult, result, 1e-6));
+                    System.out.println("done checking SolveForDualMomentAndArea");
+                }
+            }
         } // SolveForDualPoint
+
+
+        // Optimized robust version of SolveForDualPoint.
+        // Moments can be used in robust center-of-mass calculations
+        // even if individual weights are tiny (or zero).
+        // Works in local virtual coord space of x0,y0,h0.
+        private static void SolveForDualMomentAndArea(double x0, double y0, double h0,
+                                                      double x1, double y1, double h1,
+                                                      double x2, double y2, double h2,
+                                                      double result[]) // x*A, y*A, A, or
+                                                                       // x*A, y*A, h*A^2, A
+        {
+            // convert from global virtual coord space to local virtual coord space...
+            double X1 = x1 - x0;
+            double Y1 = y1 - y0;
+            double H1 = h1 - h0;
+            double X2 = x2 - x0;
+            double Y2 = y2 - y0;
+            double H2 = h2 - h0;
+
+            // convert from virtual to actual...
+            H1 -= .5 * (SQR(X1) + SQR(Y1));
+            H2 -= .5 * (SQR(X2) + SQR(Y2));
+
+            // We're solving:
+            //    0  0  1     X =   0
+            //    X1 Y1 1  *  Y    -H1
+            //    X2 Y2 1     H    -H2
+            // I.e. H = 0 and:
+            //    X1 Y1  *  X  =  -H1
+            //    X2 Y2     Y  =  -H2
+            //
+            //    X  =  Y2 -Y1  *  -H1
+            //    Y    -X2  X1     -H2
+            //         ---------------
+            //          X1*Y2 - X2*Y1
+
+            double A = X1*Y2 - X2*Y1;
+            double XA = -Y2*H1 + Y1*H2;
+            double YA =  X2*H1 - X1*H2;
+
+            // to convert from local virtual coord space to global virtual coord space:
+            //         x = x0 + X
+            //           = x0 + XA/A
+            //   so  x*A = (x0 + XA/A)*A
+            //           = x0*A + XA
+            // etc.
+
+            result[0] = XA + x0*A;
+            result[1] = YA + y0*A;
+
+            if (result.length == 3)
+                result[2] = A;
+            else
+            {
+                // convert from actual (H=0) to virtual...
+                double HAA = .5 * (SQR(XA) + SQR(YA));
+                result[2] = HAA - h0*(A*A);  // - instead of +, because raising features in the primal corresponds to lowering them in the dual (I think that's why)
+                result[3] = A;
+            }
+        } // SolveForDualMomentAndArea
+
+
 
         // Experimenting with when it's more than a triangle... invmxv will do a least-squares solve,
         // which will be what we want in the case the input is coplanar
@@ -7531,6 +8194,7 @@ public class ShephardsPlayApplet
         // hack
         private int netless8OptimizationIndex = -1;
         private double netless8OptimizationPath[][][] = null;
+        private double netless8OptimizationPathGoodnesses[] = null;
 
         private boolean doLabels = false;
         private boolean doArrowsTowardsSharpestDihedrals = false;
@@ -7637,7 +8301,7 @@ public class ShephardsPlayApplet
 
         frame.move(200, 20);
         frame.resize(1250, 500);
-        frame.resize(100,200);
+        frame.resize(500,200);
         frame.show();
 
         //Misc.printPlatonicSolidVertexCurvatures();
