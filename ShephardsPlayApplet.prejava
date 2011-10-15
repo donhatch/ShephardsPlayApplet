@@ -1281,9 +1281,9 @@ public class ShephardsPlayApplet
             //doCannedThingAlgorithm5Killer1();
             //doCannedThingBlindLagoonExitKiller();
             //doCannedThingFarthestLagoonExitKiller();
-            //doCannedThingFarthestLagoonExitKillerOptimized();
+            doCannedThingFarthestLagoonExitKillerOptimized();
             //doBlueNoiseThing();
-            load("DUMP.off");
+            //load("DUMP.off");
 
             if (eventVerbose >= 1) System.out.println("out init");
         } // init
@@ -4665,7 +4665,6 @@ public class ShephardsPlayApplet
             //
             private static class GeneralOptimizationStuff
             {
-                // could be a method on mesh, or something
                 private static void getMeshVertCoords(Mesh mesh, double coords[/*nVerts*/][/*3*/])
                 {
                     FORI (iVert, coords.length)
@@ -4677,14 +4676,65 @@ public class ShephardsPlayApplet
                     }
                 }
 
+                private static void vertsToDualMomentsAndAreas(double primalCoords[/*nVerts*/][/*3*/],
+                                                               int tris[/*nDualVerts*/][/*3*/],
+                                                               double dualMomentsAndAreas[/*nDualVerts*/][/*3*/])
+                {
+                    FORI (iDualVert, dualMomentsAndAreas.length)
+                    {
+                        int tri[] = tris[iDualVert];
+                        double A[] = primalCoords[tri[0]];
+                        double B[] = primalCoords[tri[1]];
+                        double C[] = primalCoords[tri[2]];
+                        SolveForDualMomentAndArea(A[0],A[1],A[2],
+                                                  B[0],B[1],B[2],
+                                                  C[0],C[1],C[2],
+                                                  dualMomentsAndAreas[iDualVert]);
+                    }
+                }
+
+                private static void momentsAndAreasToCoords(double momentsAndAreas[][/*3*/],
+                                                            double coordss[][/*2*/])
+                {
+                    FORI(i, momentsAndAreas.length)
+                    {
+                        double momentAndArea[/*3*/] = momentsAndAreas[i];
+                        double coords[/*2*/] = coordss[i];
+                        double A = momentAndArea[2];
+                        if (A == 0.)
+                        {
+                            coords[0] = 0.;
+                            coords[1] = 0.;
+                        }
+                        else
+                        {
+                            coords[0] = momentAndArea[0] / A;
+                            coords[1] = momentAndArea[1] / A;
+                        }
+                    }
+                }
+
+                // params are:
+                //     dist from x0,y0 to x1,y1
+                //     x2
+                //     y2
+                //     x3,y3,h3
+                //     x4,y4,h4
+                //     ...
+                // fixed:
+                //     x0
+                //     y0
+                //     h0
+                //     direction from x0,y0 to x1,y1
+                //     h1
+                //     h2
                 private static double[] vertsToParams(double verts[][/*3*/])
                 {
-                    int nVerts = verts.length;
-                    double params[] = new double[nVerts*3 - 6];
+                    double params[] = new double[verts.length*3 - 6];
                     // verts to params...
                     int iParam = 0;
                     double x0, y0, h0, x1, y1, h1, h2; // XXX could store these so paramsToVerts doesn't have to keep looking them up
-                    FORI (iVert, nVerts)
+                    FORI (iVert, verts.length)
                     {
                         double v[] = verts[iVert];
                         if (iVert == 0)
@@ -4724,8 +4774,9 @@ public class ShephardsPlayApplet
                 private static void paramsToVerts(Mesh primal, // for verts that are fixed
                                                   double params[], double verts[][])
                 {
-                    PRINT(params.length);
                     PRINT(verts.length);
+                    PRINT(params.length);
+                    assert(params.length == verts.length*3 - 6);
                     int iParam = 0;
 
                     Mesh.Vertex v0 = (Mesh.Vertex)primal.verts.get(0);
@@ -4778,33 +4829,87 @@ public class ShephardsPlayApplet
                 // and the associated goodnesses.
                 public static Object[/*2*/] optimizeVerts(
                     final Mesh primal,
-                    final int fromsAndTos[][/*2*/][][/*3*/],
+                    final int fromsAndTosTris[][/*2*/][][/*3*/],
                     final int toLeftOfEdgeEndIndices[][/*2*/],
                     final boolean mustBeFarthestExit[],
                     final boolean considerEdgeLengths)
                 {
-                    assert(fromsAndTos.length        == toLeftOfEdgeEndIndices.length);
+                    assert(fromsAndTosTris.length        == toLeftOfEdgeEndIndices.length);
                     assert(mustBeFarthestExit.length == toLeftOfEdgeEndIndices.length);
 
+                    final Mesh dual = makeDualMesh(primal,
+                                                   false,  // includeNonArity3
+                                                   false); // includeInsideOut
                     int nVerts = primal.verts.size();
+                    int nDualVerts = dual.verts.size();
+                    int nEdges = primal.edges.size();
+                    assert(nEdges == dual.edges.size());
+
+                    final int tris[][/*3*/] = new int[nDualVerts][3];
+                    {
+                        FORI (iEdge, nEdges)
+                        {
+                            Mesh.Edge dualEdge = (Mesh.Edge)dual.edges.get(iEdge);
+                            Mesh.Vertex dualVert = dualEdge.finalVertex();
+                            if (dualVert != null)
+                            {
+                                int iDualVert = dualVert.myIndex();
+
+                                // Only do it if initial vertex is smallest indexed on the triangle.
+                                // This avoids calculating the same vertex 3 times,
+                                // and it also guarantees that the triangle will be in canonical order
+                                // (smallest index first).
+                                Mesh.Edge primalEdge = (Mesh.Edge)primal.edges.get(iEdge);
+                                int i = primalEdge.initialVertex().myIndex();
+                                int j = primalEdge.next().initialVertex().myIndex();
+                                int k = primalEdge.prev().initialVertex().myIndex();
+                                if (i < j && i < k)
+                                {
+                                    int tri[] = tris[iDualVert];
+                                    assert(tri[0] == 0 && tri[1] == 0 && tri[2] == 0);
+                                    tri[0] = i;
+                                    tri[1] = j;
+                                    tri[2] = k;
+                                }
+                            }
+                        }
+                        FORI (iTri, tris.length)
+                            assert(tris[iTri][1] != 0 && tris[iTri][2] != 0);
+                    }
+
+                    java.util.Hashtable triToIndex = new java.util.Hashtable();
+                    FORI (iTri, tris.length)
+                    {
+                        int tri[] = tris[iTri];
+                        // really only first two are necessary, but third is sanity check
+                        triToIndex.put(""+tri[0]+" "+tri[1]+" "+tri[2], new Integer(iTri));
+                    }
+
+                    final int fromsAndTosInds[][/*2*/][] = new int[fromsAndTosTris.length][2][];
+                    FORI (iFromAndTo, fromsAndTosTris.length)
+                        FORI (iFromOrTo, 2)
+                        {
+                            int fromOrToTris[][] = fromsAndTosTris[iFromAndTo][iFromOrTo];
+                            int fromOrToInds[] = new int[fromOrToTris.length];
+                            FORI(iTri, fromOrToTris.length)
+                            {
+                                int tri[] = fromOrToTris[iTri];
+                                Integer ind = (Integer)triToIndex.get(""+tri[0]+" "+tri[1]+" "+tri[2]);
+                                assert(ind != null);
+                                fromOrToInds[iTri] = ind.intValue();
+                            }
+                            fromsAndTosInds[iFromAndTo][iFromOrTo] = fromOrToInds;
+                        }
+
+
                     final double scratchVerts[][] = new double[nVerts][3];
+                    final double scratchDualMomentsAndAreas[][] = new double[nDualVerts][3]; // x*A,y*A,A
+                    final double scratchDualVerts[][] = new double[nDualVerts][2]; // x,y
+
                     getMeshVertCoords(primal, scratchVerts);
+                    vertsToDualMomentsAndAreas(scratchVerts, tris, scratchDualMomentsAndAreas);
 
 
-                    // params are:
-                    //     dist from x0,y0 to x1,y1
-                    //     x2
-                    //     y2
-                    //     x3,y3,h3
-                    //     x4,y4,h4
-                    //     ...
-                    // fixed:
-                    //     x0
-                    //     y0
-                    //     h0
-                    //     direction from x0,y0 to x1,y1
-                    //     h1
-                    //     h2
                     double initialGuessParams[] = vertsToParams(scratchVerts);
                     int nParams = initialGuessParams.length;
 
@@ -4829,9 +4934,13 @@ public class ShephardsPlayApplet
                         public double apply(double params[])
                         {
                             paramsToVerts(primal, params, scratchVerts);
+                            vertsToDualMomentsAndAreas(scratchVerts, tris, scratchDualMomentsAndAreas);
+                            momentsAndAreasToCoords(scratchDualMomentsAndAreas, scratchDualVerts);
+
+
                             int nGoodness = 2*primal.edges.size()
                                           + 2*primal.edges.size() // at most this many dual edge constraints
-                                          + fromsAndTos.length;
+                                          + fromsAndTosTris.length;
                             double goodnessVector[] = new double[nGoodness];
                             int iGoodness = 0;
                             int nEdges = primal.edges.size();
@@ -4852,7 +4961,7 @@ public class ShephardsPlayApplet
                                                                          scratchVerts[i1][1]-scratchVerts[i0][1]);
                                         System.out.println("        primal edge "+i0+"->"+i1+": "+edgeLength+"");
                                         goodnessVector[iGoodness++] = edgeLength;
-                                        //goodnessVector[iGoodness++] = 1. - edgeLength;
+                                        //goodnessVector[iGoodness++] = 1. - edgeLength; // XXX needs to be a legit parameter
                                     }
                                 }
                             }
@@ -4862,13 +4971,51 @@ public class ShephardsPlayApplet
                                 // Dual edge lengths...
                                 FORI (iEdge, nEdges)
                                 {
+                                    Mesh.Edge dualEdge = (Mesh.Edge)dual.edges.get(iEdge);
+                                    Mesh.Vertex dv0 = dualEdge.initialVertex();
+                                    Mesh.Vertex dv1 = dualEdge.finalVertex();
+                                    if (dv0 == null || dv1 == null)
+                                        continue; // not a finite edge
+                                    int dv0i = dv0.myIndex();
+                                    int dv1i = dv1.myIndex();
+                                    if (dv1i < dv0i)
+                                        continue; // not in canonical order
+                                    double dualEdgeVecX = scratchDualVerts[dv1i][0] - scratchDualVerts[dv0i][0];
+                                    double dualEdgeVecY = scratchDualVerts[dv1i][1] - scratchDualVerts[dv0i][1];
+
+
+                                    Mesh.Edge primalEdge = (Mesh.Edge)primal.edges.get(iEdge);
+                                    int pv0i = primalEdge.initialVertex().myIndex();
+                                    int pv1i = primalEdge.finalVertex().myIndex();
+                                    double edgeDirX = scratchVerts[pv1i][0] - scratchVerts[pv0i][0];
+                                    double edgeDirY = scratchVerts[pv1i][1] - scratchVerts[pv0i][1];
+                                    double edgeLength = MyMath.hypot(edgeDirX, edgeDirY);
+                                    assert(edgeLength != 0.);
+                                    double invEdgeLength = 1./edgeLength;
+                                    edgeDirX *= invEdgeLength;
+                                    edgeDirY *= invEdgeLength;
+                                    double dualEdgeDirX = -edgeDirY;
+                                    double dualEdgeDirY =  edgeDirX;
+
+                                    double dualEdgeLength = dualEdgeVecX*dualEdgeDirX
+                                                          + dualEdgeVecY*dualEdgeDirY;
+
+                                    System.out.println("        dual edge "+pv0i+"->"+pv1i+": "+dualEdgeLength+"");
+                                    goodnessVector[iGoodness++] = dualEdgeLength;
+                                    goodnessVector[iGoodness++] = 1. - dualEdgeLength;
+                                }
+                            }
+                            // XXX the following is defunct... remove it
+                            if (false)
+                            {
+                                // Dual edge lengths...  OLD WAY
+                                FORI (iEdge, nEdges)
+                                {
                                     // TODO: get the structure information beforehand
                                     Mesh.Edge edge = (Mesh.Edge)primal.edges.get(iEdge);
                                     Mesh.Vertex v0 = edge.initialVertex();
                                     Mesh.Vertex v1 = edge.finalVertex();
-                                    if (v0 != null
-                                     && v1 != null
-                                     && v0.myIndex() < v1.myIndex()) // canonical order only
+                                    if (v0.myIndex() < v1.myIndex()) // canonical order only
                                     {
                                        /*
 
@@ -4892,13 +5039,19 @@ public class ShephardsPlayApplet
                                         Mesh.Edge primalEdge = (Mesh.Edge)primal.edges.get(iEdge);
                                         if (primalEdge.next().next() == primalEdge)
                                         {
-                                            assert(false);
+                                            //assert(false); // can't happen since we know dual edge has 2 endpoints
                                             continue; // degenerate
                                         }
                                         if (primalEdge.next().next().next() != primalEdge)
+                                        {
+                                            //assert(false); // can't happen since we know dual edge has 2 endpoints
                                             continue; // not a triangle
+                                        }
                                         if (primalEdge.opposite().next().next().next() != primalEdge.opposite())
+                                        {
+                                            //assert(false); // can't happen since we know dual edge has 2 endpoints
                                             continue; // neighbor not a triangle
+                                        }
                                         Mesh.Vertex Avert = primalEdge.initialVertex();
                                         Mesh.Vertex Cvert = primalEdge.finalVertex();
                                         Mesh.Vertex Dvert = primalEdge.next().finalVertex();
@@ -4929,10 +5082,69 @@ public class ShephardsPlayApplet
                             {
                                 // General froms and tos...
 
-                                FORI (iFromAndTo, fromsAndTos.length)
+                                FORI (iFromAndTo, fromsAndTosTris.length)
                                 {
-                                    int from[][/*3*/] = fromsAndTos[iFromAndTo][0];
-                                    int   to[][/*3*/] = fromsAndTos[iFromAndTo][1];
+                                    int fromAndTo[/*2*/][] = fromsAndTosInds[iFromAndTo];
+
+                                    double v0[] = scratchVerts[toLeftOfEdgeEndIndices[iFromAndTo][0]];
+                                    double v1[] = scratchVerts[toLeftOfEdgeEndIndices[iFromAndTo][1]];
+                                    double edgeDirX = v1[0] - v0[0];
+                                    double edgeDirY = v1[1] - v0[1];
+                                    double edgeLength = MyMath.hypot(edgeDirX, edgeDirY);
+                                    assert(edgeLength != 0.);
+                                    double invEdgeLength = 1./edgeLength;
+                                    edgeDirX *= invEdgeLength;
+                                    edgeDirY *= invEdgeLength;
+                                    double dualEdgeDirX = -edgeDirY;
+                                    double dualEdgeDirY =  edgeDirX;
+
+
+                                    double fromCenterX = 0.;
+                                    double fromCenterY = 0.;
+                                    double toCenterX = 0.;
+                                    double toCenterY = 0.;
+                                    FORI (iFromOrTo, 2)
+                                    {
+                                        int fromOrTo[] = fromAndTo[iFromOrTo];
+                                        double totalMomentX = 0.;
+                                        double totalMomentY = 0.;
+                                        double totalArea = 0.;
+                                        FORI (i, fromOrTo.length)
+                                        {
+                                            double dualVertMomentAndArea[/*3*/] = scratchDualMomentsAndAreas[fromOrTo[i]];
+                                            totalMomentX += dualVertMomentAndArea[0];
+                                            totalMomentY += dualVertMomentAndArea[1];
+                                            totalArea += dualVertMomentAndArea[2];
+                                        }
+                                        if (iFromOrTo == 0)
+                                        {
+                                            fromCenterX = totalMomentX / totalArea;
+                                            fromCenterY = totalMomentY / totalArea;
+                                        }
+                                        else
+                                        {
+                                            toCenterX = totalMomentX / totalArea;
+                                            toCenterY = totalMomentY / totalArea;
+                                        }
+                                    }
+                                    double goodness = (toCenterX-fromCenterX)*dualEdgeDirX
+                                                    + (toCenterY-fromCenterY)*dualEdgeDirY;
+                                    System.out.println("        another goodness: "+goodness);
+                                    goodnessVector[iGoodness++] = goodness;
+
+                                    if (mustBeFarthestExit[iFromAndTo])
+                                    {
+                                    }
+                                }
+                            }
+                            if (true)
+                            {
+                                // General froms and tos...  OLD WAY, GET RID
+
+                                FORI (iFromAndTo, fromsAndTosTris.length)
+                                {
+                                    int from[][/*3*/] = fromsAndTosTris[iFromAndTo][0];
+                                    int   to[][/*3*/] = fromsAndTosTris[iFromAndTo][1];
                                     double v0[] = scratchVerts[toLeftOfEdgeEndIndices[iFromAndTo][0]];
                                     double v1[] = scratchVerts[toLeftOfEdgeEndIndices[iFromAndTo][1]];
                                     double edgeVecX = v1[0] - v0[0];
@@ -4943,7 +5155,7 @@ public class ShephardsPlayApplet
                                                                                from,
                                                                                to,
                                                                                dualEdgeVecX, dualEdgeVecY);
-                                    System.out.println("        another goodness: "+goodness);
+                                    System.out.println("      (another goodness): "+goodness);
                                     goodnessVector[iGoodness++] = goodness;
 
                                     if (mustBeFarthestExit[iFromAndTo])
@@ -7451,9 +7663,9 @@ public class ShephardsPlayApplet
         // The dual edge points from right to left,
         // with respect to the forward direction of the primal edge.
         //
-        public Mesh makeDualMesh(Mesh primal,
-                                 boolean includeNonArity3,
-                                 boolean includeInsideOut)
+        public static Mesh makeDualMesh(Mesh primal,
+                                        boolean includeNonArity3,
+                                        boolean includeInsideOut)
         {
             Mesh dual = new Mesh();
             int nEdges = primal.edges.size();
@@ -7666,13 +7878,19 @@ public class ShephardsPlayApplet
                         Mesh.Edge primalEdge = (Mesh.Edge)primal.edges.get(iEdge);
                         if (primalEdge.next().next() == primalEdge)
                         {
-                            assert(false);
+                            assert(false); // can't happen since we know dual edge has 2 endpoints
                             continue; // degenerate
                         }
                         if (primalEdge.next().next().next() != primalEdge)
+                        {
+                            assert(false); // can't happen since we know dual edge has 2 endpoints
                             continue; // not a triangle
+                        }
                         if (primalEdge.opposite().next().next().next() != primalEdge.opposite())
+                        {
+                            assert(false); // can't happen since we know dual edge has 2 endpoints
                             continue; // neighbor not a triangle
+                        }
                         Mesh.Vertex Avert = primalEdge.initialVertex();
                         Mesh.Vertex Cvert = primalEdge.finalVertex();
                         Mesh.Vertex Dvert = primalEdge.next().finalVertex();
