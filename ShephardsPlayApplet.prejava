@@ -1282,8 +1282,8 @@ public class ShephardsPlayApplet
             //doCannedThingAlgorithm5Killer0();
             //doCannedThingAlgorithm5Killer1();
             //doCannedThingBlindLagoonExitKiller();
-            //doCannedThingFarthestLagoonExitKiller();
-            doCannedThingFarthestLagoonExitKillerOptimized();
+            doCannedThingFarthestLagoonExitKiller();
+            //doCannedThingFarthestLagoonExitKillerOptimized();
             //doBlueNoiseThing();
             //load("DUMP.off");
 
@@ -1383,7 +1383,7 @@ public class ShephardsPlayApplet
                 if (whichButton != java_awt_event_MouseEvent_BUTTON2) // no need to clear selection when just dragging
                 {
                     if (selectedDualVertIndices.length > 0
-                     && selectedDualVertIndices.length == nDrawnDualVerts)
+                     && selectedDualVertIndices.length == mostRecentDualMesh.verts.size())
                         selectAllDualVertsAtNextOpportunity = true;
                     selectedDualVertIndices = new int[] {};
                 }
@@ -2055,7 +2055,7 @@ public class ShephardsPlayApplet
                         // we want them all selected,
                         // if they were all selected before.
                         //
-                        if (selectedDualVertIndices.length == nDrawnDualVerts)
+                        if (selectedDualVertIndices.length == mostRecentDualMesh.verts.size())
                             selectAllDualVertsAtNextOpportunity = true;
                         selectedDualVertIndices = new int[] {};
 
@@ -2079,7 +2079,7 @@ public class ShephardsPlayApplet
                     {
                         // Swap diagonal but only if it makes it closer to delaunay
                         UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
-                        if (selectedDualVertIndices.length == nDrawnDualVerts)
+                        if (selectedDualVertIndices.length == mostRecentDualMesh.verts.size())
                             selectAllDualVertsAtNextOpportunity = true;
                         selectedDualVertIndices = new int[] {};
                         int closestEdgeIndex = mesh.indexOfClosestEdge(prevP);
@@ -2706,12 +2706,16 @@ public class ShephardsPlayApplet
                     java.awt.Color dualColorBothSelected = lightBlue;
                     java.awt.Color dualColorOneSelectedBad = java.awt.Color.magenta;
                     java.awt.Color dualColorOneSelectedGood = java.awt.Color.green;
+                    java.awt.Color perpColorBad = new java.awt.Color(64,0,64); // dark magenta
+                    java.awt.Color perpColorGood = new java.awt.Color(0,32,0); // dark green
                     */
                     java.awt.Color dualVertSelectionColor = java.awt.Color.yellow;
                     java.awt.Color dualColor = lightBlue;
                     java.awt.Color dualColorBothSelected = java.awt.Color.yellow;
                     java.awt.Color dualColorOneSelectedBad = java.awt.Color.red;
                     java.awt.Color dualColorOneSelectedGood = java.awt.Color.green;
+                    java.awt.Color perpColorBad = new java.awt.Color(64,0,0); // dark red
+                    java.awt.Color perpColorGood = new java.awt.Color(0,32,0); // dark green
 
                     //
                     // Compute and store the dual mesh...
@@ -2726,24 +2730,62 @@ public class ShephardsPlayApplet
                                                  doShowInsideOutDualVerts);
                     mostRecentDualMesh = dualMesh;
 
-                    FORIDOWN(iDualVert, dualMesh.verts.size())
+                    if (selectAllDualVertsAtNextOpportunity)
                     {
-                        Mesh.Vertex dualVert = (Mesh.Vertex)dualMesh.verts.get(iDualVert);
-                        if (!doShowInsideOutDualVerts)
-                        {
-                            if (dualVert.weight < 0)
-                                continue; // the triangle is inside out; it's the boundary
-                        }
-
-                        //System.out.println("    drawing dual vert at "+Arrays.toStringCompact(dualVert));
-                        mg.drawPoint(dualVert.x,
-                                     dualVert.y, 5);
-
-                        nDrawnDualVerts++;
-                        if (selectAllDualVertsAtNextOpportunity)
-                            selectedDualVertIndices = (int[])Arrays.append(selectedDualVertIndices, iDualVert);
+                        selectedDualVertIndices = VecMath.identityperm(dualMesh.verts.size());
+                        selectAllDualVertsAtNextOpportunity = false;
                     }
-                    selectAllDualVertsAtNextOpportunity = false;
+
+                    // Check for validity of selected dual vert indices (they are fragile)
+                    FORI (i, selectedDualVertIndices.length)
+                    {
+                        int ind = selectedDualVertIndices[i];
+                        if (ind >= dualMesh.verts.size()
+                         || dualMesh.verts.get(ind) == null)
+                        {
+                            selectedDualVertIndices = new int[] {};
+                            System.out.println("BAM!");
+                            break;
+                        }
+                    }
+
+                    boolean isSelectedDualVert[] = new boolean[dualMesh.verts.size()]; // all false initially
+                    FORI (i, selectedDualVertIndices.length)
+                        isSelectedDualVert[selectedDualVertIndices[i]] = true;
+
+                    java.awt.Color dualVertColors[] = new java.awt.Color[dualMesh.verts.size()];
+                    FORI (i, dualVertColors.length)
+                        dualVertColors[i] = dualColor; // default-- may change if special
+                    java.awt.Color dualEdgeColors[] = new java.awt.Color[dualMesh.edges.size()];
+                    FORI (i, dualEdgeColors.length)
+                        dualEdgeColors[i] = dualColor; // default-- may change if special
+
+                    //
+                    // Compute center of curvature of selected dual vertices
+                    //
+                    double avg[] = null;
+                    if (selectedDualVertIndices.length >= 1)
+                    {
+                        double areaSum = 0.;
+                        double moment[] = {0.,0.};
+                        double dualVertCoords[] = new double[2]; // scratch for loop
+                        FORI (i, selectedDualVertIndices.length)
+                        {
+                            int ind = selectedDualVertIndices[i];
+                            dualVertColors[ind] = (showNet ? dualColor : dualVertSelectionColor);
+                            Mesh.Vertex dualVert = (Mesh.Vertex)dualMesh.verts.get(ind);
+                            dualVertCoords[0] = dualVert.x;
+                            dualVertCoords[1] = dualVert.y;
+                            VecMath.vpsxv(moment,
+                                          moment,
+                                          dualVert.weight, dualVertCoords);
+                            areaSum += dualVert.weight;
+                        }
+                        avg = VecMath.sxv(1./areaSum, moment);
+                        PRINTVEC(avg);
+                    }
+
+
 
 
                     //
@@ -3147,11 +3189,81 @@ public class ShephardsPlayApplet
                             }
                         }
                     }
+                    else // !showNet
+                    {
+                        //
+                        // Select colors for the good and bad ways out of the lagoon.
+                        //
+
+                        // first identify the edges out of the lagoon...
+                        FORI (iDualEdge, dualMesh.edges.size())
+                        {
+                            Mesh.Edge dualEdge = (Mesh.Edge)dualMesh.edges.get(iDualEdge);
+                            Mesh.Vertex initialVertex = dualEdge.initialVertex();
+                            if (initialVertex == null)
+                                continue; // no initial vertex
+                            int iDualVert = initialVertex.myIndex();
+                            if (!isSelectedDualVert[iDualVert])
+                                continue; // doesn't originate in the lagoon
+                            int iDualEdgeOpposite = dualEdge.opposite().myIndex();
+                            Mesh.Vertex finalVertex = dualEdge.finalVertex();
+                            if (finalVertex != null
+                             && isSelectedDualVert[finalVertex.myIndex()])
+                            {
+                                // both ends are in the lagoon.
+                                int jDualVert = finalVertex.myIndex();
+                                if (iDualVert > jDualVert)
+                                    continue; // only need to do it in canonical dir
+                                dualEdgeColors[iDualEdge] = dualColorBothSelected;
+                                dualEdgeColors[iDualEdgeOpposite] = dualColorBothSelected;
+                            }
+                            else
+                            {
+                                // starts in the lagoon, ends outside it.
+                                // is it a good exit?
+                                double initialVertexCoords[] = {initialVertex.x, initialVertex.y};
+                                double goodness = VecMath.dot(dualEdge.direction,
+                                                              VecMath.vmv(2, initialVertexCoords, avg));
+                                boolean isGoodExit = GEQ(goodness, 0., SQR(1e-6));
+
+                                if (true)
+                                {
+                                    if (selectedDualVertIndices.length > 1)
+                                    {
+                                        if (isGoodExit)
+                                            mg.setColor(perpColorGood);
+                                        else
+                                            mg.setColor(perpColorBad);
+
+                                        // draw perpendicular at the zero level
+                                        double rayLength = 1.;
+                                        mg.drawLine(initialVertex.x - rayLength * dualEdge.direction[1],
+                                                    initialVertex.y + rayLength * dualEdge.direction[0],
+                                                    initialVertex.x + rayLength * dualEdge.direction[1],
+                                                    initialVertex.y - rayLength * dualEdge.direction[0],
+                                                    doAntiAliasing);
+                                    }
+                                }
+
+                                if (isGoodExit)
+                                {
+                                    dualEdgeColors[iDualEdge] = dualColorOneSelectedGood;
+                                    dualEdgeColors[iDualEdgeOpposite] = dualColorOneSelectedGood;
+                                }
+                                else
+                                {
+                                    dualEdgeColors[iDualEdge] = dualColorOneSelectedBad;
+                                    dualEdgeColors[iDualEdgeOpposite] = dualColorOneSelectedBad;
+                                }
+
+                            }
+                        }
+                    } // if (!showNet)
 
                     //PRINT(theBadLagoonExitToDraw);
 
                     //
-                    // Now try connecting the dual verts
+                    // Draw dual edges, in chosen colors
                     // 
                     //java.awt.Color darkBlue = new java.awt.Color(0,0,127);
                     //java.awt.Color darkBlue = new java.awt.Color(0,0,192);
@@ -3195,6 +3307,8 @@ public class ShephardsPlayApplet
                                 mg.setColor(darkBlue);
                             }
                         }
+                        else
+                            mg.setColor(dualEdgeColors[dualEdge.myIndex()]);
 
                         Mesh.Vertex rightDualVert = dualEdge.initialVertex();
 
@@ -3224,6 +3338,30 @@ public class ShephardsPlayApplet
                                                                
                         }
                     }
+
+                    //
+                    // Draw dual verts
+                    //
+                    FORIDOWN(iDualVert, dualMesh.verts.size())
+                    {
+                        Mesh.Vertex dualVert = (Mesh.Vertex)dualMesh.verts.get(iDualVert);
+
+                        //System.out.println("    drawing dual vert at "+Arrays.toStringCompact(dualVert));
+                        mg.setColor(dualVertColors[iDualVert]); // TODO: only if changed?
+                        mg.drawPoint(dualVert.x,
+                                     dualVert.y, 5);
+
+                    }
+
+                    //
+                    // Draw center of curvature
+                    if (avg != null)
+                    {
+                        mg.setColor(showNet ? dualColor : dualVertSelectionColor);
+                        mg.drawPoint(avg[0],
+                                     avg[1], 7);
+                    }
+
 
                     //
                     // And, as polish for voronoi diagrams,
@@ -3359,117 +3497,7 @@ public class ShephardsPlayApplet
 
                         }
                     }
-
-                    if (true)
-                    {
-                        //
-                        // Draw center of curvature
-                        // of selected dual vertices
-                        //
-
-                        // First check for validity (they are fragile)
-                        FORI (i, selectedDualVertIndices.length)
-                        {
-                            int ind = selectedDualVertIndices[i];
-                            if (ind >= dualMesh.verts.size()
-                             || dualMesh.verts.get(ind) == null)
-                            {
-                                selectedDualVertIndices = new int[] {};
-                                System.out.println("BAM!");
-                                break;
-                            }
-                        }
-
-                        if (selectedDualVertIndices.length >= 1)
-                        {
-                            if (showNet)
-                                mg.setColor(dualColor);
-                            else
-                                mg.setColor(dualVertSelectionColor);
-                            double areaSum = 0.;
-                            double moment[] = {0.,0.};
-                            double dualVertCoords[] = new double[2]; // scratch for loop
-                            FORI (i, selectedDualVertIndices.length)
-                            {
-                                int ind = selectedDualVertIndices[i];
-                                Mesh.Vertex dualVert = (Mesh.Vertex)dualMesh.verts.get(ind);
-                                mg.drawPoint(dualVert.x,
-                                             dualVert.y, 5);
-                                dualVertCoords[0] = dualVert.x;
-                                dualVertCoords[1] = dualVert.y;
-                                VecMath.vpsxv(moment,
-                                              moment,
-                                              dualVert.weight, dualVertCoords);
-                                areaSum += dualVert.weight;
-                            }
-                            double avg[] = VecMath.sxv(1./areaSum, moment);
-                            mg.drawPoint(avg[0],
-                                         avg[1], 7);
-                            PRINTVEC(avg);
-
-                            if (!showNet)
-                            {
-                                //
-                                // Highlight the "good" ways out of the lagoon.
-                                // This is a bit silly since we are recalculating and redrawing
-                                // lines we already drew...
-                                //
-
-                                // first identify the edges out of the lagoon...
-                                boolean isSelectedDualVert[] = new boolean[dualMesh.verts.size()]; // all false initially
-                                FORI (i, selectedDualVertIndices.length)
-                                    isSelectedDualVert[selectedDualVertIndices[i]] = true;
-                                FORI (iDualEdge, dualMesh.edges.size())
-                                {
-                                    Mesh.Edge dualEdge = (Mesh.Edge)dualMesh.edges.get(iDualEdge);
-                                    Mesh.Vertex initialVertex = dualEdge.initialVertex();
-                                    if (initialVertex == null)
-                                        continue; // no initial vertex
-                                    int iDualVert = initialVertex.myIndex();
-                                    if (!isSelectedDualVert[iDualVert])
-                                        continue; // doesn't originate in the lagoon
-                                    Mesh.Vertex finalVertex = dualEdge.finalVertex();
-                                    if (finalVertex != null
-                                     && isSelectedDualVert[finalVertex.myIndex()])
-                                    {
-                                        // both ends are in the lagoon.
-                                        int jDualVert = finalVertex.myIndex();
-                                        if (iDualVert > jDualVert)
-                                            continue; // only need to do it in canonical dir
-                                        mg.setColor(dualColorBothSelected); // both selected
-                                    }
-                                    else
-                                    {
-                                        // starts in the lagoon, ends outside it.
-                                        // is it a good exit?
-                                        double initialVertexCoords[] = {initialVertex.x, initialVertex.y};
-                                        double goodness = VecMath.dot(dualEdge.direction,
-                                                                      VecMath.vmv(2, initialVertexCoords, avg));
-                                        if (GEQ(goodness, 0., SQR(1e-6)))
-                                            mg.setColor(dualColorOneSelectedGood);
-                                        else
-                                            mg.setColor(dualColorOneSelectedBad);
-                                    }
-                                    if (finalVertex != null)
-                                    {
-                                        mg.drawLine(initialVertex.x, initialVertex.y,
-                                                    finalVertex.x, finalVertex.y,
-                                                    doAntiAliasing);
-                                    }
-                                    else
-                                    {
-                                        // Draw a ray out to infinity
-                                        double rayLength = 1.; // for edges to infinity
-                                        mg.drawLine(initialVertex.x, initialVertex.y,
-                                                    initialVertex.x + rayLength * dualEdge.direction[0],
-                                                    initialVertex.y + rayLength * dualEdge.direction[1],
-                                                    doAntiAliasing);
-                                    }
-                                }
-                            } // if (true)
-                        } // if (selectedDualVertIndices.length >= 1)
-                    } // if (true)
-                } // if (true)
+                } // if (true) (draw dual diagram)
 
                 //
                 // Draw the labels last...
@@ -4405,7 +4433,7 @@ public class ShephardsPlayApplet
                 */
 
 
-                FORI (iPass, 3) // XXX experimenting... seems to do better with multiple restarts. should make a legit annealing option or something
+                FORI (iPass, 2) // XXX experimenting... seems to do better with multiple restarts. should make a legit annealing option or something
                 {
                     System.out.println("-------------------------------------");
                     PRINT(iPass);
@@ -8653,7 +8681,6 @@ public class ShephardsPlayApplet
         private boolean doDoubleBuffer = true;
         private java.awt.Image backBufferImage = null;
         private MyGraphics mostRecentGraphics = null;
-        private int nDrawnDualVerts = 0;
 
         private double prevP[] = null;
 
