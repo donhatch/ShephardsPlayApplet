@@ -4203,12 +4203,14 @@ public class ShephardsPlayApplet
             //     B is the lower-right edge
             //     C is the edge halfway between them
             // Only bad exit A -> farthest good exit B
-            // Only bad exit C -> farthest good exit A  XXX ARGH! there's two choices at A! OH that edge was supposed to be acute!  okay dammit, need an optimizer
+            // Only bad exit C -> farthest good exit A
             // Only bad exit B -> farthest good exit C
             // and we're back to the beginning.
             //
             private void doCannedThingFarthestLagoonExitKiller()
             {
+                /*
+                // original hand-crafted verts: violated farthest-exit constraint for top 2-vertex lagoon
                 double verts[][] = {
                     {0.254632748975815, 0.6613110539845769, 0.0},
                     {0.001985463846777679, 0.40848329048843174, 0.0050},
@@ -4217,6 +4219,30 @@ public class ShephardsPlayApplet
                     {0.053309106411296145, 0.1762210796915167, -0.01},
                     {-0.4317114578915699, -0.6837916370249981, -0.5450000000000002},
                 };
+                */
+
+                /*
+                // optimized 10 passes: goodness = .017256350831721664 (using VecMath.synopsis which I'm not thrilled with any more)
+                double verts[][] = {
+                    {0.1800525435129707, 0.4676175307461174, 0.0},
+                    {0.13567357880860711, 0.42320686396714136, 0.0025000000000000022},
+                    {-0.041882330900956, 0.7515699545002962, -0.03525000000000006},
+                    {0.29423490241724615, -0.015297283324235564, -0.024256623978102798},
+                    {0.2657663454311589, 0.0032808826682159285, -0.02535592252632536},
+                    {0.027482624239009528, -0.5713757012317203, -0.09458036525466695},
+                };
+                */
+                // optimized 50 passes: goodness = .019362280324644425 (using VecMath.synopsis which I'm not thrilled with any more)
+                double verts[][] = {
+                    {0.1800525435129707, 0.4676175307461174, 0.0},
+                    {0.1093067590185278, 0.3968212090624114, 0.0025000000000000022},
+                    {-0.3578608151777813, 1.1748461992103727, -0.03525000000000006},
+                    {0.6348756548188554, -0.5552758689949323, 0.1838002721879618},
+                    {0.5790169179568446, -0.523270452612108, 0.14986341969960895},
+                    {0.20759453708056247, -1.6232499556679696, 0.4089344906614831},
+                };
+
+
                 int faces[][] = {
                     {1, 3, 0},
                     {3, 1, 4},
@@ -4292,7 +4318,7 @@ public class ShephardsPlayApplet
                 */
 
 
-                FORI (iPass, 10) // XXX experimenting... seems to do better with multiple restarts.
+                FORI (iPass, 3) // XXX experimenting... seems to do better with multiple restarts.
                 {
                     System.out.println("-------------------------------------");
                     PRINT(iPass);
@@ -4648,6 +4674,112 @@ public class ShephardsPlayApplet
                 //
                 return VecMath.min(n, v);
             } // simpleSynopsis
+
+            // XXX should put this into VecMath, I think?
+            // For two vars, the graph should look like this
+            // (the diagonals are actually quarter-circles):
+            //   | | | | | |               //
+            //   | | | | | +               //
+            //   | | | | |  \              //
+            //   | | | | |   \             //
+            //   | | | | |    \            //
+            //   | | | | +     \           //
+            //   | | | |  \     \          //
+            //   | | | |   \     +-        //
+            //   | | | |    \              //
+            //   | | | +     +-----        //
+            //   | | |  \                  //
+            //   | | |   +---------        //
+            //   | | |                     //
+            //   + + +-------------        //
+            //    \ \                      //
+            //     \ +-------------        //
+            //      \                      //
+            //       +-------------        //
+            // It's differentiable everywhere except at 0.
+            // (non-differentiability at 0 is unavoidable
+            // if we want scale-invariance).
+            // XXX DOESN'T WORK-- see bottom of function body
+            static double synopsis(int n, double v[])
+            {
+                double min = Double.POSITIVE_INFINITY;
+                FORI (i, n)
+                {
+                    double x = v[i];
+                    if (x <= 0) // non-strict so we do it this way if on the boundary of the positive orthant
+                    {
+                        //
+                        // Outside the positive orthant,
+                        // return minus the euclidean distance
+                        // to the positive orthant.
+                        //
+                        double sum2 = 0.;
+                        for (; i < n; i++)
+                            if (v[i] < 0.)
+                                sum2 += v[i]*v[i];
+                        return -Math.sqrt(sum2);
+                    }
+                    min = MIN(min, x);
+                }
+
+                // All are positive.
+                // The ones that participate are those that are < twice the smallest.
+                // Call those x0,x1,...
+                // We want to solve:
+                //     (2*q-x0)^2 + (2*q-x1)^2 + (2*q-x2)^2 + ... = q^2
+                //     n*4*q^2 - 4*q*(x0 + x1 + ...) + (x0^2 + x1^2 + ...) = q^2
+                //     (4*n-1)*q^2 - 4*q*(x0 + x1 + ...) + (x0^2 + x1^2 + ...) = 0
+                // Using the quadratic formula with:
+                //       a = 4*n-1
+                //       b = -4*(x0+x1+...)
+                //       c = x0^2 + x1^2 + ...
+                // The solution is
+                // (we want the bigger of the two possibilities, so + rather than -):
+                //       q = (-b + sqrt(b^2 - 4*a*c) / (2*a)
+                //         = (4*(x0+...) + sqrt((4*(x0+...))^2 - 4*(4*n-1)*(x0^2+...)) / (2*(4*n-1))
+                //         = (2*(x0+...) + sqrt((2*(x0+...))^2 - (4*n-1)*(x0^2+...)) / (4*n-1)
+                // check, if just one var (n=1), q should be x0:
+                //       q = (2*x0 + sqrt(4*x0^2 - 3*x0^2)) / 3
+                //         = (2*x0 + x0) / 3
+                //         = x0  check.
+                int nParticipants = 0;
+                double sum1 = 0.;
+                double sum2 = 0.;
+                FORI (i, n)
+                {
+                    double x = v[i];
+                    if (x < 2*min)
+                    {
+                        PRINT(x);
+                        nParticipants++;
+                        sum1 += x;
+                        sum2 += x*x;
+                    }
+                }
+                if (nParticipants == 1)
+                    return min;
+                double discr = SQR(2*sum1) - (4*nParticipants-1)*sum2;
+                PRINTVEC((double[])Arrays.subarray(v,0,n));
+                PRINT(min);
+                PRINT(sum1);
+                PRINT(sum2);
+                PRINT(discr);
+                PRINT(nParticipants);
+                //assert(discr >= 0.); // should be safely so (should be at least sum2)... can we reformulate to make that obvious?  no wait, that's not even right :-(  may need to go back to the drawing board on this whole thing
+                //assert(GEQ(discr, 0., 5.549966375204551E-4));
+                //assert(GEQ(discr, 0., 5.549966375204551E-4));
+                //assert(GEQ(discr, 0., 0.004241588576413768));
+                assert(GEQ(discr, 0., 0.007445722649008779));
+                if (discr < 0.) discr = 0.; // FUDGE
+
+                double q = (2*sum1 + Math.sqrt(discr)) / (4*nParticipants-1);
+                return q;
+            } // synopsis
+
+
+
+
+
 
 
 
@@ -5062,6 +5194,29 @@ public class ShephardsPlayApplet
 
                                     if (mustBeFarthestExit[iFromAndTo])
                                     {
+                                        int from[] = fromAndTo[0];
+                                        assert(from.length == 1);
+                                        int desiredFarthestDualVertIndex = from[0];
+
+                                        double thisDist2fromCenter = -1.;
+                                        double largestOtherDist2fromCenter = -1.;
+                                        int to[] = fromAndTo[1];
+                                        FORI (iTo, to.length)
+                                        {
+                                            int iDualVert = to[iTo];
+                                            double dualVert[] = scratchDualVerts[iDualVert];
+                                            double dist2fromCenter = SQR(dualVert[0]-toCenterX)
+                                                                   + SQR(dualVert[1]-toCenterY);
+                                            if (iDualVert == desiredFarthestDualVertIndex)
+                                                thisDist2fromCenter = dist2fromCenter;
+                                            else
+                                                largestOtherDist2fromCenter = MAX(largestOtherDist2fromCenter, dist2fromCenter);
+                                        }
+                                        assert(thisDist2fromCenter >= 0.);
+                                        assert(largestOtherDist2fromCenter >= 0.); // i.e. lagoon size must be >= 2
+                                        goodness = Math.sqrt(thisDist2fromCenter) - Math.sqrt(largestOtherDist2fromCenter);
+                                        System.out.println("        yet another goodness: "+goodness);
+                                        goodnessVector[iGoodness++] = goodness;
                                     }
                                 }
                             }
@@ -5069,9 +5224,9 @@ public class ShephardsPlayApplet
 
                             PRINT(nGoodness);
                             PRINT(iGoodness);
-                            double synopsis = VecMath.synopsis(iGoodness, goodnessVector);
-                            //double synopsis = simpleSynopsis(iGoodness, goodnessVector);
-                            PRINTARRAY(Arrays.subarray(goodnessVector, 0, iGoodness));
+                            //double synopsis = VecMath.synopsis(iGoodness, goodnessVector);
+                            double synopsis = simpleSynopsis(iGoodness, goodnessVector);
+                            //double synopsis = synopsis(iGoodness, goodnessVector);
                             System.out.println("        synopsis = "+synopsis);
                             double answer = -synopsis; // trying to maximize synopsis, trying to minimize answer
 
@@ -5081,6 +5236,10 @@ public class ShephardsPlayApplet
                                 saveBestValue[0] = answer;
                                 optimizationPathList.add(Arrays.copy(scratchVerts, 2));
                                 optimizationPathGoodnessesList.add(synopsis);
+                            }
+                            else
+                            {
+                                System.out.println("            (not an improvement, best is still "+-saveBestValue[0]+")");
                             }
                             System.out.println("    -----------------------");
                             return answer;
