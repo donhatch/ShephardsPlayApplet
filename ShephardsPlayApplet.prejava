@@ -954,6 +954,8 @@ public class ShephardsPlayApplet
             System.out.println("    'f' - frame picture");
             System.out.println("    '|' - flip left-right");
             System.out.println("    '_' - flip up-down");
+            System.out.println("    '/' - flip upper-left lower-right");
+            System.out.println("    '\' - flip lower-left upper-right");
             System.out.println("    's' - swap a diagonal");
             System.out.println("    ctrl-'s' - swap a diagonal if the result is more Delaunay");
             System.out.println("    'D' - Delaunay triangulate");
@@ -2014,6 +2016,26 @@ public class ShephardsPlayApplet
                         theCanvas.repaint();
                         break;
                     }
+                    case '\\': // lower-left to upper-right flip whole diagram
+                    {
+                        UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+                        mesh.flipLowerLeftUpperRight();
+                        // should be no need to re-delaunayize
+                        UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+                        undoTreeSquirrel.Do(new UndoItem(before, after));
+                        theCanvas.repaint();
+                        break;
+                    }
+                    case '/': // upper-left to lower-right flip whole diagram
+                    {
+                        UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+                        mesh.flipUpperLeftLowerRight();
+                        // should be no need to re-delaunayize
+                        UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+                        undoTreeSquirrel.Do(new UndoItem(before, after));
+                        theCanvas.repaint();
+                        break;
+                    }
 
                     case 's': // swap diagonal
                     {
@@ -2971,7 +2993,7 @@ public class ShephardsPlayApplet
                                 // Print it out
                                 System.out.println("Walking around net tree:");
                                 boolean seen[] = new boolean[nDualEdges]; // false initially
-                                FORI (iPass, 3)
+                                FORI (iPass, 1)
                                 {
                                     FORI (iDualEdge, nDualEdges)
                                     {
@@ -4273,6 +4295,9 @@ public class ShephardsPlayApplet
                     {{{1,4,3}}, {{1,4,3},{3,4,5}}}, // edge C must be good for lower 2-vert lagoon
                     {{{1,4,3}}, {{1,4,3},{3,4,5}}}, // west edge must be bad for lower 2-vert lagoon
                 };
+
+                /*
+                // ORIGINAL
                 int toLeftOfEdgeEndIndices[][] = {
                     {1,2}, // edge A must be a bad exit of whole thing
                     {0,1}, // upper inner edge must be good exit of 3-vert lagoon under it
@@ -4288,6 +4313,68 @@ public class ShephardsPlayApplet
                     {3,1}, // edge C must be good for lower 2-vert lagoon
                     {4,1}, // west edge must be bad for lower 2-vert lagoon
                 };
+                */
+
+
+                // ALTERNATE B-- make B be the lower-left instead of lower-right
+                int toLeftOfEdgeEndIndices[][] = {
+                    {1,2}, // edge A must be a bad exit of whole thing
+                    {0,1}, // upper inner edge must be good exit of 3-vert lagoon under it
+                    {3,1}, // edge C (center) must be a good exit for 2-vert lagoon under it
+                    {4,5}, // edge B must be a good exit of whole thing
+                    {3,5}, // edge B's evil twin must be a bad exit of whole thing
+
+                    {3,1}, // edge C (center) must be bad for upper 2-vert lagoon
+                    {2,1}, // edge A must be good for upper 2-vert lagoon
+                    {2,0}, // edge A's evil twin must be bad for upper 2-vert lagoon
+
+                    {5,4}, // edge B must be bad for lower 2-vert lagoon
+                    {3,1}, // edge C must be good for lower 2-vert lagoon
+                    {4,1}, // west edge must be bad for lower 2-vert lagoon
+                };
+
+                /*
+                // ALTERNATE AB-- make B be the lower-left instead of lower-right,
+                //                make A be the upper-right instead of upper-left
+                // (doesn't work :-( )
+                int toLeftOfEdgeEndIndices[][] = {
+                    {2,0}, // edge A must be a bad exit of whole thing
+                    {0,1}, // upper inner edge must be good exit of 3-vert lagoon under it
+                    {3,1}, // edge C (center) must be a good exit for 2-vert lagoon under it
+                    {4,5}, // edge B must be a good exit of whole thing
+                    {3,5}, // edge B's evil twin must be a bad exit of whole thing
+
+                    {3,1}, // edge C (center) must be bad for upper 2-vert lagoon
+                    {0,2}, // edge A must be good for upper 2-vert lagoon
+                    {1,2}, // edge A's evil twin must be bad for upper 2-vert lagoon
+
+                    {5,4}, // edge B must be bad for lower 2-vert lagoon
+                    {3,1}, // edge C must be good for lower 2-vert lagoon
+                    {4,1}, // west edge must be bad for lower 2-vert lagoon
+                };
+                */
+
+                /*
+                // ALTERNATE A-- make A be the upper-right instead of upper-left
+                //               B is still lower-right
+                // (doesn't work :-( )
+                int toLeftOfEdgeEndIndices[][] = {
+                    {2,0}, // edge A must be a bad exit of whole thing
+                    {0,1}, // upper inner edge must be good exit of 3-vert lagoon under it
+                    {3,1}, // edge C (center) must be a good exit for 2-vert lagoon under it
+                    {5,3}, // edge B must be a good exit of whole thing
+                    {5,4}, // edge B's evil twin must be a bad exit of whole thing
+
+                    {3,1}, // edge C (center) must be bad for upper 2-vert lagoon
+                    {0,2}, // edge A must be good for upper 2-vert lagoon
+                    {1,2}, // edge A's evil twin must be bad for upper 2-vert lagoon
+
+                    {3,5}, // edge B must be bad for lower 2-vert lagoon
+                    {3,1}, // edge C must be good for lower 2-vert lagoon
+                    {4,1}, // west edge must be bad for lower 2-vert lagoon
+                };
+                */
+
                 boolean mustBeFarthestExit[] = {
                     false,
                     false,
@@ -4318,7 +4405,7 @@ public class ShephardsPlayApplet
                 */
 
 
-                FORI (iPass, 3) // XXX experimenting... seems to do better with multiple restarts.
+                FORI (iPass, 3) // XXX experimenting... seems to do better with multiple restarts. should make a legit annealing option or something
                 {
                     System.out.println("-------------------------------------");
                     PRINT(iPass);
@@ -4964,7 +5051,7 @@ public class ShephardsPlayApplet
                     final int fromsAndTosTris[][/*2*/][][/*3*/],
                     final int toLeftOfEdgeEndIndices[][/*2*/],
                     final boolean mustBeFarthestExit[],
-                    final boolean considerEdgeLengths)
+                    final boolean considerEdgeLengths) // XXX we don't handle this correctly-- we hard-code ignoring the 1-edgelength thing. need to figure out why, I thought that was necessary to prevent edge lengths from growing without bound???
                 {
                     assert(fromsAndTosTris.length        == toLeftOfEdgeEndIndices.length);
                     assert(mustBeFarthestExit.length == toLeftOfEdgeEndIndices.length);
@@ -5192,31 +5279,34 @@ public class ShephardsPlayApplet
                                     System.out.println("        another goodness: "+goodness);
                                     goodnessVector[iGoodness++] = goodness;
 
-                                    if (mustBeFarthestExit[iFromAndTo])
+                                    if (true)
                                     {
-                                        int from[] = fromAndTo[0];
-                                        assert(from.length == 1);
-                                        int desiredFarthestDualVertIndex = from[0];
-
-                                        double thisDist2fromCenter = -1.;
-                                        double largestOtherDist2fromCenter = -1.;
-                                        int to[] = fromAndTo[1];
-                                        FORI (iTo, to.length)
+                                        if (mustBeFarthestExit[iFromAndTo])
                                         {
-                                            int iDualVert = to[iTo];
-                                            double dualVert[] = scratchDualVerts[iDualVert];
-                                            double dist2fromCenter = SQR(dualVert[0]-toCenterX)
-                                                                   + SQR(dualVert[1]-toCenterY);
-                                            if (iDualVert == desiredFarthestDualVertIndex)
-                                                thisDist2fromCenter = dist2fromCenter;
-                                            else
-                                                largestOtherDist2fromCenter = MAX(largestOtherDist2fromCenter, dist2fromCenter);
+                                            int from[] = fromAndTo[0];
+                                            assert(from.length == 1);
+                                            int desiredFarthestDualVertIndex = from[0];
+
+                                            double thisDist2fromCenter = -1.;
+                                            double largestOtherDist2fromCenter = -1.;
+                                            int to[] = fromAndTo[1];
+                                            FORI (iTo, to.length)
+                                            {
+                                                int iDualVert = to[iTo];
+                                                double dualVert[] = scratchDualVerts[iDualVert];
+                                                double dist2fromCenter = SQR(dualVert[0]-toCenterX)
+                                                                       + SQR(dualVert[1]-toCenterY);
+                                                if (iDualVert == desiredFarthestDualVertIndex)
+                                                    thisDist2fromCenter = dist2fromCenter;
+                                                else
+                                                    largestOtherDist2fromCenter = MAX(largestOtherDist2fromCenter, dist2fromCenter);
+                                            }
+                                            assert(thisDist2fromCenter >= 0.);
+                                            assert(largestOtherDist2fromCenter >= 0.); // i.e. lagoon size must be >= 2
+                                            goodness = Math.sqrt(thisDist2fromCenter) - Math.sqrt(largestOtherDist2fromCenter);
+                                            System.out.println("        yet another goodness: "+goodness);
+                                            goodnessVector[iGoodness++] = goodness;
                                         }
-                                        assert(thisDist2fromCenter >= 0.);
-                                        assert(largestOtherDist2fromCenter >= 0.); // i.e. lagoon size must be >= 2
-                                        goodness = Math.sqrt(thisDist2fromCenter) - Math.sqrt(largestOtherDist2fromCenter);
-                                        System.out.println("        yet another goodness: "+goodness);
-                                        goodnessVector[iGoodness++] = goodness;
                                     }
                                 }
                             }
@@ -7582,6 +7672,72 @@ public class ShephardsPlayApplet
                 }
                 sanityCheck();
             } // flipUpDown
+            private void flipUpperLeftLowerRight()
+            {
+                FORIDOWN (iVert, verts.size())
+                {
+                    Mesh.Vertex vert = (Mesh.Vertex)verts.get(iVert);
+                    double temp;
+                    SWAP(vert.x, vert.y, temp);
+                }
+                // XXX rest is dup code
+                Mesh.Vertex finalInitials[] = new Mesh.Vertex[edges.size()];
+                FORIDOWN(iEdge, edges.size())
+                {
+                    Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
+                    finalInitials[iEdge] = edge.finalVertex();
+                }
+                FORIDOWN(iEdge, edges.size())
+                {
+                    Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
+                    edge._initialVertex.arity--;
+                    edge._initialVertex = null;
+                }
+                FORIDOWN(iEdge, edges.size())
+                {
+                    Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
+                    Mesh.Edge tempEdge;
+                    SWAP(edge._next, edge._prev, tempEdge);
+                    assert(edge._initialVertex == null);
+                    edge._initialVertex = finalInitials[iEdge];
+                    edge._initialVertex.arity++;
+                }
+                sanityCheck();
+            } // flipUpperLeftLowerRight
+            private void flipLowerLeftUpperRight()
+            {
+                FORIDOWN (iVert, verts.size())
+                {
+                    Mesh.Vertex vert = (Mesh.Vertex)verts.get(iVert);
+                    double temp;
+                    SWAP(vert.x, vert.y, temp);
+                    vert.x *= -1.;
+                    vert.y *= -1.;
+                }
+                // XXX rest is dup code
+                Mesh.Vertex finalInitials[] = new Mesh.Vertex[edges.size()];
+                FORIDOWN(iEdge, edges.size())
+                {
+                    Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
+                    finalInitials[iEdge] = edge.finalVertex();
+                }
+                FORIDOWN(iEdge, edges.size())
+                {
+                    Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
+                    edge._initialVertex.arity--;
+                    edge._initialVertex = null;
+                }
+                FORIDOWN(iEdge, edges.size())
+                {
+                    Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
+                    Mesh.Edge tempEdge;
+                    SWAP(edge._next, edge._prev, tempEdge);
+                    assert(edge._initialVertex == null);
+                    edge._initialVertex = finalInitials[iEdge];
+                    edge._initialVertex.arity++;
+                }
+                sanityCheck();
+            } // flipLowerLeftUpperRight
 
             private Mesh()
             {
