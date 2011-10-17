@@ -21,6 +21,7 @@ BUG:
 
 TO DO:
 
+    - accumulate the optimization path over all passes, not just last one
     - store homogeneous coords at dual vertex, instead of weight
     - think about which optimization types to retain if any
         - maybe optimization should always be max min length, but choice should be how to match scale and translate afterwards.
@@ -46,11 +47,8 @@ TO DO:
     - show perpendicular of edges, somehow, so can see when off balance
     - mode to highlight all good ways out of given lagoon
 
-    - simple translation from simple lists and back... creating that sample scene was a nightmare!
-    - fix optimization problem
-    - figure out simpler math behind the mapping from vert heights to edge lengths
     - animation of optimization
-    - animation of swap
+    - animation of swap (what was I talking about here?)
     - animation of delete vertex (maybe-- might have to triangulate the face to get this to work, which wouldn't be a bad thing)
     - key to delaunayize?
     - don't draw crap when resizing (and fix whatever other applet I got this from too)
@@ -434,7 +432,7 @@ public class ShephardsPlayApplet
                     });
                 }});
 
-                add(new java.awt.Button("Far Lagoon Killer") {
+                add(new java.awt.Button("Far Lagoon Killer 1") {
                     public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
                 {
                     addActionListener(new java.awt.event.ActionListener() {
@@ -443,6 +441,23 @@ public class ShephardsPlayApplet
                             UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
 
                             doCannedThingFarthestLagoonExitKiller();
+
+                            UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+                            undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                            theCanvas.repaint();
+                        }
+                    });
+                }});
+                add(new java.awt.Button("Far Lagoon Killer 2") {
+                    public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                {
+                    addActionListener(new java.awt.event.ActionListener() {
+                        public void actionPerformed(java.awt.event.ActionEvent e)
+                        {
+                            UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
+
+                            doCannedThingFarthestLagoonExitKillerAltB();
 
                             UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                             undoTreeSquirrel.Do(new UndoItem(before, after));
@@ -1277,7 +1292,8 @@ public class ShephardsPlayApplet
             //doCannedThingAlgorithm5Killer0();
             //doCannedThingAlgorithm5Killer1();
             //doCannedThingBlindLagoonExitKiller();
-            doCannedThingFarthestLagoonExitKiller();
+            //doCannedThingFarthestLagoonExitKiller();
+            doCannedThingFarthestLagoonExitKillerAltB();
             //doCannedThingFarthestLagoonExitKillerOptimized();
             //doBlueNoiseThing();
             //load("DUMP.off");
@@ -2750,6 +2766,26 @@ public class ShephardsPlayApplet
                         }
                         avg = VecMath.sxv(1./areaSum, moment);
                         PRINTVEC(avg);
+
+                        if (true)
+                        {
+                            // Compute avg a different way, for curiosity
+                            double momentAndAreaSum[] = new double[4]; // zeros
+                            FORI (i, selectedDualVertIndices.length)
+                            {
+                                int ind = selectedDualVertIndices[i];
+                                Mesh.Vertex dualVert = (Mesh.Vertex)dualMesh.verts.get(ind);
+                                VecMath.vpv(momentAndAreaSum, momentAndAreaSum, dualVert.momentAndArea);
+                            }
+                            PRINTVEC(momentAndAreaSum);
+                            double A = momentAndAreaSum[3];
+                            double avgAlternate[] = {
+                                momentAndAreaSum[0] / A,
+                                momentAndAreaSum[1] / A,
+                                momentAndAreaSum[2] / (A*A),
+                            };
+                            PRINTVEC(avgAlternate);
+                        }
                     }
 
 
@@ -4302,6 +4338,70 @@ public class ShephardsPlayApplet
 
             } // doCannedThingFarthestLagoonExitKiller
 
+            //
+            // Farthest-from-center lagoon exiting goes into an endless loop:
+            //     A is the upper-left almost-horizontal edge
+            //     B is the lower-*left* edge
+            //     C is the edge halfway between them
+            // Only bad exit A -> farthest good exit B
+            // Only bad exit C -> farthest good exit A
+            // Only bad exit B -> farthest good exit C
+            // and we're back to the beginning.
+            //
+            private void doCannedThingFarthestLagoonExitKillerAltB()
+            {
+/*
+100 passes from original hand-crafted: simple synopsis = 0.0632903084802694
+OFF
+6 5 0
+0.1273163744879075 0.3306555269922885 -1.3877787807814457E-17
+0.007466950664434855 0.21072048883775582 0.0012499999999999976
+0.063927946972354 0.45166494195664725 -0.01762500000000003
+0.07725274705168253 0.017764193145660596 0.039682919717938775
+0.019644371916512516 0.019129114462716725 0.013473915969745336
+-0.2059752055364354 -0.6388679646686696 -0.06303872265462748
+3  1 3 0
+3  3 1 4
+6  0 3 5 4 1 2
+3  1 0 2
+3  3 4 5
+
+100 passed from 50 passes on original structure: simple synopsis = 0.08830543355804742
+OFF
+6 5 0
+0.1800525435129707 0.4676175307461174 0.0
+0.08303579636398613 0.37053147976867984 0.0025000000000000022
+-0.1743207145354405 1.207926317312154 -0.03525000000000006
+0.5935025616828306 -0.4786092404430522 0.20709150548025163
+0.5086599164177077 -0.50309546392274 0.1310302693859244
+0.5788838237668292 -1.7863394875007428 0.19118475261903686
+3  1 3 0
+3  3 1 4
+6  0 3 5 4 1 2
+3  1 0 2
+3  3 4 5
+*/
+                //100 passed from 50 passes on original structure: simple synopsis = 0.08830543355804742
+                double verts[][] = {
+                    {0.1800525435129707, 0.4676175307461174, 0.0},
+                    {0.08303579636398613, 0.37053147976867984, 0.0025000000000000022},
+                    {-0.1743207145354405, 1.207926317312154, -0.03525000000000006},
+                    {0.5935025616828306, -0.4786092404430522, 0.20709150548025163},
+                    {0.5086599164177077, -0.50309546392274, 0.1310302693859244},
+                    {0.5788838237668292, -1.7863394875007428, 0.19118475261903686},
+                };
+
+                int faces[][] = {
+                    {1, 3, 0},
+                    {3, 1, 4},
+                    {0, 3, 5, 4, 1, 2},
+                    {1, 0, 2},
+                    {3, 4, 5},
+                };
+                mesh = new Mesh(verts, faces);
+
+            } // doCannedThingFarthestLagoonExitKillerAltB
+
             private void doCannedThingFarthestLagoonExitKillerOptimized()
             {
                 doCannedThingFarthestLagoonExitKiller();
@@ -4431,7 +4531,7 @@ public class ShephardsPlayApplet
                 */
 
 
-                FORI (iPass, 2) // XXX experimenting... seems to do better with multiple restarts. should make a legit annealing option or something
+                FORI (iPass, 100) // XXX experimenting... seems to do better with multiple restarts. should make a legit annealing option or something
                 {
                     System.out.println("-------------------------------------");
                     PRINT(iPass);
@@ -6354,6 +6454,7 @@ public class ShephardsPlayApplet
             {
                 public double x, y, h; // x, y, "height"
                 public double weight = 1.; // optional, if this is a computed dual vertex, this should be the original triangle area
+                public double momentAndArea[/*4*/] = null; // optional... similar to weight. x*A,y*A,h*A^2,A where A is twice tri area
                 public int arity = 0; // number of edges having this vertex as initial vertex
 
                 private int _myIndex = -1;
@@ -7872,8 +7973,10 @@ public class ShephardsPlayApplet
                 //
                 double twiceTotalArea = 0.;
                 double totalCenter[] = new double[3]; // zero initially   XXX should set it to center of edge?  not sure
+                double totalMomentAndArea[] = new double[4]; // zero initially
 
                 double triCenter[] = new double[3]; // scratch for loop
+                double triMomentAndArea[] = new double[4]; // scratch for loop
                 Mesh.Vertex v0 = primalEdge0._initialVertex;
                 int dualVertArity = 2; // and counting
                 for (Mesh.Edge primalEdge = primalEdge0.next();
@@ -7886,7 +7989,6 @@ public class ShephardsPlayApplet
                                       v1.x, v1.y, v1.h,
                                       v2.x, v2.y, v2.h,
                                       triCenter);
-
                     double twiceTriArea = twiceTriangleArea(v0.x,v0.y,
                                                             v1.x,v1.y,
                                                             v2.x,v2.y);
@@ -7896,47 +7998,57 @@ public class ShephardsPlayApplet
                                      totalCenter, triCenter, twiceTriArea/twiceTotalArea);
                     else
                         VecMath.zerovec(totalCenter); // arbitrary
+
+
+                    // TODO: this should take the place of the above
+                    SolveForDualMomentAndArea(v0.x, v0.y, v0.h,
+                                              v1.x, v1.y, v1.h,
+                                              v2.x, v2.y, v2.h,
+                                              triMomentAndArea);
+                    VecMath.vpv(totalMomentAndArea, totalMomentAndArea, triMomentAndArea);
+
+
                     dualVertArity++;
                 }
 
-                if ((includeNonArity3
-                  || dualVertArity == 3)
-                 && (includeInsideOut
-                  || twiceTotalArea >= 0.))
+                if (!includeNonArity3 && dualVertArity != 3)
+                    continue;
+                if (!includeInsideOut && twiceTotalArea < 0.)
+                    continue;
+
+                if (true)
                 {
-                    if (true)
+                    // See what happens if I solve for dual point with more than 3 verts...
+                    // XXX experiment with this more, maybe make user control for includeNonArity3 and non-arity-3 strategy
+                    double coords[][] = new double[dualVertArity][3];
+                    Mesh.Edge primalEdge = primalEdge0;
+                    FORI (i, dualVertArity)
                     {
-                        // See what happens if I solve for dual point with more than 3 verts...
-                        // XXX experiment with this more, maybe make user control for includeNonArity3 and non-arity-3 strategy
-                        double coords[][] = new double[dualVertArity][3];
-                        Mesh.Edge primalEdge = primalEdge0;
-                        FORI (i, dualVertArity)
-                        {
-                            Mesh.Vertex v = primalEdge.initialVertex();
-                            coords[i][0] = v.x;
-                            coords[i][1] = v.y;
-                            coords[i][2] = v.h - .5 * (SQR(v.x)+SQR(v.y));
-                            primalEdge = primalEdge.next();
-                        }
-                        SolveForDualPointActual(coords, totalCenter);
-                        totalCenter[2] += .5 * (SQR(totalCenter[0]) + SQR(totalCenter[1]));
+                        Mesh.Vertex v = primalEdge.initialVertex();
+                        coords[i][0] = v.x;
+                        coords[i][1] = v.y;
+                        coords[i][2] = v.h - .5 * (SQR(v.x)+SQR(v.y));
+                        primalEdge = primalEdge.next();
                     }
+                    SolveForDualPointActual(coords, totalCenter);
+                    totalCenter[2] += .5 * (SQR(totalCenter[0]) + SQR(totalCenter[1]));
+                }
 
-                    Mesh.Vertex dualVert = dual.newVertex(totalCenter[0],
-                                                          totalCenter[1],
-                                                          totalCenter[2]);
-                    dualVert.weight = .5 * twiceTotalArea;
+                Mesh.Vertex dualVert = dual.newVertex(totalCenter[0],
+                                                      totalCenter[1],
+                                                      totalCenter[2]);
+                dualVert.weight = .5 * twiceTotalArea;
+                dualVert.momentAndArea = totalMomentAndArea;
 
-                    // Set dualVert to be the *final* vertex (i.e. initial vertex of opposite)
-                    // of each dual edge ending at it.
-                    for (Mesh.Edge dualEdge = dualEdge0;
-                         dualEdge._opposite._initialVertex == null;
-                         dualEdge = dualEdge._next._opposite)
-                    {
-                        assert(dualEdge._opposite._initialVertex == null);
-                        dualEdge._opposite._initialVertex = dualVert;
-                        dualEdge._opposite._initialVertex.arity++;
-                    }
+                // Set dualVert to be the *final* vertex (i.e. initial vertex of opposite)
+                // of each dual edge ending at it.
+                for (Mesh.Edge dualEdge = dualEdge0;
+                     dualEdge._opposite._initialVertex == null;
+                     dualEdge = dualEdge._next._opposite)
+                {
+                    assert(dualEdge._opposite._initialVertex == null);
+                    dualEdge._opposite._initialVertex = dualVert;
+                    dualEdge._opposite._initialVertex.arity++;
                 }
             }
             
@@ -8554,7 +8666,8 @@ public class ShephardsPlayApplet
         applet.setStub(new java.applet.AppletStub() {
              public void appletResize(int width, int height)
                  { /* should resize frame, but a ShephardsPlayApplet never asks to be resized */ }
-             public java.applet.AppletContext getAppletContext() { return null;}             public java.net.URL getCodeBase() { return null; }
+             public java.applet.AppletContext getAppletContext() { return null;}
+             public java.net.URL getCodeBase() { return null; }
              public java.net.URL getDocumentBase() { return null; }
              public String getParameter(String name)
              {
@@ -8577,7 +8690,6 @@ public class ShephardsPlayApplet
 
         frame.move(200, 20);
         frame.resize(1250, 500);
-        frame.resize(500,200);
         frame.show();
 
         //Misc.printPlatonicSolidVertexCurvatures();
