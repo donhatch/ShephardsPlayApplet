@@ -1293,8 +1293,8 @@ public class ShephardsPlayApplet
             //doCannedThingAlgorithm5Killer1();
             //doCannedThingBlindLagoonExitKiller();
             //doCannedThingFarthestLagoonExitKiller();
-            //doCannedThingFarthestLagoonExitKillerAltB();
-            doCannedThingFarthestLagoonExitKillerOptimized();
+            doCannedThingFarthestLagoonExitKillerAltB();
+            //doCannedThingFarthestLagoonExitKillerOptimized();
             //doBlueNoiseThing();
             //load("DUMP.off");
 
@@ -2126,7 +2126,7 @@ public class ShephardsPlayApplet
                             int closestIndex = -1;
                             int nDualVerts = mostRecentDualMesh.verts.size();
                             PRINT(nDualVerts);
-                            FORI (iDualVert, nDualVerts) // beginnng to end, so we choose first of equal
+                            FORI (iDualVert, nDualVerts) // beginning to end, so we choose first of equal
                             {
                                 Mesh.Vertex dualVert = (Mesh.Vertex)mostRecentDualMesh.verts.get(iDualVert);
                                 if (dualVert.arity != 3)
@@ -2143,22 +2143,25 @@ public class ShephardsPlayApplet
                                     closestIndex = iDualVert;
                                 }
                             }
-                            int indInd = Arrays.indexOf(selectedDualVertIndices, closestIndex);
-                            double closestDualVertWeight = ((Mesh.Vertex)mostRecentDualMesh.verts.get(closestIndex)).weight;
-                            double totalWeightBefore = 0.; FORIDOWN(iSelected, selectedDualVertIndices.length) totalWeightBefore += ((Mesh.Vertex)mostRecentDualMesh.verts.get(selectedDualVertIndices[iSelected])).weight;
+                            if (closestIndex != -1)
+                            {
+                                int indInd = Arrays.indexOf(selectedDualVertIndices, closestIndex);
+                                double closestDualVertWeight = ((Mesh.Vertex)mostRecentDualMesh.verts.get(closestIndex)).weight;
+                                double totalWeightBefore = 0.; FORIDOWN(iSelected, selectedDualVertIndices.length) totalWeightBefore += ((Mesh.Vertex)mostRecentDualMesh.verts.get(selectedDualVertIndices[iSelected])).weight;
 
-                            if (indInd != -1)
-                            {
-                                System.out.println("    deselecting dual vert "+closestIndex);
-                                selectedDualVertIndices = (int[])Arrays.delete(selectedDualVertIndices, indInd);
+                                if (indInd != -1)
+                                {
+                                    System.out.println("    deselecting dual vert "+closestIndex);
+                                    selectedDualVertIndices = (int[])Arrays.delete(selectedDualVertIndices, indInd);
+                                }
+                                else
+                                {
+                                    System.out.println("    selecting dual vert "+closestIndex);
+                                    selectedDualVertIndices = (int[])Arrays.append(selectedDualVertIndices, closestIndex);
+                                }
+                                double totalWeightAfter = 0.; FORIDOWN(iSelected, selectedDualVertIndices.length) totalWeightAfter += ((Mesh.Vertex)mostRecentDualMesh.verts.get(selectedDualVertIndices[iSelected])).weight;
+                                System.out.println("    Total selected weight: "+totalWeightBefore+" "+(indInd!=-1?'-':'+')+" "+closestDualVertWeight+" = "+totalWeightAfter+"");
                             }
-                            else
-                            {
-                                System.out.println("    selecting dual vert "+closestIndex);
-                                selectedDualVertIndices = (int[])Arrays.append(selectedDualVertIndices, closestIndex);
-                            }
-                            double totalWeightAfter = 0.; FORIDOWN(iSelected, selectedDualVertIndices.length) totalWeightAfter += ((Mesh.Vertex)mostRecentDualMesh.verts.get(selectedDualVertIndices[iSelected])).weight;
-                            System.out.println("    Total selected weight: "+totalWeightBefore+" "+(indInd!=-1?'-':'+')+" "+closestDualVertWeight+" = "+totalWeightAfter+"");
                         }
                         UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
@@ -2716,10 +2719,6 @@ public class ShephardsPlayApplet
                     // Compute and store the dual mesh...
                     // XXX weird place to do it, in draw
                     //
-                    if (showNet)
-                        mg.setColor(dualVertSelectionColor);
-                    else
-                        mg.setColor(dualColor);
                     Mesh dualMesh = makeDualMesh(mesh,
                                                  false, // includeNonArity3,
                                                  doShowInsideOutDualVerts);
@@ -2767,7 +2766,7 @@ public class ShephardsPlayApplet
                         FORI (i, selectedDualVertIndices.length)
                         {
                             int ind = selectedDualVertIndices[i];
-                            dualVertColors[ind] = (showNet ? dualColor : dualVertSelectionColor);
+                            dualVertColors[ind] = dualVertSelectionColor;
                             Mesh.Vertex dualVert = (Mesh.Vertex)dualMesh.verts.get(ind);
                             dualVertCoords[0] = dualVert.x;
                             dualVertCoords[1] = dualVert.y;
@@ -3372,7 +3371,7 @@ public class ShephardsPlayApplet
                     // Draw center of curvature
                     if (avg != null)
                     {
-                        mg.setColor(showNet ? dualColor : dualVertSelectionColor);
+                        mg.setColor(dualVertSelectionColor);
                         mg.drawPoint(avg[0],
                                      avg[1], 7);
                     }
@@ -3384,10 +3383,7 @@ public class ShephardsPlayApplet
                     // at each isolated edge or whisker.
                     // XXX should do this along hairs... or maybe every edge that is not on a triangle on either side? nah
                     //
-                    if (showNet)
-                        mg.setColor(dualVertSelectionColor);
-                    else
-                        mg.setColor(dualColor);
+                    mg.setColor(dualColor);
                     FORIDOWN (iEdge, mesh.edges.size())
                     {
                         Mesh.Edge edge = (Mesh.Edge)mesh.edges.get(iEdge);
@@ -4306,6 +4302,7 @@ public class ShephardsPlayApplet
             //
             private void doCannedThingFarthestLagoonExitKiller()
             {
+                /*
                 // really simple verts, no hand-crafting-- see what happens.  hmm this sucks, it doesn't get there!
                 double verts[][] = {
                     {.1, .3, 0},
@@ -4315,6 +4312,7 @@ public class ShephardsPlayApplet
                     {-.1, -.3, 0},
                     {.1, -.5, 0},
                 };
+                */
 
                 /*
                 // original hand-crafted verts: violated farthest-exit constraint for top 2-vertex lagoon
@@ -4340,7 +4338,6 @@ public class ShephardsPlayApplet
                 };
                 */
 
-                /*
                 // optimized 50 passes: goodness = .019362280324644425 (using VecMath.synopsis which I'm not thrilled with any more)
                 double verts[][] = {
                     {0.1800525435129707, 0.4676175307461174, 0.0},
@@ -4350,7 +4347,6 @@ public class ShephardsPlayApplet
                     {0.5790169179568446, -0.523270452612108, 0.14986341969960895},
                     {0.20759453708056247, -1.6232499556679696, 0.4089344906614831},
                 };
-                */
 
 
                 int faces[][] = {
@@ -5295,7 +5291,8 @@ OFF
                                                           + dualEdgeVecY*dualEdgeDirY;
 
                                     System.out.println("        dual edge "+pv0i+"->"+pv1i+": "+dualEdgeLength+"");
-                                    goodnessVector[iGoodness++] = dualEdgeLength;
+                                    double dualEdgeMinLength = .05; // setting to > 0 keeps dual edge length constraints from jamming into corner with other constraints
+                                    goodnessVector[iGoodness++] = dualEdgeLength - dualEdgeMinLength;
                                     goodnessVector[iGoodness++] = 1. - dualEdgeLength;
                                 }
                             }
