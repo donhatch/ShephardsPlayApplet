@@ -20,6 +20,9 @@ BUG:
 
 TO DO:
 
+    - store selected triangles, not selected dual verts
+    - structural change like deleting an edge should destroy selected dual verts I think
+
     - think about which optimization types to retain if any
         - maybe optimization should always be max min length, but choice should be how to match scale and translate afterwards.
           Translate:
@@ -1390,9 +1393,7 @@ public class ShephardsPlayApplet
 
                 if (whichButton != java_awt_event_MouseEvent_BUTTON2) // no need to clear selection when just dragging
                 {
-                    if (selectedDualVertIndices.length > 0
-                     && selectedDualVertIndices.length == mostRecentDualMesh.verts.size())
-                        selectAllDualVertsAtNextOpportunity = true;
+                    selectedTris = new int[][] {};
                     selectedDualVertIndices = new int[] {};
                 }
 
@@ -2055,16 +2056,8 @@ public class ShephardsPlayApplet
                         // the new two should both be selected
                         // if the original two were selected,
                         // or both unselected otherwise.
-                        // But we don't really have any way to get the
-                        // correspondence.  In fact we have no clue
-                        // what the new verts will look like at all,
-                        // til they get drawn.
-                        // So for now, just set a flag saying
-                        // we want them all selected,
-                        // if they were all selected before.
-                        //
-                        if (selectedDualVertIndices.length == mostRecentDualMesh.verts.size())
-                            selectAllDualVertsAtNextOpportunity = true;
+                        // XXX TODO: do this
+                        selectedTris = new int[][] {};
                         selectedDualVertIndices = new int[] {};
 
 
@@ -2087,8 +2080,7 @@ public class ShephardsPlayApplet
                     {
                         // Swap diagonal but only if it makes it closer to delaunay
                         UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
-                        if (selectedDualVertIndices.length == mostRecentDualMesh.verts.size())
-                            selectAllDualVertsAtNextOpportunity = true;
+                        selectedTris = new int[][] {};
                         selectedDualVertIndices = new int[] {};
                         int closestEdgeIndex = mesh.indexOfClosestEdge(prevP);
                         if (closestEdgeIndex != -1)
@@ -2142,21 +2134,51 @@ public class ShephardsPlayApplet
                             }
                             if (closestIndex != -1)
                             {
+                                PRINT(closestIndex);
+                                // figure out the 3 primal verts
+                                int closestTri[] = null;
+                                {
+                                    int nEdges = mostRecentDualMesh.edges.size();
+                                    assert(nEdges == mesh.edges.size());
+                                    FORI (iEdge, nEdges)
+                                    {
+                                        Mesh.Edge dualEdge = (Mesh.Edge)mostRecentDualMesh.edges.get(iEdge);
+                                        Mesh.Vertex initialVertex = dualEdge.initialVertex();
+                                        if (initialVertex != null
+                                         && initialVertex.myIndex() == closestIndex)
+                                        {
+                                            Mesh.Edge primalEdge = ((Mesh.Edge)mesh.edges.get(iEdge)).opposite();
+                                            // advance around triangle til initial vertex is smallest
+                                            while (primalEdge.initialVertex().myIndex() > primalEdge.finalVertex().myIndex()
+                                                || primalEdge.initialVertex().myIndex() > primalEdge.prev().initialVertex().myIndex())
+                                                primalEdge = primalEdge.next();
+                                            int i0 = primalEdge.initialVertex().myIndex();
+                                            int i1 = primalEdge.finalVertex().myIndex();
+                                            int i2 = primalEdge.prev().initialVertex().myIndex();
+                                            closestTri = new int[] {i0,i1,i2};
+                                        }
+                                    }
+                                }
+                                assert(closestTri != null);
+                                PRINTARRAY(closestTri);
+
                                 int indInd = Arrays.indexOf(selectedDualVertIndices, closestIndex);
                                 double closestDualVertWeight = ((Mesh.Vertex)mostRecentDualMesh.verts.get(closestIndex)).weight;
-                                double totalWeightBefore = 0.; FORIDOWN(iSelected, selectedDualVertIndices.length) totalWeightBefore += ((Mesh.Vertex)mostRecentDualMesh.verts.get(selectedDualVertIndices[iSelected])).weight;
+                                double totalWeightBefore = 0.; FORIDOWN(iSelected, selectedDualVertIndices.length) if (selectedDualVertIndices[iSelected] != -1) totalWeightBefore += ((Mesh.Vertex)mostRecentDualMesh.verts.get(selectedDualVertIndices[iSelected])).weight;
 
                                 if (indInd != -1)
                                 {
                                     System.out.println("    deselecting dual vert "+closestIndex);
+                                    selectedTris = (int[][])Arrays.delete(selectedTris, indInd);
                                     selectedDualVertIndices = (int[])Arrays.delete(selectedDualVertIndices, indInd);
                                 }
                                 else
                                 {
                                     System.out.println("    selecting dual vert "+closestIndex);
+                                    selectedTris = (int[][])Arrays.append(selectedTris, closestTri);
                                     selectedDualVertIndices = (int[])Arrays.append(selectedDualVertIndices, closestIndex);
                                 }
-                                double totalWeightAfter = 0.; FORIDOWN(iSelected, selectedDualVertIndices.length) totalWeightAfter += ((Mesh.Vertex)mostRecentDualMesh.verts.get(selectedDualVertIndices[iSelected])).weight;
+                                double totalWeightAfter = 0.; FORIDOWN(iSelected, selectedDualVertIndices.length) if (selectedDualVertIndices[iSelected] != -1) totalWeightAfter += ((Mesh.Vertex)mostRecentDualMesh.verts.get(selectedDualVertIndices[iSelected])).weight;
                                 System.out.println("    Total selected weight: "+totalWeightBefore+" "+(indInd!=-1?'-':'+')+" "+closestDualVertWeight+" = "+totalWeightAfter+"");
                             }
                         }
@@ -2255,6 +2277,7 @@ public class ShephardsPlayApplet
                                 ((Mesh.Vertex)mesh.verts.get(iVert)).h = 0.;
                         }
 
+                        selectedTris = new int[][] {};
                         selectedDualVertIndices = new int[] {};
                         if (doContinuouslyDelaunayize.get()) delaunayize();
                         UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedDualVertIndices);
@@ -2721,28 +2744,53 @@ public class ShephardsPlayApplet
                                                  doShowInsideOutDualVerts);
                     mostRecentDualMesh = dualMesh;
 
-                    if (selectAllDualVertsAtNextOpportunity)
+                    if (true)
                     {
-                        selectedDualVertIndices = VecMath.identityperm(dualMesh.verts.size());
-                        selectAllDualVertsAtNextOpportunity = false;
-                    }
+                        // Re-generate selectedDualVerts from selectedTris
 
-                    // Check for validity of selected dual vert indices (they are fragile)
-                    FORI (i, selectedDualVertIndices.length)
-                    {
-                        int ind = selectedDualVertIndices[i];
-                        if (ind >= dualMesh.verts.size()
-                         || dualMesh.verts.get(ind) == null)
+                        selectedDualVertIndices = new int[selectedTris.length];
+
+
+                        java.util.Hashtable edgeEndsToEdge = new java.util.Hashtable();
+                        int nEdges = mesh.edges.size();
+                        assert(nEdges == dualMesh.edges.size());
+                        FORI (iEdge, nEdges)
                         {
-                            selectedDualVertIndices = new int[] {};
-                            System.out.println("BAM!");
-                            break;
+                            Mesh.Edge edge = (Mesh.Edge)mesh.edges.get(iEdge);
+                            int i0 = edge.initialVertex().myIndex();
+                            int i1 = edge.finalVertex().myIndex();
+                            edgeEndsToEdge.put(""+i0+" "+i1, edge);
                         }
+                        FORI (iSelectedTri, selectedTris.length)
+                        {
+                            int tri[] = selectedTris[iSelectedTri];
+                            Mesh.Edge edge = (Mesh.Edge)edgeEndsToEdge.get(""+tri[0]+" "+tri[1]);
+                            if (edge == null)
+                            {
+                                System.out.println("HEY! can't find dual vert");
+                                selectedDualVertIndices[iSelectedTri] = -1;
+                            }
+                            else
+                            {
+                                Mesh.Edge dualEdge = (Mesh.Edge)dualMesh.edges.get(edge.myIndex()); // right to left
+                                Mesh.Vertex dualVert = dualEdge.finalVertex();
+                                if (dualVert != null)
+                                    selectedDualVertIndices[iSelectedTri] = dualEdge.finalVertex().myIndex();
+                                else
+                                {
+                                    System.out.println("HEY! selected dual vert disappeared");
+                                    selectedDualVertIndices[iSelectedTri] = -1;
+                                }
+                            }
+                        }
+                        PRINTARRAY(selectedTris);
+                        PRINTARRAY(selectedDualVertIndices);
                     }
 
                     boolean isSelectedDualVert[] = new boolean[dualMesh.verts.size()]; // all false initially
                     FORI (i, selectedDualVertIndices.length)
-                        isSelectedDualVert[selectedDualVertIndices[i]] = true;
+                        if (selectedDualVertIndices[i] != -1)
+                            isSelectedDualVert[selectedDualVertIndices[i]] = true;
 
                     java.awt.Color dualVertColors[] = new java.awt.Color[dualMesh.verts.size()];
                     FORI (i, dualVertColors.length)
@@ -2763,6 +2811,8 @@ public class ShephardsPlayApplet
                         FORI (i, selectedDualVertIndices.length)
                         {
                             int ind = selectedDualVertIndices[i];
+                            if (ind == -1)
+                                continue;
                             dualVertColors[ind] = dualVertSelectionColor;
                             Mesh.Vertex dualVert = (Mesh.Vertex)dualMesh.verts.get(ind);
                             dualVertCoords[0] = dualVert.x;
@@ -2782,6 +2832,8 @@ public class ShephardsPlayApplet
                             FORI (i, selectedDualVertIndices.length)
                             {
                                 int ind = selectedDualVertIndices[i];
+                                if (ind == -1)
+                                    continue;
                                 Mesh.Vertex dualVert = (Mesh.Vertex)dualMesh.verts.get(ind);
                                 VecMath.vpv(momentAndAreaSum, momentAndAreaSum, dualVert.momentAndArea);
                             }
@@ -3688,15 +3740,6 @@ public class ShephardsPlayApplet
 
             private void delaunayize()
             {
-                // Not exactly sure what I'm doing, but the following is safer than doing nothing, in the case that all dual verts are selected (e.g. if we're here because of an up or down arrow key, with doContinuouslyDelaunayize on)
-                if (selectedDualVertIndices.length > 0
-                 && mostRecentDualMesh != null
-                 && selectedDualVertIndices.length == mostRecentDualMesh.verts.size())
-                {
-                    selectAllDualVertsAtNextOpportunity = true;
-                    selectedDualVertIndices = new int[] {};
-                }
-
                 //
                 // Discard the mesh edges and replace it with
                 // the Delaunay triangulation of the vertex set,
@@ -8616,8 +8659,8 @@ OFF
         private Mesh mesh = new Mesh();
         private int beingDraggedVertIndex = -1;
         private boolean rubberBandingNewEdge = false;
+        private int[][] selectedTris = {};
         private int[] selectedDualVertIndices = {};
-        private boolean selectAllDualVertsAtNextOpportunity = false;
 
         // XXX is there an easier way to associate that stuff with a certain object? maybe be able to just pass this object to addListener, and make it automatically remove the listener when I go away?
         private Listenable.Listener doContinuouslyDelaunayizeListener = null;
