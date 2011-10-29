@@ -14,12 +14,8 @@ User should be able to:
     middle drag - move a vertex
     's' - swap a diagonal
 
-BUG:
-    - makeDualMesh seems to be computing each triangle center 3 times,
-      and each quad center 4 times, etc.
 
 TO DO:
-
     - try to maintain selection when swapping diagonals and stuff
 
     - think about which optimization types to retain if any
@@ -8249,6 +8245,8 @@ OFF
             //
             // Find all the dual vertices.
             // These correspond to primal faces.
+            // Include inside-out ones for starters,
+            // to avoid lots of redundant calculation.  We'll remove them afterwards.
             //
             FORI (iEdge, nEdges)
             {
@@ -8287,12 +8285,7 @@ OFF
                     dualVertArity++;
                 }
 
-                if (!includeNonArity3 && dualVertArity != 3)
-                    continue;
-
                 double twiceTotalArea = totalMomentAndArea[3];
-                if (!includeInsideOut && twiceTotalArea < 0.)
-                    continue;
 
                 double totalCenter[] = new double[3]; // zero arbitrarily XXX should set it to center of edge? not sure
                 if (twiceTotalArea != 0.)
@@ -8335,6 +8328,37 @@ OFF
                     assert(dualEdge._opposite._initialVertex == null);
                     dualEdge._opposite._initialVertex = dualVert;
                     dualEdge._opposite._initialVertex.arity++;
+                }
+            }
+
+            // Delete all verts that don't satisfy the criteria.
+            // Any edges beginning or ending at such verts
+            // will end up with null as their initial or final vertex instead.
+            FORI (iEdge, nEdges)
+            {
+                Mesh.Edge dualEdge0 = (Mesh.Edge)dual.edges.get(iEdge);
+                Mesh.Vertex initialDualVert = dualEdge0._initialVertex;
+                if (initialDualVert == null)
+                    continue; // initial dual vertex is already gone
+                if ((!includeNonArity3 && initialDualVert.arity != 3)
+                 || (!includeInsideOut && initialDualVert.momentAndArea[3] < 0.))
+                {
+                    for (Mesh.Edge dualEdge = dualEdge0;
+                         dualEdge._initialVertex != null;
+                         dualEdge = dualEdge._opposite._next)
+                    {
+                        assert(dualEdge._initialVertex == initialDualVert);
+                        dualEdge._initialVertex = null;
+                        --initialDualVert.arity;
+                    }
+                    assert(initialDualVert.arity == 0);
+                    int iDualVert = initialDualVert.myIndex();
+                    Mesh.Vertex lastDualVert = (Mesh.Vertex)dual.verts.remove(dual.verts.size()-1);
+                    if (lastDualVert != initialDualVert)
+                    {
+                        lastDualVert._myIndex = iDualVert;
+                        dual.verts.set(iDualVert, lastDualVert);
+                    }
                 }
             }
             
