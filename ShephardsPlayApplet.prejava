@@ -81,6 +81,7 @@ import com.donhatchsw.util.VecMath;
 import com.donhatchsw.util.SortStuff;
 import com.donhatchsw.util.ConvexHull;
 import com.donhatchsw.util.LinearProgramming;
+import com.donhatchsw.util.MergeFind;
 import com.donhatchsw.util.UndoTreeSquirrel;
 import com.donhatchsw.util.TriangulationOptimizer;
 import com.donhatchsw.util.Minimizer;
@@ -1538,7 +1539,7 @@ public class ShephardsPlayApplet
                                         int oldNumEdges = mesh.edges.size();
                                         mesh.kisIsolatedVertex((Mesh.Vertex)verts.get(verts.size()-1),
                                                                edgeOnMostNegativeFace);
-                                        if (!e.isShiftDown()) // XXX TODO: document that shift-left kisses whole boundary
+                                        if (!doShowInsideOutDualVerts)
                                         {
                                             for (int iEdge = oldNumEdges;
                                                  iEdge < mesh.edges.size();
@@ -2839,7 +2840,8 @@ public class ShephardsPlayApplet
                                           dualVert.weight, dualVertCoords);
                             areaSum += dualVert.weight;
                         }
-                        avg = VecMath.sxv(1./areaSum, moment);
+                        if (areaSum != 0.)
+                            avg = VecMath.sxv(1./areaSum, moment);
                         PRINTVEC(avg);
 
                         if (true)
@@ -2873,107 +2875,216 @@ public class ShephardsPlayApplet
                     // For now, sweep upwards,
                     // color good edges green and off-balance ones red.
                     //
+                    final int NETMETHOD_UPWARD = 0;
+                    final int NETMETHOD_OUTWARD = 1;
+                    final int NETMETHOD_RANDOM = 2;
+                    int netMethod = NETMETHOD_RANDOM;
                     boolean dualEdgeIsCut[] = null;
                     boolean dualEdgeIsOffBalanceCut[] = null;
                     // Hack for now... just one
                     Mesh.Edge theBadLagoonExitToDraw = null;
                     ArrayList offBalanceEdgeToGoodLagoonExits[] = new ArrayList[dualMesh.edges.size()]; // all nulls initially
+                    ArrayList offBalanceEdgeToLagoonEdges[] = new ArrayList[dualMesh.edges.size()]; // all nulls initially
+                    double offBalanceEdgeToLagoonCenter[][] = new double[dualMesh.edges.size()][]; // all nulls initially
                     if (showNet)
                     {
                         dualEdgeIsCut = new boolean[mesh.edges.size()]; // all false initially
                         dualEdgeIsOffBalanceCut = new boolean[mesh.edges.size()]; // all false initially
+
                         Mesh.Edge dualVertIndexToParentEdge[] = new Mesh.Edge[dualMesh.verts.size()]; // all null initially
-                        FORIDOWN (iEdge, mesh.edges.size())
+
+
+
+                        if (netMethod == NETMETHOD_RANDOM)
                         {
-                            Mesh.Vertex triCenterDualVert = ((Mesh.Edge)dualMesh.edges.get(iEdge)).finalVertex();
-                            if (triCenterDualVert == null)
-                                continue; // primal face was not a triangle, or inside out
-                            if (dualVertIndexToParentEdge[triCenterDualVert.myIndex()] != null)
-                                continue; // definitely already did this vertex  XXX but root vertex stays null so it will be done 3 times :-(
-
-                            Mesh.Edge e0 = (Mesh.Edge)mesh.edges.get(iEdge);
-                            Mesh.Edge e1 = e0.next();
-                            Mesh.Edge e2 = e1.next();
-                            assert(e2.next() == e0);
-
-                            double threeDirections[][] = {
-                                ((Mesh.Edge)dualMesh.edges.get(e0.myIndex())).opposite().direction,
-                                ((Mesh.Edge)dualMesh.edges.get(e1.myIndex())).opposite().direction,
-                                ((Mesh.Edge)dualMesh.edges.get(e2.myIndex())).opposite().direction,
-                            };
-
-                            int bestSide = MAXI3(threeDirections[0][1],
-                                                 threeDirections[1][1],
-                                                 threeDirections[2][1]);
-                            if (true)
+                            System.out.println("   computing random net");
+                            int nDualEdges = dualMesh.edges.size();
+                            int nDualVerts = dualMesh.verts.size();
+                            MergeFind mergeFind = new MergeFind(nDualVerts+1); // plus 1 for "dual vertex at infinity"
+                            java.util.Random generator = new java.util.Random(0);
+                            int perm[] = VecMath.randomperm(nDualEdges, generator);
+                            FORI (iiDualEdge, nDualEdges)
                             {
-                                // Hack to simulate symbolic perterbation
-                                // by an infinitesimal rotation counterclockwise
-                                if (EQ(threeDirections[bestSide][1], threeDirections[(bestSide+1)%3][1], 1e-6)
-                                 && LT(threeDirections[bestSide][0], threeDirections[(bestSide+1)%3][0], 1e-6))
+                                int iDualEdge = perm[iiDualEdge];
+                                Mesh.Edge dualEdge = (Mesh.Edge)dualMesh.edges.get(iDualEdge);
+                                if (dualEdge.opposite().myIndex() < dualEdge.myIndex())
+                                    continue; // only do the canonical one of the two
+                                Mesh.Vertex v0 = dualEdge.initialVertex();
+                                Mesh.Vertex v1 = dualEdge.finalVertex();
+                                int i0 = v0==null ? nDualVerts : v0.myIndex();
+                                int i1 = v1==null ? nDualVerts : v1.myIndex();
+                                if (mergeFind.find(i0) != mergeFind.find(i1))
                                 {
-                                    bestSide = (bestSide+1)%3;
-                                    if (EQ(threeDirections[bestSide][1], threeDirections[(bestSide+1)%3][1], 1e-6)
-                                     && LT(threeDirections[bestSide][0], threeDirections[(bestSide+1)%3][0], 1e-6))
-                                        bestSide = (bestSide+1)%3;
-                                }
-                                else
-                                {
-                                    if (EQ(threeDirections[bestSide][1], threeDirections[(bestSide+2)%3][1], 1e-6)
-                                     && LT(threeDirections[bestSide][0], threeDirections[(bestSide+2)%3][0], 1e-6))
-                                        bestSide = (bestSide+2)%3;
+                                    dualEdgeIsCut[dualEdge.myIndex()] = true;
+                                    dualEdgeIsCut[dualEdge.opposite().myIndex()] = true;
+                                    mergeFind.merge(i0, i1);
+                                    //System.out.println("    "+i0+" <-> "+i1+"");
                                 }
                             }
-                            if (true)
+
+                            // Figure out parents.
+                            // Parent of a vertex is the next vertex on the path toward infinity
+                            // in the cut tree.
+                            // Proceed by depth-first search starting at infinity.
                             {
-                                // Hack to ensure that a negative-weight (assume that means boundary)
-                                // vertex never has a positive-weight vertex as parent
-                                Mesh.Edge threeEdges[] = {
-                                    ((Mesh.Edge)dualMesh.edges.get(e0.myIndex())).opposite(),
-                                    ((Mesh.Edge)dualMesh.edges.get(e1.myIndex())).opposite(),
-                                    ((Mesh.Edge)dualMesh.edges.get(e2.myIndex())).opposite(),
-                                };
-                                if (triCenterDualVert.weight < 0.
-                                 && threeEdges[bestSide].finalVertex() != null
-                                 && threeEdges[bestSide].finalVertex().weight >= 0.)
+                                int iStack = 0;
+                                Mesh.Edge stack[] = new Mesh.Edge[nDualEdges]; // worst case
+                                FORI (iDualEdge, nDualEdges)
                                 {
-                                    int origBestSide = bestSide;
-                                    bestSide = (threeDirections[(bestSide+1)%3][1] >= threeDirections[(bestSide+2)%3][1] ? (bestSide+1)%3 : (bestSide+2)%3);
-                                    if (triCenterDualVert.weight < 0.
-                                     && threeEdges[bestSide].finalVertex() != null
-                                     && threeEdges[bestSide].finalVertex().weight >= 0.)
+                                    Mesh.Edge dualEdge = (Mesh.Edge)dualMesh.edges.get(iDualEdge);
+                                    if (dualEdge.initialVertex() == null
+                                     && dualEdgeIsCut[iDualEdge])
                                     {
-                                        bestSide = 3 - bestSide - origBestSide;
+                                        stack[iStack++] = dualEdge;
+                                        while (iStack > 0)
+                                        {
+                                            dualEdge = stack[--iStack];
+                                            Mesh.Vertex finalVertex = dualEdge.finalVertex();
+                                            dualVertIndexToParentEdge[finalVertex.myIndex()] = dualEdge.opposite();
+
+                                            // push all child edges in the cut tree
+                                            Mesh.Edge childEdge = dualEdge.next();
+                                            while (childEdge != dualEdge.opposite())
+                                            {
+                                                if (dualEdgeIsCut[childEdge.myIndex()])
+                                                {
+                                                    stack[iStack++] = childEdge;
+                                                }
+                                                childEdge = childEdge.opposite().next(); // next child, CCW around the hub (dual is backwards from primal)
+                                            }
+                                        }
                                     }
                                 }
                             }
 
-                            if (false) // set this to true to debug
+                            System.out.println("   done computing random net");
+                        }
+                        else
+                        {
+                            FORIDOWN (iEdge, mesh.edges.size())
                             {
-                                double whereToDrawMark[] = {
-                                    triCenterDualVert.x + .05 * threeDirections[bestSide][0],
-                                    triCenterDualVert.y + .05 * threeDirections[bestSide][1],
+                                Mesh.Vertex triCenterDualVert = ((Mesh.Edge)dualMesh.edges.get(iEdge)).finalVertex();
+                                if (triCenterDualVert == null)
+                                    continue; // primal face was not a triangle, or inside out
+                                if (dualVertIndexToParentEdge[triCenterDualVert.myIndex()] != null)
+                                    continue; // definitely already did this vertex  XXX but root vertex stays null so it will be done 3 times :-(
+                                double triCenterDualVertPos[] = {
+                                    triCenterDualVert.x,
+                                    triCenterDualVert.y,
                                 };
-                                mg.drawPoint(whereToDrawMark[0],
-                                             whereToDrawMark[1], 5);
-                            }
+
+                                Mesh.Edge e0 = (Mesh.Edge)mesh.edges.get(iEdge);
+                                Mesh.Edge e1 = e0.next();
+                                Mesh.Edge e2 = e1.next();
+                                assert(e2.next() == e0);
+
+                                double threeDirections[][] = {
+                                    ((Mesh.Edge)dualMesh.edges.get(e0.myIndex())).opposite().direction,
+                                    ((Mesh.Edge)dualMesh.edges.get(e1.myIndex())).opposite().direction,
+                                    ((Mesh.Edge)dualMesh.edges.get(e2.myIndex())).opposite().direction,
+                                };
+
+                                Mesh.Edge threeDualEdges[] = {
+                                    ((Mesh.Edge)dualMesh.edges.get(e0.myIndex())).opposite(),
+                                    ((Mesh.Edge)dualMesh.edges.get(e1.myIndex())).opposite(),
+                                    ((Mesh.Edge)dualMesh.edges.get(e2.myIndex())).opposite(),
+                                };
+                                double threeFinalPositions[][] = new double[3][];
+                                FORI (i, 3)
+                                {
+                                    Mesh.Edge dualEdge = threeDualEdges[i];
+                                    Mesh.Vertex finalVertex = dualEdge.finalVertex();
+                                    if (finalVertex == null)
+                                        threeFinalPositions[i] = new double[] {Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY};
+                                    else
+                                        threeFinalPositions[i] = new double[] {finalVertex.x, finalVertex.y};
+                                }
+
+                                int bestSide = netMethod==NETMETHOD_OUTWARD ? 
+                                               /*
+                                               MAXI3(VecMath.dot(threeDirections[0], triCenterDualVertPos),
+                                                     VecMath.dot(threeDirections[1], triCenterDualVertPos),
+                                                     VecMath.dot(threeDirections[2], triCenterDualVertPos))
+                                               */
+                                               MAXI3(VecMath.normsqrd(threeFinalPositions[0]),
+                                                     VecMath.normsqrd(threeFinalPositions[1]),
+                                                     VecMath.normsqrd(threeFinalPositions[2]))
+                                             : MAXI3(threeDirections[0][1],
+                                                     threeDirections[1][1],
+                                                     threeDirections[2][1]);
+                                if (true)
+                                {
+                                    // Hack to simulate symbolic perterbation
+                                    // by an infinitesimal rotation counterclockwise
+                                    if (EQ(threeDirections[bestSide][1], threeDirections[(bestSide+1)%3][1], 1e-6)
+                                     && LT(threeDirections[bestSide][0], threeDirections[(bestSide+1)%3][0], 1e-6))
+                                    {
+                                        bestSide = (bestSide+1)%3;
+                                        if (EQ(threeDirections[bestSide][1], threeDirections[(bestSide+1)%3][1], 1e-6)
+                                         && LT(threeDirections[bestSide][0], threeDirections[(bestSide+1)%3][0], 1e-6))
+                                            bestSide = (bestSide+1)%3;
+                                    }
+                                    else
+                                    {
+                                        if (EQ(threeDirections[bestSide][1], threeDirections[(bestSide+2)%3][1], 1e-6)
+                                         && LT(threeDirections[bestSide][0], threeDirections[(bestSide+2)%3][0], 1e-6))
+                                            bestSide = (bestSide+2)%3;
+                                    }
+                                }
+                                if (true)
+                                {
+                                    // Hack to ensure that a negative-weight (assume that means boundary)
+                                    // vertex never has a positive-weight vertex as parent
+                                    Mesh.Edge threeEdges[] = {
+                                        ((Mesh.Edge)dualMesh.edges.get(e0.myIndex())).opposite(),
+                                        ((Mesh.Edge)dualMesh.edges.get(e1.myIndex())).opposite(),
+                                        ((Mesh.Edge)dualMesh.edges.get(e2.myIndex())).opposite(),
+                                    };
+                                    if (triCenterDualVert.weight < 0.
+                                     && threeEdges[bestSide].finalVertex() != null
+                                     && threeEdges[bestSide].finalVertex().weight >= 0.)
+                                    {
+                                        int origBestSide = bestSide;
+                                        bestSide = (threeDirections[(bestSide+1)%3][1] >= threeDirections[(bestSide+2)%3][1] ? (bestSide+1)%3 : (bestSide+2)%3);
+                                        if (triCenterDualVert.weight < 0.
+                                         && threeEdges[bestSide].finalVertex() != null
+                                         && threeEdges[bestSide].finalVertex().weight >= 0.)
+                                        {
+                                            bestSide = 3 - bestSide - origBestSide;
+                                        }
+                                    }
+                                }
+
+                                if (false) // set this to true to debug
+                                {
+                                    double whereToDrawMark[] = {
+                                        triCenterDualVert.x + .05 * threeDirections[bestSide][0],
+                                        triCenterDualVert.y + .05 * threeDirections[bestSide][1],
+                                    };
+                                    mg.drawPoint(whereToDrawMark[0],
+                                                 whereToDrawMark[1], 5);
+                                }
 
 
-                            Mesh.Edge e = bestSide==0 ? e0 : bestSide==1 ? e1 : e2;
-                            // remember each edge gets drawn in an arbitrary one of the two directions,
-                            // so we have to set the flag on both of them
-                            dualEdgeIsCut[e.myIndex()] = true;
-                            dualEdgeIsCut[e.opposite().myIndex()] = true;
+                                Mesh.Edge e = bestSide==0 ? e0 : bestSide==1 ? e1 : e2;
+                                // remember each edge gets drawn in an arbitrary one of the two directions,
+                                // so we have to set the flag on both of them
+                                dualEdgeIsCut[e.myIndex()] = true;
+                                dualEdgeIsCut[e.opposite().myIndex()] = true;
 
-                            // Set parent... but only if the edge
-                            // is really upwards.
-                            // to avoid a cycle in the graph
-                            {
-                                Mesh.Edge maybeParentEdge = ((Mesh.Edge)dualMesh.edges.get(e.myIndex())).opposite();
-                                if (GT(maybeParentEdge.direction[1], 0, 1e-6)
-                                 || (EQ(maybeParentEdge.direction[1], 0, 1e-6)
-                                  && maybeParentEdge.direction[0] > 0.))
-                                    dualVertIndexToParentEdge[triCenterDualVert.myIndex()] = maybeParentEdge;
+                                // Set parent... but only if the edge
+                                // is really upwards.
+                                // to avoid a cycle in the graph
+                                {
+                                    Mesh.Edge maybeParentEdge = ((Mesh.Edge)dualMesh.edges.get(e.myIndex())).opposite();
+                                    if (netMethod == NETMETHOD_OUTWARD)
+                                        dualVertIndexToParentEdge[triCenterDualVert.myIndex()] = maybeParentEdge;
+                                    else
+                                        if (GT(maybeParentEdge.direction[1], 0, 1e-6)
+                                         || (EQ(maybeParentEdge.direction[1], 0, 1e-6)
+                                          && maybeParentEdge.direction[0] > 0.))
+                                        dualVertIndexToParentEdge[triCenterDualVert.myIndex()] = maybeParentEdge;
+                                }
                             }
                         }
 
@@ -3195,17 +3306,22 @@ public class ShephardsPlayApplet
                                     // Starting with its opposite, walk around the lagoon
                                     // until we find a good exit.
                                     // In fact, record them all.
-                                    offBalanceEdgeToGoodLagoonExits[dualEdge.myIndex()] = new ArrayList();
+                                    offBalanceEdgeToGoodLagoonExits[iDualEdge] = new ArrayList();
+                                    offBalanceEdgeToLagoonEdges[iDualEdge] = new ArrayList();
 
                                     double lagoonCenter[] =
                                         VecMath.lerp(centerStrictlyBelowEachDualVertex[initialVertex.myIndex()],
                                                      new double[]{initialVertex.x, initialVertex.y},
                                                      initialVertex.weight/(initialVertex.weight+weightStrictlyBelowEachDualVertex[initialVertex.myIndex()]));
+                                    offBalanceEdgeToLagoonCenter[iDualEdge] = lagoonCenter;
                                     // begin with dualEdge.opposite() even though it's not really in the lagoon, so that we'll see the first exit from the same vertex if there is one
                                     for (Mesh.Edge lagoonEdge = dualEdge.opposite();
                                          lagoonEdge != dualEdge;
                                          lagoonEdge = nextDualEdgeInCutTree[lagoonEdge.myIndex()])
                                     {
+                                        if (lagoonEdge != dualEdge.opposite()) // first one isn't really a lagoon edge
+                                            offBalanceEdgeToLagoonEdges[iDualEdge].add(lagoonEdge);
+
                                         for (Mesh.Edge lagoonExitEdge = lagoonEdge.next();
                                              lagoonExitEdge != nextDualEdgeInCutTree[lagoonEdge.myIndex()];
                                              lagoonExitEdge = lagoonExitEdge.opposite().next())
@@ -3351,44 +3467,52 @@ public class ShephardsPlayApplet
                     //java.awt.Color darkBlue = new java.awt.Color(0.f,0.f,3/4.f);
                     //java.awt.Color darkBlue = new java.awt.Color(0.f,0.f,7/8.f);
 
+                    if (dualEdgeIsCut != null)
+                    {
+                        // showing net-- different color scheme
+                        FORIDOWN(iEdge, mesh.edges.size())
+                        {
+                            if (dualEdgeIsOffBalanceCut[iEdge])
+                            {
+                                dualEdgeColors[iEdge] = java.awt.Color.red;
+                            }
+                            else if (dualEdgeIsCut[iEdge])
+                            {
+                                dualEdgeColors[iEdge] = java.awt.Color.green;
+                            }
+                            else
+                            {
+                                dualEdgeColors[iEdge] = darkBlue;
+                            }
+                        }
+                        if (theBadLagoonExitToDraw != null)
+                        {
+                            dualEdgeColors[theBadLagoonExitToDraw.myIndex()]            = java.awt.Color.magenta; // red turning blue
+                            dualEdgeColors[theBadLagoonExitToDraw.opposite().myIndex()] = java.awt.Color.magenta; // red turning blue
+                            int theBadLagoonExitToDrawIndex = theBadLagoonExitToDraw.myIndex();
+                            FORIDOWN(iItem, offBalanceEdgeToGoodLagoonExits[theBadLagoonExitToDrawIndex].size())
+                            {
+                                Mesh.Edge dualEdge = (Mesh.Edge)offBalanceEdgeToGoodLagoonExits[theBadLagoonExitToDrawIndex].get(iItem);
+                                dualEdgeColors[dualEdge.myIndex()]            = java.awt.Color.cyan; // blue turning green
+                                dualEdgeColors[dualEdge.opposite().myIndex()] = java.awt.Color.cyan; // blue turning green
+                            }
+                            FORIDOWN(iItem, offBalanceEdgeToLagoonEdges[theBadLagoonExitToDrawIndex].size())
+                            {
+                                Mesh.Edge dualEdge = (Mesh.Edge)offBalanceEdgeToLagoonEdges[theBadLagoonExitToDrawIndex].get(iItem);
+                                dualEdgeColors[dualEdge.myIndex()]            = java.awt.Color.yellow;
+                                dualEdgeColors[dualEdge.opposite().myIndex()] = java.awt.Color.yellow;
+                            }
+                        }
+                    }
+
                     FORIDOWN (iEdge, mesh.edges.size())
                     {
                         Mesh.Edge dualEdge = (Mesh.Edge)dualMesh.edges.get(iEdge);
                         Mesh.Vertex leftDualVert = dualEdge.finalVertex();
                         if (leftDualVert == null)
                             continue; // primal face was not a triangle, or inside out
-                        Mesh.Edge edge = (Mesh.Edge)mesh.edges.get(iEdge);
-                        int jEdge = edge.opposite().myIndex();
 
-                        if (dualEdgeIsCut != null)
-                        {
-                            if (dualEdge == theBadLagoonExitToDraw
-                             || dualEdge.opposite() == theBadLagoonExitToDraw)
-                            {
-                                mg.setColor(java.awt.Color.magenta); // red turning blue
-                            }
-                            else if (theBadLagoonExitToDraw != null
-                                  && (offBalanceEdgeToGoodLagoonExits[theBadLagoonExitToDraw.myIndex()].indexOf(dualEdge) != -1
-                                   || offBalanceEdgeToGoodLagoonExits[theBadLagoonExitToDraw.myIndex()].indexOf(dualEdge.opposite()) != -1))
-                            {
-                                mg.setColor(java.awt.Color.cyan); // blue turning green
-                            }
-                            else if (dualEdgeIsOffBalanceCut[iEdge])
-                            {
-                                mg.setColor(java.awt.Color.red);
-                            }
-                            else if (dualEdgeIsCut[iEdge])
-                            {
-                                mg.setColor(java.awt.Color.green);
-                            }
-                            else
-                            {
-                                //mg.setColor(java.awt.Color.blue);
-                                mg.setColor(darkBlue);
-                            }
-                        }
-                        else
-                            mg.setColor(dualEdgeColors[dualEdge.myIndex()]);
+                        mg.setColor(dualEdgeColors[dualEdge.myIndex()]);
 
                         Mesh.Vertex rightDualVert = dualEdge.initialVertex();
 
@@ -3401,6 +3525,7 @@ public class ShephardsPlayApplet
                         }
                         else
                         {
+                            Mesh.Edge edge = (Mesh.Edge)mesh.edges.get(iEdge);
                             // Draw a ray out to infinity
                             double v0[] = {edge.initialVertex().x,
                                            edge.initialVertex().y};
@@ -3418,30 +3543,6 @@ public class ShephardsPlayApplet
                                                                
                         }
                     }
-
-                    //
-                    // Draw dual verts
-                    //
-                    FORIDOWN(iDualVert, dualMesh.verts.size())
-                    {
-                        Mesh.Vertex dualVert = (Mesh.Vertex)dualMesh.verts.get(iDualVert);
-
-                        //System.out.println("    drawing dual vert at "+Arrays.toStringCompact(dualVert));
-                        mg.setColor(dualVertColors[iDualVert]); // TODO: only if changed?
-                        mg.drawPoint(dualVert.x,
-                                     dualVert.y, 5);
-
-                    }
-
-                    //
-                    // Draw center of curvature
-                    if (avg != null)
-                    {
-                        mg.setColor(dualVertSelectionColor);
-                        mg.drawPoint(avg[0],
-                                     avg[1], 7);
-                    }
-
 
                     //
                     // And, as polish for voronoi diagrams,
@@ -3472,6 +3573,41 @@ public class ShephardsPlayApplet
                                         doAntiAliasing);
                         }
                     }
+
+
+                    //
+                    // Draw dual verts
+                    //
+                    FORIDOWN(iDualVert, dualMesh.verts.size())
+                    {
+                        Mesh.Vertex dualVert = (Mesh.Vertex)dualMesh.verts.get(iDualVert);
+
+                        //System.out.println("    drawing dual vert at "+Arrays.toStringCompact(dualVert));
+                        mg.setColor(dualVertColors[iDualVert]); // TODO: only if changed?
+                        mg.drawPoint(dualVert.x,
+                                     dualVert.y, showNet ? 2 : 5);
+
+                    }
+
+                    //
+                    // Draw center of curvature
+                    if (avg != null)
+                    {
+                        mg.setColor(dualVertSelectionColor);
+                        mg.drawPoint(avg[0],
+                                     avg[1],
+                                     7);
+                    }
+
+                    if (theBadLagoonExitToDraw != null)
+                    {
+                        double lagoonCenter[] = offBalanceEdgeToLagoonCenter[theBadLagoonExitToDraw.myIndex()];
+                        mg.setColor(dualVertSelectionColor);
+                        mg.drawPoint(lagoonCenter[0],
+                                     lagoonCenter[1],
+                                     3);
+                    }
+
 
 
 
@@ -3620,14 +3756,18 @@ public class ShephardsPlayApplet
                     //mg.setColor(java.awt.Color.red);
                     mg.setColor(dualColor);
                     drawLabels(mg, mostRecentDualMesh, true); // dual
+                } // if (doLabels)
 
+                if (doLabels
+                //|| showNet
+                )
+                {
                     // draw a subtle dot at the origin
                     mg.setColor(java.awt.Color.white);
                     mg.drawPoint(0., 0., 1);
+                }
 
-                } // if (doLabels)
-
-                // if showing an optimization path, display a label
+                // if showing an optimization path, display a message about it
                 if (netless8OptimizationIndex != -1)
                 {
                     mg.setColor(java.awt.Color.white);
@@ -4312,8 +4452,8 @@ public class ShephardsPlayApplet
             private void doBlueNoiseThing()
             {
                 double stubbornness = 100;
-                double overlappingDiskRadiusX = .1;
-                double overlappingDiskRadiusY = .1;
+                double overlappingDiskRadiusX = .2;
+                double overlappingDiskRadiusY = .2;
                 double verts[][] = generateBlueNoiseOnUnitSquare(stubbornness,
                                                                  overlappingDiskRadiusX,
                                                                  overlappingDiskRadiusY);
