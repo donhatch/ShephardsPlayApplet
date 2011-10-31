@@ -2910,103 +2910,98 @@ public class ShephardsPlayApplet
                             int nDualEdges = dualMesh.edges.size();
                             int nDualVerts = dualMesh.verts.size();
 
-                            if (true)
+                            // Use uniform random spanning tree algorithm, from David Bruce Wilson
+                            // "Generating Random Spanning Trees More Quickly than the Cover Time"
+
+                            Mesh.Edge edgesOut[][] = new Mesh.Edge[nDualVerts+1][];
                             {
-                                // Use uniform random spanning tree algorithm, from David Bruce Wilson
-                                // "Generating Random Spanning Trees More Quickly than the Cover Time"
-
-                                Mesh.Edge edgesOut[][] = new Mesh.Edge[nDualVerts+1][];
+                                int totalArity = 0;
+                                FORI (iDualVert, nDualVerts) // all but vertex at infinity
                                 {
-                                    int totalArity = 0;
-                                    FORI (iDualVert, nDualVerts) // all but vertex at infinity
-                                    {
-                                        Mesh.Vertex dualVert = (Mesh.Vertex)dualMesh.verts.get(iDualVert);
-                                        edgesOut[iDualVert] = new Mesh.Edge[dualVert.arity];
-                                        totalArity += dualVert.arity;
-                                    }
-                                    // figure out arity of vertex at infinity.
-                                    // total arity of all verts *including* the one at infinity
-                                    // is twice num edges (i.e. num half-edges), so...
-                                    int arityOfVertexAtInfinity = nDualEdges - totalArity;
-                                    edgesOut[nDualVerts] = new Mesh.Edge[arityOfVertexAtInfinity];
-
-                                    int nEdgesOut[] = new int[nDualVerts+1]; // all zeros initially
-                                    FORI (iDualEdge, nDualEdges)
-                                    {
-                                        Mesh.Edge dualEdge = (Mesh.Edge)dualMesh.edges.get(iDualEdge);
-                                        Mesh.Vertex v0 = dualEdge.initialVertex();
-                                        Mesh.Vertex v1 = dualEdge.finalVertex();
-                                        int i0 = v0==null ? nDualVerts : v0.myIndex();
-                                        int i1 = v1==null ? nDualVerts : v1.myIndex();
-
-                                        edgesOut[i0][nEdgesOut[i0]++] = dualEdge;
-                                    }
-                                    FORI (iDualVert, nDualVerts+1)
-                                        assert(nEdgesOut[iDualVert] == edgesOut[iDualVert].length);
+                                    Mesh.Vertex dualVert = (Mesh.Vertex)dualMesh.verts.get(iDualVert);
+                                    edgesOut[iDualVert] = new Mesh.Edge[dualVert.arity];
+                                    totalArity += dualVert.arity;
                                 }
+                                // figure out arity of vertex at infinity.
+                                // total arity of all verts *including* the one at infinity
+                                // is twice num edges (i.e. num half-edges), so...
+                                int arityOfVertexAtInfinity = nDualEdges - totalArity;
+                                edgesOut[nDualVerts] = new Mesh.Edge[arityOfVertexAtInfinity];
 
-                                // It's unclear from the paper whether it's okay
-                                // to start from an arbitrary vertex or what
-                                // (and whether a non-random initial vertex
-                                // results in skewing the distribution,
-                                // or making it more inefficient, or what).
-                                // The paper recommends starting at a random end
-                                // of a random edge.
-                                // But it seems to me that
-                                //     (1) a non-random initial vertex will *not* skew the distribution
-                                //         (since the trees rooted at any particular vertex
-                                //         are the same, by simple re-rooting,
-                                //         as the trees rooted at any other particular vertex)
-                                //     (2) starting at a random end of a random edge
-                                //         is the same as selecting an initial vertex
-                                //         with probability proportional to its arity
-                                //     (3) if doing that is advantageous for efficiency,
-                                //         then simply starting with the highest-arity
-                                //         vertex is even more advantageous
-                                // Typically the dual graph's vertices all have arity 3
-                                // except for the infinite vertex which has relatively high arity,
-                                // so we'll just let the root (start of the algorithm) be the infinite vertex.
-                                // Empirically (on delaunay triangulation of blue noise),
-                                // this does keep the running time low...
-                                // and furthermore the "next" data structure returned by using the infinite vertex
-                                // as root is exactly the one we'll need later.
-
-                                java.util.Random generator = new java.util.Random(0);
-                                int r = nDualVerts; // start with the infinite vertex
-
-                                // Algorithm RandomTreeWithRoot(r) from paper...
-                                // Since the infinite vertex doesn't have a root,
-                                // we can work directly with the final output array dualVertIndexToParentEdge
-                                // of size nDualVerts (rather than nDualVerts+1,
-                                // the size we'd need if starting at some other vertex),
-                                // which is initially all nulls.
-                                int nRandomCalls = 0;
+                                int nEdgesOut[] = new int[nDualVerts+1]; // all zeros initially
+                                FORI (iDualEdge, nDualEdges)
                                 {
-                                    boolean inTree[] = new boolean[nDualVerts+1]; // +1 to include infinite vertex; all false initially
-                                    inTree[r] = true;
-                                    FORI (iDualVert, nDualVerts+1)
-                                    {
-                                        int u = iDualVert;
-                                        while (!inTree[u])
-                                        {
-                                            nRandomCalls++;
-                                            Mesh.Edge dualEdge = edgesOut[u][generator.nextInt(edgesOut[u].length)];
-                                            dualVertIndexToParentEdge[u] = dualEdge;
-                                            u = dualEdge.finalVertex() != null ? dualEdge.finalVertex().myIndex() : nDualVerts;
-                                        }
-                                        u = iDualVert;
-                                        while (!inTree[u])
-                                        {
-                                            inTree[u] = true;
-                                            Mesh.Edge dualEdge = dualVertIndexToParentEdge[u];
-                                            dualEdgeIsCut[dualEdge.myIndex()] = true;
-                                            dualEdgeIsCut[dualEdge.opposite().myIndex()] = true;
-                                            u = dualEdge.finalVertex() != null ? dualEdge.finalVertex().myIndex() : nDualVerts;
-                                        }
-                                    }
+                                    Mesh.Edge dualEdge = (Mesh.Edge)dualMesh.edges.get(iDualEdge);
+                                    Mesh.Vertex v0 = dualEdge.initialVertex();
+                                    int i0 = v0==null ? nDualVerts : v0.myIndex();
+
+                                    edgesOut[i0][nEdgesOut[i0]++] = dualEdge;
                                 }
-                                PRINT(nRandomCalls);
+                                FORI (iDualVert, nDualVerts+1)
+                                    assert(nEdgesOut[iDualVert] == edgesOut[iDualVert].length);
                             }
+
+                            // It's unclear from the paper whether it's okay
+                            // to start from an arbitrary vertex or what
+                            // (and whether a non-random initial vertex
+                            // results in skewing the distribution,
+                            // or making it more inefficient, or what).
+                            // The paper recommends starting at a random end
+                            // of a random edge.
+                            // But it seems to me that
+                            //     (1) a non-random initial vertex will *not* skew the distribution
+                            //         (since the trees rooted at any particular vertex
+                            //         are the same, by simple re-rooting,
+                            //         as the trees rooted at any other particular vertex)
+                            //     (2) starting at a random end of a random edge
+                            //         is the same as selecting an initial vertex
+                            //         with probability proportional to its arity
+                            //     (3) if doing that is advantageous for efficiency,
+                            //         then simply starting with the highest-arity
+                            //         vertex is even more advantageous
+                            // Typically the dual graph's vertices all have arity 3
+                            // except for the infinite vertex which has relatively high arity,
+                            // so we'll just let the root (start of the algorithm) be the infinite vertex.
+                            // Empirically (on delaunay triangulation of blue noise),
+                            // this does keep the running time low...
+                            // and furthermore the "next" data structure returned by using the infinite vertex
+                            // as root is exactly the one we'll need later.
+
+                            java.util.Random generator = new java.util.Random(0);
+                            int r = nDualVerts; // start with the infinite vertex
+
+                            // Algorithm RandomTreeWithRoot(r) from paper...
+                            // Since the infinite vertex doesn't have a root,
+                            // we can work directly with the final output array dualVertIndexToParentEdge
+                            // of size nDualVerts (rather than nDualVerts+1,
+                            // the size we'd need if starting at some other vertex),
+                            // which is initially all nulls.
+                            int nRandomCalls = 0;
+                            {
+                                boolean inTree[] = new boolean[nDualVerts+1]; // +1 to include infinite vertex; all false initially
+                                inTree[r] = true;
+                                FORI (iDualVert, nDualVerts+1)
+                                {
+                                    int u = iDualVert;
+                                    while (!inTree[u])
+                                    {
+                                        nRandomCalls++;
+                                        Mesh.Edge dualEdge = edgesOut[u][generator.nextInt(edgesOut[u].length)];
+                                        dualVertIndexToParentEdge[u] = dualEdge;
+                                        u = dualEdge.finalVertex() != null ? dualEdge.finalVertex().myIndex() : nDualVerts;
+                                    }
+                                    u = iDualVert;
+                                    while (!inTree[u])
+                                    {
+                                        inTree[u] = true;
+                                        Mesh.Edge dualEdge = dualVertIndexToParentEdge[u];
+                                        dualEdgeIsCut[dualEdge.myIndex()] = true;
+                                        dualEdgeIsCut[dualEdge.opposite().myIndex()] = true;
+                                        u = dualEdge.finalVertex() != null ? dualEdge.finalVertex().myIndex() : nDualVerts;
+                                    }
+                                }
+                            }
+                            PRINT(nRandomCalls);
 
 
                             System.out.println("   done computing random net");
