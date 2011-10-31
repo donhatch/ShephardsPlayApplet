@@ -2969,32 +2969,17 @@ public class ShephardsPlayApplet
                                 // as root is exactly the one we'll need later.
 
                                 java.util.Random generator = new java.util.Random(0);
-                                int r;
-                                if (false)
-                                {
-                                    // do what the paper recommends
-                                    if (nDualEdges > 0)
-                                    {
-                                        Mesh.Edge randomEdge = (Mesh.Edge)dualMesh.edges.get(generator.nextInt(nDualEdges));
-                                        Mesh.Vertex randomEndOfRandomEdge = (generator.nextBoolean() ? randomEdge.initialVertex()
-                                                                                                     : randomEdge.finalVertex());
-                                        r = randomEndOfRandomEdge == null ? nDualVerts : randomEndOfRandomEdge.myIndex();
-                                    }
-                                    else
-                                        r = 0;
-                                }
-                                else
-                                {
-                                    // do what I recommend
-                                    r = nDualVerts; // start with the infinite vertex
-                                }
-
+                                int r = nDualVerts; // start with the infinite vertex
 
                                 // Algorithm RandomTreeWithRoot(r) from paper...
-                                Mesh.Edge next[] = new Mesh.Edge[nDualVerts+1]; // all null initially
+                                // Since the infinite vertex doesn't have a root,
+                                // we can work directly with the final output array dualVertIndexToParentEdge
+                                // of size nDualVerts (rather than nDualVerts+1,
+                                // the size we'd need if starting at some other vertex),
+                                // which is initially all nulls.
                                 int nRandomCalls = 0;
                                 {
-                                    boolean inTree[] = new boolean[nDualVerts+1]; // all false initially
+                                    boolean inTree[] = new boolean[nDualVerts+1]; // +1 to include infinite vertex; all false initially
                                     inTree[r] = true;
                                     FORI (iDualVert, nDualVerts+1)
                                     {
@@ -3002,68 +2987,24 @@ public class ShephardsPlayApplet
                                         while (!inTree[u])
                                         {
                                             nRandomCalls++;
-                                            next[u] = edgesOut[u][generator.nextInt(edgesOut[u].length)];
-                                            u = (next[u].finalVertex() != null ? next[u].finalVertex().myIndex() : nDualVerts);
+                                            Mesh.Edge dualEdge = edgesOut[u][generator.nextInt(edgesOut[u].length)];
+                                            dualVertIndexToParentEdge[u] = dualEdge;
+                                            u = dualEdge.finalVertex() != null ? dualEdge.finalVertex().myIndex() : nDualVerts;
                                         }
                                         u = iDualVert;
                                         while (!inTree[u])
                                         {
                                             inTree[u] = true;
-                                            u = (next[u].finalVertex() != null ? next[u].finalVertex().myIndex() : nDualVerts);
+                                            Mesh.Edge dualEdge = dualVertIndexToParentEdge[u];
+                                            dualEdgeIsCut[dualEdge.myIndex()] = true;
+                                            dualEdgeIsCut[dualEdge.opposite().myIndex()] = true;
+                                            u = dualEdge.finalVertex() != null ? dualEdge.finalVertex().myIndex() : nDualVerts;
                                         }
                                     }
                                 }
                                 PRINT(nRandomCalls);
-
-
-                                FORI (iDualVert, nDualVerts+1)
-                                {
-                                    Mesh.Edge dualEdge = next[iDualVert];
-                                    if (iDualVert == r)
-                                        assert(dualEdge == null);
-                                    else
-                                    {
-                                        dualEdgeIsCut[dualEdge.myIndex()] = true;
-                                        dualEdgeIsCut[dualEdge.opposite().myIndex()] = true;
-                                    }
-                                }
                             }
 
-
-                            // Figure out parents.
-                            // Parent of a vertex is the next vertex on the path toward infinity
-                            // in the cut tree.
-                            // Proceed by depth-first search starting at infinity.
-                            {
-                                int iStack = 0;
-                                Mesh.Edge stack[] = new Mesh.Edge[nDualEdges]; // worst case
-                                FORI (iDualEdge, nDualEdges)
-                                {
-                                    Mesh.Edge dualEdge = (Mesh.Edge)dualMesh.edges.get(iDualEdge);
-                                    if (dualEdge.initialVertex() == null
-                                     && dualEdgeIsCut[iDualEdge])
-                                    {
-                                        stack[iStack++] = dualEdge;
-                                        while (iStack > 0)
-                                        {
-                                            dualEdge = stack[--iStack];
-                                            Mesh.Vertex finalVertex = dualEdge.finalVertex();
-                                            dualVertIndexToParentEdge[finalVertex.myIndex()] = dualEdge.opposite();
-
-                                            // push all child edges in the cut tree
-                                            Mesh.Edge childEdge = dualEdge.next();
-                                            while (childEdge != dualEdge.opposite())
-                                            {
-                                                if (dualEdgeIsCut[childEdge.myIndex()])
-                                                {
-                                                    stack[iStack++] = childEdge;
-                                                }
-                                                childEdge = childEdge.opposite().next(); // next child, CCW around the hub (dual is backwards from primal)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
 
                             System.out.println("   done computing random net");
                         }
