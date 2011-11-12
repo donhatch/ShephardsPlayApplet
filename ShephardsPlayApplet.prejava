@@ -972,6 +972,8 @@ public class ShephardsPlayApplet
             System.out.println("    'O' - toggle doOptimize");
             System.out.println("    'l' - toggle showLabels");
             System.out.println("    '0' - toggle showOrigin");
+            System.out.println("    'g' - toggle showGrid");
+            System.out.println("    ctrl-'g' - toggle snapToGrid");
             System.out.println("    'a' - toggle doArrowsTowardsSharpestDihedrals (green)");
             System.out.println("    alt-'a' - toggle doArrowsTowardsShortestEdges (cyan)");
             System.out.println("    'n' - toggle showNet");
@@ -1386,6 +1388,10 @@ public class ShephardsPlayApplet
 
                 double thisP[] = new double[2];
                 mostRecentGraphics.pick(e.getX(), e.getY(), thisP);
+                double snappedThisP[] = !snapToGrid ? thisP : new double[] {
+                    (double)Math.round(thisP[0]/gridSnapQuantum)*gridSnapQuantum,
+                    (double)Math.round(thisP[1]/gridSnapQuantum)*gridSnapQuantum,
+                };
 
                 stateWhenPressed = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices);
 
@@ -1409,7 +1415,7 @@ public class ShephardsPlayApplet
                         if (verts.size() == 0)
                         {
                             System.out.println("        (Adding a vertex first)");
-                            mesh.addIsolatedVertex(thisP[0], thisP[1], 0);
+                            mesh.addIsolatedVertex(snappedThisP[0], snappedThisP[1], 0);
                         }
 
                         //
@@ -1425,7 +1431,7 @@ public class ShephardsPlayApplet
                         //
 
                         double vertsToAdd[][] = {
-                            thisP,
+                            snappedThisP,
                         };
 
                         if (e.isControlDown())
@@ -1433,7 +1439,7 @@ public class ShephardsPlayApplet
                             // add a mirror image.
                             // prepend instead of appending, so that the last thing we do
                             // is the one that will be dragged.
-                            vertsToAdd = (double[][])Arrays.concat(new double[][]{{-thisP[0], thisP[1]}}, vertsToAdd);
+                            vertsToAdd = (double[][])Arrays.concat(new double[][]{{-snappedThisP[0], snappedThisP[1]}}, vertsToAdd);
                             // TODO: detect entire symmetry group
                         }
 
@@ -1601,6 +1607,12 @@ public class ShephardsPlayApplet
                     else
                     {
                         Mesh.Vertex vert = (Mesh.Vertex)mesh.verts.get(beingDraggedVertIndex);
+                        if (snapToGrid)
+                        {
+                            System.out.println("Snapping vertex "+beingDraggedVertIndex+" from "+vert.x+" "+vert.y+" "+vert.h+"");
+                            vert.x = (double)Math.round(vert.x/gridSnapQuantum)*gridSnapQuantum;
+                            vert.y = (double)Math.round(vert.y/gridSnapQuantum)*gridSnapQuantum;
+                        }
                         System.out.println("Dragging vertex "+beingDraggedVertIndex+" from "+vert.x+" "+vert.y+" "+vert.h+"");
                     }
                 }
@@ -1642,6 +1654,10 @@ public class ShephardsPlayApplet
 
                 double thisP[] = new double[2];
                 mostRecentGraphics.pick(e.getX(), e.getY(), thisP);
+                double snappedThisP[] = !snapToGrid ? thisP : new double[] {
+                    (double)Math.round(thisP[0]/gridSnapQuantum)*gridSnapQuantum,
+                    (double)Math.round(thisP[1]/gridSnapQuantum)*gridSnapQuantum,
+                };
 
                 int whichButton = getButton(e);
                 if (whichButton == java_awt_event_MouseEvent_BUTTON1)
@@ -1650,7 +1666,7 @@ public class ShephardsPlayApplet
                     {
                         if (mesh.verts.size() == 1)
                         {
-                            mesh.addIsolatedVertex(thisP[0], thisP[1], 0);
+                            mesh.addIsolatedVertex(snappedThisP[0], snappedThisP[1], 0);
                         }
                         int finalVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1]);
                         if (beingDraggedVertIndex != -1
@@ -1715,6 +1731,14 @@ public class ShephardsPlayApplet
 
                 double thisP[] = new double[2];
                 mostRecentGraphics.pick(e.getX(), e.getY(), thisP);
+                double snappedThisP[] = !snapToGrid ? thisP : new double[] {
+                    (double)Math.round(thisP[0]/gridSnapQuantum)*gridSnapQuantum,
+                    (double)Math.round(thisP[1]/gridSnapQuantum)*gridSnapQuantum,
+                };
+                double snappedPrevP[] = !snapToGrid ? prevP : new double[] {
+                    (double)Math.round(prevP[0]/gridSnapQuantum)*gridSnapQuantum,
+                    (double)Math.round(prevP[1]/gridSnapQuantum)*gridSnapQuantum,
+                };
 
                 if (button1IsDown || button2IsDown)
                 {
@@ -1821,8 +1845,8 @@ public class ShephardsPlayApplet
                             else
                             {
                                 // Drag just the selected vert
-                                ((Mesh.Vertex)mesh.verts.get(beingDraggedVertIndex)).x += thisP[0]-prevP[0];
-                                ((Mesh.Vertex)mesh.verts.get(beingDraggedVertIndex)).y += thisP[1]-prevP[1];
+                                ((Mesh.Vertex)mesh.verts.get(beingDraggedVertIndex)).x += snappedThisP[0]-snappedPrevP[0];
+                                ((Mesh.Vertex)mesh.verts.get(beingDraggedVertIndex)).y += snappedThisP[1]-snappedPrevP[1];
                             }
 
                             if (doContinuouslyDelaunayize.get()) delaunayize();
@@ -2229,6 +2253,18 @@ public class ShephardsPlayApplet
                         theCanvas.repaint();
                         break;
 
+                    case 'g': // toggle showGrid
+                        showGrid ^= true;
+                        System.out.println("showGrid -> "+showGrid);
+                        theCanvas.repaint();
+                        break;
+
+                    case CTRL('g'): // toggle snapToGrid
+                        snapToGrid ^= true;
+                        System.out.println("snapToGrid -> "+snapToGrid);
+                        // no need to repaint
+                        break;
+
                     case '0': // toggle showOrigin
                         showOrigin ^= true;
                         System.out.println("showOrigin -> "+showOrigin);
@@ -2458,6 +2494,12 @@ public class ShephardsPlayApplet
                         break;
                     }
 
+                    case CTRL('t'): // analyze random spanning trees
+                    {
+                        analyzeRandomSpanningTrees(mesh);
+                        break;
+                    }
+
 
                     default:
                         System.out.println("Unknown key '"+c+"'("+(int)e.getKeyChar()+") typed");
@@ -2683,6 +2725,59 @@ public class ShephardsPlayApplet
                 //
                 mg.setColor(java.awt.Color.black);
                 mg.fillWindow();
+
+                if (showGrid)
+                {
+                    // experiment with grids... not sure exactly what I want yet
+
+                    // XXX get these for real
+                    double xmax = 5.;
+                    double ymax = 5.;
+
+                    // level 0 : 1 apart
+                    // level 1: 1/2 apart
+                    // level 2: 1/4 apart
+                    // etc.
+                    int nLevels = 8;
+                    FORIDOWN(iLevel, nLevels)
+                    {
+                        // tweaked til I like it...
+                        double start = .1;
+                        double speed = 1./3.;
+                        float luminance = (float)(start * Math.pow(.5, iLevel*speed));
+                        mg.setColor(new java.awt.Color(luminance,luminance,luminance));
+                        int gridLinesPerUnit = 1 << iLevel;
+                        FORI (iGridLine, gridLinesPerUnit * xmax)
+                        {
+                            if (iLevel == 0
+                             || iGridLine % 2 == 1)
+                            {
+                                double x = iGridLine / (double)gridLinesPerUnit;
+                                mg.drawLine(-ymax, x,
+                                             ymax, x,
+                                             doAntiAliasing);
+                                mg.drawLine(-ymax, -x,
+                                             ymax, -x,
+                                             doAntiAliasing);
+                            }
+                        }
+                        FORI (iGridLine, gridLinesPerUnit * ymax)
+                        {
+                            if (iLevel == 0
+                             || iGridLine % 2 == 1)
+                            {
+                                double y = iGridLine / (double)gridLinesPerUnit;
+                                mg.drawLine( y, -xmax,
+                                             y,  xmax,
+                                             doAntiAliasing);
+                                mg.drawLine(-y, -xmax,
+                                            -y,  xmax,
+                                             doAntiAliasing);
+                            }
+                        }
+                    }
+                }
+
 
 
 
@@ -3807,7 +3902,6 @@ public class ShephardsPlayApplet
                     mg.setColor(java.awt.Color.white);
                     mg.drawPoint(0., 0., 1);
                 }
-
                 // if showing an optimization path, display a message about it
                 if (netless8OptimizationIndex != -1)
                 {
@@ -8548,6 +8642,312 @@ OFF
             return answer;
         } // generateBlueNoiseOnUnitSquare
 
+        // See paper "Generating Random Spanning Trees
+        // More Quickly than the Cover Time" by David Bruce Wilson.
+        // But, can't I do it in O(n) time,
+        // by simply growing the tree and picking a random new edge out of it on every step?
+        private static void analyzeRandomSpanningTrees(Mesh mesh)
+        {
+            System.out.println("    in analyzeRandomSpanningTrees");
+            int nEdges = mesh.edges.size();
+            PRINT(nEdges);
+            if (nEdges > 24)
+            {
+                System.out.println("too many edges, bailing");
+                return;
+            }
+
+            // convert to simpler data structure...
+
+            int nVerts = mesh.verts.size();
+            int e2v[][] = new int[nEdges][2]; // edge to verts
+            int e2opposite[] = new int[nEdges];
+            int e2next[] = new int[nEdges];
+
+            boolean infiniteVertexUsed = false; // until proven otherwise
+            FORI (iEdge, nEdges)
+            {
+                Mesh.Edge edge = (Mesh.Edge)mesh.edges.get(iEdge);
+                Mesh.Vertex v0 = edge.initialVertex();
+                Mesh.Vertex v1 = edge.finalVertex();
+                int i0 = v0==null ? nVerts : v0.myIndex();
+                int i1 = v1==null ? nVerts : v1.myIndex();
+                e2v[iEdge][0] = i0;
+                e2v[iEdge][1] = i1;
+                if (v0 == null || v1 == null)
+                    infiniteVertexUsed = true;
+                e2opposite[iEdge] = edge.opposite().myIndex();
+                Mesh.Edge next = edge.next();
+                if (next == null)
+                {
+                    // final vertex is the infinite one; to find next, need to walk backwards around the face
+                    next = edge;
+                    while (next.prev() != null)
+                        next = next.prev();
+                }
+                e2next[iEdge] = next.myIndex();
+            }
+            PRINTARRAY(e2v);
+            PRINTARRAY(e2opposite);
+            PRINTARRAY(e2next);
+            PRINT(nVerts);
+            PRINT(infiniteVertexUsed);
+            if (infiniteVertexUsed)
+                nVerts++;
+            PRINT(nVerts);
+
+            int v2e[][] = new int[nVerts][];
+            {
+                int arities[] = new int[nVerts]; // zeros initially
+                FORI (iEdge, nEdges)
+                    arities[e2v[iEdge][0]]++;
+                FORI (iVert, nVerts)
+                {
+                    v2e[iVert] = new int[arities[iVert]];
+                    arities[iVert] = 0;
+                }
+                FORI (iEdge, nEdges)
+                {
+                    int iVert = e2v[iEdge][0];
+                    if (arities[iVert] == 0)
+                    {
+                        v2e[iVert][0] = iEdge; // arbitrary edge out of the vertex
+                        arities[iVert] = 1;
+                    }
+                }
+                FORI (iVert, nVerts)
+                {
+                    if (arities[iVert] == 1)
+                    {
+                        while (arities[iVert] < v2e[iVert].length)
+                        {
+                            v2e[iVert][arities[iVert]] = e2next[e2opposite[v2e[iVert][arities[iVert]-1]]]; // next one CW around the vertex
+                            arities[iVert]++;
+                        }
+                        assert(e2next[e2opposite[v2e[iVert][arities[iVert]-1]]] == v2e[iVert][0]);
+                    }
+                    assert(arities[iVert] == v2e[iVert].length);
+                    FORI (iEdgeOut, v2e[iVert].length)
+                        assert(e2v[v2e[iVert][iEdgeOut]][0] == iVert);
+                }
+            }
+            PRINTARRAY(v2e);
+
+            java.util.Random generator = new java.util.Random();
+
+            int counts[] = new int[1<<nEdges];
+
+            int nTries = 1000*1000;
+            FORI (iTry, nTries)
+            {
+                // Make a random spanning tree, and increment its count.
+
+                int whichTree;
+
+                if (false)
+                {
+                    // wilson's algorithm with r=0
+                    boolean inTree[] = new boolean[nVerts]; // false initially
+                    int next[] = new int[nVerts]; // vertex to next *edge*, not vertex
+                    int r = 0; // arbitrarily
+                    next[r] = -1;
+                    inTree[r] = true;
+                    FORI (i, nVerts)
+                    {
+                        int u = i;
+                        while (!inTree[u])
+                        {
+                            next[u] = v2e[u][generator.nextInt(v2e[u].length)];
+                            u = e2v[next[u]][1];
+                        }
+                        u = i;
+                        while (!inTree[u])
+                        {
+                            inTree[u] = true;
+                            u = e2v[next[u]][1];
+                        }
+                    }
+                    whichTree = 0;
+                    FORI (iVert, nVerts)
+                    {
+                        int iEdge = next[iVert];
+                        if (iEdge != -1)
+                        {
+                            whichTree |= (1 << iEdge);
+                            whichTree |= (1 << e2opposite[iEdge]);
+                        }
+                    }
+                }
+                else if (false)
+                {
+                    // random walk from 0,
+                    // keeping *last* edge to each new vertex.
+                    // This apparently isn't uniform!
+                    boolean inTree[] = new boolean[nVerts]; // false initially
+                    int prev[] = VecMath.fillvec(nVerts, -1); // vertex to prev *edge*, not vertex
+                    int r = 0; // arbitrarily
+
+                    inTree[r] = true;
+                    int nVertsInTree = 1;
+                    int u = r;
+                    while (nVertsInTree < nVerts)
+                    {
+                        int iEdge = v2e[u][generator.nextInt(v2e[u].length)];
+                        u = e2v[iEdge][1];
+                        prev[u] = iEdge; // clobber old value if any, so we retain last edge to u
+                        if (!inTree[u])
+                        {
+                            inTree[u] = true;
+                            nVertsInTree++;
+                        }
+                    }
+
+                    whichTree = 0;
+                    FORI (iVert, nVerts)
+                    {
+                        int iEdge = prev[iVert];
+                        if (iEdge != -1)
+                        {
+                            whichTree |= (1 << iEdge);
+                            whichTree |= (1 << e2opposite[iEdge]);
+                        }
+                    }
+                }
+                else if (false)
+                {
+                    // random walk from 0,
+                    // keeping *first* edge to each new vertex.
+                    // This seems to be uniform.
+                    boolean inTree[] = new boolean[nVerts]; // false initially
+                    int prev[] = VecMath.fillvec(nVerts, -1); // vertex to prev *edge*, not vertex
+                    int r = 0; // arbitrarily
+
+                    inTree[r] = true;
+                    int nVertsInTree = 1;
+                    int u = r;
+                    while (nVertsInTree < nVerts)
+                    {
+                        int iEdge = v2e[u][generator.nextInt(v2e[u].length)];
+                        u = e2v[iEdge][1];
+                        if (!inTree[u])
+                        {
+                            prev[u] = iEdge; // only record first edge to u
+                            inTree[u] = true;
+                            nVertsInTree++;
+                        }
+                    }
+
+                    whichTree = 0;
+                    FORI (iVert, nVerts)
+                    {
+                        int iEdge = prev[iVert];
+                        if (iEdge != -1)
+                        {
+                            whichTree |= (1 << iEdge);
+                            whichTree |= (1 << e2opposite[iEdge]);
+                        }
+                    }
+                }
+                else if (true)
+                {
+                    // my method--
+                    // start at vertex 0 and grow the tree randomly.
+                    // Oh damn, it's not uniform after all-- try it on a triangle:
+                    // the probabilities are 1/4,1/4,1/2.
+                    // Can it be fixed?
+                    boolean inTree[] = new boolean[nVerts]; // false initially
+                    int prev[] = VecMath.fillvec(nVerts, -1);
+
+                    int nPotentialNextEdges = 0;
+                    int potentialNextEdges[] = new int[nEdges];
+                    int e2indexInPotentialNextEdges[] = VecMath.fillvec(nEdges, -1);
+
+                    int u = 0;
+                    inTree[u] = true;
+                    FORI (iEdgeOut, v2e[u].length)
+                    {
+                        int iEdge = v2e[u][iEdgeOut];
+                        if (!inTree[e2v[iEdge][1]])
+                        {
+                            e2indexInPotentialNextEdges[iEdge] = nPotentialNextEdges;
+                            potentialNextEdges[nPotentialNextEdges] = iEdge;
+                            nPotentialNextEdges++;
+                        }
+                    }
+                    while (nPotentialNextEdges > 0)
+                    {
+                        int iPotentialNextEdge = generator.nextInt(nPotentialNextEdges);
+                        int iEdge = potentialNextEdges[iPotentialNextEdge];
+                        u = e2v[iEdge][1];
+                        assert(!inTree[u]);
+                        inTree[u] = true;
+                        prev[u] = iEdge;
+
+                        // For each edge out of u:
+                        // if it's back to the tree (which includes iEdge itself),
+                        // remove that edge from the boundary.
+                        // otherwise, add that edge to the boundary.
+                        FORI (iEdgeOut, v2e[u].length)
+                        {
+                            int jEdge = v2e[u][iEdgeOut];
+                            boolean isBackToTree = inTree[e2v[jEdge][1]];
+                            assert(isBackToTree == (e2indexInPotentialNextEdges[e2opposite[jEdge]] != -1));
+                            if (isBackToTree)
+                            {
+                                // remove (opposite of) jEdge from boundary.
+                                int index = e2indexInPotentialNextEdges[e2opposite[jEdge]];
+                                assert(index != -1);
+                                e2indexInPotentialNextEdges[e2opposite[jEdge]] = -1;
+                                if (index != nPotentialNextEdges-1)
+                                {
+                                    // move the last one into the gap
+                                    int kEdge = potentialNextEdges[nPotentialNextEdges-1];
+                                    potentialNextEdges[index] = kEdge;
+                                    e2indexInPotentialNextEdges[kEdge] = index;
+                                }
+                                --nPotentialNextEdges;
+                            }
+                            else
+                            {
+                                // add edge to boundary
+                                e2indexInPotentialNextEdges[jEdge] = nPotentialNextEdges;
+                                potentialNextEdges[nPotentialNextEdges] = jEdge;
+                                nPotentialNextEdges++;
+                            }
+                        }
+                    }
+                    FORI (iVert, nVerts)
+                        assert(inTree[iVert]);
+
+                    whichTree = 0;
+                    FORI (iVert, nVerts)
+                    {
+                        int iEdge = prev[iVert];
+                        if (iEdge != -1)
+                        {
+                            whichTree |= (1 << iEdge);
+                            whichTree |= (1 << e2opposite[iEdge]);
+                        }
+                    }
+                }
+
+                //PRINT(whichTree);
+
+                counts[whichTree]++;
+
+            }
+            //PRINTARRAY(counts);
+
+            SortStuff.sort(counts);
+            int nZeros = 0;
+            while (nZeros < counts.length && counts[nZeros] == 0)
+                nZeros++;
+            counts = (int[])Arrays.subarray(counts, nZeros, counts.length-nZeros);
+            PRINTARRAY(counts);
+
+            System.out.println("    out analyzeRandomSpanningTrees");
+        } // analyzeRandomSpanningTrees
+
 
         // Holds the information needed to undo and redo a mesh editing operation.
         // This implementation is very simple and inefficient;
@@ -8959,6 +9359,9 @@ OFF
         private Mesh mostRecentDualMesh = null;
         private int highlightedDualEdgeIndex = -1;
         private boolean showOrigin = false;
+        private boolean showGrid = true;
+        private boolean snapToGrid = true;
+        private double gridSnapQuantum = 1/64.; // no way to change, currently
 
     //
     // Applet-generic member variables...
@@ -9054,7 +9457,7 @@ OFF
 
         frame.move(200, 20);
         frame.resize(1250, 500);
-        frame.resize(100, 300);
+        frame.resize(1025, 1025);
         frame.show();
 
         //Misc.printPlatonicSolidVertexCurvatures();
