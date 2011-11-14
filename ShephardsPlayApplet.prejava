@@ -2048,6 +2048,9 @@ public class ShephardsPlayApplet
                         System.out.print("Up");
                         System.out.flush();
                         int iVert = mesh.indexOfClosestVert(prevP[0], prevP[1]);
+                        // pull the dual face *out* of the screen,
+                        // i.e. increase its height,
+                        // i.e. decrease height of primal vert.
                         if (e.isShiftDown())
                             mesh.getVert(iVert).h -= incr*10;
                         else if (e.isControlDown())
@@ -2072,6 +2075,9 @@ public class ShephardsPlayApplet
                         System.out.print("Down");
                         System.out.flush();
                         int iVert = mesh.indexOfClosestVert(prevP[0], prevP[1]);
+                        // push the dual face *into* of the screen,
+                        // i.e. decrease its height,
+                        // i.e. increase height of primal vert.
                         if (e.isShiftDown())
                             mesh.getVert(iVert).h += incr*10;
                         else if (e.isControlDown())
@@ -8941,6 +8947,222 @@ OFF
 
             return dual;
         } // makeDualMesh()
+
+
+        public static class Net
+        {
+            // note that our mesh,dualMesh is the reverse of the applet's
+            // (since we want a net of the dual mesh).
+            public Net(Mesh mesh, Mesh dualMesh)
+            {
+                int nEdges = mesh.edges.size();
+                int nVerts = mesh.verts.size();
+                int nFaces = dualMesh.verts.size();
+
+                this._mesh = mesh;
+                this._edgeStatuses = new int[nEdges];
+                this._nFolds = 0;
+                this._nCuts = 0;
+                this._nUndecideds = nEdges;
+                this._vertComponents = new SizeTrackingMergeFind(nVerts+1); // last may or may not be used
+                this._faceComponents = new SizeTrackingMergeFind(nFaces+1); // last may or may not be used
+                this._vertToParentEdge = null; // only makes sense when net is complete
+                this._topSortedVertInds = null; // only makes sense when net is complete
+            }
+
+            // This can be called after all edges
+            // have been cut or folded.
+            // Sets and populates _vertToParentEdge and _topSortedVertInds.
+            // _vertToParentEdge[iVert] will point from iVert towards the root.
+            // _topSortedVertInds is in order from root to leafs.
+            public void chooseDirections(int root)
+            {
+                assert(_nUndecideds == 0);
+
+                int nEdges = _mesh.edges.size();
+                int nVerts = _mesh.verts.size();
+                Mesh.Edge cutsOut[][] = new Mesh.Edge[nVerts+1][]; // cut edges leading out of each vertex
+                {
+                    int nCutsOut[] = new int[cutsOut.length]; // zeros initially
+                    FORI (iEdge, nEdges)
+                        if (_edgeStatuses[iEdge] == CUT)
+                        {
+                            Mesh.Edge edge = _mesh.getEdge(iEdge);
+                            Mesh.Vertex v0 = edge.initialVertex();
+                            int i0 = (v0!=null ? v0.myIndex() : nVerts);
+                            nCutsOut[i0]++;
+                        }
+                    FORI (iVert, cutsOut.length)
+                    {
+                        cutsOut[iVert] = new Mesh.Edge[nCutsOut[iVert]];
+                        nCutsOut[iVert] = 0; // reset for filling step
+                    }
+                    FORI (iEdge, nEdges)
+                        if (_edgeStatuses[iEdge] == CUT)
+                        {
+                            Mesh.Edge edge = _mesh.getEdge(iEdge);
+                            Mesh.Vertex v0 = edge.initialVertex();
+                            int i0 = (v0!=null ? v0.myIndex() : nVerts);
+                            cutsOut[i0][nCutsOut[i0]++] = edge;
+                        }
+                    FORI (iVert, cutsOut.length)
+                        assert(nCutsOut[iVert] == cutsOut[iVert].length);
+                }
+
+                _topSortedVertInds = new int[nVerts+1];
+                _vertToParentEdge = new Mesh.Edge[nVerts+1];
+
+                boolean isSorted[] = new boolean[nVerts+1]; // all false initially
+                int nSorted = 0;
+                _topSortedVertInds[nSorted++] = root;
+                isSorted[root] = true;
+                FORI (iSorted, nSorted) // while nSorted is growing!
+                {
+                    int iVert = _topSortedVertInds[iSorted];
+                    FORI (iCutOut, cutsOut[iVert].length)
+                    {
+                        Mesh.Edge edge = cutsOut[iVert][iCutOut];
+                        Mesh.Vertex finalVertex = edge.finalVertex();
+                        int jVert = (finalVertex!=null ? finalVertex.myIndex() : nVerts);
+                        if (!isSorted[jVert])
+                        {
+                            isSorted[jVert] = true;
+                            _topSortedVertInds[nSorted++] = jVert;
+                            _vertToParentEdge[jVert] = edge.opposite();
+                        }
+                    }
+                }
+            } // chooseDirections
+
+            public boolean cuttable(int iEdge)
+            {
+                if (_edgeStatuses[iEdge] != UNDECIDED)
+                    return false;
+                Mesh.Edge edge = _mesh.getEdge(iEdge);
+                Mesh.Vertex v0 = edge.initialVertex();
+                Mesh.Vertex v1 = edge.finalVertex();
+                int i0 = (v0!=null ? v0.myIndex() : _mesh.verts.size());
+                int i1 = (v1!=null ? v1.myIndex() : _mesh.verts.size());
+                return _vertComponents.find(i0)
+                    != _vertComponents.find(i1);
+            }
+            public boolean foldable(int iEdge)
+            {
+                if (_edgeStatuses[iEdge] != UNDECIDED)
+                    return false;
+                Mesh.Edge edge = _dualMesh.getEdge(iEdge);
+                Mesh.Vertex f0 = edge.initialVertex();
+                Mesh.Vertex f1 = edge.finalVertex();
+                int i0 = (f0!=null ? f0.myIndex() : _dualMesh.verts.size());
+                int i1 = (f1!=null ? f1.myIndex() : _dualMesh.verts.size());
+                return _faceComponents.find(i0)
+                    != _faceComponents.find(i1);
+            }
+            public void cut(int iEdge)
+            {
+                assert(cuttable(iEdge)); // redundant with checks below, but exercises it
+
+                Mesh.Edge edge = _mesh.getEdge(iEdge);
+                int oEdge = edge.opposite().myIndex();
+
+                assert(_edgeStatuses[iEdge] == UNDECIDED);
+                assert(_edgeStatuses[oEdge] == UNDECIDED);
+                _edgeStatuses[iEdge] = CUT;
+                _edgeStatuses[oEdge] = CUT;
+                _nUndecideds -= 2;
+                _nCuts += 2;
+
+                Mesh.Vertex v0 = edge.initialVertex();
+                Mesh.Vertex v1 = edge.finalVertex();
+                int i0 = (v0!=null ? v0.myIndex() : _mesh.verts.size());
+                int i1 = (v1!=null ? v1.myIndex() : _mesh.verts.size());
+                assert(_vertComponents.find(i0)
+                    != _vertComponents.find(i1));
+                _vertComponents.merge(i0, i1);
+
+                // TODO:
+                // for each undecided edge out of v0 or v1
+                //     if it's to same component
+                //         fold it
+                // eek, need to do this for entire component! argh!
+                // or, at least, entire smaller of the two components before the merge
+            }
+            public void fold(int iEdge)
+            {
+                assert(foldable(iEdge)); // redundant with checks below, but exercises it
+
+                Mesh.Edge dualEdge = _dualMesh.getEdge(iEdge);
+                int oEdge = dualEdge.opposite().myIndex();
+
+                assert(_edgeStatuses[iEdge] == UNDECIDED);
+                _edgeStatuses[iEdge] = FOLD;
+                _edgeStatuses[oEdge] = FOLD;
+                _nUndecideds -= 2;
+                _nFolds += 2;
+
+                Mesh.Vertex f0 = dualEdge.initialVertex();
+                Mesh.Vertex f1 = dualEdge.finalVertex();
+                int i0 = (f0!=null ? f0.myIndex() : _dualMesh.verts.size());
+                int i1 = (f1!=null ? f1.myIndex() : _dualMesh.verts.size());
+                assert(_faceComponents.find(i0)
+                    != _faceComponents.find(i1));
+                _faceComponents.merge(i0, i1);
+
+                // TODO:
+                // for each undecided edge on f0 or f1
+                //     if it's to same face component
+                //         cut it
+                // eek, need to do this for entire component! argh!
+                // or, at least, entire smaller of the two components before the merge
+            }
+
+
+
+            private Mesh _mesh;
+            private Mesh _dualMesh;
+
+            private static final int UNDECIDED = -1;
+            private static final int FOLD = 0;
+            private static final int CUT = 1;
+            private int _nFolds, _nCuts, _nUndecideds;
+            private int _edgeStatuses[];
+            private SizeTrackingMergeFind _vertComponents;
+            private SizeTrackingMergeFind _faceComponents;
+            private Mesh.Edge _vertToParentEdge[];
+            private int _topSortedVertInds[];
+
+        } // class Net
+
+        // MergeFind that keeps track of component sizes
+        public static class SizeTrackingMergeFind extends MergeFind
+        {
+            private int sizes[];
+            public SizeTrackingMergeFind(int n)
+            {
+                super(n);
+                sizes = new int[n];
+            }
+            // override's base class's
+            public void merge(int i, int j)
+            {
+                i = find(i);
+                j = find(j);
+                if (i != j)
+                {
+                    int combinedSize = sizes[i] + sizes[j];
+                    sizes[i] = 0;
+                    sizes[j] = 0;
+                    super.merge(i, j);
+                    sizes[find(i)] = combinedSize;
+                }
+            }
+            public int size(int i)
+            {
+                return sizes[find(i)];
+            }
+        } // class SizeTrackingMergeFind
+
+
 
 
 
