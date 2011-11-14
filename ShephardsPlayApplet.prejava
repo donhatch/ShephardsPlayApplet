@@ -603,6 +603,35 @@ public class ShephardsPlayApplet
                                     public void valueChanged()
                                     {
                                         setState(showNet.get()); // of the checkbox
+
+
+                                        // XXX TODO: arguably this should be in a different listener... it should happen even if we decided not to have this checkbox
+                                        if (showNet.get())
+                                        {
+                                            Runnable runnable = new Runnable() {
+                                                public void run()
+                                                {
+                                                    System.out.println("starting animator thread");
+                                                    int fps = 10; // XXX need user control of this?
+                                                    while (showNet.get()) // XXX need to protect with synchronize or something I think?
+                                                    {
+                                                        theCanvas.repaint();
+                                                        //System.out.println("    sleeping for "+(1000/fps)+" ms");
+                                                        try {
+                                                            Thread.sleep(1000/fps);
+                                                        } catch (InterruptedException e) {
+                                                            break;
+                                                        }
+                                                    }
+                                                    System.out.println("terminating animator thread");
+                                                    // XXX TODO: does master thread need to join?
+                                                }
+                                            };
+                                            Thread animatorThread = new Thread(runnable);
+                                            animatorThread.setDaemon(true); // make it so the java vm won't wait for it to finish before exiting
+                                            animatorThread.start();
+                                        }
+
                                     }
                                 });
                             }
@@ -1795,6 +1824,7 @@ public class ShephardsPlayApplet
             {
                 if (eventVerbose >= 1) System.out.println("in mouseEntered: "+e);
                 // steal keyboard focus!
+                requestFocus(); // hey it works! (javac 1.3, runtime 1.6)
                 if (eventVerbose >= 1) System.out.println("out mouseEntered: "+e);
             }
             public void mouseExited(java.awt.event.MouseEvent e)
@@ -3848,17 +3878,21 @@ public class ShephardsPlayApplet
                     // Draw dual verts
                     // (only if NOT showing net flow)
                     //
-                    if (!(showNet.get() && showNetFlow))
-                        FORIDOWN(iDualVert, dualMesh.verts.size())
-                        {
-                            Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
+                    FORIDOWN(iDualVert, dualMesh.verts.size())
+                    {
+                        // if showing flow, don't show normal verts (only show selected ones)
+                        if (showNet.get() && showNetFlow && dualVertColors[iDualVert] != dualVertSelectionColor)
+                            continue;
 
-                            //System.out.println("    drawing dual vert at "+Arrays.toStringCompact(dualVert));
-                            mg.setColor(dualVertColors[iDualVert]); // TODO: only if changed?
-                            mg.drawPoint(dualVert.x,
-                                         dualVert.y, showNet.get() ? 2 : 5);
 
-                        }
+                        Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
+
+                        //System.out.println("    drawing dual vert at "+Arrays.toStringCompact(dualVert));
+                        mg.setColor(dualVertColors[iDualVert]); // TODO: only if changed?
+                        mg.drawPoint(dualVert.x,
+                                     dualVert.y, showNet.get() ? 2 : 5);
+
+                    }
 
                     if (showNet.get() && showNetFlow)
                     {
@@ -3938,7 +3972,6 @@ public class ShephardsPlayApplet
                         }
 
                         netFlowIndex++;
-                        repaint();
                     }
 
                     //
