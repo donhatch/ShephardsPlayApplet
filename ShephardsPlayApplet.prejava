@@ -3023,10 +3023,12 @@ public class ShephardsPlayApplet
                     final int NETMETHOD_UPWARD = 0;
                     final int NETMETHOD_OUTWARD = 1;
                     final int NETMETHOD_RANDOM = 2;
-                    //int netMethod = NETMETHOD_OUTWARD;
-                    int netMethod = NETMETHOD_RANDOM;
+                    int netMethod = NETMETHOD_OUTWARD;
+                    //int netMethod = NETMETHOD_RANDOM;
                     boolean dualEdgeIsCut[] = null;
                     boolean dualEdgeIsOffBalanceCut[] = null;
+                    int topSortedDualVertIndices[] = null;
+                    Mesh.Edge dualVertIndexToParentEdge[] = null;
                     // Hack for now... just one
                     Mesh.Edge theBadLagoonExitToDraw = null;
                     ArrayList offBalanceEdgeToGoodLagoonExits[] = new ArrayList[dualMesh.edges.size()]; // all nulls initially
@@ -3036,9 +3038,7 @@ public class ShephardsPlayApplet
                     {
                         dualEdgeIsCut = new boolean[mesh.edges.size()]; // all false initially
                         dualEdgeIsOffBalanceCut = new boolean[mesh.edges.size()]; // all false initially
-
-                        Mesh.Edge dualVertIndexToParentEdge[] = new Mesh.Edge[dualMesh.verts.size()]; // all null initially
-
+                        dualVertIndexToParentEdge = new Mesh.Edge[dualMesh.verts.size()]; // all null initially
 
 
                         if (netMethod == NETMETHOD_RANDOM)
@@ -3280,10 +3280,11 @@ public class ShephardsPlayApplet
 
                         //
                         // Get a topsort of the verts,
-                        // so we can traverse it in order for various purposes.
+                        // so we can traverse it in order for various purposes
+                        // rather than having to write a whole bunch of recursive helper functions.
                         //
-                        int topSortedDualVertIndices[] = new int[nDualVerts];
                         {
+                            topSortedDualVertIndices = new int[nDualVerts];
                             int nSorted = 0;
                             int stackTop = nDualVerts; // we use the end of the array as a stack
                             boolean isSorted[] = new boolean[nDualVerts]; // all false initially
@@ -3311,7 +3312,7 @@ public class ShephardsPlayApplet
                             FORI (iDualVert, nDualVerts)
                                 assert(isSorted[iDualVert]);
                         }
-                        PRINTARRAY(topSortedDualVertIndices);
+
 
                         //
                         // Now figure out which ones are off balance.
@@ -3326,10 +3327,10 @@ public class ShephardsPlayApplet
                                 Mesh.Edge parentEdge = dualVertIndexToParentEdge[iChild];
                                 if (parentEdge != null)
                                 {
-                                    Mesh.Vertex finalVertex = parentEdge.finalVertex();
-                                    if (finalVertex != null)
+                                    Mesh.Vertex parent = parentEdge.finalVertex();
+                                    if (parent != null)
                                     {
-                                        int iParent = finalVertex.myIndex();
+                                        int iParent = parent.myIndex();
                                         accumulateMomentAndArea(momentAndWeightStrictlyBelowEachDualVertex[iParent],
                                                                 momentAndWeightStrictlyBelowEachDualVertex[iChild]);
                                         accumulateMomentAndArea(momentAndWeightStrictlyBelowEachDualVertex[iParent],
@@ -3586,10 +3587,6 @@ public class ShephardsPlayApplet
                             }
                         }
 
-                        if (showNetFlow)
-                        {
-                            repaint();
-                        }
                     }
                     else // !showNet
                     {
@@ -3711,44 +3708,55 @@ public class ShephardsPlayApplet
                         }
                     }
 
-                    FORIDOWN (iEdge, mesh.edges.size())
-                    {
-                        Mesh.Edge dualEdge = dualMesh.getEdge(iEdge);
-                        Mesh.Vertex leftDualVert = dualEdge.finalVertex();
-                        if (leftDualVert == null)
-                            continue; // primal face was not a triangle, or inside out
-
-                        mg.setColor(dualEdgeColors[dualEdge.myIndex()]);
-
-                        Mesh.Vertex rightDualVert = dualEdge.initialVertex();
-
-                        if (rightDualVert != null)
+                    //
+                    // Dual edges.
+                    // If showing the cut tree,
+                    // we draw the non-cut edges first, then the cut edges--
+                    // this makes the tree appear more connected.
+                    //
+                    FORI (iPass, dualEdgeIsCut!=null ? 2 : 1)
+                        FORIDOWN (iDualEdge, mesh.edges.size())
                         {
-                            if (leftDualVert.myIndex() < rightDualVert.myIndex()) // don't bother drawing it in both directions
+                            if (dualEdgeIsCut != null
+                             && dualEdgeIsCut[iDualEdge] != (iPass==1))
+                                continue; // draw cuts iff iPass==1
+
+                            Mesh.Edge dualEdge = dualMesh.getEdge(iDualEdge);
+                            Mesh.Vertex leftDualVert = dualEdge.finalVertex();
+                            if (leftDualVert == null)
+                                continue; // primal face was not a triangle, or inside out
+
+                            mg.setColor(dualEdgeColors[dualEdge.myIndex()]);
+
+                            Mesh.Vertex rightDualVert = dualEdge.initialVertex();
+
+                            if (rightDualVert != null)
+                            {
+                                if (leftDualVert.myIndex() < rightDualVert.myIndex()) // don't bother drawing it in both directions
+                                    mg.drawLine(leftDualVert.x, leftDualVert.y,
+                                                rightDualVert.x, rightDualVert.y,
+                                                doAntiAliasing);
+                            }
+                            else
+                            {
+                                Mesh.Edge edge = mesh.getEdge(iDualEdge);
+                                // Draw a ray out to infinity
+                                double v0[] = {edge.initialVertex().x,
+                                               edge.initialVertex().y};
+                                double v1[] = {edge.finalVertex().x,
+                                               edge.finalVertex().y};
+                                double toEdgeVec[] = VecMath.xv2(
+                                                         VecMath.vmv(v0, v1));
+                                VecMath.normalize(toEdgeVec, toEdgeVec);
+                                double rayLength = 1.; // for edges to infinity
+                                double destPoint[] = {leftDualVert.x + rayLength*toEdgeVec[0],
+                                                      leftDualVert.y + rayLength*toEdgeVec[1]};
                                 mg.drawLine(leftDualVert.x, leftDualVert.y,
-                                            rightDualVert.x, rightDualVert.y,
+                                            destPoint[0],destPoint[1],
                                             doAntiAliasing);
+                                                                   
+                            }
                         }
-                        else
-                        {
-                            Mesh.Edge edge = mesh.getEdge(iEdge);
-                            // Draw a ray out to infinity
-                            double v0[] = {edge.initialVertex().x,
-                                           edge.initialVertex().y};
-                            double v1[] = {edge.finalVertex().x,
-                                           edge.finalVertex().y};
-                            double toEdgeVec[] = VecMath.xv2(
-                                                     VecMath.vmv(v0, v1));
-                            VecMath.normalize(toEdgeVec, toEdgeVec);
-                            double rayLength = 1.; // for edges to infinity
-                            double destPoint[] = {leftDualVert.x + rayLength*toEdgeVec[0],
-                                                  leftDualVert.y + rayLength*toEdgeVec[1]};
-                            mg.drawLine(leftDualVert.x, leftDualVert.y,
-                                        destPoint[0],destPoint[1],
-                                        doAntiAliasing);
-                                                               
-                        }
-                    }
 
                     //
                     // And, as polish for voronoi diagrams,
@@ -3792,15 +3800,97 @@ public class ShephardsPlayApplet
                     //
                     // Draw dual verts
                     //
-                    FORIDOWN(iDualVert, dualMesh.verts.size())
+                    if (!(showNet && showNetFlow))
+                        FORIDOWN(iDualVert, dualMesh.verts.size())
+                        {
+                            Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
+
+                            //System.out.println("    drawing dual vert at "+Arrays.toStringCompact(dualVert));
+                            mg.setColor(dualVertColors[iDualVert]); // TODO: only if changed?
+                            mg.drawPoint(dualVert.x,
+                                         dualVert.y, showNet ? 2 : 5);
+
+                        }
+
+                    if (showNet && showNetFlow)
                     {
-                        Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
+                        //
+                        // Figure out distance (both 2-norm and infinity-norm) from each vertex
+                        // to the root-most one in its tree
+                        //
+                        int nDualVerts = dualMesh.verts.size();
+                        double norm2s[] = new double[nDualVerts]; // zeros initially
+                        double normInfs[] = new double[nDualVerts]; // zeros initially
+                        FORI (iiChild, topSortedDualVertIndices.length) // roots to leaves
+                        {
+                            int iChild = topSortedDualVertIndices[iiChild];
+                            Mesh.Vertex child = dualMesh.getVert(iChild);
+                            Mesh.Edge parentEdge = dualVertIndexToParentEdge[iChild];
+                            if (parentEdge != null)
+                            {
+                                Mesh.Vertex parent = parentEdge.finalVertex();
+                                if (parent != null)
+                                {
+                                    int iParent = parent.myIndex();
+                                    double dx = child.x - parent.x;
+                                    double dy = child.y - parent.y;
+                                    norm2s[iChild] = norm2s[iParent] + MyMath.hypot(dx,dy);
+                                    normInfs[iChild] = normInfs[iParent] + MAX(dx,dy);
+                                }
+                            }
+                        }
 
-                        //System.out.println("    drawing dual vert at "+Arrays.toStringCompact(dualVert));
-                        mg.setColor(dualVertColors[iDualVert]); // TODO: only if changed?
-                        mg.drawPoint(dualVert.x,
-                                     dualVert.y, showNet ? 2 : 5);
+                        double unitsPerPixel = 1./mg.getScaleX(); // scale is uniform
+                        int period = 9; // how many redraws to get back to original state, to traverse a step
+                        double step = 9 * unitsPerPixel;
 
+                        mg.setColor(java.awt.Color.red); // lava
+                        //mg.setColor(java.awt.Color.green);
+
+                        FORI (iChild, nDualVerts)
+                        {
+                            Mesh.Vertex child = dualMesh.getVert(iChild);
+                            Mesh.Edge parentEdge = dualVertIndexToParentEdge[iChild];
+                            if (parentEdge != null)
+                            {
+                                Mesh.Vertex parent = parentEdge.finalVertex();
+                                if (parent != null)
+                                {
+                                    int iParent = parent.myIndex();
+                                    // norm2s[parent] rounded up to multiple of step
+                                    // TODO: screwy math, could be made simpler probably
+                                    double pos0 = Math.ceil(norm2s[iParent]/step)*step; // XXX should subtract some slack before taking ceil
+                                    pos0 -= (netFlowIndex % period)/(double)period * step;
+                                    if (pos0 < norm2s[iParent]-1e-6)
+                                        pos0 += step;
+
+                                    for (double pos = pos0; LEQ(pos, norm2s[iChild], 1e-6); pos += step)
+                                    {
+                                        double t = (pos-norm2s[iParent])/(norm2s[iChild]-norm2s[iParent]);
+                                        double x = LERP(parent.x, child.x, t);
+                                        double y = LERP(parent.y, child.y, t);
+                                        mg.drawPoint(x, y, 3);
+                                    }
+                                }
+                                else
+                                {
+                                    double rayLength = 1.;
+                                    // TODO: screwy math, could be made simpler probably
+                                    double pos0 = ((period-netFlowIndex)%period)/(double)period * step;
+                                    while (GT(pos0, 0, 1e-6))
+                                        pos0 -= step;
+                                    for (double pos = pos0; GEQ(pos, -rayLength, 1e-6); pos -= step)
+                                    {
+                                        double x = child.x - pos * parentEdge.direction[0];
+                                        double y = child.y - pos * parentEdge.direction[1];
+                                        mg.drawPoint(x, y, 3);
+                                    }
+                                }
+                            }
+                        }
+
+                        netFlowIndex++;
+                        repaint();
                     }
 
                     //
@@ -9581,7 +9671,8 @@ OFF
         private boolean doShowPositiveOrthantnessVisualization = false; // XXX total hack-- it's cool but put it somewhere else!!
         private int showTriangles = 2; // 0: nothing, 1: verts, 2: and tris
         private boolean showNet = false;
-        private boolean showNetFlow = false;
+        private boolean showNetFlow = true;
+        private int netFlowIndex = 0;
         private Mesh mostRecentDualMesh = null;
         private int highlightedDualEdgeIndex = -1;
         private boolean showOrigin = false;
