@@ -2621,39 +2621,6 @@ public class ShephardsPlayApplet
                 paint(g);
             }
 
-                // recursive work function
-                // should be static but "inner classes cannot have static declarations", wtf???
-                private void _accumulateWeightAndCenter(int iDualVert,
-                                                        double momentAndWeightStrictlyBelowEachDualVertex[][],
-                                                        Mesh.Edge dualVertIndexToFirstChildEdge[],
-                                                        Mesh.Edge edgeIndexToNextSiblingEdge[])
-                {
-                    if (momentAndWeightStrictlyBelowEachDualVertex[iDualVert] != null)
-                    {
-                        return; // already did this one  (note, wouldn't have to do this check if we only started at root(s)
-                    }
-                    double momentAndWeightStrictlyBelow[] = new double[3]; // zeros
-                    for (Mesh.Edge childEdge = dualVertIndexToFirstChildEdge[iDualVert];
-                         childEdge != null;
-                         childEdge = edgeIndexToNextSiblingEdge[childEdge.myIndex()])
-                    {
-                         Mesh.Vertex childVert = childEdge.finalVertex();
-                         double childVertCoords[] = {childVert.x, childVert.y};
-                         int childVertexIndex = childEdge.finalVertex().myIndex();
-                         _accumulateWeightAndCenter(childVertexIndex,
-                                                    momentAndWeightStrictlyBelowEachDualVertex,
-                                                    dualVertIndexToFirstChildEdge,
-                                                    edgeIndexToNextSiblingEdge);
-
-                         //System.out.println("    accumulating weight "+childVert.weight+" into vert "+iDualVert+"");
-
-                         accumulateMomentAndArea(momentAndWeightStrictlyBelow, childVert.momentAndArea);
-                         accumulateMomentAndArea(momentAndWeightStrictlyBelow, momentAndWeightStrictlyBelowEachDualVertex[childVertexIndex]);
-                    }
-                    momentAndWeightStrictlyBelowEachDualVertex[iDualVert] = momentAndWeightStrictlyBelow;
-                } // _accumulateWeightAndCenter
-
-
                 // common code used twice
                 private void drawLabels(MyGraphics mg,
                                         Mesh mesh,
@@ -3179,7 +3146,7 @@ public class ShephardsPlayApplet
 
                             System.out.println("   done computing random net");
                         }
-                        else
+                        else // UPWARD or OUTWARD
                         {
                             FORIDOWN (iEdge, mesh.edges.size())
                             {
@@ -3306,60 +3273,70 @@ public class ShephardsPlayApplet
                                         dualVertIndexToParentEdge[triCenterDualVert.myIndex()] = maybeParentEdge;
                                 }
                             }
+                        } // UPWARD or OUTWARD
+
+                        int nDualVerts = dualMesh.verts.size();
+                        int nDualEdges = dualMesh.edges.size();
+
+                        //
+                        // Get a topsort of the verts,
+                        // so we can traverse it in order for various purposes.
+                        //
+                        int topSortedDualVertIndices[] = new int[nDualVerts];
+                        {
+                            int nSorted = 0;
+                            int stackTop = nDualVerts; // we use the end of the array as a stack
+                            boolean isSorted[] = new boolean[nDualVerts]; // all false initially
+                            FORI(iDualVert, nDualVerts)
+                            {
+                                int jDualVert = iDualVert;
+                                while (!isSorted[jDualVert])
+                                {
+                                    topSortedDualVertIndices[--stackTop] = jDualVert;
+                                    isSorted[jDualVert] = true;
+
+                                    Mesh.Edge parentEdge = dualVertIndexToParentEdge[jDualVert];
+                                    if (parentEdge == null)
+                                        break;
+                                    Mesh.Vertex finalVertex = parentEdge.finalVertex();
+                                    if (finalVertex == null)
+                                        break;
+                                    jDualVert = finalVertex.myIndex();
+                                }
+                                while (stackTop < nDualVerts)
+                                    topSortedDualVertIndices[nSorted++] = topSortedDualVertIndices[stackTop++];
+                            }
+                            assert(nSorted == nDualVerts);
+                            assert(stackTop == nDualVerts);
+                            FORI (iDualVert, nDualVerts)
+                                assert(isSorted[iDualVert]);
                         }
+                        PRINTARRAY(topSortedDualVertIndices);
 
                         //
                         // Now figure out which ones are off balance.
                         //
                         // accumulate weights...
-                        int nDualVerts = dualMesh.verts.size();
-                        int nDualEdges = dualMesh.edges.size();
-                        double momentAndWeightStrictlyBelowEachDualVertex[][] = new double[nDualVerts][/*3*/]; // initially nulls
-                        if (false)
+                        double momentAndWeightStrictlyBelowEachDualVertex[][] = new double[nDualVerts][3]; // initially zeros
                         {
-                            // Simple way, O(n^2)
-                            FORI (iDualVert, nDualVerts)
-                                momentAndWeightStrictlyBelowEachDualVertex[iDualVert] = new double[3];
-                            FORI (iDualVert, nDualVerts)
+                            FORIDOWN(iiChild, topSortedDualVertIndices.length) // leaves to roots
                             {
-                                // Add its weight and moment to every vertex strictly above it
-                                Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
-
-                                for (Mesh.Edge dualEdge = dualVertIndexToParentEdge[iDualVert];
-                                     dualEdge != null && dualEdge.finalVertex() != null;
-                                    )
+                                int iChild = topSortedDualVertIndices[iiChild];
+                                Mesh.Vertex child = dualMesh.getVert(iChild);
+                                Mesh.Edge parentEdge = dualVertIndexToParentEdge[iChild];
+                                if (parentEdge != null)
                                 {
-                                    int jDualVert = dualEdge.finalVertex().myIndex();
-                                    //System.out.println("    adding weight of "+iDualVert+" to "+jDualVert+"");
-                                    accumulateMomentAndArea(momentAndWeightStrictlyBelowEachDualVertex[jDualVert], dualVert.momentAndArea);
-                                    dualEdge = dualVertIndexToParentEdge[jDualVert];
+                                    Mesh.Vertex finalVertex = parentEdge.finalVertex();
+                                    if (finalVertex != null)
+                                    {
+                                        int iParent = finalVertex.myIndex();
+                                        accumulateMomentAndArea(momentAndWeightStrictlyBelowEachDualVertex[iParent],
+                                                                momentAndWeightStrictlyBelowEachDualVertex[iChild]);
+                                        accumulateMomentAndArea(momentAndWeightStrictlyBelowEachDualVertex[iParent],
+                                                                child.momentAndArea);
+                                    }
                                 }
                             }
-                        }
-                        else
-                        {
-                            // Smarter way, O(n)
-                            Mesh.Edge dualVertIndexToFirstChildEdge[] = new Mesh.Edge[nDualVerts]; // nulls initially
-                            Mesh.Edge edgeIndexToNextSiblingEdge[] = new Mesh.Edge[nDualEdges]; // nulls initially
-                            FORI (iDualVert, nDualVerts)
-                            {
-                                Mesh.Edge upwardDualEdge = dualVertIndexToParentEdge[iDualVert];
-                                assert(upwardDualEdge != null);
-                                if (upwardDualEdge == null)
-                                    continue; // this dual vert is a root
-                                assert(upwardDualEdge.initialVertex().myIndex() == iDualVert);
-                                Mesh.Edge downwardDualEdge = upwardDualEdge.opposite();
-                                Mesh.Vertex parentDualVertex = downwardDualEdge.initialVertex();
-                                if (parentDualVertex == null)
-                                    continue; // parent dual vertex is at infinity
-                                edgeIndexToNextSiblingEdge[downwardDualEdge.myIndex()] = dualVertIndexToFirstChildEdge[parentDualVertex.myIndex()];
-                                dualVertIndexToFirstChildEdge[parentDualVertex.myIndex()] = downwardDualEdge;
-                            }
-                            FORI (iDualVert, nDualVerts)
-                                _accumulateWeightAndCenter(iDualVert,
-                                                           momentAndWeightStrictlyBelowEachDualVertex,
-                                                           dualVertIndexToFirstChildEdge,
-                                                           edgeIndexToNextSiblingEdge);
                         }
 
                         FORI (iDualVert, nDualVerts)
@@ -3607,6 +3584,11 @@ public class ShephardsPlayApplet
                                     }
                                 }
                             }
+                        }
+
+                        if (showNetFlow)
+                        {
+                            repaint();
                         }
                     }
                     else // !showNet
@@ -9599,6 +9581,7 @@ OFF
         private boolean doShowPositiveOrthantnessVisualization = false; // XXX total hack-- it's cool but put it somewhere else!!
         private int showTriangles = 2; // 0: nothing, 1: verts, 2: and tris
         private boolean showNet = false;
+        private boolean showNetFlow = false;
         private Mesh mostRecentDualMesh = null;
         private int highlightedDualEdgeIndex = -1;
         private boolean showOrigin = false;
