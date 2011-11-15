@@ -1987,6 +1987,9 @@ public class ShephardsPlayApplet
                             }
                         }
                     }
+
+                    // moved something-- invalidate dual mesh XXX could retain structure and just update positions and angles?? then wouldn't have to invalidate net!
+                    dirtyDualMesh();
                 }
 
                 if (button3IsDown) // right mouse
@@ -2147,6 +2150,19 @@ public class ShephardsPlayApplet
                         System.out.println("showNet -> "+showNet.get());
                         theCanvas.repaint();
                         break;
+
+                    case 'R': // rotate exit around the lagoon
+                    {
+                        if (_dualMesh != null
+                         && theNet != null
+                         && highlightedDualEdgeIndex != -1)
+                        {
+                            Mesh.Edge alternatives[] = theNet.alternatives(highlightedDualEdgeIndex);
+                            theNet.swapCutAndFold(highlightedDualEdgeIndex,
+                                                  alternatives[0].myIndex());
+                        }
+                        break;
+                    }
 
                     case 'B': // toggle doDoubleBuffer
                         doDoubleBuffer ^= true;
@@ -3126,7 +3142,18 @@ public class ShephardsPlayApplet
                         dualVertIndexToParentEdge = new Mesh.Edge[dualMesh.verts.size()]; // all null initially
 
 
-                        if (netMethod.get() == NETMETHOD_RANDOM)
+                        if (theNet != null)
+                        {
+                            // copy from existing net to our ad-hoc structures
+                            // (which will go away soon)
+                            int nDualEdges = dualMesh.edges.size();
+                            int nDualVerts = dualMesh.verts.size();
+                            FORI (iDualEdge, nDualEdges)
+                                dualEdgeIsCut[iDualEdge] = (theNet._edgeStatuses[iDualEdge] == Net.CUT);
+                            FORI (iDualVert, nDualVerts)
+                                dualVertIndexToParentEdge[iDualVert] = theNet._vertToParentEdge[iDualVert];
+                        }
+                        else if (netMethod.get() == NETMETHOD_RANDOM)
                         {
                             boolean netVerbose = !(showNet.get() && showNetFlow);
                             if (netVerbose)
@@ -3462,7 +3489,40 @@ public class ShephardsPlayApplet
                             }
                         }
 
-                        if (true)
+                        if (true) // start trying to use Net class
+                        {
+                            if (theNet == null)
+                            {
+                                theNet = new Net(dualMesh, mesh);
+                                int nEdges = dualMesh.edges.size();
+                                FORI(iEdge, nEdges)
+                                {
+                                    if (dualEdgeIsCut[iEdge])
+                                        theNet.cut(iEdge);
+                                    else
+                                    {
+                                        // this actually won't be necessary when I get auto-folding working
+                                        theNet.fold(iEdge);
+                                    }
+                                }
+                                int root = nDualVerts;
+                                theNet.chooseDirections(root);
+                            }
+
+                            if (highlightedDualEdgeIndex != -1)
+                            {
+                                Mesh.Edge alternatives[] = theNet.alternatives(highlightedDualEdgeIndex);
+                                PRINT(dualMesh.getEdge(highlightedDualEdgeIndex));
+                                PRINTARRAY(alternatives);
+                                FORI (iAlternative, alternatives.length)
+                                {
+                                    dualEdgeColors[alternatives[iAlternative].myIndex()] = java.awt.Color.white;
+                                    dualEdgeColors[alternatives[iAlternative].opposite().myIndex()] = java.awt.Color.white;
+                                }
+                            }
+                        }
+
+                        if (false) // DEFUNCT-- remove eventually
                         {
                             //
                             // Start to try to make a data structure
@@ -8960,7 +9020,8 @@ OFF
                 int nFaces = dualMesh.verts.size();
 
                 this._mesh = mesh;
-                this._edgeStatuses = new int[nEdges];
+                this._dualMesh = dualMesh;
+                this._edgeStatuses = Arrays.fill(nEdges, UNDECIDED);
                 this._nFolds = 0;
                 this._nCuts = 0;
                 this._nUndecideds = nEdges;
@@ -9038,7 +9099,7 @@ OFF
             // If iEdge is a cut, return a list of all the folds
             // that are alternate exits out of the same lagoon (in same direction).
             // If iEdge is a fold, do the dual thing in the dual mesh.
-            public int[] alternatives(int iEdge)
+            public Mesh.Edge[] alternatives(int iEdge)
             {
                 assert(_nUndecideds == 0);
                 Mesh meshToUse = (_edgeStatuses[iEdge]==CUT ? _mesh : _dualMesh);
@@ -9071,7 +9132,7 @@ OFF
                         mergeFind.merge(j0, j1);
                     }
                 }
-                int results[] = new int[nEdges];
+                Mesh.Edge results[] = new Mesh.Edge[nEdges];
                 int nResults = 0;
                 FORI (jEdge, nEdges)
                 {
@@ -9083,12 +9144,42 @@ OFF
                         int j0 = (w0!=null ? w0.myIndex() : nVerts);
                         int j1 = (w1!=null ? w1.myIndex() : nVerts);
                         if (mergeFind.find(j0) == mergeFind.find(i0)
-                         && mergeFind.find(j1) == mergeFind.find(j1))
-                            results[nResults++] = jEdge;
-                            // XXX TODO: is the direction right in the case iEdge is a fold? not sure
+                         && mergeFind.find(j1) == mergeFind.find(i1))
+                        {
+                            // result is NOT necessarily edgeJ since meshToUse isn't necessarily _mesh.
+                            // also, in the case it's _dualMesh, we need to reverse direction
+                            results[nResults++] = (meshToUse==_mesh ? edgeJ
+                                                                    : _mesh.getEdge(jEdge).opposite());
+                        }
                     }
                 }
-                results = (int[])Arrays.subarray(results, 0, nResults);
+
+                // TOTAL HACK--
+                // get some consistent order of all the exits around the lagoon,
+                // starting with the one after this one.
+                // Really, need to walk around the lagoon instead!
+                {
+                    results[nResults] = _mesh.getEdge(iEdge);
+                    SortStuff.sort(results, 0, nResults+1, new SortStuff.Comparator() {
+                        public int compare(Object _a, Object _b)
+                        {
+                            Mesh.Edge a = (Mesh.Edge)_a;
+                            Mesh.Edge b = (Mesh.Edge)_b;
+                            double aAng = Math.atan2(a.direction[1], a.direction[0]);
+                            double bAng = Math.atan2(b.direction[1], b.direction[0]);
+                            return aAng < bAng ? -1 :
+                                   aAng > bAng ? 1 : 0;
+                        }
+                    });
+                    int ind = 0;
+                    while (results[ind].myIndex() != iEdge)
+                        ind++;
+                    // we want: stuff after ind, followed by stuff before ind
+                    results = (Mesh.Edge[])Arrays.concat(Arrays.subarray(results, ind+1, nResults+1-(ind+1)),
+                                                         Arrays.subarray(results, 0, ind));
+                }
+
+                results = (Mesh.Edge[])Arrays.subarray(results, 0, nResults);
                 return results;
             } // alternatives()
 
@@ -9098,6 +9189,11 @@ OFF
             // so we don't think too hard, we just do it in O(n) (actually O(n alpha(n))).
             public void swapCutAndFold(int iCut, int iFold)
             {
+                if (_edgeStatuses[iCut] == FOLD)
+                {
+                    int temp;
+                    SWAP(iCut, iFold, temp);
+                }
                 Mesh.Edge cut = _mesh.getEdge(iCut);
                 Mesh.Edge fold = _mesh.getEdge(iFold);
                 int oCut = cut.opposite().myIndex();
@@ -9188,6 +9284,9 @@ OFF
             }
             public void cut(int iEdge)
             {
+                if (_edgeStatuses[iEdge] == CUT)
+                    return;
+
                 assert(cuttable(iEdge)); // redundant with checks below, but exercises it
 
                 Mesh.Edge edge = _mesh.getEdge(iEdge);
@@ -9213,10 +9312,14 @@ OFF
                 //     if it's to same component
                 //         fold it
                 // eek, need to do this for entire component! argh!
-                // or, at least, entire smaller of the two components before the merge
+                // or, at least, entire smaller of the two components before the merge.
+                // total O(n log n)
             }
             public void fold(int iEdge)
             {
+                if (_edgeStatuses[iEdge] == FOLD)
+                    return;
+
                 assert(foldable(iEdge)); // redundant with checks below, but exercises it
 
                 Mesh.Edge dualEdge = _dualMesh.getEdge(iEdge);
@@ -9241,7 +9344,8 @@ OFF
                 //     if it's to same face component
                 //         cut it
                 // eek, need to do this for entire component! argh!
-                // or, at least, entire smaller of the two components before the merge
+                // or, at least, entire smaller of the two components before the merge.
+                // total O(n log n)
             }
 
 
@@ -10057,6 +10161,7 @@ OFF
     //
         private UndoTreeSquirrel undoTreeSquirrel = new UndoTreeSquirrel();
         private Mesh mesh = new Mesh();
+        private Net theNet = null; // computed on demand
         private Mesh _dualMesh = null; // computed on demand
         private Mesh _meshOfDualMesh = null; // possibly ill-advised attempt to automatically invalidate dualMesh when mesh gets replaced in various ways
         public Mesh getDualMesh()
@@ -10068,6 +10173,7 @@ OFF
                                          false,  // includeNonArity3
                                          false); // includeInsideOut
                 _meshOfDualMesh = mesh;
+                theNet = null;
             }
             return _dualMesh;
         }
@@ -10075,6 +10181,7 @@ OFF
         {
             _dualMesh = null;
             _meshOfDualMesh = null; // no sense keeping a ref to it
+            theNet = null;
         }
         private int beingDraggedVertIndex = -1;
         private boolean rubberBandingNewEdge = false;
@@ -10254,6 +10361,7 @@ OFF
 
         frame.move(200, 20);
         frame.resize(1001, 701);
+        frame.resize(200,200);
         frame.show();
 
         //Misc.printPlatonicSolidVertexCurvatures();
