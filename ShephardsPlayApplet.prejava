@@ -19,8 +19,6 @@ BUG:
     - undo after net surgury gives error in alternatives stuff
 
 TO DO:
-    - make 'R' key properly walk around lagoon instead of using angles
-
     - try to maintain selection when swapping diagonals and stuff
 
     - think about which optimization types to retain if any
@@ -611,7 +609,7 @@ public class ShephardsPlayApplet
 
 
                                         // XXX TODO: arguably this should be in a different listener... it should happen even if we decided not to have this checkbox
-                                        if (showNet.get())
+                                        if (showNet.get() && showNetFlow)
                                         {
                                             Runnable runnable = new Runnable() {
                                                 public void run()
@@ -1083,7 +1081,7 @@ public class ShephardsPlayApplet
             System.out.println("    'a' - toggle doArrowsTowardsSharpestDihedrals (green)");
             System.out.println("    alt-'a' - toggle doArrowsTowardsShortestEdges (cyan)");
             System.out.println("    'n' - toggle showNet");
-            System.out.println("    'R' - rotate closest cut or fold CCW around its lagoon in the net");
+            System.out.println("    'z' - rotate closest cut or fold CCW around its lagoon in the net");
             System.out.println("    'S' - turn off optimize, and re-spherize");
             System.out.println("    'd' - delete closest edge");
             System.out.println("    ctrl-'i' - toggle doShowInsideOutDualVerts");
@@ -1325,6 +1323,7 @@ public class ShephardsPlayApplet
             // should be no need to re-delaunayize if uniform scale
             if (scaleX != scaleY)
                 if (doContinuouslyDelaunayize.get()) delaunayize();
+            dirtyDualMesh();
             UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices);
             undoTreeSquirrel.Do(new UndoItem(before, after));
             theCanvas.repaint();
@@ -2021,9 +2020,10 @@ public class ShephardsPlayApplet
                     mostRecentGraphics.pick((e.getX()+.5)/globalMagFactor, (e.getY()+.5)/globalMagFactor, thisP);
                     if (showNet.get())
                     {
-                        int closestDualEdgeIndex = mostRecentDualMesh.indexOfClosestEdge(thisP);
+                        int closestDualEdgeIndex = mostRecentDualMesh.indexOfClosestEdge(thisP, true);
                         if (closestDualEdgeIndex != highlightedDualEdgeIndex)
                         {
+                            //System.out.println("    closest dual edge changed: "+mostRecentDualMesh.getEdge(closestDualEdgeIndex));
                             highlightedDualEdgeIndex = closestDualEdgeIndex;
                             theCanvas.repaint();
                         }
@@ -2160,20 +2160,65 @@ public class ShephardsPlayApplet
                         theCanvas.repaint();
                         break;
 
-                    case 'R': // rotate exit around the lagoon
+                    case 'z': // rotate exit around the lagoon
                     {
                         showNet.set(true);
                         if (_dualMesh != null
                          && theNet != null
                          && highlightedDualEdgeIndex != -1)
                         {
+                            if (theNet._edgeStatuses[highlightedDualEdgeIndex] == Net.CUT)
+                            {
+                                // It's a cut; direction matters.
+                                // (for fold, we rely in the closest-edge picking
+                                // to pick the correct one of the two half-edges)
+                                // Make sure edge in question is pointing
+                                // towards root of cut tree.  If not, switch to its opposite.
+                                if (theNet._vertToParentEdge[_dualMesh.getEdge(highlightedDualEdgeIndex).initialVertex().myIndex()].myIndex() != highlightedDualEdgeIndex)
+                                    highlightedDualEdgeIndex = _dualMesh.getEdge(highlightedDualEdgeIndex).opposite().myIndex();
+                                assert(theNet._vertToParentEdge[_dualMesh.getEdge(highlightedDualEdgeIndex).initialVertex().myIndex()].myIndex() == highlightedDualEdgeIndex);
+                            }
+
                             Mesh.Edge alternatives[] = theNet.alternatives(highlightedDualEdgeIndex);
-                            theNet.swapCutAndFold(highlightedDualEdgeIndex,
-                                                  alternatives[0].myIndex());
-                            // make the highlighted one be the one we swapped with.
-                            // that makes it so, if the user doesn't jiggle the mouse,
-                            // hitting R repeatedly will rotate around the lagoon.
-                            highlightedDualEdgeIndex = alternatives[0].myIndex();
+                            if (alternatives.length > 0)
+                            {
+                                theNet.swapCutAndFold(highlightedDualEdgeIndex,
+                                                      alternatives[0].myIndex());
+                                // make the highlighted one be the one we swapped with.
+                                // that makes it so, if the user doesn't jiggle the mouse,
+                                // hitting the key repeatedly will rotate around the lagoon.
+                                highlightedDualEdgeIndex = alternatives[0].myIndex();
+                                theCanvas.repaint();
+                            }
+                            else
+                            {
+                                System.out.println("HEY! edge "+_dualMesh.getEdge(highlightedDualEdgeIndex)+" has no alternative! status="+theNet._edgeStatuses[highlightedDualEdgeIndex]);
+                                assert(theNet._edgeStatuses[highlightedDualEdgeIndex] == Net.FOLD);
+                                assert(false); // wtf? this shouldn't happen
+                            }
+
+                            if (true)
+                            {
+                                System.out.println("===================");
+                                System.out.println("Walking around net tree:");
+                                Mesh.Edge dualEdge = _dualMesh.getEdge(highlightedDualEdgeIndex);
+                                // assert against infinite loop...
+                                boolean seen[] = new boolean[_dualMesh.edges.size()]; // false initially
+                                while (true)
+                                {
+                                    assert(!seen[dualEdge.myIndex()]);
+                                    if (false)
+                                        System.out.println("    "+dualEdge);
+                                    seen[dualEdge.myIndex()] = true;
+                                    assert(_dualMesh.getEdge(dualEdge.myIndex()) == dualEdge); // check that nextInTree didn't get confused and switch trees
+                                    dualEdge = theNet.nextInTree(dualEdge);
+                                    assert(_dualMesh.getEdge(dualEdge.myIndex()) == dualEdge); // check that nextInTree didn't get confused and switch trees
+                                    if (dualEdge.myIndex() == highlightedDualEdgeIndex)
+                                        break;
+                                }
+                                System.out.println("===================");
+                            }
+
                         }
                         break;
                     }
@@ -2257,7 +2302,7 @@ public class ShephardsPlayApplet
                         // XXX TODO: do this
 
 
-                        int closestEdgeIndex = mesh.indexOfClosestEdge(prevP);
+                        int closestEdgeIndex = mesh.indexOfClosestEdge(prevP, false);
                         if (closestEdgeIndex != -1)
                         {
                             System.out.println("Swapping diagonal edge e"+closestEdgeIndex);
@@ -2276,7 +2321,7 @@ public class ShephardsPlayApplet
                     {
                         // Swap diagonal but only if it makes it closer to delaunay
                         UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices);
-                        int closestEdgeIndex = mesh.indexOfClosestEdge(prevP);
+                        int closestEdgeIndex = mesh.indexOfClosestEdge(prevP, false);
                         if (closestEdgeIndex != -1)
                         {
                             System.out.println("Swapping diagonal edge e"+closestEdgeIndex);
@@ -2384,7 +2429,7 @@ public class ShephardsPlayApplet
                     case 'd': // delete closest edge
                     {
                         UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices);
-                        int closestEdgeIndex = mesh.indexOfClosestEdge(prevP);
+                        int closestEdgeIndex = mesh.indexOfClosestEdge(prevP, false);
                         if (closestEdgeIndex != -1)
                         {
                             System.out.println("Deleting edge e"+closestEdgeIndex);
@@ -2850,9 +2895,17 @@ public class ShephardsPlayApplet
                             Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
                             Mesh.Vertex v0 = edge.initialVertex();
                             Mesh.Vertex v1 = edge.finalVertex();
-                            double x = (v0.x+v1.x)/2;
-                            double y = (v0.y+v1.y)/2;
-                            double ang = Math.PI/2 + Math.atan2(v1.y-v0.y, v1.x-v0.x);
+                            double rayLength = 1.;
+                            double x0 = (v0!=null ? v0.x : v1.x - edge.direction[0]*rayLength);
+                            double y0 = (v0!=null ? v0.y : v1.y - edge.direction[1]*rayLength);
+                            double x1 = (v1!=null ? v1.x : v0.x + edge.direction[0]*rayLength);
+                            double y1 = (v1!=null ? v1.y : v0.y + edge.direction[1]*rayLength);
+
+                            double x = (x0+x1)/2;
+                            double y = (y0+y1)/2;
+                            double ang = Math.PI/2 + Math.atan2(y1-y0, x1-x0);
+                            if (isDualMesh)
+                                ang += Math.PI;
                             double offr = 2/mg.getScaleX(); // pixels
                             double offx = offr*Math.cos(ang);
                             double offy = offr*Math.sin(ang);
@@ -7475,15 +7528,27 @@ OFF
                 public String toString()
                 {
                     StringBuffer sb = new StringBuffer();
+                    sb.append("e");
+                    sb.append(myIndex());
+                    sb.append(" (");
+
                     if (initialVertex() != null)
+                    {
+                        sb.append("v");
                         sb.append(initialVertex().myIndex());
+                    }
                     else
                         sb.append("null");
                     sb.append("->");
                     if (finalVertex() != null)
+                    {
+                        sb.append("v");
                         sb.append(finalVertex().myIndex());
+                    }
                     else
                         sb.append("null");
+
+                    sb.append(")");
                     return sb.toString();
                 }
 
@@ -7878,7 +7943,7 @@ OFF
                 return closestVertIndex; // -1 if none
             } // indexOfClosestVert
 
-            public int indexOfClosestEdge(double point[/*2*/])
+            public int indexOfClosestEdge(double point[/*2*/], boolean isDualMesh)
             {
                 double x = point[0], y = point[1];
                 double closestDistSqrd = Double.POSITIVE_INFINITY;
@@ -7903,6 +7968,19 @@ OFF
                     {
                         closestDistSqrd = thisDistSqrd;
                         closestEdgeIndex = iEdge;
+                    }
+                }
+                if (closestEdgeIndex != -1)
+                {
+                    // Make sure point is on left side of edge.
+                    // If not, choose edge's opposite instead.
+                    Edge edge = (Edge)edges.get(closestEdgeIndex);
+                    Vertex v = edge.initialVertex();
+                    if (v == null) v = edge.finalVertex();
+                    double vToPoint[] = {point[0]-v.x, point[1]-v.y};
+                    if (VecMath.vxv2(edge.direction, vToPoint) * (isDualMesh ? -1. : 1.) < 0.)
+                    {
+                        closestEdgeIndex = edge.opposite().myIndex();
                     }
                 }
                 return closestEdgeIndex; // -1 if none
@@ -9116,6 +9194,46 @@ OFF
                 }
             } // chooseDirections
 
+            // utility to get past gaps using dual mesh
+            private Mesh.Edge getNextEdge(Mesh.Edge edge)
+            {
+                //System.out.println("in getNextEdge");
+                //PRINT(edge);
+                Mesh.Edge nextEdge = edge.next();
+                if (nextEdge == null)
+                {
+                    //PRINT(nextEdge);
+                    // blech, final vertex is the infinite one.
+                    // use dual mesh to find next.
+                    assert(_mesh.getEdge(edge.myIndex()) == edge); // the following assumes edge is in _mesh, not _dualMesh. in practice, we won't get here for _dualMesh since _dualMesh is the original primal and therefore complete
+                    nextEdge = _mesh.getEdge(_dualMesh.getEdge(edge.myIndex()).next().myIndex());
+                }
+                //PRINT(nextEdge);
+                //System.out.println("out getNextEdge");
+                return nextEdge;
+            }
+            // next in either cut tree or fold tree.
+            // tree need not be complete.
+            // if edge is from dual mesh, return something from dual mesh.
+            public Mesh.Edge nextInTree(Mesh.Edge edge)
+            {
+                Mesh originalMesh = (_mesh.getEdge(edge.myIndex()) == edge ? _mesh : _dualMesh);
+                assert(originalMesh.getEdge(edge.myIndex()) == edge);
+
+                int iEdge = edge.myIndex();
+                Mesh meshToUse = (_edgeStatuses[iEdge]==CUT ? _mesh : _dualMesh);
+                edge = meshToUse.getEdge(iEdge); // switch from _mesh to meshToUse
+
+                Mesh.Edge nextEdge = getNextEdge(edge);
+                while (_edgeStatuses[nextEdge.myIndex()] != _edgeStatuses[iEdge])
+                    nextEdge = getNextEdge(nextEdge.opposite()); // next spoke CW
+
+                // switch back from meshToUse to original mesh
+                nextEdge = originalMesh.getEdge(nextEdge.myIndex());
+
+                return nextEdge;
+            }
+
             // If iEdge is a cut, return a list of all the folds
             // that are alternate exits out of the same lagoon (in same direction).
             // If iEdge is a fold, do the dual thing in the dual mesh.
@@ -9147,56 +9265,42 @@ OFF
                         Mesh.Edge edgeJ = meshToUse.getEdge(jEdge);
                         Mesh.Vertex w0 = edgeJ.initialVertex();
                         Mesh.Vertex w1 = edgeJ.finalVertex();
-                        int j0 = (w0!=null ? w0.myIndex() : nVerts);
-                        int j1 = (w1!=null ? w1.myIndex() : nVerts);
+                        int j0 = (w0!=null ? w0.myIndex() : meshToUse.verts.size());
+                        int j1 = (w1!=null ? w1.myIndex() : meshToUse.verts.size());
                         mergeFind.merge(j0, j1);
                     }
                 }
                 Mesh.Edge results[] = new Mesh.Edge[nEdges];
                 int nResults = 0;
-                FORI (jEdge, nEdges)
+
+                Mesh.Edge edgeJ = edge.opposite(); // just before entering lagoon
+                while (edgeJ != edge)
                 {
-                    if (_edgeStatuses[jEdge] != _edgeStatuses[iEdge])
+                    // check for lagoon exits out of the final vertex of edgeJ
+                    Mesh.Edge edgeK = getNextEdge(edgeJ);
+                    int kEdge = edgeK.myIndex();
+                    while (_edgeStatuses[edgeK.myIndex()] != _edgeStatuses[iEdge])
                     {
-                        Mesh.Edge edgeJ = meshToUse.getEdge(jEdge);
-                        Mesh.Vertex w0 = edgeJ.initialVertex();
-                        Mesh.Vertex w1 = edgeJ.finalVertex();
-                        int j0 = (w0!=null ? w0.myIndex() : nVerts);
-                        int j1 = (w1!=null ? w1.myIndex() : nVerts);
+                        assert(meshToUse.getEdge(kEdge) == edgeK); // we should be consistently using that mesh
+                        Mesh.Vertex w0 = meshToUse.getEdge(kEdge).initialVertex();
+                        Mesh.Vertex w1 = meshToUse.getEdge(kEdge).finalVertex();
+                        int j0 = (w0!=null ? w0.myIndex() : meshToUse.verts.size());
+                        int j1 = (w1!=null ? w1.myIndex() : meshToUse.verts.size());
                         if (mergeFind.find(j0) == mergeFind.find(i0)
                          && mergeFind.find(j1) == mergeFind.find(i1))
                         {
-                            // result is NOT necessarily edgeJ since meshToUse isn't necessarily _mesh.
-                            // also, in the case it's _dualMesh, we need to reverse direction
-                            results[nResults++] = (meshToUse==_mesh ? edgeJ
-                                                                    : _mesh.getEdge(jEdge).opposite());
+                            // result is NOT necessarily edgeK since meshToUse isn't necessarily _mesh.
+                            results[nResults++] = (meshToUse==_mesh ? edgeK
+                                                                    : _mesh.getEdge(kEdge));
                         }
-                    }
-                }
 
-                // TOTAL HACK--
-                // get some consistent order of all the exits around the lagoon,
-                // starting with the one after this one.
-                // Really, need to walk around the lagoon instead!
-                {
-                    results[nResults] = _mesh.getEdge(meshToUse==_mesh?iEdge:oEdge);
-                    SortStuff.sort(results, 0, nResults+1, new SortStuff.Comparator() {
-                        public int compare(Object _a, Object _b)
-                        {
-                            Mesh.Edge a = (Mesh.Edge)_a;
-                            Mesh.Edge b = (Mesh.Edge)_b;
-                            double aAng = Math.atan2(a.direction[1], a.direction[0]);
-                            double bAng = Math.atan2(b.direction[1], b.direction[0]);
-                            return aAng < bAng ? -1 :
-                                   aAng > bAng ? 1 : 0;
-                        }
-                    });
-                    int ind = 0;
-                    while (results[ind].myIndex() != (meshToUse==_mesh?iEdge:oEdge))
-                        ind++;
-                    // we want: stuff after ind, followed by stuff before ind
-                    results = (Mesh.Edge[])Arrays.concat(Arrays.subarray(results, ind+1, nResults+1-(ind+1)),
-                                                         Arrays.subarray(results, 0, ind));
+                        edgeK = getNextEdge(edgeK.opposite()); // next spoke
+                        kEdge = edgeK.myIndex();
+                    }
+
+                    // advance edgeJ to next edge in lagoon or to edge (original lagoon exit)
+                    assert(edgeK == nextInTree(edgeJ));
+                    edgeJ = edgeK;
                 }
 
                 results = (Mesh.Edge[])Arrays.subarray(results, 0, nResults);
