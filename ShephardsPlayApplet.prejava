@@ -9035,6 +9035,63 @@ OFF
                 }
             } // chooseDirections
 
+            // If iEdge is a cut, return a list of all the folds
+            // that are alternate exits out of the same lagoon (in same direction).
+            // If iEdge is a fold, do the dual thing in the dual mesh.
+            public int[] alternatives(int iEdge)
+            {
+                assert(_nUndecideds == 0);
+                Mesh meshToUse = (_edgeStatuses[iEdge]==CUT ? _mesh : _dualMesh);
+                int nVerts = meshToUse.verts.size();
+                int nEdges = meshToUse.edges.size();
+
+                Mesh.Edge edge = meshToUse.getEdge(iEdge);
+                Mesh.Vertex v0 = edge.initialVertex();
+                Mesh.Vertex v1 = edge.finalVertex();
+                int i0 = (v0!=null ? v0.myIndex() : nVerts);
+                int i1 = (v1!=null ? v1.myIndex() : nVerts);
+
+                int oEdge = edge.opposite().myIndex();
+                assert(_edgeStatuses[oEdge] == _edgeStatuses[iEdge]);
+
+
+                // could do it in O(n) instead of O(n alpha(n))... whatever
+                MergeFind mergeFind = new MergeFind(nVerts+1);
+                FORI (jEdge, nEdges)
+                {
+                    if (_edgeStatuses[jEdge] == _edgeStatuses[iEdge]
+                     && jEdge != iEdge
+                     && jEdge != oEdge)
+                    {
+                        Mesh.Edge edgeJ = meshToUse.getEdge(jEdge);
+                        Mesh.Vertex w0 = edgeJ.initialVertex();
+                        Mesh.Vertex w1 = edgeJ.finalVertex();
+                        int j0 = (w0!=null ? w0.myIndex() : nVerts);
+                        int j1 = (w1!=null ? w1.myIndex() : nVerts);
+                        mergeFind.merge(j0, j1);
+                    }
+                }
+                int results[] = new int[nEdges];
+                int nResults = 0;
+                FORI (jEdge, nEdges)
+                {
+                    if (_edgeStatuses[jEdge] != _edgeStatuses[iEdge])
+                    {
+                        Mesh.Edge edgeJ = meshToUse.getEdge(jEdge);
+                        Mesh.Vertex w0 = edgeJ.initialVertex();
+                        Mesh.Vertex w1 = edgeJ.finalVertex();
+                        int j0 = (w0!=null ? w0.myIndex() : nVerts);
+                        int j1 = (w1!=null ? w1.myIndex() : nVerts);
+                        if (mergeFind.find(j0) == mergeFind.find(i0)
+                         && mergeFind.find(j1) == mergeFind.find(j1))
+                            results[nResults++] = jEdge;
+                            // XXX TODO: is the direction right in the case iEdge is a fold? not sure
+                    }
+                }
+                results = (int[])Arrays.subarray(results, 0, nResults);
+                return results;
+            } // alternatives()
+
             // Make the cut a fold, and vice-versa.
             // The result must still be a tree.
             // In the worst case this has to be O(n),
@@ -9055,8 +9112,8 @@ OFF
                 assert(_topSortedVertInds != null);
 
                 {
-                    // check that the fold is between a vertex below the cut
-                    // and a vertex not below the cut.
+                    // check that the fold connects the same two components
+                    // that are disconnected by removing the cut.
                     // Don't think too hard, just do this with a simple merge-find thing
                     // (even though we could do it in O(n)... whatever)
 
