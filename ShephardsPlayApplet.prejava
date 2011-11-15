@@ -8966,6 +8966,7 @@ OFF
                 this._nUndecideds = nEdges;
                 this._vertComponents = new SizeTrackingMergeFind(nVerts+1); // last may or may not be used
                 this._faceComponents = new SizeTrackingMergeFind(nFaces+1); // last may or may not be used
+
                 this._vertToParentEdge = null; // only makes sense when net is complete
                 this._topSortedVertInds = null; // only makes sense when net is complete
             }
@@ -9033,6 +9034,76 @@ OFF
                     }
                 }
             } // chooseDirections
+
+            // Make the cut a fold, and vice-versa.
+            // The result must still be a tree.
+            // In the worst case this has to be O(n),
+            // so we don't think too hard, we just do it in O(n) (actually O(n alpha(n))).
+            public void swapCutAndFold(int iCut, int iFold)
+            {
+                Mesh.Edge cut = _mesh.getEdge(iCut);
+                Mesh.Edge fold = _mesh.getEdge(iFold);
+                int oCut = cut.opposite().myIndex();
+                int oFold = fold.opposite().myIndex();
+                assert(_edgeStatuses[iCut] == CUT);
+                assert(_edgeStatuses[oCut] == CUT);
+                assert(_edgeStatuses[iFold] == FOLD);
+                assert(_edgeStatuses[oFold] == FOLD);
+
+                // must have called chooseDirections already...
+                assert(_vertToParentEdge != null);
+                assert(_topSortedVertInds != null);
+
+                {
+                    // check that the fold is between a vertex below the cut
+                    // and a vertex not below the cut.
+                    // Don't think too hard, just do this with a simple merge-find thing
+                    // (even though we could do it in O(n)... whatever)
+
+                    int nVerts = _mesh.verts.size();
+                    int nEdges = _mesh.edges.size();
+                    MergeFind mergeFind = new MergeFind(nVerts+1);
+                    FORI (iEdge, nEdges)
+                    {
+                        if (_edgeStatuses[iEdge] == CUT
+                         && iEdge != iCut
+                         && iEdge != oCut)
+                        {
+                            Mesh.Edge edge = _mesh.getEdge(iEdge);
+                            Mesh.Vertex v0 = edge.initialVertex();
+                            Mesh.Vertex v1 = edge.finalVertex();
+                            int i0 = (v0!=null ? v0.myIndex() : nVerts);
+                            int i1 = (v1!=null ? v1.myIndex() : nVerts);
+                            mergeFind.merge(i0, i1);
+                        }
+                    }
+
+                    {
+                        Mesh.Vertex v0 = cut.initialVertex();
+                        Mesh.Vertex v1 = cut.finalVertex();
+                        int i0 = (v0!=null ? v0.myIndex() : nVerts);
+                        int i1 = (v1!=null ? v1.myIndex() : nVerts);
+                        assert(mergeFind.find(i0) != mergeFind.find(i1)); // logically true since we're starting with a tree
+                    }
+                    {
+                        Mesh.Vertex v0 = fold.initialVertex();
+                        Mesh.Vertex v1 = fold.finalVertex();
+                        int i0 = (v0!=null ? v0.myIndex() : nVerts);
+                        int i1 = (v1!=null ? v1.myIndex() : nVerts);
+                        assert(mergeFind.find(i0) != mergeFind.find(i1)); // make sure it's a legal alternative
+                    }
+                }
+
+                _edgeStatuses[iCut] = FOLD;
+                _edgeStatuses[oCut] = FOLD;
+                _edgeStatuses[iFold] = CUT;
+                _edgeStatuses[oFold] = CUT;
+
+                // nCuts,nFolds stay the same
+                
+                int root = _topSortedVertInds[0];
+                chooseDirections(root);
+            } // swapCutAndFold
 
             public boolean cuttable(int iEdge)
             {
