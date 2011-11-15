@@ -15,7 +15,12 @@ User should be able to:
     's' - swap a diagonal
 
 
+BUG:
+    - undo after net surgury gives error in alternatives stuff
+
 TO DO:
+    - make 'R' key properly walk around lagoon instead of using angles
+
     - try to maintain selection when swapping diagonals and stuff
 
     - think about which optimization types to retain if any
@@ -649,6 +654,7 @@ public class ShephardsPlayApplet
                                     {
                                         netMethod.set(getSelectedIndex());
                                         System.out.println("netMethod -> "+netMethodNames[netMethod.get()]);
+                                        theNet = null;
                                         theCanvas.repaint();
                                     }
                                 });
@@ -995,6 +1001,7 @@ public class ShephardsPlayApplet
                                         optimizationType = availableOptimizationTypes[optimizationTypeIndex.get()];
                                         selectedTris = (int[][])Arrays.copy(item.before.selectedTris, 2);
                                         selectedDualVertIndices = VecMath.copyvec(item.before.selectedDualVertIndices);
+                                        dirtyDualMesh();
                                     }
                                     else
                                     {
@@ -1021,6 +1028,7 @@ public class ShephardsPlayApplet
                                         optimizationType = availableOptimizationTypes[optimizationTypeIndex.get()];
                                         selectedTris = (int[][])Arrays.copy(item.after.selectedTris, 2);
                                         selectedDualVertIndices = VecMath.copyvec(item.after.selectedDualVertIndices);
+                                        dirtyDualMesh();
                                     }
                                     else
                                     {
@@ -1075,6 +1083,7 @@ public class ShephardsPlayApplet
             System.out.println("    'a' - toggle doArrowsTowardsSharpestDihedrals (green)");
             System.out.println("    alt-'a' - toggle doArrowsTowardsShortestEdges (cyan)");
             System.out.println("    'n' - toggle showNet");
+            System.out.println("    'R' - rotate closest cut or fold CCW around its lagoon in the net");
             System.out.println("    'S' - turn off optimize, and re-spherize");
             System.out.println("    'd' - delete closest edge");
             System.out.println("    ctrl-'i' - toggle doShowInsideOutDualVerts");
@@ -2153,6 +2162,7 @@ public class ShephardsPlayApplet
 
                     case 'R': // rotate exit around the lagoon
                     {
+                        showNet.set(true);
                         if (_dualMesh != null
                          && theNet != null
                          && highlightedDualEdgeIndex != -1)
@@ -2160,6 +2170,10 @@ public class ShephardsPlayApplet
                             Mesh.Edge alternatives[] = theNet.alternatives(highlightedDualEdgeIndex);
                             theNet.swapCutAndFold(highlightedDualEdgeIndex,
                                                   alternatives[0].myIndex());
+                            // make the highlighted one be the one we swapped with.
+                            // that makes it so, if the user doesn't jiggle the mouse,
+                            // hitting R repeatedly will rotate around the lagoon.
+                            highlightedDualEdgeIndex = alternatives[0].myIndex();
                         }
                         break;
                     }
@@ -2189,6 +2203,7 @@ public class ShephardsPlayApplet
                     {
                         UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices);
                         mesh.flipLeftRight();
+                        dirtyDualMesh(); // flip doesn't work when verts missing
                         // should be no need to re-delaunayize
                         UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
@@ -2199,6 +2214,7 @@ public class ShephardsPlayApplet
                     {
                         UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices);
                         mesh.flipUpDown();
+                        dirtyDualMesh(); // flip doesn't work when verts missing
                         // should be no need to re-delaunayize
                         UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
@@ -2209,6 +2225,7 @@ public class ShephardsPlayApplet
                     {
                         UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices);
                         mesh.flipLowerLeftUpperRight();
+                        dirtyDualMesh(); // flip doesn't work when verts missing
                         // should be no need to re-delaunayize
                         UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
@@ -2219,6 +2236,7 @@ public class ShephardsPlayApplet
                     {
                         UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices);
                         mesh.flipUpperLeftLowerRight();
+                        dirtyDualMesh(); // flip doesn't work when verts missing
                         // should be no need to re-delaunayize
                         UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
@@ -2532,6 +2550,7 @@ public class ShephardsPlayApplet
                             optimizationType = availableOptimizationTypes[optimizationTypeIndex.get()];
                             selectedTris = (int[][])Arrays.copy(item.before.selectedTris, 2);
                             selectedDualVertIndices = VecMath.copyvec(item.before.selectedDualVertIndices);
+                            dirtyDualMesh();
                         }
                         else
                         {
@@ -2553,6 +2572,7 @@ public class ShephardsPlayApplet
                             optimizationType = availableOptimizationTypes[optimizationTypeIndex.get()];
                             selectedTris = (int[][])Arrays.copy(item.after.selectedTris, 2);
                             selectedDualVertIndices = VecMath.copyvec(item.after.selectedDualVertIndices);
+                            dirtyDualMesh();
                         }
                         else
                         {
@@ -3512,8 +3532,8 @@ public class ShephardsPlayApplet
                             if (highlightedDualEdgeIndex != -1)
                             {
                                 Mesh.Edge alternatives[] = theNet.alternatives(highlightedDualEdgeIndex);
-                                PRINT(dualMesh.getEdge(highlightedDualEdgeIndex));
-                                PRINTARRAY(alternatives);
+                                //PRINT(dualMesh.getEdge(highlightedDualEdgeIndex));
+                                //PRINTARRAY(alternatives);
                                 FORI (iAlternative, alternatives.length)
                                 {
                                     dualEdgeColors[alternatives[iAlternative].myIndex()] = java.awt.Color.white;
@@ -9159,7 +9179,7 @@ OFF
                 // starting with the one after this one.
                 // Really, need to walk around the lagoon instead!
                 {
-                    results[nResults] = _mesh.getEdge(iEdge);
+                    results[nResults] = _mesh.getEdge(meshToUse==_mesh?iEdge:oEdge);
                     SortStuff.sort(results, 0, nResults+1, new SortStuff.Comparator() {
                         public int compare(Object _a, Object _b)
                         {
@@ -9172,7 +9192,7 @@ OFF
                         }
                     });
                     int ind = 0;
-                    while (results[ind].myIndex() != iEdge)
+                    while (results[ind].myIndex() != (meshToUse==_mesh?iEdge:oEdge))
                         ind++;
                     // we want: stuff after ind, followed by stuff before ind
                     results = (Mesh.Edge[])Arrays.concat(Arrays.subarray(results, ind+1, nResults+1-(ind+1)),
