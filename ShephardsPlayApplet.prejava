@@ -2192,9 +2192,9 @@ public class ShephardsPlayApplet
                                 // Make sure edge in question is pointing
                                 // towards root of cut tree.  If not, switch to its opposite.
                                 if (_dualMesh.getEdge(highlightedDualEdgeIndex).initialVertex() == null
-                                 || theNet._vertToParentEdge[_dualMesh.getEdge(highlightedDualEdgeIndex).initialVertex().myIndex()].myIndex() != highlightedDualEdgeIndex)
+                                 || theNet._vertToParentEdgeInd[_dualMesh.getEdge(highlightedDualEdgeIndex).initialVertex().myIndex()] != highlightedDualEdgeIndex)
                                     highlightedDualEdgeIndex = _dualMesh.getEdge(highlightedDualEdgeIndex).opposite().myIndex();
-                                assert(theNet._vertToParentEdge[_dualMesh.getEdge(highlightedDualEdgeIndex).initialVertex().myIndex()].myIndex() == highlightedDualEdgeIndex);
+                                assert(theNet._vertToParentEdgeInd[_dualMesh.getEdge(highlightedDualEdgeIndex).initialVertex().myIndex()] == highlightedDualEdgeIndex);
                             }
 
                             Mesh.Edge alternatives[] = theNet.alternatives(highlightedDualEdgeIndex);
@@ -3303,7 +3303,7 @@ public class ShephardsPlayApplet
                             FORI (iDualEdge, nDualEdges)
                                 dualEdgeIsCut[iDualEdge] = (theNet._edgeStatuses[iDualEdge] == Net.CUT);
                             FORI (iDualVert, nDualVerts)
-                                dualVertIndexToParentEdge[iDualVert] = theNet._vertToParentEdge[iDualVert];
+                                dualVertIndexToParentEdge[iDualVert] = dualMesh.getEdge(theNet._vertToParentEdgeInd[iDualVert]);
                         }
                         else if (netMethod.get() == NETMETHOD_RANDOM)
                         {
@@ -9205,14 +9205,14 @@ OFF
                 this._vertComponents = new SizeTrackingMergeFind(nVerts+1); // last may or may not be used
                 this._faceComponents = new SizeTrackingMergeFind(nFaces+1); // last may or may not be used
 
-                this._vertToParentEdge = null; // only makes sense when net is complete
+                this._vertToParentEdgeInd = null; // only makes sense when net is complete
                 this._topSortedVertInds = null; // only makes sense when net is complete
             }
 
             // This can be called after all edges
             // have been cut or folded.
-            // Sets and populates _vertToParentEdge and _topSortedVertInds.
-            // _vertToParentEdge[iVert] will point from iVert towards the root.
+            // Sets and populates _vertToParentEdgeInd and _topSortedVertInds.
+            // _vertToParentEdgeInd[iVert] will point from iVert towards the root.
             // _topSortedVertInds is in order from root to leafs.
             public void chooseDirections(int root)
             {
@@ -9249,7 +9249,7 @@ OFF
                 }
 
                 _topSortedVertInds = new int[nVerts+1];
-                _vertToParentEdge = new Mesh.Edge[nVerts+1];
+                _vertToParentEdgeInd = Arrays.fill(nVerts+1, -1);
 
                 boolean isSorted[] = new boolean[nVerts+1]; // all false initially
                 int nSorted = 0;
@@ -9267,10 +9267,12 @@ OFF
                         {
                             isSorted[jVert] = true;
                             _topSortedVertInds[nSorted++] = jVert;
-                            _vertToParentEdge[jVert] = edge.opposite();
+                            _vertToParentEdgeInd[jVert] = edge.opposite().myIndex();
                         }
                     }
                 }
+                assert(nSorted == nVerts+1);
+
             } // chooseDirections
 
             // utility to get past gaps using dual mesh
@@ -9407,7 +9409,7 @@ OFF
                 assert(_edgeStatuses[oFold] == FOLD);
 
                 // must have called chooseDirections already...
-                assert(_vertToParentEdge != null);
+                assert(_vertToParentEdgeInd != null);
                 assert(_topSortedVertInds != null);
 
                 {
@@ -9563,7 +9565,7 @@ OFF
             private int _edgeStatuses[];
             private SizeTrackingMergeFind _vertComponents;
             private SizeTrackingMergeFind _faceComponents;
-            private Mesh.Edge _vertToParentEdge[];
+            private int _vertToParentEdgeInd[];
             private int _topSortedVertInds[];
 
         } // class Net
@@ -10026,6 +10028,7 @@ OFF
                 public int optimizationTypeIndex;
                 public int selectedTris[][];
                 public int selectedDualVertIndices[];
+                public int netCuts[];
                 public State(Mesh mesh, boolean doContinuouslyDelaunayize, boolean doOptimize, int optimizationTypeIndex, int selectedTris[][], int selectedDualVertIndices[])
                 {
                     this.mesh = new Mesh(mesh);
