@@ -17,6 +17,7 @@ User should be able to:
 
 BUG:
     - undo after net surgury gives error in alternatives stuff
+    - ctrl-b (with Delaunayize not checked) when there's a net gives error in alternatives stuff
 
 TO DO:
     - put in dump files:
@@ -1192,6 +1193,14 @@ public class ShephardsPlayApplet
                     Mesh.Vertex vert = mesh.getVert(iVert);
                     writer.println("" + vert.x + " " + vert.y + " " + vert.h);
                 }
+
+                // If we're going to output net cuts,
+                // then we need to keep track of the order in which the edges
+                // appear in the output, since that's the order
+                // they'll be in when it gets read back in.
+                int edgeToOutputIndex[] = (theNet==null ? null : Arrays.fill(mesh.edges.size(), -1));
+                int outputIndex = 0;
+
                 {
                     boolean didEdge[] = new boolean[mesh.edges.size()]; // all false
                     int nEdges = mesh.edges.size();
@@ -1204,6 +1213,13 @@ public class ShephardsPlayApplet
                         Mesh.Edge e = mesh.getEdge(iEdge);
                         while (!didEdge[e.myIndex()])
                         {
+                            if (edgeToOutputIndex != null
+                             && edgeToOutputIndex[e.myIndex()] == -1) // if not already seen
+                            {
+                                edgeToOutputIndex[e.myIndex()] = outputIndex++;
+                                edgeToOutputIndex[e.opposite().myIndex()] = outputIndex++;
+                            }
+
                             didEdge[e.myIndex()] = true;
                             vertsThisFace.add(e.initialVertex().myIndex());
                             e = e.next();
@@ -1214,6 +1230,16 @@ public class ShephardsPlayApplet
                         writer.println();
                     }
                 }
+
+                if (theNet != null)
+                {
+                    writer.print("# Cuts:");
+                    FORI (i, theNet._vertToParentEdgeInd.length)
+                        if (!(i == theNet._vertToParentEdgeInd.length-1 && theNet._vertToParentEdgeInd[i] == -1)) // omit the final -1
+                            writer.print(" "+edgeToOutputIndex[theNet._vertToParentEdgeInd[i]]);
+                    writer.println();
+                }
+
 
                 writer.flush();
                 writer.close();
@@ -1300,9 +1326,31 @@ public class ShephardsPlayApplet
                     FORI (i, faceSize)
                         faces[iFace][i] = Integer.parseInt(tokens[i+1]);
                 }
+
+                //System.out.println("reading another line");
+                line = reader.readLine();
+
                 reader.close();
 
                 mesh = new Mesh(verts, faces);
+
+                if (line != null)
+                {
+                    // XXX TODO: be more lenient with syntax
+                    if (line.startsWith("# Cuts: "))
+                    {
+                        tokens = com.donhatchsw.compat.regex.split(line.substring(8).trim(), "\\s+");
+                        //PRINTARRAY(tokens);
+                        int cuts[] = new int[tokens.length];
+                        FORI (iToken, tokens.length)
+                            cuts[iToken] = Integer.parseInt(tokens[iToken]);
+                        theNet = new Net(getDualMesh(), mesh, cuts);
+                    }
+                    else
+                    {
+                        System.out.println("WARNING: unrecognized line after OFF data: "+line);
+                    }
+                }
 
                 if (doContinuouslyDelaunayize.get()) delaunayize();
             }
@@ -1553,6 +1601,7 @@ public class ShephardsPlayApplet
 
                             // added something-- invalidate dual mesh
                             dirtyDualMesh();
+                            if (doContinuouslyDelaunayize.get()) delaunayize();
                         }
 
                         //
@@ -1742,6 +1791,7 @@ public class ShephardsPlayApplet
 
                             // added something-- invalidate dual mesh
                             dirtyDualMesh();
+                            if (doContinuouslyDelaunayize.get()) delaunayize();
                         } // !showNet
                     } // shift not down
 
@@ -1778,6 +1828,7 @@ public class ShephardsPlayApplet
                                 vert.y = (double)Math.round(vert.y/gridSnapQuantum)*gridSnapQuantum;
                                 System.out.println("Dragging vertex "+beingDraggedVertIndex+" from "+vert.x+" "+vert.y+" "+vert.h+"");
                             }
+                            if (doContinuouslyDelaunayize.get()) delaunayize();
                         }
                     }
                 }
@@ -1806,9 +1857,9 @@ public class ShephardsPlayApplet
 
                     mesh.sanityCheck();
 
-                } // right mouse
+                    if (doContinuouslyDelaunayize.get()) delaunayize();
 
-                if (doContinuouslyDelaunayize.get()) delaunayize();
+                } // right mouse
 
                 prevP = thisP;
 
@@ -1850,6 +1901,7 @@ public class ShephardsPlayApplet
                             // added something-- invalidate dual mesh
                             dirtyDualMesh();
                         }
+                        if (doContinuouslyDelaunayize.get()) delaunayize();
                     }
                     rubberBandingNewEdge = false;
 
@@ -1888,8 +1940,6 @@ public class ShephardsPlayApplet
                 {
                     button3IsDown = false;
                 }
-
-                if (doContinuouslyDelaunayize.get()) delaunayize();
 
                 if (stateWhenPressed != null)
                 {
@@ -9216,7 +9266,8 @@ OFF
             public Net(Mesh mesh, Mesh dualMesh, int cuts[])
             {
                 this(mesh, dualMesh);
-                assert(cuts.length == mesh.verts.size()+1);
+                assert(cuts.length == mesh.verts.size()
+                    || (cuts.length == mesh.verts.size()+1 && cuts[cuts.length-1] == -1));
                 FORI (iCut, cuts.length)
                     if (cuts[iCut] != -1) // probably originall came from a net's _vertToParentEdgeInd, which can have a -1
                         cut(cuts[iCut]);
