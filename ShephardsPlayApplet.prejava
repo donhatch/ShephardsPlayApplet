@@ -19,6 +19,14 @@ BUG:
     - undo after net surgury gives error in alternatives stuff
 
 TO DO:
+    - drag and drop net surgury
+    - put in undo/redo:
+        - net
+    - put in undo/redo and dump files:
+        - selected verts
+        - net
+
+
     - try to maintain selection when swapping diagonals and stuff
 
     - think about which optimization types to retain if any
@@ -1081,7 +1089,7 @@ public class ShephardsPlayApplet
             System.out.println("    'a' - toggle doArrowsTowardsSharpestDihedrals (green)");
             System.out.println("    alt-'a' - toggle doArrowsTowardsShortestEdges (cyan)");
             System.out.println("    'n' - toggle showNet");
-            System.out.println("    'z' - rotate closest cut or fold CCW around its lagoon in the net");
+            System.out.println("    Left/Right arrow - rotate closest cut or fold CCW or CW around its lagoon in the net");
             System.out.println("    'S' - turn off optimize, and re-spherize");
             System.out.println("    'd' - delete closest edge");
             System.out.println("    ctrl-'i' - toggle doShowInsideOutDualVerts");
@@ -2103,8 +2111,77 @@ public class ShephardsPlayApplet
                         theCanvas.repaint();
                         break;
                     }
+                    case java.awt.event.KeyEvent.VK_LEFT:
+                    case java.awt.event.KeyEvent.VK_RIGHT:
+                    {
+                        showNet.set(true);
+                        if (_dualMesh != null
+                         && theNet != null
+                         && highlightedDualEdgeIndex != -1)
+                        {
+                            if (theNet._edgeStatuses[highlightedDualEdgeIndex] == Net.CUT)
+                            {
+                                // It's a cut; direction matters.
+                                // (for fold, we rely in the closest-edge picking
+                                // to pick the correct one of the two half-edges)
+                                // Make sure edge in question is pointing
+                                // towards root of cut tree.  If not, switch to its opposite.
+                                if (_dualMesh.getEdge(highlightedDualEdgeIndex).initialVertex() == null
+                                 || theNet._vertToParentEdge[_dualMesh.getEdge(highlightedDualEdgeIndex).initialVertex().myIndex()].myIndex() != highlightedDualEdgeIndex)
+                                    highlightedDualEdgeIndex = _dualMesh.getEdge(highlightedDualEdgeIndex).opposite().myIndex();
+                                assert(theNet._vertToParentEdge[_dualMesh.getEdge(highlightedDualEdgeIndex).initialVertex().myIndex()].myIndex() == highlightedDualEdgeIndex);
+                            }
+
+                            Mesh.Edge alternatives[] = theNet.alternatives(highlightedDualEdgeIndex);
+                            if (alternatives.length > 0)
+                            {
+                                int other = alternatives[(e.getKeyCode() == java.awt.event.KeyEvent.VK_LEFT ? 0 : alternatives.length-1)].myIndex();
+                                theNet.swapCutAndFold(highlightedDualEdgeIndex,
+                                                      other);
+                                // make the highlighted one be the one we swapped with.
+                                // that makes it so, if the user doesn't jiggle the mouse,
+                                // hitting the key repeatedly will rotate around the lagoon.
+                                highlightedDualEdgeIndex = other;
+                                theCanvas.repaint();
+                            }
+                            else
+                            {
+                                System.out.println("HEY! edge "+_dualMesh.getEdge(highlightedDualEdgeIndex)+" has no alternative! status="+theNet._edgeStatuses[highlightedDualEdgeIndex]);
+                                assert(theNet._edgeStatuses[highlightedDualEdgeIndex] == Net.FOLD);
+                                assert(false); // wtf? this shouldn't happen
+                            }
+
+                            if (true)
+                            {
+                                // just sanity check that we can walk around the net tree starting from highlighted dual edge index
+
+                                //System.out.println("===================");
+                                //System.out.println("Walking around net tree:");
+                                Mesh.Edge dualEdge = _dualMesh.getEdge(highlightedDualEdgeIndex);
+                                // assert against infinite loop...
+                                boolean seen[] = new boolean[_dualMesh.edges.size()]; // false initially
+                                while (true)
+                                {
+                                    assert(!seen[dualEdge.myIndex()]);
+                                    if (false)
+                                        System.out.println("    "+dualEdge);
+                                    seen[dualEdge.myIndex()] = true;
+                                    assert(_dualMesh.getEdge(dualEdge.myIndex()) == dualEdge); // check that nextInTree didn't get confused and switch trees
+                                    dualEdge = theNet.nextInTree(dualEdge);
+                                    assert(_dualMesh.getEdge(dualEdge.myIndex()) == dualEdge); // check that nextInTree didn't get confused and switch trees
+                                    if (dualEdge.myIndex() == highlightedDualEdgeIndex)
+                                        break;
+                                }
+                                //System.out.println("===================");
+                            }
+
+                        }
+                        break;
+                    }
 
                     default:
+                        // don't print anything, or we'll print too much (e.g. Shift, and any keys we handle in keyTyped())
+                        //System.out.println("Unknown keycode "+java.awt.event.KeyEvent.getKeyText(e.getKeyCode())+" ("+e.getKeyCode()+")");
                         break;
                 }
                 if (eventVerbose >= 1) System.out.println("out keyPressed: "+e);
@@ -10311,6 +10388,7 @@ OFF
             theNet = null;
         }
         private int beingDraggedVertIndex = -1;
+        private int beingDraggedNetEdgeInd = -1;
         private boolean rubberBandingNewEdge = false;
         private int[][] selectedTris = {};
         private int[] selectedDualVertIndices = {};
