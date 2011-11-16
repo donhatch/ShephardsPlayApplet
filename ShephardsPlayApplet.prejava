@@ -3744,6 +3744,10 @@ public class ShephardsPlayApplet
                             }
                         }
 
+                        // TODO: the defunct code sets the following for each off balance edge...
+                        // do something similar
+                        //          offBalanceEdgeToGoodLagoonExits[iDualEdge]
+                        //          offBalanceEdgeToLagoonEdges[iDualEdge]
                         if (false) // DEFUNCT-- remove eventually, but salvage some of the coloring scheme
                         {
                             //
@@ -9380,26 +9384,40 @@ OFF
                 //System.out.println("out getNextEdge");
                 return nextEdge;
             }
+
+            // Walk around the boundary of the tree,
+            // traversing both tree edges and things sticking out.
+            public Mesh.Edge nextInTreeOrExit(int treeType, Mesh.Edge edge)
+            {
+                int iEdge = edge.myIndex();
+                Mesh originalMesh = (_mesh.getEdge(iEdge) == edge ? _mesh : _dualMesh);
+                assert(originalMesh.getEdge(iEdge) == edge);
+
+                Mesh meshToUse = (treeType==CUT ? _mesh : _dualMesh);
+                edge = meshToUse.getEdge(iEdge); // switch from _mesh to meshToUse
+
+                // advance edge (its index will no longer be iEdge)
+                if (_edgeStatuses[iEdge] == treeType)
+                    edge = getNextEdge(edge);
+                else
+                    edge = getNextEdge(edge.opposite()); // next spoke
+
+                // switch back from meshToUse to original mesh
+                edge = originalMesh.getEdge(edge.myIndex());
+
+                return edge;
+            }
+
             // next in either cut tree or fold tree.
             // tree need not be complete.
             // if edge is from dual mesh, return something from dual mesh.
             public Mesh.Edge nextInTree(Mesh.Edge edge)
             {
-                Mesh originalMesh = (_mesh.getEdge(edge.myIndex()) == edge ? _mesh : _dualMesh);
-                assert(originalMesh.getEdge(edge.myIndex()) == edge);
-
-                int iEdge = edge.myIndex();
-                Mesh meshToUse = (_edgeStatuses[iEdge]==CUT ? _mesh : _dualMesh);
-                edge = meshToUse.getEdge(iEdge); // switch from _mesh to meshToUse
-
-                Mesh.Edge nextEdge = getNextEdge(edge);
-                while (_edgeStatuses[nextEdge.myIndex()] != _edgeStatuses[iEdge])
-                    nextEdge = getNextEdge(nextEdge.opposite()); // next spoke CW
-
-                // switch back from meshToUse to original mesh
-                nextEdge = originalMesh.getEdge(nextEdge.myIndex());
-
-                return nextEdge;
+                int treeType = _edgeStatuses[edge.myIndex()];
+                do {
+                    edge = nextInTreeOrExit(treeType, edge);
+                } while (_edgeStatuses[edge.myIndex()] != treeType);
+                return edge;
             }
 
             // If iEdge is a cut, return a list of all the folds
