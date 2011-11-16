@@ -3354,11 +3354,7 @@ public class ShephardsPlayApplet
                     int topSortedDualVertIndices[] = null;
                     Mesh.Edge dualVertIndexToParentEdge[] = null;
                     double momentAndWeightStrictlyBelowEachDualVertex[][] = null;
-                    // Hack for now... just one
-                    Mesh.Edge theBadLagoonExitToDraw = null;
-                    ArrayList offBalanceEdgeToGoodLagoonExits[] = new ArrayList[dualMesh.edges.size()]; // all nulls initially
-                    ArrayList offBalanceEdgeToLagoonEdges[] = new ArrayList[dualMesh.edges.size()]; // all nulls initially
-                    double offBalanceEdgeToLagoonCenter[][] = new double[dualMesh.edges.size()][]; // all nulls initially
+                    double lagoonCenter[] = null; // we set it to non-null if drawing one
 
                     if (showNet.get())
                     {
@@ -3746,227 +3742,6 @@ public class ShephardsPlayApplet
                                 }
                             }
                         }
-
-                        // TODO: the defunct code sets the following for each off balance edge...
-                        // do something similar
-                        //          offBalanceEdgeToGoodLagoonExits[iDualEdge]
-                        //          offBalanceEdgeToLagoonEdges[iDualEdge]
-                        if (false) // DEFUNCT-- remove eventually, but salvage some of the coloring scheme
-                        {
-                            //
-                            // Start to try to make a data structure
-                            // for net surgery.
-                            //
-                            Mesh.Edge nextDualEdgeInCutTree[] = new Mesh.Edge[nDualEdges];
-
-                            FORI (iDualEdge, nDualEdges)
-                            {
-                                Mesh.Edge dualEdge = dualMesh.getEdge(iDualEdge);
-                                // Is this dual edge a cut?
-                                // well, could look it up in the dualEdgeIsCut
-                                // array, but we don't need that
-                                Mesh.Vertex initialVertex = dualEdge.initialVertex();
-                                Mesh.Vertex finalVertex = dualEdge.finalVertex();
-                                boolean isCut = (initialVertex != null
-                                              && dualVertIndexToParentEdge[initialVertex.myIndex()] == dualEdge)
-                                             || (finalVertex != null
-                                              && dualVertIndexToParentEdge[finalVertex.myIndex()] == dualEdge.opposite());
-                                if (!isCut)
-                                    continue;
-
-                                for (Mesh.Edge next = dualEdge.next();
-                                     ;
-                                     next = next.opposite().next())
-                                {
-                                    Mesh.Vertex nextInitialVertex = next.initialVertex();
-                                    Mesh.Vertex nextFinalVertex = next.finalVertex();
-                                    boolean nextIsCut = (nextInitialVertex != null
-                                                      && dualVertIndexToParentEdge[nextInitialVertex.myIndex()] == next)
-                                                     || (nextFinalVertex != null
-                                                      && dualVertIndexToParentEdge[nextFinalVertex.myIndex()] == next.opposite());
-                                    if (nextIsCut)
-                                    {
-                                        nextDualEdgeInCutTree[iDualEdge] = next;
-                                        break;
-                                    }
-                                    assert(next.opposite() != dualEdge); // that would be endless loop... must have found a next by now, since an edge should be a cut iff its opposite is a cut
-                                }
-                            }
-
-                            FORI (iDualEdge, nDualEdges)
-                            {
-                                assert((nextDualEdgeInCutTree[iDualEdge] != null)
-                                    == dualEdgeIsCut[iDualEdge]);
-                            }
-
-                            if (false)
-                            {
-                                // Print it out
-                                System.out.println("Walking around net tree:");
-                                boolean seen[] = new boolean[nDualEdges]; // false initially
-                                FORI (iPass, 1)
-                                {
-                                    FORI (iDualEdge, nDualEdges)
-                                    {
-                                        if (nextDualEdgeInCutTree[iDualEdge] == null)
-                                            continue; // not a cut
-                                        if (seen[iDualEdge])
-                                            continue;
-                                        assert(iPass == 0); // should have got everything in pass 0
-                                        Mesh.Edge dualEdge = dualMesh.getEdge(iDualEdge);
-                                        if (dualEdge.initialVertex() != null
-                                         && dualVertIndexToParentEdge[dualEdge.initialVertex().myIndex()] != null)
-                                            continue; // start connected components with roots (including or non-vertices) only XXX would be good to start with the extremal child, but that's hard to figure out
-                                        System.out.print("    ");
-                                        while (true)
-                                        {
-                                            System.out.print("(");
-                                            if (dualEdge.initialVertex() != null)
-                                                System.out.print(""+dualEdge.initialVertex().myIndex());
-                                            else
-                                                System.out.print("null");
-                                            System.out.print("->");
-                                            if (dualEdge.finalVertex() != null)
-                                                System.out.print(""+dualEdge.finalVertex().myIndex());
-                                            else
-                                                System.out.print("null");
-                                            System.out.print(")");
-                                            seen[dualEdge.myIndex()] = true;
-                                            dualEdge = nextDualEdgeInCutTree[dualEdge.myIndex()];
-                                            if (dualEdge.myIndex() == iDualEdge)
-                                                break;
-                                        }
-                                        System.out.println();
-                                    }
-                                }
-                            }
-
-                            // ARGH! this doesn't work for good lagoon exits, which is what I wrote it for, since those are not a partition!  (cyan edge can be exit for more than one lagoon)... TODO: remove it if it's not good for anything
-                            class EdgesPartition
-                            {
-                                private Mesh.Edge firsts[];
-                                private Mesh.Edge nexts[];
-                                public EdgesPartition(int n,
-                                                      Mesh mesh)
-                                {
-                                    firsts = new Mesh.Edge[n];
-                                    nexts = new Mesh.Edge[mesh.edges.size()];
-                                }
-                                public Mesh.Edge first(int i)
-                                {
-                                    return firsts[i];
-                                }
-                                public Mesh.Edge next(Mesh.Edge e)
-                                {
-                                    return nexts[e.myIndex()];
-                                }
-                                public void add(int i, Mesh.Edge e)
-                                {
-                                    assert(nexts[e.myIndex()] == null);
-                                    nexts[e.myIndex()] = firsts[i];
-                                    firsts[i] = e;
-                                }
-                            }; // EdgesPartition
-
-
-                            // Try to do some surgery.
-                            //System.out.println("Trying surgery...");
-                            FORI (iDualEdge, nDualEdges)
-                            {
-                                Mesh.Edge dualEdge = dualMesh.getEdge(iDualEdge);
-                                Mesh.Vertex initialVertex = dualEdge.initialVertex();
-                                if (dualEdgeIsOffBalanceCut[iDualEdge]
-                                 && initialVertex != null
-                                 && dualVertIndexToParentEdge[initialVertex.myIndex()] == dualEdge)
-                                {
-                                    //System.out.println("    Looking for alternatives to bad exit "+dualEdge+"");
-                                    // It's an upward off-balance cut.
-                                    // Starting with its opposite, walk around the lagoon
-                                    // until we find a good exit.
-                                    // In fact, record them all.
-                                    offBalanceEdgeToGoodLagoonExits[iDualEdge] = new ArrayList();
-                                    offBalanceEdgeToLagoonEdges[iDualEdge] = new ArrayList();
-
-                                    double momentAndWeightStrictlyBelowDualVertex[] = momentAndWeightStrictlyBelowEachDualVertex[initialVertex.myIndex()];
-                                    double lagoonMomentAndWeight[] = new double[3]; // zeros
-                                    accumulateMomentAndArea(lagoonMomentAndWeight, momentAndWeightStrictlyBelowEachDualVertex[initialVertex.myIndex()]);
-                                    accumulateMomentAndArea(lagoonMomentAndWeight, initialVertex.momentAndArea);
-                                    double lagoonCenter[] = {
-                                        lagoonMomentAndWeight[0] / lagoonMomentAndWeight[2],
-                                        lagoonMomentAndWeight[1] / lagoonMomentAndWeight[2],
-                                    };
-                                    offBalanceEdgeToLagoonCenter[iDualEdge] = lagoonCenter;
-                                    // begin with dualEdge.opposite() even though it's not really in the lagoon, so that we'll see the first exit from the same vertex if there is one
-                                    for (Mesh.Edge lagoonEdge = dualEdge.opposite();
-                                         lagoonEdge != dualEdge;
-                                         lagoonEdge = nextDualEdgeInCutTree[lagoonEdge.myIndex()])
-                                    {
-                                        if (lagoonEdge != dualEdge.opposite()) // first one isn't really a lagoon edge
-                                            offBalanceEdgeToLagoonEdges[iDualEdge].add(lagoonEdge);
-
-                                        for (Mesh.Edge lagoonExitEdge = lagoonEdge.next();
-                                             lagoonExitEdge != nextDualEdgeInCutTree[lagoonEdge.myIndex()];
-                                             lagoonExitEdge = lagoonExitEdge.opposite().next())
-                                        {
-                                            // found a lagoon exit... see if it's a good one.
-                                            Mesh.Vertex lagoonExitVertex = lagoonExitEdge.initialVertex();
-                                            boolean isGood = VecMath.dot(lagoonExitEdge.direction,
-                                                                         VecMath.vmv(lagoonCenter,
-                                                                                     new double[]{lagoonExitVertex.x,
-                                                                                                  lagoonExitVertex.y})) <= 0;
-                                            if (isGood)
-                                            {
-                                                // At this point we're not sure if it's an exit.
-                                                // Scan upwards to see if we find dualEdge.
-                                                // if we do, then we're in the same lagoon.
-                                                // (note, it would be more efficient asymptotically
-                                                // to just turn on a bit for every node in the lagoon,
-                                                // but this is simple for now, and probably not a bottleneck)
-                                                boolean isExit = true; // until proven otherwise
-                                                if (lagoonExitEdge.finalVertex() != null)
-                                                {
-                                                    //System.out.println("        is "+initialVertex.myIndex()+" downstream from "+lagoonExitEdge.finalVertex().myIndex()+"?");
-                                                    for (int jVertex = lagoonExitEdge.finalVertex().myIndex();
-                                                         dualVertIndexToParentEdge[jVertex] != null && dualVertIndexToParentEdge[jVertex].finalVertex() != null;
-                                                         jVertex = dualVertIndexToParentEdge[jVertex].finalVertex().myIndex())
-                                                        if (jVertex == initialVertex.myIndex()) // the original bad lagoon exit vertex
-                                                        {
-                                                            isExit = false;
-                                                            //System.out.println("            oops! found vertex "+initialVertex.myIndex()+" scanning upwards from "+lagoonExitVertex.myIndex()+"");
-                                                            break;
-                                                        }
-                                                }
-                                                if (isExit)
-                                                {
-                                                    offBalanceEdgeToGoodLagoonExits[iDualEdge].add(lagoonExitEdge);
-                                                    // could break here since we found one, if that's the way we were doing things
-                                                }
-                                            }
-                                        }
-                                    }
-                                    if (false)
-                                    {
-                                        System.out.print("        bad cut "+dualEdge+" could be replaced by: ");
-                                        FORI (iGoodExit, offBalanceEdgeToGoodLagoonExits[iDualEdge].size())
-                                        {
-                                            Mesh.Edge goodExit = (Mesh.Edge)offBalanceEdgeToGoodLagoonExits[iDualEdge].get(iGoodExit);
-                                            System.out.print(" " + goodExit);
-                                        }
-                                        System.out.println();
-                                    }
-
-                                    if (dualEdge.myIndex() == highlightedDualEdgeIndex
-                                     || dualEdge.opposite().myIndex() == highlightedDualEdgeIndex)
-                                        theBadLagoonExitToDraw = dualEdge;
-                                    if (offBalanceEdgeToGoodLagoonExits[iDualEdge].size() < 2)
-                                    {
-                                        System.out.println("        HEY!!! bad cut "+dualEdge+" has only "+offBalanceEdgeToGoodLagoonExits[iDualEdge].size()+" good lagoon exits! That's impossible!");
-                                        //assert(false);
-                                    }
-                                }
-                            }
-                        }
-
                     }
                     else // !showNet
                     {
@@ -4039,8 +3814,6 @@ public class ShephardsPlayApplet
                         }
                     } // if (!showNet)
 
-                    //PRINT(theBadLagoonExitToDraw);
-
                     //
                     // Draw dual edges, in chosen colors
                     // 
@@ -4068,24 +3841,6 @@ public class ShephardsPlayApplet
                                 dualEdgeColors[iEdge] = darkBlue;
                             }
                         }
-                        if (theBadLagoonExitToDraw != null) // DEFUNCT
-                        {
-                            dualEdgeColors[theBadLagoonExitToDraw.myIndex()]            = java.awt.Color.magenta; // red turning blue
-                            dualEdgeColors[theBadLagoonExitToDraw.opposite().myIndex()] = java.awt.Color.magenta; // red turning blue
-                            int theBadLagoonExitToDrawIndex = theBadLagoonExitToDraw.myIndex();
-                            FORIDOWN(iItem, offBalanceEdgeToGoodLagoonExits[theBadLagoonExitToDrawIndex].size())
-                            {
-                                Mesh.Edge dualEdge = (Mesh.Edge)offBalanceEdgeToGoodLagoonExits[theBadLagoonExitToDrawIndex].get(iItem);
-                                dualEdgeColors[dualEdge.myIndex()]            = java.awt.Color.cyan; // blue turning green
-                                dualEdgeColors[dualEdge.opposite().myIndex()] = java.awt.Color.cyan; // blue turning green
-                            }
-                            FORIDOWN(iItem, offBalanceEdgeToLagoonEdges[theBadLagoonExitToDrawIndex].size())
-                            {
-                                Mesh.Edge dualEdge = (Mesh.Edge)offBalanceEdgeToLagoonEdges[theBadLagoonExitToDrawIndex].get(iItem);
-                                dualEdgeColors[dualEdge.myIndex()]            = java.awt.Color.yellow;
-                                dualEdgeColors[dualEdge.opposite().myIndex()] = java.awt.Color.yellow;
-                            }
-                        }
                         if (beingDraggedNetEdgeIndex != -1
                          && theNet._edgeStatuses[beingDraggedNetEdgeIndex] == Net.CUT)
                         {
@@ -4096,7 +3851,7 @@ public class ShephardsPlayApplet
                                 beingDraggedNetEdgeIndex = _dualMesh.getEdge(beingDraggedNetEdgeIndex).opposite().myIndex();
                             assert(theNet._vertToParentEdgeInd[dualMesh.getEdge(beingDraggedNetEdgeIndex).initialVertex().myIndex()] == beingDraggedNetEdgeIndex);
 
-                            double lagoonCenter[];
+                            // set lagoonCenter from null... this will cause it to be drawn down below, after edges
                             {
                                 Mesh.Edge netEdgeBeingDragged = dualMesh.getEdge(beingDraggedNetEdgeIndex);
                                 Mesh.Vertex initialVertex = netEdgeBeingDragged.initialVertex();
@@ -4338,9 +4093,9 @@ public class ShephardsPlayApplet
                                      7);
                     }
 
-                    if (theBadLagoonExitToDraw != null)
+
+                    if (lagoonCenter != null)
                     {
-                        double lagoonCenter[] = offBalanceEdgeToLagoonCenter[theBadLagoonExitToDraw.myIndex()];
                         mg.setColor(dualVertSelectionColor);
                         mg.drawPoint(lagoonCenter[0],
                                      lagoonCenter[1],
