@@ -1915,7 +1915,8 @@ public class ShephardsPlayApplet
                         Mesh dualMesh = getDualMesh();
                         int targetEdgeIndex = dualMesh.indexOfClosestEdge(thisP, true);
                         if (targetEdgeIndex != -1
-                         && targetEdgeIndex != beingDraggedNetEdgeIndex)
+                         && targetEdgeIndex != beingDraggedNetEdgeIndex
+                         && dualMesh.getEdge(targetEdgeIndex).opposite().myIndex() != beingDraggedNetEdgeIndex)
                         {
                             // could do this once on mouse down, and have them lowlighted or something
                             Mesh.Edge alternatives[] = theNet.alternatives(beingDraggedNetEdgeIndex);
@@ -3354,7 +3355,6 @@ public class ShephardsPlayApplet
                     //
                     boolean dualEdgeIsCut[] = null; // XXX DEFUNCT
                     boolean dualEdgeIsOffBalanceCut[] = null;
-                    int topSortedDualVertIndices[] = null; // XXX DEFUNCT
                     double momentAndWeightStrictlyBelowEachDualVertex[][] = null;
                     double lagoonCenter[] = null; // we set it to non-null if drawing one
 
@@ -3628,53 +3628,17 @@ public class ShephardsPlayApplet
                             }
                         } // theNet was null
 
-
-                        //
-                        // Get a topsort of the verts,
-                        // so we can traverse it in order for various purposes
-                        // rather than having to write a whole bunch of recursive helper functions.
-                        //
-                        {
-                            topSortedDualVertIndices = new int[nDualVerts];
-                            int nSorted = 0;
-                            int stackTop = nDualVerts; // we use the end of the array as a stack
-                            boolean isSorted[] = new boolean[nDualVerts]; // all false initially
-                            FORI(iDualVert, nDualVerts)
-                            {
-                                int jDualVert = iDualVert;
-                                while (!isSorted[jDualVert])
-                                {
-                                    topSortedDualVertIndices[--stackTop] = jDualVert;
-                                    isSorted[jDualVert] = true;
-
-                                    int parentEdgeInd = theNet._vertToParentEdgeInd[jDualVert];
-                                    if (parentEdgeInd == -1)
-                                        break;
-                                    Mesh.Edge parentEdge = dualMesh.getEdge(parentEdgeInd);
-                                    Mesh.Vertex finalVertex = parentEdge.finalVertex();
-                                    if (finalVertex == null)
-                                        break;
-                                    jDualVert = finalVertex.myIndex();
-                                }
-                                while (stackTop < nDualVerts)
-                                    topSortedDualVertIndices[nSorted++] = topSortedDualVertIndices[stackTop++];
-                            }
-                            assert(nSorted == nDualVerts);
-                            assert(stackTop == nDualVerts);
-                            FORI (iDualVert, nDualVerts)
-                                assert(isSorted[iDualVert]);
-                        }
-
-
                         //
                         // Now figure out which ones are off balance.
                         //
                         // accumulate weights...
                         momentAndWeightStrictlyBelowEachDualVertex = new double[nDualVerts][3]; // initially zeros
                         {
-                            FORIDOWN(iiChild, topSortedDualVertIndices.length) // leaves to roots
+                            FORIDOWN(iiChild, theNet._topSortedVertInds.length) // leaves to roots
                             {
-                                int iChild = topSortedDualVertIndices[iiChild];
+                                int iChild = theNet._topSortedVertInds[iiChild];
+                                if (iChild == nDualVerts)
+                                    continue; // it's the infinite vertex, i.e. the root
                                 Mesh.Vertex child = dualMesh.getVert(iChild);
                                 int parentEdgeInd = theNet._vertToParentEdgeInd[iChild];
                                 if (parentEdgeInd != -1)
@@ -3996,9 +3960,11 @@ public class ShephardsPlayApplet
                         //
                         double norm2s[] = new double[nDualVerts]; // zeros initially
                         double normInfs[] = new double[nDualVerts]; // zeros initially
-                        FORI (iiChild, topSortedDualVertIndices.length) // roots to leaves
+                        FORI (iiChild, theNet._topSortedVertInds.length) // roots to leaves
                         {
-                            int iChild = topSortedDualVertIndices[iiChild];
+                            int iChild = theNet._topSortedVertInds[iiChild];
+                            if (iChild == nDualVerts)
+                                continue; // it's the infinite vertex, i.e. the root
                             Mesh.Vertex child = dualMesh.getVert(iChild);
                             int parentEdgeInd = theNet._vertToParentEdgeInd[iChild];
                             if (parentEdgeInd != -1)
