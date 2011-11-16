@@ -19,6 +19,7 @@ BUGS:
 
 TO DO:
     - when dragging a cut edge, show it dragging (edge or fold)
+    - highlight alternatives when dragging fold
 
     - showNet should go in the undo item, otherwise it's weird when you do something
       that changes it but undo doesn't change it back
@@ -3351,27 +3352,19 @@ public class ShephardsPlayApplet
                     // If showing net, compute a net.
                     // For now, sweep upwards,
                     // color good edges green and off-balance ones red.
-                    // XXX most of the following are superceded by theNet-- clean this up
                     //
-                    boolean dualEdgeIsCut[] = null; // XXX DEFUNCT
                     boolean dualEdgeIsOffBalanceCut[] = null;
                     double momentAndWeightStrictlyBelowEachDualVertex[][] = null;
                     double lagoonCenter[] = null; // we set it to non-null if drawing one
 
                     if (showNet.get())
                     {
-                        dualEdgeIsCut = new boolean[mesh.edges.size()]; // all false initially
                         dualEdgeIsOffBalanceCut = new boolean[mesh.edges.size()]; // all false initially
 
-                        if (theNet != null)
+                        if (theNet == null)
                         {
-                            // copy from existing net to our ad-hoc structures
-                            // (XXX which will go away soon)
-                            FORI (iDualEdge, nDualEdges)
-                                dualEdgeIsCut[iDualEdge] = (theNet._edgeStatuses[iDualEdge] == Net.CUT);
-                        }
-                        else
-                        {
+                            boolean dualEdgeIsCut[] = new boolean[mesh.edges.size()]; // all false initially
+
                             Mesh.Edge dualVertIndexToParentEdge[] = new Mesh.Edge[dualMesh.verts.size()]; // all null initially
                             if (netMethod.get() == NETMETHOD_RANDOM)
                             {
@@ -3772,7 +3765,7 @@ public class ShephardsPlayApplet
                     //java.awt.Color darkBlue = new java.awt.Color(0.f,0.f,3/4.f);
                     //java.awt.Color darkBlue = new java.awt.Color(0.f,0.f,7/8.f);
 
-                    if (dualEdgeIsCut != null)
+                    if (showNet.get())
                     {
                         // showing net-- different color scheme
                         FORIDOWN(iEdge, mesh.edges.size())
@@ -3781,7 +3774,7 @@ public class ShephardsPlayApplet
                             {
                                 dualEdgeColors[iEdge] = java.awt.Color.red;
                             }
-                            else if (dualEdgeIsCut[iEdge])
+                            else if (theNet._edgeStatuses[iEdge] == Net.CUT)
                             {
                                 dualEdgeColors[iEdge] = java.awt.Color.green;
                             }
@@ -3849,11 +3842,12 @@ public class ShephardsPlayApplet
                     // we draw the non-cut edges first, then the cut edges--
                     // this makes the tree appear more connected.
                     //
-                    FORI (iPass, dualEdgeIsCut!=null ? 2 : 1)
+                    int nPasses = showNet.get() ? 2 : 1;
+                    FORI (iPass, nPasses)
                         FORIDOWN (iDualEdge, mesh.edges.size())
                         {
-                            if (dualEdgeIsCut != null
-                             && dualEdgeIsCut[iDualEdge] != (iPass==1))
+                            if (nPasses == 2
+                             && (theNet._edgeStatuses[iDualEdge]==Net.CUT) != (iPass==1))
                                 continue; // draw cuts iff iPass==1
 
                             Mesh.Edge dualEdge = dualMesh.getEdge(iDualEdge);
