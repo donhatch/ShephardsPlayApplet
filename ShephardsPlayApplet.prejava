@@ -1481,10 +1481,10 @@ public class ShephardsPlayApplet
             //doCannedThingAlgorithm5Killer1();
             //doCannedThingBlindLagoonExitKiller();
             //doCannedThingFarthestLagoonExitKiller();
-            doCannedThingFarthestLagoonExitKillerAltB();
+            //doCannedThingFarthestLagoonExitKillerAltB();
             //doCannedThingFarthestLagoonExitKillerOptimized();
             //doBlueNoiseThing();
-            //load("DUMP.off");
+            load("DUMP.off");
 
             if (eventVerbose >= 1) System.out.println("out init");
         } // init
@@ -3211,6 +3211,9 @@ public class ShephardsPlayApplet
                 java.awt.Color perpColorGood = darkGreen;
 
                 Mesh dualMesh = getDualMesh();
+                int nDualVerts = dualMesh.verts.size();
+                int nDualEdges = dualMesh.edges.size();
+
 
                 if (true)
                 {
@@ -3349,10 +3352,9 @@ public class ShephardsPlayApplet
                     // color good edges green and off-balance ones red.
                     // XXX most of the following are superceded by theNet-- clean this up
                     //
-                    boolean dualEdgeIsCut[] = null;
+                    boolean dualEdgeIsCut[] = null; // XXX DEFUNCT
                     boolean dualEdgeIsOffBalanceCut[] = null;
-                    int topSortedDualVertIndices[] = null;
-                    Mesh.Edge dualVertIndexToParentEdge[] = null;
+                    int topSortedDualVertIndices[] = null; // XXX DEFUNCT
                     double momentAndWeightStrictlyBelowEachDualVertex[][] = null;
                     double lagoonCenter[] = null; // we set it to non-null if drawing one
 
@@ -3360,262 +3362,272 @@ public class ShephardsPlayApplet
                     {
                         dualEdgeIsCut = new boolean[mesh.edges.size()]; // all false initially
                         dualEdgeIsOffBalanceCut = new boolean[mesh.edges.size()]; // all false initially
-                        dualVertIndexToParentEdge = new Mesh.Edge[dualMesh.verts.size()]; // all null initially
-
 
                         if (theNet != null)
                         {
                             // copy from existing net to our ad-hoc structures
-                            // (which will go away soon)
-                            int nDualEdges = dualMesh.edges.size();
-                            int nDualVerts = dualMesh.verts.size();
+                            // (XXX which will go away soon)
                             FORI (iDualEdge, nDualEdges)
                                 dualEdgeIsCut[iDualEdge] = (theNet._edgeStatuses[iDualEdge] == Net.CUT);
-                            FORI (iDualVert, nDualVerts)
-                                dualVertIndexToParentEdge[iDualVert] = dualMesh.getEdge(theNet._vertToParentEdgeInd[iDualVert]);
                         }
-                        else if (netMethod.get() == NETMETHOD_RANDOM)
+                        else
                         {
-                            boolean netVerbose = !(showNet.get() && showNetFlow);
-                            if (netVerbose)
-                                System.out.println("   computing random net");
-
-                            int nDualEdges = dualMesh.edges.size();
-                            int nDualVerts = dualMesh.verts.size();
-
-                            // Use uniform random spanning tree algorithm, from David Bruce Wilson
-                            // "Generating Random Spanning Trees More Quickly than the Cover Time"
-
-                            Mesh.Edge edgesOut[][] = new Mesh.Edge[nDualVerts+1][];
+                            Mesh.Edge dualVertIndexToParentEdge[] = new Mesh.Edge[dualMesh.verts.size()]; // all null initially
+                            if (netMethod.get() == NETMETHOD_RANDOM)
                             {
-                                int totalArity = 0;
-                                FORI (iDualVert, nDualVerts) // all but vertex at infinity
-                                {
-                                    Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
-                                    edgesOut[iDualVert] = new Mesh.Edge[dualVert.arity];
-                                    totalArity += dualVert.arity;
-                                }
-                                // figure out arity of vertex at infinity.
-                                // total arity of all verts *including* the one at infinity
-                                // is twice num edges (i.e. num half-edges), so...
-                                int arityOfVertexAtInfinity = nDualEdges - totalArity;
-                                edgesOut[nDualVerts] = new Mesh.Edge[arityOfVertexAtInfinity];
+                                boolean netVerbose = !(showNet.get() && showNetFlow);
+                                if (netVerbose)
+                                    System.out.println("   computing random net");
 
-                                int nEdgesOut[] = new int[nDualVerts+1]; // all zeros initially
-                                FORI (iDualEdge, nDualEdges)
-                                {
-                                    Mesh.Edge dualEdge = dualMesh.getEdge(iDualEdge);
-                                    Mesh.Vertex v0 = dualEdge.initialVertex();
-                                    int i0 = v0==null ? nDualVerts : v0.myIndex();
+                                // Use uniform random spanning tree algorithm, from David Bruce Wilson
+                                // "Generating Random Spanning Trees More Quickly than the Cover Time"
 
-                                    edgesOut[i0][nEdgesOut[i0]++] = dualEdge;
+                                Mesh.Edge edgesOut[][] = new Mesh.Edge[nDualVerts+1][];
+                                {
+                                    int totalArity = 0;
+                                    FORI (iDualVert, nDualVerts) // all but vertex at infinity
+                                    {
+                                        Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
+                                        edgesOut[iDualVert] = new Mesh.Edge[dualVert.arity];
+                                        totalArity += dualVert.arity;
+                                    }
+                                    // figure out arity of vertex at infinity.
+                                    // total arity of all verts *including* the one at infinity
+                                    // is twice num edges (i.e. num half-edges), so...
+                                    int arityOfVertexAtInfinity = nDualEdges - totalArity;
+                                    edgesOut[nDualVerts] = new Mesh.Edge[arityOfVertexAtInfinity];
+
+                                    int nEdgesOut[] = new int[nDualVerts+1]; // all zeros initially
+                                    FORI (iDualEdge, nDualEdges)
+                                    {
+                                        Mesh.Edge dualEdge = dualMesh.getEdge(iDualEdge);
+                                        Mesh.Vertex v0 = dualEdge.initialVertex();
+                                        int i0 = v0==null ? nDualVerts : v0.myIndex();
+
+                                        edgesOut[i0][nEdgesOut[i0]++] = dualEdge;
+                                    }
+                                    FORI (iDualVert, nDualVerts+1)
+                                        assert(nEdgesOut[iDualVert] == edgesOut[iDualVert].length);
                                 }
-                                FORI (iDualVert, nDualVerts+1)
-                                    assert(nEdgesOut[iDualVert] == edgesOut[iDualVert].length);
+
+                                // It's unclear from the paper whether it's okay
+                                // to start from an arbitrary vertex or what
+                                // (and whether a non-random initial vertex
+                                // results in skewing the distribution,
+                                // or making it more inefficient, or what).
+                                // The paper recommends starting at a random end
+                                // of a random edge.
+                                // But it seems to me that
+                                //     (1) a non-random initial vertex will *not* skew the distribution
+                                //         (since the trees rooted at any particular vertex
+                                //         are the same, by simple re-rooting,
+                                //         as the trees rooted at any other particular vertex)
+                                //     (2) starting at a random end of a random edge
+                                //         is the same as selecting an initial vertex
+                                //         with probability proportional to its arity
+                                //     (3) if doing that is advantageous for efficiency,
+                                //         then simply starting with the highest-arity
+                                //         vertex is even more advantageous
+                                // Typically the dual graph's vertices all have arity 3
+                                // except for the infinite vertex which has relatively high arity,
+                                // so we'll just let the root (start of the algorithm) be the infinite vertex.
+                                // Empirically (on delaunay triangulation of blue noise),
+                                // this does keep the running time low...
+                                // and furthermore the "next" data structure returned by using the infinite vertex
+                                // as root is exactly the one we'll need later.
+
+                                java.util.Random generator = new java.util.Random(0);
+                                int r = nDualVerts; // start with the infinite vertex
+
+                                // Algorithm RandomTreeWithRoot(r) from paper...
+                                // Since the infinite vertex doesn't have a root,
+                                // we can work directly with the final output array dualVertIndexToParentEdge
+                                // of size nDualVerts (rather than nDualVerts+1,
+                                // the size we'd need if starting at some other vertex),
+                                // which is initially all nulls.
+                                int nRandomCalls = 0;
+                                {
+                                    boolean inTree[] = new boolean[nDualVerts+1]; // +1 to include infinite vertex; all false initially
+                                    inTree[r] = true;
+                                    FORI (iDualVert, nDualVerts+1)
+                                    {
+                                        int u = iDualVert;
+                                        while (!inTree[u])
+                                        {
+                                            nRandomCalls++;
+                                            Mesh.Edge dualEdge = edgesOut[u][generator.nextInt(edgesOut[u].length)];
+                                            dualVertIndexToParentEdge[u] = dualEdge;
+                                            u = dualEdge.finalVertex() != null ? dualEdge.finalVertex().myIndex() : nDualVerts;
+                                        }
+                                        u = iDualVert;
+                                        while (!inTree[u])
+                                        {
+                                            inTree[u] = true;
+                                            Mesh.Edge dualEdge = dualVertIndexToParentEdge[u];
+                                            dualEdgeIsCut[dualEdge.myIndex()] = true;
+                                            dualEdgeIsCut[dualEdge.opposite().myIndex()] = true;
+                                            u = dualEdge.finalVertex() != null ? dualEdge.finalVertex().myIndex() : nDualVerts;
+                                        }
+                                    }
+                                }
+                                if (netVerbose)
+                                {
+                                    PRINT(nDualVerts);
+                                    PRINT(nDualEdges);
+                                    PRINT(nRandomCalls);
+                                }
+
+
+                                if (netVerbose)
+                                    System.out.println("   done computing random net");
                             }
-
-                            // It's unclear from the paper whether it's okay
-                            // to start from an arbitrary vertex or what
-                            // (and whether a non-random initial vertex
-                            // results in skewing the distribution,
-                            // or making it more inefficient, or what).
-                            // The paper recommends starting at a random end
-                            // of a random edge.
-                            // But it seems to me that
-                            //     (1) a non-random initial vertex will *not* skew the distribution
-                            //         (since the trees rooted at any particular vertex
-                            //         are the same, by simple re-rooting,
-                            //         as the trees rooted at any other particular vertex)
-                            //     (2) starting at a random end of a random edge
-                            //         is the same as selecting an initial vertex
-                            //         with probability proportional to its arity
-                            //     (3) if doing that is advantageous for efficiency,
-                            //         then simply starting with the highest-arity
-                            //         vertex is even more advantageous
-                            // Typically the dual graph's vertices all have arity 3
-                            // except for the infinite vertex which has relatively high arity,
-                            // so we'll just let the root (start of the algorithm) be the infinite vertex.
-                            // Empirically (on delaunay triangulation of blue noise),
-                            // this does keep the running time low...
-                            // and furthermore the "next" data structure returned by using the infinite vertex
-                            // as root is exactly the one we'll need later.
-
-                            java.util.Random generator = new java.util.Random(0);
-                            int r = nDualVerts; // start with the infinite vertex
-
-                            // Algorithm RandomTreeWithRoot(r) from paper...
-                            // Since the infinite vertex doesn't have a root,
-                            // we can work directly with the final output array dualVertIndexToParentEdge
-                            // of size nDualVerts (rather than nDualVerts+1,
-                            // the size we'd need if starting at some other vertex),
-                            // which is initially all nulls.
-                            int nRandomCalls = 0;
+                            else // UPWARD or OUTWARD
                             {
-                                boolean inTree[] = new boolean[nDualVerts+1]; // +1 to include infinite vertex; all false initially
-                                inTree[r] = true;
-                                FORI (iDualVert, nDualVerts+1)
+                                FORIDOWN (iEdge, mesh.edges.size())
                                 {
-                                    int u = iDualVert;
-                                    while (!inTree[u])
-                                    {
-                                        nRandomCalls++;
-                                        Mesh.Edge dualEdge = edgesOut[u][generator.nextInt(edgesOut[u].length)];
-                                        dualVertIndexToParentEdge[u] = dualEdge;
-                                        u = dualEdge.finalVertex() != null ? dualEdge.finalVertex().myIndex() : nDualVerts;
-                                    }
-                                    u = iDualVert;
-                                    while (!inTree[u])
-                                    {
-                                        inTree[u] = true;
-                                        Mesh.Edge dualEdge = dualVertIndexToParentEdge[u];
-                                        dualEdgeIsCut[dualEdge.myIndex()] = true;
-                                        dualEdgeIsCut[dualEdge.opposite().myIndex()] = true;
-                                        u = dualEdge.finalVertex() != null ? dualEdge.finalVertex().myIndex() : nDualVerts;
-                                    }
-                                }
-                            }
-                            if (netVerbose)
-                            {
-                                PRINT(nDualVerts);
-                                PRINT(nDualEdges);
-                                PRINT(nRandomCalls);
-                            }
+                                    Mesh.Vertex triCenterDualVert = (dualMesh.getEdge(iEdge)).finalVertex();
+                                    if (triCenterDualVert == null)
+                                        continue; // primal face was not a triangle, or inside out
+                                    if (dualVertIndexToParentEdge[triCenterDualVert.myIndex()] != null)
+                                        continue; // definitely already did this vertex  XXX but root vertex stays null so it will be done 3 times :-(
+                                    double triCenterDualVertPos[] = {
+                                        triCenterDualVert.x,
+                                        triCenterDualVert.y,
+                                    };
 
+                                    Mesh.Edge e0 = mesh.getEdge(iEdge);
+                                    Mesh.Edge e1 = e0.next();
+                                    Mesh.Edge e2 = e1.next();
+                                    assert(e2.next() == e0);
 
-                            if (netVerbose)
-                                System.out.println("   done computing random net");
-                        }
-                        else // UPWARD or OUTWARD
-                        {
-                            FORIDOWN (iEdge, mesh.edges.size())
-                            {
-                                Mesh.Vertex triCenterDualVert = (dualMesh.getEdge(iEdge)).finalVertex();
-                                if (triCenterDualVert == null)
-                                    continue; // primal face was not a triangle, or inside out
-                                if (dualVertIndexToParentEdge[triCenterDualVert.myIndex()] != null)
-                                    continue; // definitely already did this vertex  XXX but root vertex stays null so it will be done 3 times :-(
-                                double triCenterDualVertPos[] = {
-                                    triCenterDualVert.x,
-                                    triCenterDualVert.y,
-                                };
+                                    double threeDirections[][] = {
+                                        (dualMesh.getEdge(e0.myIndex())).opposite().direction,
+                                        (dualMesh.getEdge(e1.myIndex())).opposite().direction,
+                                        (dualMesh.getEdge(e2.myIndex())).opposite().direction,
+                                    };
 
-                                Mesh.Edge e0 = mesh.getEdge(iEdge);
-                                Mesh.Edge e1 = e0.next();
-                                Mesh.Edge e2 = e1.next();
-                                assert(e2.next() == e0);
-
-                                double threeDirections[][] = {
-                                    (dualMesh.getEdge(e0.myIndex())).opposite().direction,
-                                    (dualMesh.getEdge(e1.myIndex())).opposite().direction,
-                                    (dualMesh.getEdge(e2.myIndex())).opposite().direction,
-                                };
-
-                                Mesh.Edge threeDualEdges[] = {
-                                    (dualMesh.getEdge(e0.myIndex())).opposite(),
-                                    (dualMesh.getEdge(e1.myIndex())).opposite(),
-                                    (dualMesh.getEdge(e2.myIndex())).opposite(),
-                                };
-                                double threeFinalPositions[][] = new double[3][];
-                                FORI (i, 3)
-                                {
-                                    Mesh.Edge dualEdge = threeDualEdges[i];
-                                    Mesh.Vertex finalVertex = dualEdge.finalVertex();
-                                    if (finalVertex == null)
-                                        threeFinalPositions[i] = new double[] {Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY};
-                                    else
-                                        threeFinalPositions[i] = new double[] {finalVertex.x, finalVertex.y};
-                                }
-
-                                int bestSide = netMethod.get()==NETMETHOD_OUTWARD ? 
-                                               /*
-                                               MAXI3(VecMath.dot(threeDirections[0], triCenterDualVertPos),
-                                                     VecMath.dot(threeDirections[1], triCenterDualVertPos),
-                                                     VecMath.dot(threeDirections[2], triCenterDualVertPos))
-                                               */
-                                               MAXI3(VecMath.normsqrd(threeFinalPositions[0]),
-                                                     VecMath.normsqrd(threeFinalPositions[1]),
-                                                     VecMath.normsqrd(threeFinalPositions[2]))
-                                             : MAXI3(threeDirections[0][1],
-                                                     threeDirections[1][1],
-                                                     threeDirections[2][1]);
-                                if (true)
-                                {
-                                    // Hack to simulate symbolic perterbation
-                                    // by an infinitesimal rotation counterclockwise
-                                    if (EQ(threeDirections[bestSide][1], threeDirections[(bestSide+1)%3][1], 1e-6)
-                                     && LT(threeDirections[bestSide][0], threeDirections[(bestSide+1)%3][0], 1e-6))
-                                    {
-                                        bestSide = (bestSide+1)%3;
-                                        if (EQ(threeDirections[bestSide][1], threeDirections[(bestSide+1)%3][1], 1e-6)
-                                         && LT(threeDirections[bestSide][0], threeDirections[(bestSide+1)%3][0], 1e-6))
-                                            bestSide = (bestSide+1)%3;
-                                    }
-                                    else
-                                    {
-                                        if (EQ(threeDirections[bestSide][1], threeDirections[(bestSide+2)%3][1], 1e-6)
-                                         && LT(threeDirections[bestSide][0], threeDirections[(bestSide+2)%3][0], 1e-6))
-                                            bestSide = (bestSide+2)%3;
-                                    }
-                                }
-                                if (true)
-                                {
-                                    // Hack to ensure that a negative-weight (assume that means boundary)
-                                    // vertex never has a positive-weight vertex as parent
-                                    Mesh.Edge threeEdges[] = {
+                                    Mesh.Edge threeDualEdges[] = {
                                         (dualMesh.getEdge(e0.myIndex())).opposite(),
                                         (dualMesh.getEdge(e1.myIndex())).opposite(),
                                         (dualMesh.getEdge(e2.myIndex())).opposite(),
                                     };
-                                    if (triCenterDualVert.weight < 0.
-                                     && threeEdges[bestSide].finalVertex() != null
-                                     && threeEdges[bestSide].finalVertex().weight >= 0.)
+                                    double threeFinalPositions[][] = new double[3][];
+                                    FORI (i, 3)
                                     {
-                                        int origBestSide = bestSide;
-                                        bestSide = (threeDirections[(bestSide+1)%3][1] >= threeDirections[(bestSide+2)%3][1] ? (bestSide+1)%3 : (bestSide+2)%3);
+                                        Mesh.Edge dualEdge = threeDualEdges[i];
+                                        Mesh.Vertex finalVertex = dualEdge.finalVertex();
+                                        if (finalVertex == null)
+                                            threeFinalPositions[i] = new double[] {Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY};
+                                        else
+                                            threeFinalPositions[i] = new double[] {finalVertex.x, finalVertex.y};
+                                    }
+
+                                    int bestSide = netMethod.get()==NETMETHOD_OUTWARD ? 
+                                                   /*
+                                                   MAXI3(VecMath.dot(threeDirections[0], triCenterDualVertPos),
+                                                         VecMath.dot(threeDirections[1], triCenterDualVertPos),
+                                                         VecMath.dot(threeDirections[2], triCenterDualVertPos))
+                                                   */
+                                                   MAXI3(VecMath.normsqrd(threeFinalPositions[0]),
+                                                         VecMath.normsqrd(threeFinalPositions[1]),
+                                                         VecMath.normsqrd(threeFinalPositions[2]))
+                                                 : MAXI3(threeDirections[0][1],
+                                                         threeDirections[1][1],
+                                                         threeDirections[2][1]);
+                                    if (true)
+                                    {
+                                        // Hack to simulate symbolic perterbation
+                                        // by an infinitesimal rotation counterclockwise
+                                        if (EQ(threeDirections[bestSide][1], threeDirections[(bestSide+1)%3][1], 1e-6)
+                                         && LT(threeDirections[bestSide][0], threeDirections[(bestSide+1)%3][0], 1e-6))
+                                        {
+                                            bestSide = (bestSide+1)%3;
+                                            if (EQ(threeDirections[bestSide][1], threeDirections[(bestSide+1)%3][1], 1e-6)
+                                             && LT(threeDirections[bestSide][0], threeDirections[(bestSide+1)%3][0], 1e-6))
+                                                bestSide = (bestSide+1)%3;
+                                        }
+                                        else
+                                        {
+                                            if (EQ(threeDirections[bestSide][1], threeDirections[(bestSide+2)%3][1], 1e-6)
+                                             && LT(threeDirections[bestSide][0], threeDirections[(bestSide+2)%3][0], 1e-6))
+                                                bestSide = (bestSide+2)%3;
+                                        }
+                                    }
+                                    if (true)
+                                    {
+                                        // Hack to ensure that a negative-weight (assume that means boundary)
+                                        // vertex never has a positive-weight vertex as parent
+                                        Mesh.Edge threeEdges[] = {
+                                            (dualMesh.getEdge(e0.myIndex())).opposite(),
+                                            (dualMesh.getEdge(e1.myIndex())).opposite(),
+                                            (dualMesh.getEdge(e2.myIndex())).opposite(),
+                                        };
                                         if (triCenterDualVert.weight < 0.
                                          && threeEdges[bestSide].finalVertex() != null
                                          && threeEdges[bestSide].finalVertex().weight >= 0.)
                                         {
-                                            bestSide = 3 - bestSide - origBestSide;
+                                            int origBestSide = bestSide;
+                                            bestSide = (threeDirections[(bestSide+1)%3][1] >= threeDirections[(bestSide+2)%3][1] ? (bestSide+1)%3 : (bestSide+2)%3);
+                                            if (triCenterDualVert.weight < 0.
+                                             && threeEdges[bestSide].finalVertex() != null
+                                             && threeEdges[bestSide].finalVertex().weight >= 0.)
+                                            {
+                                                bestSide = 3 - bestSide - origBestSide;
+                                            }
                                         }
                                     }
+
+                                    if (false) // set this to true to debug
+                                    {
+                                        double whereToDrawMark[] = {
+                                            triCenterDualVert.x + .05 * threeDirections[bestSide][0],
+                                            triCenterDualVert.y + .05 * threeDirections[bestSide][1],
+                                        };
+                                        mg.drawPoint(whereToDrawMark[0],
+                                                     whereToDrawMark[1], 5);
+                                    }
+
+
+                                    Mesh.Edge e = bestSide==0 ? e0 : bestSide==1 ? e1 : e2;
+                                    // remember each edge gets drawn in an arbitrary one of the two directions,
+                                    // so we have to set the flag on both of them
+                                    dualEdgeIsCut[e.myIndex()] = true;
+                                    dualEdgeIsCut[e.opposite().myIndex()] = true;
+
+                                    // Set parent... but only if the edge
+                                    // is really upwards.
+                                    // to avoid a cycle in the graph
+                                    {
+                                        Mesh.Edge maybeParentEdge = (dualMesh.getEdge(e.myIndex())).opposite();
+                                        if (netMethod.get() == NETMETHOD_OUTWARD)
+                                            dualVertIndexToParentEdge[triCenterDualVert.myIndex()] = maybeParentEdge;
+                                        else
+                                            if (GT(maybeParentEdge.direction[1], 0, 1e-6)
+                                             || (EQ(maybeParentEdge.direction[1], 0, 1e-6)
+                                              && maybeParentEdge.direction[0] > 0.))
+                                            dualVertIndexToParentEdge[triCenterDualVert.myIndex()] = maybeParentEdge;
+                                    }
                                 }
+                            } // UPWARD or OUTWARD
 
-                                if (false) // set this to true to debug
+                            {
+                                theNet = new Net(dualMesh, mesh);
+                                int nEdges = dualMesh.edges.size();
+                                FORI(iEdge, nEdges)
                                 {
-                                    double whereToDrawMark[] = {
-                                        triCenterDualVert.x + .05 * threeDirections[bestSide][0],
-                                        triCenterDualVert.y + .05 * threeDirections[bestSide][1],
-                                    };
-                                    mg.drawPoint(whereToDrawMark[0],
-                                                 whereToDrawMark[1], 5);
-                                }
-
-
-                                Mesh.Edge e = bestSide==0 ? e0 : bestSide==1 ? e1 : e2;
-                                // remember each edge gets drawn in an arbitrary one of the two directions,
-                                // so we have to set the flag on both of them
-                                dualEdgeIsCut[e.myIndex()] = true;
-                                dualEdgeIsCut[e.opposite().myIndex()] = true;
-
-                                // Set parent... but only if the edge
-                                // is really upwards.
-                                // to avoid a cycle in the graph
-                                {
-                                    Mesh.Edge maybeParentEdge = (dualMesh.getEdge(e.myIndex())).opposite();
-                                    if (netMethod.get() == NETMETHOD_OUTWARD)
-                                        dualVertIndexToParentEdge[triCenterDualVert.myIndex()] = maybeParentEdge;
+                                    if (dualEdgeIsCut[iEdge])
+                                        theNet.cut(iEdge);
                                     else
-                                        if (GT(maybeParentEdge.direction[1], 0, 1e-6)
-                                         || (EQ(maybeParentEdge.direction[1], 0, 1e-6)
-                                          && maybeParentEdge.direction[0] > 0.))
-                                        dualVertIndexToParentEdge[triCenterDualVert.myIndex()] = maybeParentEdge;
+                                    {
+                                        // this actually won't be necessary when I get auto-folding working
+                                        theNet.fold(iEdge);
+                                    }
                                 }
+                                int root = nDualVerts;
+                                theNet.chooseDirections(root);
                             }
-                        } // UPWARD or OUTWARD
+                        } // theNet was null
 
-                        int nDualVerts = dualMesh.verts.size();
-                        int nDualEdges = dualMesh.edges.size();
 
                         //
                         // Get a topsort of the verts,
@@ -3635,9 +3647,10 @@ public class ShephardsPlayApplet
                                     topSortedDualVertIndices[--stackTop] = jDualVert;
                                     isSorted[jDualVert] = true;
 
-                                    Mesh.Edge parentEdge = dualVertIndexToParentEdge[jDualVert];
-                                    if (parentEdge == null)
+                                    int parentEdgeInd = theNet._vertToParentEdgeInd[jDualVert];
+                                    if (parentEdgeInd == -1)
                                         break;
+                                    Mesh.Edge parentEdge = dualMesh.getEdge(parentEdgeInd);
                                     Mesh.Vertex finalVertex = parentEdge.finalVertex();
                                     if (finalVertex == null)
                                         break;
@@ -3663,9 +3676,10 @@ public class ShephardsPlayApplet
                             {
                                 int iChild = topSortedDualVertIndices[iiChild];
                                 Mesh.Vertex child = dualMesh.getVert(iChild);
-                                Mesh.Edge parentEdge = dualVertIndexToParentEdge[iChild];
-                                if (parentEdge != null)
+                                int parentEdgeInd = theNet._vertToParentEdgeInd[iChild];
+                                if (parentEdgeInd != -1)
                                 {
+                                    Mesh.Edge parentEdge = dualMesh.getEdge(parentEdgeInd);
                                     Mesh.Vertex parent = parentEdge.finalVertex();
                                     if (parent != null)
                                     {
@@ -3685,9 +3699,12 @@ public class ShephardsPlayApplet
                             double weightStrictlyBelowDualVertex = momentAndWeightStrictlyBelowDualVertex[2];
                             if (weightStrictlyBelowDualVertex != 0.)
                             {
-                                Mesh.Edge dualEdge = dualVertIndexToParentEdge[iDualVert];
-                                if (dualEdge == null)
+                                int iDualEdge = theNet._vertToParentEdgeInd[iDualVert];
+                                if (iDualEdge == -1)
                                     continue; // this is the root / highest node
+
+                                Mesh.Edge dualEdge = dualMesh.getEdge(iDualEdge);
+
                                 Mesh.Vertex dualVert = dualEdge.initialVertex();
                                 assert(dualVert.myIndex() == iDualVert);
                                 if (dualVert.weight < 0.)
@@ -3710,38 +3727,6 @@ public class ShephardsPlayApplet
                             }
                         }
 
-                        if (true) // start trying to use Net class
-                        {
-                            if (theNet == null)
-                            {
-                                theNet = new Net(dualMesh, mesh);
-                                int nEdges = dualMesh.edges.size();
-                                FORI(iEdge, nEdges)
-                                {
-                                    if (dualEdgeIsCut[iEdge])
-                                        theNet.cut(iEdge);
-                                    else
-                                    {
-                                        // this actually won't be necessary when I get auto-folding working
-                                        theNet.fold(iEdge);
-                                    }
-                                }
-                                int root = nDualVerts;
-                                theNet.chooseDirections(root);
-                            }
-
-                            if (highlightedDualEdgeIndex != -1)
-                            {
-                                Mesh.Edge alternatives[] = theNet.alternatives(highlightedDualEdgeIndex);
-                                //PRINT(dualMesh.getEdge(highlightedDualEdgeIndex));
-                                //PRINTARRAY(alternatives);
-                                FORI (iAlternative, alternatives.length)
-                                {
-                                    dualEdgeColors[alternatives[iAlternative].myIndex()] = java.awt.Color.white;
-                                    dualEdgeColors[alternatives[iAlternative].opposite().myIndex()] = java.awt.Color.white;
-                                }
-                            }
-                        }
                     }
                     else // !showNet
                     {
@@ -4009,16 +3994,16 @@ public class ShephardsPlayApplet
                         // Figure out distance (both 2-norm and infinity-norm) from each vertex
                         // to the root-most one in its tree
                         //
-                        int nDualVerts = dualMesh.verts.size();
                         double norm2s[] = new double[nDualVerts]; // zeros initially
                         double normInfs[] = new double[nDualVerts]; // zeros initially
                         FORI (iiChild, topSortedDualVertIndices.length) // roots to leaves
                         {
                             int iChild = topSortedDualVertIndices[iiChild];
                             Mesh.Vertex child = dualMesh.getVert(iChild);
-                            Mesh.Edge parentEdge = dualVertIndexToParentEdge[iChild];
-                            if (parentEdge != null)
+                            int parentEdgeInd = theNet._vertToParentEdgeInd[iChild];
+                            if (parentEdgeInd != -1)
                             {
+                                Mesh.Edge parentEdge = dualMesh.getEdge(parentEdgeInd);
                                 Mesh.Vertex parent = parentEdge.finalVertex();
                                 if (parent != null)
                                 {
@@ -4041,9 +4026,10 @@ public class ShephardsPlayApplet
                         FORI (iChild, nDualVerts)
                         {
                             Mesh.Vertex child = dualMesh.getVert(iChild);
-                            Mesh.Edge parentEdge = dualVertIndexToParentEdge[iChild];
-                            if (parentEdge != null)
+                            int parentEdgeInd = theNet._vertToParentEdgeInd[iChild];
+                            if (parentEdgeInd != -1)
                             {
+                                Mesh.Edge parentEdge = dualMesh.getEdge(parentEdgeInd);
                                 Mesh.Vertex parent = parentEdge.finalVertex();
                                 if (parent != null)
                                 {
