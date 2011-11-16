@@ -18,9 +18,7 @@ User should be able to:
 BUGS:
 
 TO DO:
-    - when dragging a cut edge:
-        - show it dragging (edge or fold)
-        - legit targets should be lowlighted: good dark green, bad dark red. (only cut; I don't think this makes sense for fold)
+    - when dragging a cut edge, show it dragging (edge or fold)
 
     - showNet should go in the undo item, otherwise it's weird when you do something
       that changes it but undo doesn't change it back
@@ -3193,6 +3191,8 @@ public class ShephardsPlayApplet
                 // Draw the dual diagram in color...
                 //
                 java.awt.Color lightBlue = new java.awt.Color(128,128,255);
+                java.awt.Color darkGreen = new java.awt.Color(0,32,0);
+                java.awt.Color darkRed = new java.awt.Color(64,0,0);
                 /*
                 java.awt.Color dualVertSelectionColor = java.awt.Color.green;
                 java.awt.Color dualColor = java.awt.Color.red;
@@ -3207,8 +3207,8 @@ public class ShephardsPlayApplet
                 java.awt.Color dualColorBothSelected = java.awt.Color.yellow;
                 java.awt.Color dualColorOneSelectedBad = java.awt.Color.red;
                 java.awt.Color dualColorOneSelectedGood = java.awt.Color.green;
-                java.awt.Color perpColorBad = new java.awt.Color(64,0,0); // dark red
-                java.awt.Color perpColorGood = new java.awt.Color(0,32,0); // dark green
+                java.awt.Color perpColorBad = darkRed;
+                java.awt.Color perpColorGood = darkGreen;
 
                 Mesh dualMesh = getDualMesh();
 
@@ -3347,16 +3347,19 @@ public class ShephardsPlayApplet
                     // If showing net, compute a net.
                     // For now, sweep upwards,
                     // color good edges green and off-balance ones red.
+                    // XXX most of the following are superceded by theNet-- clean this up
                     //
                     boolean dualEdgeIsCut[] = null;
                     boolean dualEdgeIsOffBalanceCut[] = null;
                     int topSortedDualVertIndices[] = null;
                     Mesh.Edge dualVertIndexToParentEdge[] = null;
+                    double momentAndWeightStrictlyBelowEachDualVertex[][] = null;
                     // Hack for now... just one
                     Mesh.Edge theBadLagoonExitToDraw = null;
                     ArrayList offBalanceEdgeToGoodLagoonExits[] = new ArrayList[dualMesh.edges.size()]; // all nulls initially
                     ArrayList offBalanceEdgeToLagoonEdges[] = new ArrayList[dualMesh.edges.size()]; // all nulls initially
                     double offBalanceEdgeToLagoonCenter[][] = new double[dualMesh.edges.size()][]; // all nulls initially
+
                     if (showNet.get())
                     {
                         dualEdgeIsCut = new boolean[mesh.edges.size()]; // all false initially
@@ -3658,7 +3661,7 @@ public class ShephardsPlayApplet
                         // Now figure out which ones are off balance.
                         //
                         // accumulate weights...
-                        double momentAndWeightStrictlyBelowEachDualVertex[][] = new double[nDualVerts][3]; // initially zeros
+                        momentAndWeightStrictlyBelowEachDualVertex = new double[nDualVerts][3]; // initially zeros
                         {
                             FORIDOWN(iiChild, topSortedDualVertIndices.length) // leaves to roots
                             {
@@ -4065,7 +4068,7 @@ public class ShephardsPlayApplet
                                 dualEdgeColors[iEdge] = darkBlue;
                             }
                         }
-                        if (theBadLagoonExitToDraw != null)
+                        if (theBadLagoonExitToDraw != null) // DEFUNCT
                         {
                             dualEdgeColors[theBadLagoonExitToDraw.myIndex()]            = java.awt.Color.magenta; // red turning blue
                             dualEdgeColors[theBadLagoonExitToDraw.opposite().myIndex()] = java.awt.Color.magenta; // red turning blue
@@ -4081,6 +4084,57 @@ public class ShephardsPlayApplet
                                 Mesh.Edge dualEdge = (Mesh.Edge)offBalanceEdgeToLagoonEdges[theBadLagoonExitToDrawIndex].get(iItem);
                                 dualEdgeColors[dualEdge.myIndex()]            = java.awt.Color.yellow;
                                 dualEdgeColors[dualEdge.opposite().myIndex()] = java.awt.Color.yellow;
+                            }
+                        }
+                        if (beingDraggedNetEdgeIndex != -1
+                         && theNet._edgeStatuses[beingDraggedNetEdgeIndex] == Net.CUT)
+                        {
+                            // Make sure beingDraggedNetEdgeIndex points towards root of cut tree--
+                            // if not, reverse it.
+                            if (dualMesh.getEdge(beingDraggedNetEdgeIndex).initialVertex() == null
+                             || theNet._vertToParentEdgeInd[dualMesh.getEdge(beingDraggedNetEdgeIndex).initialVertex().myIndex()] != beingDraggedNetEdgeIndex)
+                                beingDraggedNetEdgeIndex = _dualMesh.getEdge(beingDraggedNetEdgeIndex).opposite().myIndex();
+                            assert(theNet._vertToParentEdgeInd[dualMesh.getEdge(beingDraggedNetEdgeIndex).initialVertex().myIndex()] == beingDraggedNetEdgeIndex);
+
+                            double lagoonCenter[];
+                            {
+                                Mesh.Edge netEdgeBeingDragged = dualMesh.getEdge(beingDraggedNetEdgeIndex);
+                                Mesh.Vertex initialVertex = netEdgeBeingDragged.initialVertex();
+
+                                double lagoonMomentAndWeight[] = new double[3]; // zeros
+                                accumulateMomentAndArea(lagoonMomentAndWeight, momentAndWeightStrictlyBelowEachDualVertex[initialVertex.myIndex()]);
+                                accumulateMomentAndArea(lagoonMomentAndWeight, initialVertex.momentAndArea);
+                                lagoonCenter = new double[] {
+                                    lagoonMomentAndWeight[0] / lagoonMomentAndWeight[2],
+                                    lagoonMomentAndWeight[1] / lagoonMomentAndWeight[2],
+                                };
+                            }
+
+                            // lowlight alternative exits-- dark green for good, dark red for bad
+                            Mesh.Edge alternatives[] = theNet.alternatives(beingDraggedNetEdgeIndex);
+
+                            // add in the original exit itself, to simplify the loop
+                            alternatives = (Mesh.Edge[])Arrays.append(alternatives, dualMesh.getEdge(beingDraggedNetEdgeIndex));
+
+                            FORI (iAlternative, alternatives.length)
+                            {
+                                Mesh.Edge alternativeExit = alternatives[iAlternative];
+                                Mesh.Vertex alternativeExitVertex = alternativeExit.initialVertex();
+                                boolean isGood = VecMath.dot(alternativeExit.direction,
+                                                             VecMath.vmv(lagoonCenter,
+                                                                         new double[]{alternativeExitVertex.x,
+                                                                                      alternativeExitVertex.y})) <= 0;
+                                /*
+                                eh, whatever, the dark doesn't look that good-- cyan and magenta are fine
+                                java.awt.Color color =
+                                    alternativeExit.myIndex()==beingDraggedNetEdgeIndex
+                                        ? (isGood ? java.awt.Color.cyan : java.awt.Color.magenta)
+                                        : (isGood ? darkGreen : darkRed);
+                                */
+                                java.awt.Color color = isGood ? java.awt.Color.cyan : java.awt.Color.magenta;
+
+                                dualEdgeColors[alternativeExit.myIndex()] = color;
+                                dualEdgeColors[alternativeExit.opposite().myIndex()] = color;
                             }
                         }
                     }
