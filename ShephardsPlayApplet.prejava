@@ -1136,10 +1136,11 @@ public class ShephardsPlayApplet
                 java.io.PrintWriter writer = new java.io.PrintWriter(new java.io.BufferedWriter(new java.io.FileWriter(fileName)));
                 // XXX want \r\n no matter which platform I'm on, I think
 
-                int nDualVerts = mostRecentDualMesh.verts.size();
+                Mesh dualMesh = getDualMesh();
+                int nDualVerts = dualMesh.verts.size();
                 FORI (iDualVert, nDualVerts)
                 {
-                    Mesh.Vertex dualVert = mostRecentDualMesh.getVert(iDualVert);
+                    Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
                     if (dualVert.arity == 3
                      && (doShowInsideOutDualVerts
                       || dualVert.weight >= 0))
@@ -1621,7 +1622,7 @@ public class ShephardsPlayApplet
                         {
                             // begin dragging a net edge or fold
                             //PRINT(beingDraggedNetEdgeIndex);
-                            beingDraggedNetEdgeIndex = mostRecentDualMesh.indexOfClosestEdge(prevP, true);
+                            beingDraggedNetEdgeIndex = getDualMesh().indexOfClosestEdge(prevP, true);
                             //PRINT(beingDraggedNetEdgeIndex);
                             theCanvas.repaint();
                         }
@@ -1913,14 +1914,15 @@ public class ShephardsPlayApplet
                     if (beingDraggedNetEdgeIndex != -1
                      && showNet.get())
                     {
-                        int targetEdgeIndex = mostRecentDualMesh.indexOfClosestEdge(thisP, true);
+                        Mesh dualMesh = getDualMesh();
+                        int targetEdgeIndex = dualMesh.indexOfClosestEdge(thisP, true);
                         if (targetEdgeIndex != -1
                          && targetEdgeIndex != beingDraggedNetEdgeIndex)
                         {
                             // could do this once on mouse down, and have them lowlighted or something
                             Mesh.Edge alternatives[] = theNet.alternatives(beingDraggedNetEdgeIndex);
-                            if (Arrays.indexOfUsingEqualsSymbol(alternatives, mostRecentDualMesh.getEdge(targetEdgeIndex)) != -1
-                             || Arrays.indexOfUsingEqualsSymbol(alternatives, mostRecentDualMesh.getEdge(targetEdgeIndex).opposite()) != -1)
+                            if (Arrays.indexOfUsingEqualsSymbol(alternatives, dualMesh.getEdge(targetEdgeIndex)) != -1
+                             || Arrays.indexOfUsingEqualsSymbol(alternatives, dualMesh.getEdge(targetEdgeIndex).opposite()) != -1)
                             {
                                 theNet.swapCutAndFold(beingDraggedNetEdgeIndex,
                                                       targetEdgeIndex);
@@ -2147,10 +2149,10 @@ public class ShephardsPlayApplet
                     mostRecentGraphics.pick((e.getX()+.5)/globalMagFactor, (e.getY()+.5)/globalMagFactor, thisP);
                     if (showNet.get())
                     {
-                        int closestDualEdgeIndex = mostRecentDualMesh.indexOfClosestEdge(thisP, true);
+                        int closestDualEdgeIndex = getDualMesh().indexOfClosestEdge(thisP, true);
                         if (closestDualEdgeIndex != highlightedDualEdgeIndex)
                         {
-                            //System.out.println("    closest dual edge changed: "+mostRecentDualMesh.getEdge(closestDualEdgeIndex));
+                            //System.out.println("    closest dual edge changed: "+getDualMesh().getEdge(closestDualEdgeIndex));
                             highlightedDualEdgeIndex = closestDualEdgeIndex;
                             theCanvas.repaint();
                         }
@@ -2484,15 +2486,15 @@ public class ShephardsPlayApplet
                     case 'w': // toggle closest dual vertex for weighting (think of better mnemonic)
                     {
                         UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
-                        if (mostRecentDualMesh != null)
                         {
+                            Mesh dualMesh = getDualMesh();
                             double closestDistSqrd = Double.POSITIVE_INFINITY;
                             int closestIndex = -1;
-                            int nDualVerts = mostRecentDualMesh.verts.size();
+                            int nDualVerts = dualMesh.verts.size();
                             PRINT(nDualVerts);
                             FORI (iDualVert, nDualVerts) // beginning to end, so we choose first of equal
                             {
-                                Mesh.Vertex dualVert = mostRecentDualMesh.getVert(iDualVert);
+                                Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
                                 if (dualVert.arity != 3)
                                     continue; // not a triangle
                                 if (!doShowInsideOutDualVerts)
@@ -2513,11 +2515,11 @@ public class ShephardsPlayApplet
                                 // figure out the 3 primal verts
                                 int closestTri[] = null;
                                 {
-                                    int nEdges = mostRecentDualMesh.edges.size();
+                                    int nEdges = dualMesh.edges.size();
                                     assert(nEdges == mesh.edges.size());
                                     FORI (iEdge, nEdges)
                                     {
-                                        Mesh.Edge dualEdge = mostRecentDualMesh.getEdge(iEdge);
+                                        Mesh.Edge dualEdge = dualMesh.getEdge(iEdge);
                                         Mesh.Vertex initialVertex = dualEdge.initialVertex();
                                         if (initialVertex != null
                                          && initialVertex.myIndex() == closestIndex)
@@ -2538,8 +2540,8 @@ public class ShephardsPlayApplet
                                 PRINTARRAY(closestTri);
 
                                 int indInd = Arrays.indexOf(selectedDualVertIndices, closestIndex);
-                                double closestDualVertWeight = (mostRecentDualMesh.getVert(closestIndex)).weight;
-                                double totalWeightBefore = 0.; FORIDOWN(iSelected, selectedDualVertIndices.length) if (selectedDualVertIndices[iSelected] != -1) totalWeightBefore += (mostRecentDualMesh.getVert(selectedDualVertIndices[iSelected])).weight;
+                                double closestDualVertWeight = (dualMesh.getVert(closestIndex)).weight;
+                                double totalWeightBefore = 0.; FORIDOWN(iSelected, selectedDualVertIndices.length) if (selectedDualVertIndices[iSelected] != -1) totalWeightBefore += (dualMesh.getVert(selectedDualVertIndices[iSelected])).weight;
 
                                 if (indInd != -1)
                                 {
@@ -2553,7 +2555,7 @@ public class ShephardsPlayApplet
                                     selectedTris = (int[][])Arrays.append(selectedTris, closestTri);
                                     selectedDualVertIndices = (int[])Arrays.append(selectedDualVertIndices, closestIndex);
                                 }
-                                double totalWeightAfter = 0.; FORIDOWN(iSelected, selectedDualVertIndices.length) if (selectedDualVertIndices[iSelected] != -1) totalWeightAfter += (mostRecentDualMesh.getVert(selectedDualVertIndices[iSelected])).weight;
+                                double totalWeightAfter = 0.; FORIDOWN(iSelected, selectedDualVertIndices.length) if (selectedDualVertIndices[iSelected] != -1) totalWeightAfter += (dualMesh.getVert(selectedDualVertIndices[iSelected])).weight;
                                 System.out.println("    Total selected weight: "+totalWeightBefore+" "+(indInd!=-1?'-':'+')+" "+closestDualVertWeight+" = "+totalWeightAfter+"");
                             }
                         }
@@ -3208,14 +3210,13 @@ public class ShephardsPlayApplet
                 java.awt.Color perpColorBad = new java.awt.Color(64,0,0); // dark red
                 java.awt.Color perpColorGood = new java.awt.Color(0,32,0); // dark green
 
+                Mesh dualMesh = getDualMesh();
+
                 if (true)
                 {
                     //
                     // Compute and store the dual mesh if necessary
                     //
-                    Mesh dualMesh = getDualMesh();
-                    mostRecentDualMesh = dualMesh;
-
                     if (highlightedDualEdgeIndex >= dualMesh.edges.size())
                     {
                         // prevent indexing out of bounds later on
@@ -4435,7 +4436,7 @@ public class ShephardsPlayApplet
                     }
                     //mg.setColor(java.awt.Color.red);
                     mg.setColor(dualColor);
-                    drawLabels(mg, mostRecentDualMesh, true); // dual
+                    drawLabels(mg, dualMesh, true); // dual
                 } // if (showLabels)
 
                 if (showOrigin)
@@ -10549,7 +10550,6 @@ OFF
         private Listenable.Boolean showNet = new Listenable.Boolean(false);
         private boolean showNetFlow = true;
         private int netFlowIndex = 0;
-        private Mesh mostRecentDualMesh = null;
         private int highlightedDualEdgeIndex = -1;
         private boolean showOrigin = false;
         private boolean showGrid = true;
