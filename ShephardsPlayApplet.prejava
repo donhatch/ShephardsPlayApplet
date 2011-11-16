@@ -1318,6 +1318,7 @@ public class ShephardsPlayApplet
         public void rescale(double scaleX, double scaleY)
         {
             UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices);
+            Mesh dualMesh = getDualMesh(); // before scaling mesh!
             double scale = Math.sqrt(.5);
             FORIDOWN (iVert, mesh.verts.size())
             {
@@ -1327,11 +1328,32 @@ public class ShephardsPlayApplet
                 vert.y *= scaleY;
                 vert.h *= scaleX * scaleY;
                 vert.h += .5 * (SQR(vert.x) + SQR(vert.y)); // convert from "actual"
+                assert(vert.momentAndArea == null);
             }
+            // don't recalculate dual mesh, rather, just rescale its points accordingly.
+            // this makes it so we don't have to blow away the net.
+            FORIDOWN(iDualVert, dualMesh.verts.size())
+            {
+                Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
+                dualVert.h -= .5 * (SQR(dualVert.x) + SQR(dualVert.y)); // convert to "actual"
+                dualVert.x *= scaleY; // converse
+                dualVert.y *= scaleX; // converse
+                dualVert.h *= scaleX * scaleY;
+                dualVert.h += .5 * (SQR(dualVert.x) + SQR(dualVert.y)); // convert from "actual"
+                assert(dualVert.momentAndArea.length == 4);
+                dualVert.momentAndArea[0] *= scaleY; // converse
+                dualVert.momentAndArea[1] *= scaleX; // converse
+                dualVert.momentAndArea[2] *= scaleX * scaleY;
+                // leave weights alone-- they are wrong, but all by the same constant scale factor
+            }
+
             // should be no need to re-delaunayize if uniform scale
             if (scaleX != scaleY)
-                if (doContinuouslyDelaunayize.get()) delaunayize();
-            dirtyDualMesh();
+                if (doContinuouslyDelaunayize.get())
+                {
+                    delaunayize();
+                    dirtyDualMesh();
+                }
             UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices);
             undoTreeSquirrel.Do(new UndoItem(before, after));
             theCanvas.repaint();
@@ -1530,6 +1552,9 @@ public class ShephardsPlayApplet
                         {
                             System.out.println("        (Adding a vertex first)");
                             mesh.addIsolatedVertex(snappedThisP[0], snappedThisP[1], 0);
+
+                            // added something-- invalidate dual mesh
+                            dirtyDualMesh();
                         }
 
                         //
@@ -1540,176 +1565,188 @@ public class ShephardsPlayApplet
                     }
                     else // shift is not down
                     {
-                        //
-                        // Add a vertex
-                        //
-
-                        double vertsToAdd[][] = {
-                            snappedThisP,
-                        };
-
-                        if (e.isControlDown())
+                        if (showNet.get())
                         {
-                            // add a mirror image.
-                            // prepend instead of appending, so that the last thing we do
-                            // is the one that will be dragged.
-                            vertsToAdd = (double[][])Arrays.concat(new double[][]{{-snappedThisP[0], snappedThisP[1]}}, vertsToAdd);
-                            // TODO: detect entire symmetry group
+                            // begin dragging a net edge or fold
+                            //PRINT(beingDraggedNetEdgeIndex);
+                            beingDraggedNetEdgeIndex = mostRecentDualMesh.indexOfClosestEdge(prevP, true);
+                            //PRINT(beingDraggedNetEdgeIndex);
+                            theCanvas.repaint();
                         }
-
-                        FORI (iVertToAdd, vertsToAdd.length)
+                        else
                         {
-                            double vertToAdd[] = vertsToAdd[iVertToAdd];
-                            double x = vertToAdd[0];
-                            double y = vertToAdd[1];
+                            //
+                            // Add a vertex
+                            //
 
-                            System.out.println("    Adding vertex "+mesh.verts.size()+" at "+x+" "+y+" "+0+"");
-                            mesh.addIsolatedVertex(x, y, 0);
+                            double vertsToAdd[][] = {
+                                snappedThisP,
+                            };
 
-                            ArrayList verts = mesh.verts;
-                            ArrayList edges = mesh.edges;
-                            if (verts.size() >= 2)
+                            if (e.isControlDown())
                             {
-                                //
-                                // If are no edges at all, add an edge.
-                                // XXX this is kind of lame when there were more than one isolated vertex, should connect to them all
-                                //
-                                if (edges.size() == 0)
+                                // add a mirror image.
+                                // prepend instead of appending, so that the last thing we do
+                                // is the one that will be dragged.
+                                vertsToAdd = (double[][])Arrays.concat(new double[][]{{-snappedThisP[0], snappedThisP[1]}}, vertsToAdd);
+                                // TODO: detect entire symmetry group
+                            }
+
+                            FORI (iVertToAdd, vertsToAdd.length)
+                            {
+                                double vertToAdd[] = vertsToAdd[iVertToAdd];
+                                double x = vertToAdd[0];
+                                double y = vertToAdd[1];
+
+                                System.out.println("    Adding vertex "+mesh.verts.size()+" at "+x+" "+y+" "+0+"");
+                                mesh.addIsolatedVertex(x, y, 0);
+
+                                ArrayList verts = mesh.verts;
+                                ArrayList edges = mesh.edges;
+                                if (verts.size() >= 2)
                                 {
-                                    System.out.println("Adding an edge between two verts");
-                                    mesh.addEdgeBetweenTwoIsolatedVertices((Mesh.Vertex)verts.get(verts.size()-2),
-                                                                           (Mesh.Vertex)verts.get(verts.size()-1));
-                                }
-                                else // edges.size() >= 1
-                                {
-                                    // There was already an edge.
-                                    // Find out which face we are on
-                                    // (all triangles CCW), and kis that face.
-                                    // if we are not inside any face by that criterion,
-                                    // then assume we are inside the outer face
-                                    // and connect the new vertex to every vertex
-                                    // that's visible from it.
                                     //
-                                    boolean kissed = false;
-                                    double twiceMostNegativeFaceArea = Double.POSITIVE_INFINITY;
-                                    Mesh.Edge edgeOnMostNegativeFace = null;
-                                    // XXX traverses each face of size n n times!  need to keep track of what we've done already
-                                    int nEdges = mesh.edges.size();
-                                    FORI (iEdge, nEdges)
+                                    // If are no edges at all, add an edge.
+                                    // XXX this is kind of lame when there were more than one isolated vertex, should connect to them all
+                                    //
+                                    if (edges.size() == 0)
                                     {
-                                        boolean thisFaceIsGoodSoFar = true;
-                                        Mesh.Edge edgeI = mesh.getEdge(iEdge);
-                                        double twiceThisFaceArea = 0.;
-                                        for (Mesh.Edge edge = edgeI;;)
-                                        {
-                                            double twiceThisTriArea = twiceTriangleArea(
-                                                                    x, y,
-                                                                    edge.initialVertex().x,
-                                                                    edge.initialVertex().y,
-                                                                    edge.finalVertex().x,
-                                                                    edge.finalVertex().y);
-                                            if (twiceThisTriArea < 0)
-                                            {
-                                                thisFaceIsGoodSoFar = false; // it's bad!
-                                            }
-                                            twiceThisFaceArea += twiceThisTriArea;
-
-                                            if ((edge = edge.next()) == edgeI)
-                                                break;
-                                        }
-                                        if (thisFaceIsGoodSoFar)
-                                        {
-                                            // I'm inside this face;
-                                            // kis it and done
-                                            mesh.kisIsolatedVertex((Mesh.Vertex)verts.get(verts.size()-1),
-                                                                   edgeI);
-                                            kissed = true;
-                                            break;
-                                        }
-                                        if (twiceThisFaceArea < twiceMostNegativeFaceArea)
-                                        {
-                                            twiceMostNegativeFaceArea = twiceThisFaceArea;
-                                            edgeOnMostNegativeFace = edgeI;
-                                        }
+                                        System.out.println("Adding an edge between two verts");
+                                        mesh.addEdgeBetweenTwoIsolatedVertices((Mesh.Vertex)verts.get(verts.size()-2),
+                                                                               (Mesh.Vertex)verts.get(verts.size()-1));
                                     }
-                                    if (!kissed)
+                                    else // edges.size() >= 1
                                     {
-                                        System.out.println("In the outer face");
+                                        // There was already an edge.
+                                        // Find out which face we are on
+                                        // (all triangles CCW), and kis that face.
+                                        // if we are not inside any face by that criterion,
+                                        // then assume we are inside the outer face
+                                        // and connect the new vertex to every vertex
+                                        // that's visible from it.
                                         //
-                                        // It wasn't inside any face.
-                                        // Assume it's in the outer face.
-                                        // In this case,
-                                        // make a kiss to the outer face
-                                        // and then delete all newly added edges
-                                        // that cross the boundary of the outer face.
-                                        //
-
-                                        ArrayList/*<Mesh.Edge>*/ oldOuterFaceBoundary = new ArrayList();
-                                        for (Mesh.Edge edge = edgeOnMostNegativeFace;;)
+                                        boolean kissed = false;
+                                        double twiceMostNegativeFaceArea = Double.POSITIVE_INFINITY;
+                                        Mesh.Edge edgeOnMostNegativeFace = null;
+                                        // XXX traverses each face of size n n times!  need to keep track of what we've done already
+                                        int nEdges = mesh.edges.size();
+                                        FORI (iEdge, nEdges)
                                         {
-                                            oldOuterFaceBoundary.add(edge);
-                                            if ((edge = edge.next()) == edgeOnMostNegativeFace)
-                                                break;
-                                        }
-                                        int oldOuterFaceBoundarySize = oldOuterFaceBoundary.size();
-
-                                        int oldNumEdges = mesh.edges.size();
-                                        mesh.kisIsolatedVertex((Mesh.Vertex)verts.get(verts.size()-1),
-                                                               edgeOnMostNegativeFace);
-                                        if (!doShowInsideOutDualVerts)
-                                        {
-                                            for (int iEdge = oldNumEdges;
-                                                 iEdge < mesh.edges.size();
-                                                 iEdge += 2) // only do one of an edge and its opposite
+                                            boolean thisFaceIsGoodSoFar = true;
+                                            Mesh.Edge edgeI = mesh.getEdge(iEdge);
+                                            double twiceThisFaceArea = 0.;
+                                            for (Mesh.Edge edge = edgeI;;)
                                             {
-                                                for (int iOldBoundaryEdge = 0;
-                                                     iOldBoundaryEdge < oldOuterFaceBoundarySize;
-                                                     ++iOldBoundaryEdge)
+                                                double twiceThisTriArea = twiceTriangleArea(
+                                                                        x, y,
+                                                                        edge.initialVertex().x,
+                                                                        edge.initialVertex().y,
+                                                                        edge.finalVertex().x,
+                                                                        edge.finalVertex().y);
+                                                if (twiceThisTriArea < 0)
                                                 {
-                                                    Mesh.Edge oldEdge = (Mesh.Edge)oldOuterFaceBoundary.get(iOldBoundaryEdge);
-                                                    Mesh.Edge newEdge = mesh.getEdge(iEdge);
+                                                    thisFaceIsGoodSoFar = false; // it's bad!
+                                                }
+                                                twiceThisFaceArea += twiceThisTriArea;
 
-                                                    if (newEdge.initialVertex() == oldEdge.initialVertex()
-                                                     || newEdge.initialVertex() == oldEdge.finalVertex()
-                                                     || newEdge.finalVertex() == oldEdge.initialVertex()
-                                                     || newEdge.finalVertex() == oldEdge.finalVertex())
-                                                        continue;
-                                                    //System.out.println("    Seeing whether new edge v"+newEdge.initialVertex().myIndex()+" -> v"+newEdge.finalVertex().myIndex()+" crosses old boundary edges v"+oldEdge.initialVertex().myIndex()+" -> v"+oldEdge.finalVertex().myIndex()+"");
-                                                    if (edgesCrossOrCloseToIt(
-                                                                    oldEdge.initialVertex().x,
-                                                                    oldEdge.initialVertex().y,
-                                                                    oldEdge.finalVertex().x,
-                                                                    oldEdge.finalVertex().y,
-                                                                    newEdge.initialVertex().x,
-                                                                    newEdge.initialVertex().y,
-                                                                    newEdge.finalVertex().x,
-                                                                    newEdge.finalVertex().y,
-                                                                    1e-6))
+                                                if ((edge = edge.next()) == edgeI)
+                                                    break;
+                                            }
+                                            if (thisFaceIsGoodSoFar)
+                                            {
+                                                // I'm inside this face;
+                                                // kis it and done
+                                                mesh.kisIsolatedVertex((Mesh.Vertex)verts.get(verts.size()-1),
+                                                                       edgeI);
+                                                kissed = true;
+                                                break;
+                                            }
+                                            if (twiceThisFaceArea < twiceMostNegativeFaceArea)
+                                            {
+                                                twiceMostNegativeFaceArea = twiceThisFaceArea;
+                                                edgeOnMostNegativeFace = edgeI;
+                                            }
+                                        }
+                                        if (!kissed)
+                                        {
+                                            System.out.println("In the outer face");
+                                            //
+                                            // It wasn't inside any face.
+                                            // Assume it's in the outer face.
+                                            // In this case,
+                                            // make a kiss to the outer face
+                                            // and then delete all newly added edges
+                                            // that cross the boundary of the outer face.
+                                            //
+
+                                            ArrayList/*<Mesh.Edge>*/ oldOuterFaceBoundary = new ArrayList();
+                                            for (Mesh.Edge edge = edgeOnMostNegativeFace;;)
+                                            {
+                                                oldOuterFaceBoundary.add(edge);
+                                                if ((edge = edge.next()) == edgeOnMostNegativeFace)
+                                                    break;
+                                            }
+                                            int oldOuterFaceBoundarySize = oldOuterFaceBoundary.size();
+
+                                            int oldNumEdges = mesh.edges.size();
+                                            mesh.kisIsolatedVertex((Mesh.Vertex)verts.get(verts.size()-1),
+                                                                   edgeOnMostNegativeFace);
+                                            if (!doShowInsideOutDualVerts)
+                                            {
+                                                for (int iEdge = oldNumEdges;
+                                                     iEdge < mesh.edges.size();
+                                                     iEdge += 2) // only do one of an edge and its opposite
+                                                {
+                                                    for (int iOldBoundaryEdge = 0;
+                                                         iOldBoundaryEdge < oldOuterFaceBoundarySize;
+                                                         ++iOldBoundaryEdge)
                                                     {
-                                                        //System.out.println("        It does.");
-                                                        mesh.deleteEdge(newEdge);
-                                                        iEdge -= 2; // so we don't skip the one that gets moved into the deleted spot
-                                                        break;
-                                                    }
-                                                    else
-                                                    {
-                                                        //System.out.println("        It doesn't.");
+                                                        Mesh.Edge oldEdge = (Mesh.Edge)oldOuterFaceBoundary.get(iOldBoundaryEdge);
+                                                        Mesh.Edge newEdge = mesh.getEdge(iEdge);
+
+                                                        if (newEdge.initialVertex() == oldEdge.initialVertex()
+                                                         || newEdge.initialVertex() == oldEdge.finalVertex()
+                                                         || newEdge.finalVertex() == oldEdge.initialVertex()
+                                                         || newEdge.finalVertex() == oldEdge.finalVertex())
+                                                            continue;
+                                                        //System.out.println("    Seeing whether new edge v"+newEdge.initialVertex().myIndex()+" -> v"+newEdge.finalVertex().myIndex()+" crosses old boundary edges v"+oldEdge.initialVertex().myIndex()+" -> v"+oldEdge.finalVertex().myIndex()+"");
+                                                        if (edgesCrossOrCloseToIt(
+                                                                        oldEdge.initialVertex().x,
+                                                                        oldEdge.initialVertex().y,
+                                                                        oldEdge.finalVertex().x,
+                                                                        oldEdge.finalVertex().y,
+                                                                        newEdge.initialVertex().x,
+                                                                        newEdge.initialVertex().y,
+                                                                        newEdge.finalVertex().x,
+                                                                        newEdge.finalVertex().y,
+                                                                        1e-6))
+                                                        {
+                                                            //System.out.println("        It does.");
+                                                            mesh.deleteEdge(newEdge);
+                                                            iEdge -= 2; // so we don't skip the one that gets moved into the deleted spot
+                                                            break;
+                                                        }
+                                                        else
+                                                        {
+                                                            //System.out.println("        It doesn't.");
+                                                        }
                                                     }
                                                 }
                                             }
                                         }
-                                    }
-                                } // if verts.length >= 3
-                            } // if verts.size() >= 2 after adding the new vertex
+                                    } // if verts.length >= 3
+                                } // if verts.size() >= 2 after adding the new vertex
 
-                            mesh.sanityCheck();
+                                mesh.sanityCheck();
 
-                            beingDraggedVertIndex = verts.size()-1;
-                        }
-                    }
+                                beingDraggedVertIndex = verts.size()-1; // start dragging the one we just added
+                            }
 
-                    // added something-- invalidate dual mesh
-                    dirtyDualMesh();
+                            // added something-- invalidate dual mesh
+                            dirtyDualMesh();
+                        } // !showNet
+                    } // shift not down
+
                 }
                 else if (whichButton == java_awt_event_MouseEvent_BUTTON2)
                 {
@@ -1816,8 +1853,32 @@ public class ShephardsPlayApplet
                             dirtyDualMesh();
                         }
                     }
-
                     rubberBandingNewEdge = false;
+
+                    if (beingDraggedNetEdgeIndex != -1
+                     && showNet.get())
+                    {
+                        int targetEdgeIndex = mostRecentDualMesh.indexOfClosestEdge(thisP, true);
+                        if (targetEdgeIndex != -1
+                         && targetEdgeIndex != beingDraggedNetEdgeIndex)
+                        {
+                            // could do this once on mouse down, and have them lowlighted or something
+                            Mesh.Edge alternatives[] = theNet.alternatives(beingDraggedNetEdgeIndex);
+                            if (Arrays.indexOfUsingEqualsSymbol(alternatives, mostRecentDualMesh.getEdge(targetEdgeIndex)) != -1
+                             || Arrays.indexOfUsingEqualsSymbol(alternatives, mostRecentDualMesh.getEdge(targetEdgeIndex).opposite()) != -1)
+                            {
+                                theNet.swapCutAndFold(beingDraggedNetEdgeIndex,
+                                                      targetEdgeIndex);
+                            }
+                            else
+                            {
+                                System.out.println("BONK!");
+                            }
+                        }
+                    }
+
+                    beingDraggedVertIndex = -1;
+                    beingDraggedNetEdgeIndex = -1;
 
                     button1IsDown = false;
                 }
@@ -1885,7 +1946,11 @@ public class ShephardsPlayApplet
                     }
                     else
                     {
-                        if (e.isShiftDown())
+                        if (beingDraggedNetEdgeIndex != -1)
+                        {
+                            // nothing, we'll just draw the dragged edge in the new position when we repaint
+                        }
+                        else if (e.isShiftDown())
                         {
                             // Drag all the verts
                             FORIDOWN (iVert, mesh.verts.size())
@@ -1893,6 +1958,8 @@ public class ShephardsPlayApplet
                                 mesh.getVert(iVert).x += snappedThisP[0]-snappedPrevP[0];
                                 mesh.getVert(iVert).y += snappedThisP[1]-snappedPrevP[1];
                             }
+                            // moved something-- invalidate dual mesh XXX could retain structure and just update positions and angles?? then wouldn't have to invalidate net!
+                            dirtyDualMesh();
                         }
                         else if (beingDraggedVertIndex != -1)
                         {
@@ -2001,11 +2068,10 @@ public class ShephardsPlayApplet
                                 PRINTARRAY(verts);
                                 PRINTARRAY(edges);
                             }
+                            // moved something-- invalidate dual mesh XXX could retain structure and just update positions and angles?? then wouldn't have to invalidate net!
+                            dirtyDualMesh();
                         }
                     }
-
-                    // moved something-- invalidate dual mesh XXX could retain structure and just update positions and angles?? then wouldn't have to invalidate net!
-                    dirtyDualMesh();
                 }
 
                 if (button3IsDown) // right mouse
@@ -2038,11 +2104,8 @@ public class ShephardsPlayApplet
                     }
                     prevP = thisP;
 
-                    if (true) // nah, let the user hit space if they want to repaint
-                    {
-                        if (showMag.get())
-                            theCanvas.repaint();
-                    }
+                    if (showMag.get())
+                        theCanvas.repaint();
                 }
 
                 if (eventVerbose >= 3) System.out.println("    out mouseMoved: "+e);
@@ -2081,6 +2144,7 @@ public class ShephardsPlayApplet
                         if (doContinuouslyDelaunayize.get()) delaunayize();
                         UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
+                        dirtyDualMesh();
                         theCanvas.repaint();
                         break;
                     }
@@ -2108,6 +2172,7 @@ public class ShephardsPlayApplet
                         if (doContinuouslyDelaunayize.get()) delaunayize();
                         UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
+                        dirtyDualMesh();
                         theCanvas.repaint();
                         break;
                     }
@@ -10322,7 +10387,7 @@ OFF
             theNet = null;
         }
         private int beingDraggedVertIndex = -1;
-        private int beingDraggedNetEdgeInd = -1;
+        private int beingDraggedNetEdgeIndex = -1;
         private boolean rubberBandingNewEdge = false;
         private int[][] selectedTris = {};
         private int[] selectedDualVertIndices = {};
