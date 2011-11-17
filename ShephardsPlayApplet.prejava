@@ -16,8 +16,11 @@ User should be able to:
 
 
 BUGS:
+    - save a complicated surguried net, reload it, it changed.
+      (oh, it has to do with delaunayization)
 
 TO DO:
+    - should save/restore cuts in terms of primal from,to verts to be robust
     - when dragging a net edge, show it dragging (edge or fold)
 
     - showNet should go in the undo item, otherwise it's weird when you do something
@@ -1618,10 +1621,19 @@ public class ShephardsPlayApplet
                     {
                         if (showNet.get())
                         {
-                            // begin dragging a net edge or fold
-                            //PRINT(beingDraggedNetEdgeIndex);
-                            beingDraggedNetEdgeIndex = getDualMesh().indexOfClosestEdge(prevP, true);
-                            //PRINT(beingDraggedNetEdgeIndex);
+                            if (e.getX() < thermometerWidth
+                             || e.getX() >= theCanvas.getWidth()-thermometerWidth)
+                            {
+                                thermometerIsLinear ^= true;
+                                System.out.println("thermometerIsLinear -> "+thermometerIsLinear);
+                            }
+                            else
+                            {
+                                // begin dragging a net edge or fold
+                                //PRINT(beingDraggedNetEdgeIndex);
+                                beingDraggedNetEdgeIndex = getDualMesh().indexOfClosestEdge(prevP, true);
+                                //PRINT(beingDraggedNetEdgeIndex);
+                            }
                             theCanvas.repaint();
                         }
                         else
@@ -3216,7 +3228,7 @@ public class ShephardsPlayApplet
                 Mesh dualMesh = getDualMesh();
                 int nDualVerts = dualMesh.verts.size();
                 int nDualEdges = dualMesh.edges.size();
-
+                int nOffBalanceCuts = -1;
 
                 if (true)
                 {
@@ -3228,6 +3240,10 @@ public class ShephardsPlayApplet
                         // prevent indexing out of bounds later on
                         System.out.println("clearing highlightedDualEdgeIndex since it's obviously wrong");
                         highlightedDualEdgeIndex = -1;
+
+                        // XXX TODO: empirically, there's an endless loop somewhere when the above happens--
+                        // try to avoid that by clearing the net too
+                        theNet = null;
                     }
 
 
@@ -3650,6 +3666,7 @@ public class ShephardsPlayApplet
                         }
 
                         dualEdgeIsOffBalanceCut = new boolean[mesh.edges.size()]; // all false initially
+                        nOffBalanceCuts = 0;
 
                         FORI (iDualVert, nDualVerts)
                         {
@@ -3676,6 +3693,7 @@ public class ShephardsPlayApplet
                                 {
                                     dualEdgeIsOffBalanceCut[dualEdge.myIndex()] = true;
                                     dualEdgeIsOffBalanceCut[dualEdge.opposite().myIndex()] = true;
+                                    nOffBalanceCuts++;
                                     //System.out.println("    edge at dual vert "+iDualVert+" is off balance!");
                                 }
                                 else
@@ -4225,6 +4243,65 @@ public class ShephardsPlayApplet
                                   -1., 1.1);
                 }
 
+
+                // if showing a net, display a message about it
+                // and a thermometer.
+                if (nOffBalanceCuts != -1)
+                {
+                    int nWholeEdges = mesh.edges.size()/2; // half number of half-edges
+                    g.setColor(java.awt.Color.red);
+
+                    int heights[] = VecMath.fillvec(nWholeEdges, 2);
+                    int space = size.height+1;
+                    int spaceUsed = nWholeEdges * 2;
+                    if (thermometerIsLinear)
+                    {
+                        // roughly linear, distribute roundoff to lower part of screen
+                        while (spaceUsed < space)
+                            for (int i = 0; i < nWholeEdges && spaceUsed < space; ++i)
+                            {
+                                heights[i]++;
+                                spaceUsed++;
+                            }
+                    }
+                    else
+                    {
+                        // triangular numbers, larger at lower part of screen
+                        for (int i = 0; spaceUsed < space; i = MIN(i+1, nWholeEdges-1))
+                        {
+                            for (int j = MIN(i,nWholeEdges-1); j >= 0 && spaceUsed < space; --j)
+                            {
+                                heights[j]++;
+                                spaceUsed++;
+                            }
+                        }
+                    }
+                    // from bottom of screen (red) to top of screen (green)
+                    int xIntervals[][] = {{0,thermometerWidth}, {size.width-thermometerWidth,size.width}};
+                    spaceUsed = 0;
+                    FORI (iEdge, nWholeEdges)
+                    {
+                        if (iEdge == nOffBalanceCuts)
+                            g.setColor(java.awt.Color.green);
+                        //int x0 = size.width-width;
+                        int x0 = 0;
+                        FORI (iInterval, xIntervals.length)
+                            g.fillRect(xIntervals[iInterval][0],                         size.height-spaceUsed-heights[iEdge]+1,
+                                       xIntervals[iInterval][1]-xIntervals[iInterval][0], heights[iEdge]-1);
+                        spaceUsed += heights[iEdge];
+                        if (spaceUsed >= space)
+                            break;
+                    }
+
+                    mg.setColor(java.awt.Color.white);
+                    mg.drawString(""+nOffBalanceCuts+" / "+nWholeEdges+" off-balance cuts",
+                                  size.width/minSize,-size.height/minSize,
+                                  1.2, 1.5,
+                                  java.awt.Color.black); // background
+
+                }
+
+
                 //
                 // Draw the rubber band last last
                 //
@@ -4235,6 +4312,10 @@ public class ShephardsPlayApplet
                     mg.drawLine(v0.x, v0.y,
                                 prevP[0], prevP[1], doAntiAliasing);
                 } // if (rubberBandingNewEdge)
+
+
+
+
 
                 if (doShowPositiveOrthantnessVisualization)
                 {
@@ -4309,7 +4390,7 @@ public class ShephardsPlayApplet
                 if (g != frontBufferGraphics)
                 {
                     if (showMag.get())
-                    FORI (iMag, 2)
+                    FORI (iMag, 2) // twice, so we can mag the mag somewhat
                     {
                         // can we zoom part of the image onto itself?
                         // it seems yes! (at least with javac 1.3, runtime 1.6)
@@ -5014,7 +5095,7 @@ public class ShephardsPlayApplet
             private void doBlueNoiseThing()
             {
                 double stubbornness = 100;
-                double overlappingDiskRadiusX = .2;
+                double overlappingDiskRadiusX = .01;
                 double overlappingDiskRadiusY = .2;
                 double verts[][] = generateBlueNoiseOnUnitSquare(stubbornness,
                                                                  overlappingDiskRadiusX,
@@ -10308,7 +10389,7 @@ OFF
                 "Outward",
                 "Random",
             };
-        private Listenable.Int netMethod = new Listenable.Int(0, netMethodNames.length-1, NETMETHOD_OUTWARD);
+        private Listenable.Int netMethod = new Listenable.Int(0, netMethodNames.length-1, NETMETHOD_RANDOM);
 
         private java.awt.Canvas theCanvas = null;
 
@@ -10332,6 +10413,8 @@ OFF
         private boolean showGrid = true;
         private boolean snapToGrid = false;
         private double gridSnapQuantum = 1./64; // no way to change, currently
+        private boolean thermometerIsLinear = false;
+        private int thermometerWidth = 10;
 
     //
     // Applet-generic member variables...
