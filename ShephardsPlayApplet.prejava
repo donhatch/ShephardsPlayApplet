@@ -16,6 +16,7 @@ User should be able to:
 
 
 BUGS:
+    - 's' key throws exception these days
     - save a complicated surguried net, reload it, it changed.
       (oh, it has to do with delaunayization)
 
@@ -2020,14 +2021,24 @@ public class ShephardsPlayApplet
                         }
                         else if (e.isShiftDown())
                         {
-                            // Drag all the verts
+                            // Drag all the verts and dual verts.
+                            // No need to invalidate anything.
                             FORIDOWN (iVert, mesh.verts.size())
                             {
                                 mesh.getVert(iVert).x += snappedThisP[0]-snappedPrevP[0];
                                 mesh.getVert(iVert).y += snappedThisP[1]-snappedPrevP[1];
                             }
-                            // moved something-- invalidate dual mesh XXX could retain structure and just update positions and angles?? then wouldn't have to invalidate net!
-                            dirtyDualMesh();
+                            Mesh dualMesh = getDualMesh();
+                            FORIDOWN (iDualVert, dualMesh.verts.size())
+                            {
+                                dualMesh.getVert(iDualVert).x += snappedThisP[0]-snappedPrevP[0];
+                                dualMesh.getVert(iDualVert).y += snappedThisP[1]-snappedPrevP[1];
+                                double momentAndArea[] = dualMesh.getVert(iDualVert).momentAndArea;
+                                assert(momentAndArea.length == 4);
+                                momentAndArea[0] += (snappedThisP[0]-snappedPrevP[0]) * momentAndArea[3];
+                                momentAndArea[1] += (snappedThisP[1]-snappedPrevP[1]) * momentAndArea[3];
+                                // height doesn't change
+                            }
                         }
                         else if (beingDraggedVertIndex != -1)
                         {
@@ -3319,6 +3330,7 @@ public class ShephardsPlayApplet
                     double avg[] = null;
                     if (selectedDualVertIndices.length >= 1)
                     {
+                        // XXX GET RID OF THIS FIRST WAY!
                         double areaSum = 0.;
                         double moment[] = {0.,0.};
                         double dualVertCoords[] = new double[2]; // scratch for loop
@@ -3359,6 +3371,8 @@ public class ShephardsPlayApplet
                                 momentAndAreaSum[1] / A,
                             };
                             PRINTVEC(avgAlternate);
+
+                            avg = avgAlternate;
                         }
                     }
 
@@ -5095,8 +5109,8 @@ public class ShephardsPlayApplet
             private void doBlueNoiseThing()
             {
                 double stubbornness = 100;
-                double overlappingDiskRadiusX = .01;
-                double overlappingDiskRadiusY = .2;
+                double overlappingDiskRadiusX = .05.
+                double overlappingDiskRadiusY = .05;
                 double verts[][] = generateBlueNoiseOnUnitSquare(stubbornness,
                                                                  overlappingDiskRadiusX,
                                                                  overlappingDiskRadiusY);
