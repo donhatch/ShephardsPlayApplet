@@ -19,7 +19,6 @@ BUGS:
 
 TO DO:
     - when dragging a cut edge, show it dragging (edge or fold)
-    - highlight alternatives when dragging fold
 
     - showNet should go in the undo item, otherwise it's weird when you do something
       that changes it but undo doesn't change it back
@@ -1919,7 +1918,9 @@ public class ShephardsPlayApplet
                          && targetEdgeIndex != beingDraggedNetEdgeIndex
                          && dualMesh.getEdge(targetEdgeIndex).opposite().myIndex() != beingDraggedNetEdgeIndex)
                         {
-                            // could do this once on mouse down, and have them lowlighted or something
+                            // Make sure it's a valid alternative.
+                            // (could do this once on mouse down,
+                            // but whatever, it's O(n) which is fine here)
                             Mesh.Edge alternatives[] = theNet.alternatives(beingDraggedNetEdgeIndex);
                             if (Arrays.indexOfUsingEqualsSymbol(alternatives, dualMesh.getEdge(targetEdgeIndex)) != -1
                              || Arrays.indexOfUsingEqualsSymbol(alternatives, dualMesh.getEdge(targetEdgeIndex).opposite()) != -1)
@@ -3783,31 +3784,33 @@ public class ShephardsPlayApplet
                                 dualEdgeColors[iEdge] = darkBlue;
                             }
                         }
-                        if (beingDraggedNetEdgeIndex != -1
-                         && theNet._edgeStatuses[beingDraggedNetEdgeIndex] == Net.CUT)
+                        if (beingDraggedNetEdgeIndex != -1)
                         {
-                            // Make sure beingDraggedNetEdgeIndex points towards root of cut tree--
-                            // if not, reverse it.
-                            if (dualMesh.getEdge(beingDraggedNetEdgeIndex).initialVertex() == null
-                             || theNet._vertToParentEdgeInd[dualMesh.getEdge(beingDraggedNetEdgeIndex).initialVertex().myIndex()] != beingDraggedNetEdgeIndex)
-                                beingDraggedNetEdgeIndex = _dualMesh.getEdge(beingDraggedNetEdgeIndex).opposite().myIndex();
-                            assert(theNet._vertToParentEdgeInd[dualMesh.getEdge(beingDraggedNetEdgeIndex).initialVertex().myIndex()] == beingDraggedNetEdgeIndex);
-
-                            // set lagoonCenter from null... this will cause it to be drawn down below, after edges
+                            boolean itsACut = (theNet._edgeStatuses[beingDraggedNetEdgeIndex] == Net.CUT);
+                            if (itsACut)
                             {
-                                Mesh.Edge netEdgeBeingDragged = dualMesh.getEdge(beingDraggedNetEdgeIndex);
-                                Mesh.Vertex initialVertex = netEdgeBeingDragged.initialVertex();
+                                // Make sure beingDraggedNetEdgeIndex points towards root of cut tree--
+                                // if not, reverse it.
+                                if (dualMesh.getEdge(beingDraggedNetEdgeIndex).initialVertex() == null
+                                 || theNet._vertToParentEdgeInd[dualMesh.getEdge(beingDraggedNetEdgeIndex).initialVertex().myIndex()] != beingDraggedNetEdgeIndex)
+                                    beingDraggedNetEdgeIndex = _dualMesh.getEdge(beingDraggedNetEdgeIndex).opposite().myIndex();
+                                assert(theNet._vertToParentEdgeInd[dualMesh.getEdge(beingDraggedNetEdgeIndex).initialVertex().myIndex()] == beingDraggedNetEdgeIndex);
 
-                                double lagoonMomentAndWeight[] = new double[3]; // zeros
-                                accumulateMomentAndArea(lagoonMomentAndWeight, momentAndWeightStrictlyBelowEachDualVertex[initialVertex.myIndex()]);
-                                accumulateMomentAndArea(lagoonMomentAndWeight, initialVertex.momentAndArea);
-                                lagoonCenter = new double[] {
-                                    lagoonMomentAndWeight[0] / lagoonMomentAndWeight[2],
-                                    lagoonMomentAndWeight[1] / lagoonMomentAndWeight[2],
-                                };
+                                // set lagoonCenter from null... this will cause it to be drawn down below, after edges
+                                {
+                                    Mesh.Edge netEdgeBeingDragged = dualMesh.getEdge(beingDraggedNetEdgeIndex);
+                                    Mesh.Vertex initialVertex = netEdgeBeingDragged.initialVertex();
+
+                                    double lagoonMomentAndWeight[] = new double[3]; // zeros
+                                    accumulateMomentAndArea(lagoonMomentAndWeight, momentAndWeightStrictlyBelowEachDualVertex[initialVertex.myIndex()]);
+                                    accumulateMomentAndArea(lagoonMomentAndWeight, initialVertex.momentAndArea);
+                                    lagoonCenter = new double[] {
+                                        lagoonMomentAndWeight[0] / lagoonMomentAndWeight[2],
+                                        lagoonMomentAndWeight[1] / lagoonMomentAndWeight[2],
+                                    };
+                                }
                             }
 
-                            // lowlight alternative exits-- dark green for good, dark red for bad
                             Mesh.Edge alternatives[] = theNet.alternatives(beingDraggedNetEdgeIndex);
 
                             // add in the original exit itself, to simplify the loop
@@ -3817,18 +3820,27 @@ public class ShephardsPlayApplet
                             {
                                 Mesh.Edge alternativeExit = alternatives[iAlternative];
                                 Mesh.Vertex alternativeExitVertex = alternativeExit.initialVertex();
-                                boolean isGood = VecMath.dot(alternativeExit.direction,
-                                                             VecMath.vmv(lagoonCenter,
-                                                                         new double[]{alternativeExitVertex.x,
-                                                                                      alternativeExitVertex.y})) <= 0;
-                                /*
-                                eh, whatever, the dark doesn't look that good-- cyan and magenta are fine
-                                java.awt.Color color =
-                                    alternativeExit.myIndex()==beingDraggedNetEdgeIndex
-                                        ? (isGood ? java.awt.Color.cyan : java.awt.Color.magenta)
-                                        : (isGood ? darkGreen : darkRed);
-                                */
-                                java.awt.Color color = isGood ? java.awt.Color.cyan : java.awt.Color.magenta;
+                                java.awt.Color color;
+                                if (itsACut)
+                                {
+                                    // Dragging a cut: highlight alternative exits--
+                                    // cyan for good, magenta for bad.
+                                    boolean isGood = VecMath.dot(alternativeExit.direction,
+                                                                 VecMath.vmv(lagoonCenter,
+                                                                             new double[]{alternativeExitVertex.x,
+                                                                                          alternativeExitVertex.y})) <= 0;
+                                    color = isGood ? java.awt.Color.cyan : java.awt.Color.magenta;
+                                }
+                                else
+                                {
+                                    // If dragging a fold: just highlight alternative folds
+                                    // in whatever color they are in (green->cyan, red->magenta, darkBlue->blue)
+                                    color = dualEdgeColors[alternativeExit.myIndex()];
+                                    color = (alternativeExit.myIndex()==beingDraggedNetEdgeIndex
+                                          || alternativeExit.opposite().myIndex()==beingDraggedNetEdgeIndex) ? java.awt.Color.blue :
+                                            dualEdgeIsOffBalanceCut[alternativeExit.myIndex()] ? java.awt.Color.magenta
+                                                                                               : java.awt.Color.cyan;
+                                }
 
                                 dualEdgeColors[alternativeExit.myIndex()] = color;
                                 dualEdgeColors[alternativeExit.opposite().myIndex()] = color;
