@@ -16,6 +16,7 @@ User should be able to:
 
 
 BUGS:
+    - save/load not working for nets any more (make it work with full and partial ones)
     - 's' key throws exception these days
     - save a complicated surguried net, reload it, it changed.
       (oh, it has to do with delaunayization)
@@ -1024,7 +1025,7 @@ public class ShephardsPlayApplet
                                         selectedTris = (int[][])Arrays.copy(item.before.selectedTris, 2);
                                         selectedDualVertIndices = VecMath.copyvec(item.before.selectedDualVertIndices);
                                         dirtyDualMesh(); // *before* we restore theNet
-                                        theNet = (item.before.netCuts==null ? null : new Net(getDualMesh(), mesh, item.before.netCuts));
+                                        theNet = (item.before.netEdgeStatuses==null ? null : new Net(getDualMesh(), mesh, item.before.netEdgeStatuses));
                                     }
                                     else
                                     {
@@ -1052,7 +1053,7 @@ public class ShephardsPlayApplet
                                         selectedTris = (int[][])Arrays.copy(item.after.selectedTris, 2);
                                         selectedDualVertIndices = VecMath.copyvec(item.after.selectedDualVertIndices);
                                         dirtyDualMesh(); // *before* we restore theNet
-                                        theNet = (item.after.netCuts==null ? null : new Net(getDualMesh(), mesh, item.after.netCuts));
+                                        theNet = (item.after.netEdgeStatuses==null ? null : new Net(getDualMesh(), mesh, item.after.netEdgeStatuses));
                                     }
                                     else
                                     {
@@ -1254,9 +1255,11 @@ public class ShephardsPlayApplet
                 if (theNet != null)
                 {
                     writer.print("# Cuts:");
-                    FORI (i, theNet._vertToParentEdgeInd.length)
-                        if (!(i == theNet._vertToParentEdgeInd.length-1 && theNet._vertToParentEdgeInd[i] == -1)) // omit the final -1
-                            writer.print(" "+edgeToOutputIndex[theNet._vertToParentEdgeInd[i]]);
+                    FORI (iEdge, theNet._edgeStatuses.length)
+                        if (theNet._edgeStatuses[iEdge] == Net.CUT
+                         && mesh.getEdge(iEdge).myIndex() < mesh.getEdge(iEdge).opposite().myIndex())
+                            writer.print(" "+edgeToOutputIndex[iEdge]);
+
                     writer.println();
                 }
 
@@ -1361,10 +1364,10 @@ public class ShephardsPlayApplet
                     {
                         tokens = com.donhatchsw.compat.regex.split(line.substring(8).trim(), "\\s+");
                         //PRINTARRAY(tokens);
-                        int cuts[] = new int[tokens.length];
+                        int edgeStatuses[] = VecMath.fillvec(mesh.edges.size(), Net.UNDECIDED);
                         FORI (iToken, tokens.length)
-                            cuts[iToken] = Integer.parseInt(tokens[iToken]);
-                        theNet = new Net(getDualMesh(), mesh, cuts);
+                            edgeStatuses[Integer.parseInt(tokens[iToken])] = Net.CUT;
+                        theNet = new Net(getDualMesh(), mesh, edgeStatuses);
                     }
                     else
                     {
@@ -1642,11 +1645,31 @@ public class ShephardsPlayApplet
                             }
                             else
                             {
-                                // begin dragging a net edge or fold
-                                //PRINT(beingDraggedNetEdgeIndex);
-                                beingDraggedNetEdgeIndex = getDualMesh().indexOfClosestEdge(prevP, true);
-                                //PRINT(beingDraggedNetEdgeIndex);
-                                beingDraggedNetEdgeDelta = new double[]{0,0};
+                                if (theNet._nUndecideds > 0)
+                                {
+                                    int iEdge = getDualMesh().indexOfClosestEdge(thisP, true);
+                                    if (theNet._edgeStatuses[iEdge] == Net.UNDECIDED)
+                                    {
+                                        theNet.cut(iEdge, true);
+                                        if (theNet._nUndecideds == 0)
+                                        {
+                                            int root = getDualMesh().verts.size();
+                                            theNet.chooseDirections(root);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        System.out.println("BONK!");
+                                    }
+                                }
+                                else
+                                {
+                                    // begin dragging a net edge or fold
+                                    //PRINT(beingDraggedNetEdgeIndex);
+                                    beingDraggedNetEdgeIndex = getDualMesh().indexOfClosestEdge(thisP, true);
+                                    //PRINT(beingDraggedNetEdgeIndex);
+                                    beingDraggedNetEdgeDelta = new double[]{0,0};
+                                }
                             }
                             theCanvas.repaint();
                         }
@@ -1866,28 +1889,44 @@ public class ShephardsPlayApplet
                 {
                     button3IsDown = true;
 
-                    //
-                    // Delete closest vertex
-                    //
-                    beingDraggedVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1]);
-                    if (beingDraggedVertIndex != -1)
-                        mesh.deleteVertex(mesh.getVert(beingDraggedVertIndex));
-                    beingDraggedVertIndex = -1;
-
-                    // vertices got re-ordered, so we must clear the selection (for now).
-                    // XXX this can be improved maybe
-                    if (true)
+                    if (showNet.get())
                     {
-                        selectedTris = new int[][] {};
-                        selectedDualVertIndices = new int[] {};
+                        int iEdge = getDualMesh().indexOfClosestEdge(thisP, true);
+                        if (theNet._edgeStatuses[iEdge] == Net.CUT)
+                        {
+                            theNet.uncut(iEdge);
+                            beingDraggedNetEdgeIndex = -1;
+                        }
+                        else
+                        {
+                            System.out.println("BONK!");
+                        }
                     }
+                    else
+                    {
+                        //
+                        // Delete closest vertex
+                        //
+                        beingDraggedVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1]);
+                        if (beingDraggedVertIndex != -1)
+                            mesh.deleteVertex(mesh.getVert(beingDraggedVertIndex));
+                        beingDraggedVertIndex = -1;
 
-                    // deleted something-- invalidate dual mesh
-                    dirtyDualMesh();
+                        // vertices got re-ordered, so we must clear the selection (for now).
+                        // XXX this can be improved maybe
+                        if (true)
+                        {
+                            selectedTris = new int[][] {};
+                            selectedDualVertIndices = new int[] {};
+                        }
 
-                    mesh.sanityCheck();
+                        // deleted something-- invalidate dual mesh
+                        dirtyDualMesh();
 
-                    if (doContinuouslyDelaunayize.get()) delaunayize();
+                        mesh.sanityCheck();
+
+                        if (doContinuouslyDelaunayize.get()) delaunayize();
+                    }
 
                 } // right mouse
 
@@ -2778,7 +2817,7 @@ public class ShephardsPlayApplet
                             selectedTris = (int[][])Arrays.copy(item.before.selectedTris, 2);
                             selectedDualVertIndices = VecMath.copyvec(item.before.selectedDualVertIndices);
                             dirtyDualMesh(); // *before* we restore theNet
-                            theNet = (item.before.netCuts==null ? null : new Net(getDualMesh(), mesh, item.before.netCuts));
+                            theNet = (item.before.netEdgeStatuses==null ? null : new Net(getDualMesh(), mesh, item.before.netEdgeStatuses));
                         }
                         else
                         {
@@ -2801,7 +2840,7 @@ public class ShephardsPlayApplet
                             selectedTris = (int[][])Arrays.copy(item.after.selectedTris, 2);
                             selectedDualVertIndices = VecMath.copyvec(item.after.selectedDualVertIndices);
                             dirtyDualMesh(); // *before* we restore theNet
-                            theNet = (item.after.netCuts==null ? null : new Net(getDualMesh(), mesh, item.after.netCuts));
+                            theNet = (item.after.netEdgeStatuses==null ? null : new Net(getDualMesh(), mesh, item.after.netEdgeStatuses));
                         }
                         else
                         {
@@ -3657,6 +3696,7 @@ public class ShephardsPlayApplet
                                 } // UPWARD or OUTWARD
                                 else // MANUAL
                                 {
+                                    // nothing
                                 }
 
                                 {
@@ -3840,6 +3880,7 @@ public class ShephardsPlayApplet
                     //java.awt.Color darkBlue = new java.awt.Color(0.f,0.f,1/2.f);
                     //java.awt.Color darkBlue = new java.awt.Color(0.f,0.f,3/4.f);
                     //java.awt.Color darkBlue = new java.awt.Color(0.f,0.f,7/8.f);
+                    java.awt.Color darkGray = new java.awt.Color(1/4.f,1/4.f,1/4.f);
 
                     if (showNet.get())
                     {
@@ -3861,9 +3902,13 @@ public class ShephardsPlayApplet
                             {
                                 dualEdgeColors[iEdge] = java.awt.Color.green;
                             }
-                            else
+                            else if (theNet._edgeStatuses[iEdge] == Net.FOLD)
                             {
                                 dualEdgeColors[iEdge] = darkBlue;
+                            }
+                            else
+                            {
+                                dualEdgeColors[iEdge] = darkGray;
                             }
                         }
                         if (beingDraggedNetEdgeIndex != -1)
@@ -5205,10 +5250,10 @@ public class ShephardsPlayApplet
             private void doBlueNoiseThing()
             {
                 double stubbornness = 100;
-                //double overlappingDiskRadiusX = .05;
-                //double overlappingDiskRadiusY = .05;
-                double overlappingDiskRadiusX = .3;
-                double overlappingDiskRadiusY = .3;
+                double overlappingDiskRadiusX = .05;
+                double overlappingDiskRadiusY = .05;
+                //double overlappingDiskRadiusX = .3;
+                //double overlappingDiskRadiusY = .3;
                 double verts[][] = generateBlueNoiseOnUnitSquare(stubbornness,
                                                                  overlappingDiskRadiusX,
                                                                  overlappingDiskRadiusY);
@@ -9243,21 +9288,23 @@ OFF
                 this._topSortedVertInds = null; // only makes sense when net is complete
             }
 
-            public Net(Mesh mesh, Mesh dualMesh, int cuts[])
+            public Net(Mesh mesh, Mesh dualMesh, int edgeStatuses[])
             {
                 this(mesh, dualMesh);
-                assert(cuts.length == mesh.verts.size()
-                    || (cuts.length == mesh.verts.size()+1 && cuts[cuts.length-1] == -1));
-                FORI (iCut, cuts.length)
-                    if (cuts[iCut] != -1) // probably originall came from a net's _vertToParentEdgeInd, which can have a -1
-                        cut(cuts[iCut], true);
 
-                // TODO: the following won't be necessary when we implement the cut-forces-folds thing
-                FORI (iEdge, _edgeStatuses.length)
-                    if (_edgeStatuses[iEdge] == UNDECIDED)
+                assert(edgeStatuses.length == mesh.edges.size());
+
+                // for now, do folds first since andForcedCuts isn't implemented
+                // XXX TODO: revisit this if I implement andForcedCuts
+                FORI (iEdge, edgeStatuses.length)
+                    if (edgeStatuses[iEdge] == FOLD)
                         fold(iEdge, false);
+                FORI (iEdge, edgeStatuses.length)
+                    if (edgeStatuses[iEdge] == CUT)
+                        cut(iEdge, true);
 
-                chooseDirections(mesh.verts.size());
+                if (_nUndecideds == 0)
+                    chooseDirections(mesh.verts.size());
             }
 
             // This can be called after all edges
@@ -9520,6 +9567,7 @@ OFF
                 chooseDirections(root);
             } // swapCutAndFold
 
+            // XXX TODO: is this necessary? should be automatically tracking cuttability now using the andForcedFolds stuff
             public boolean cuttable(int iEdge)
             {
                 if (_edgeStatuses[iEdge] != UNDECIDED)
@@ -9543,6 +9591,39 @@ OFF
                 int i1 = (f1!=null ? f1.myIndex() : _dualMesh.verts.size());
                 return _faceComponents.find(i0)
                     != _faceComponents.find(i1);
+            }
+            // O(n), has to rebuild everything
+            public void uncut(int iEdge)
+            {
+                assert(_edgeStatuses[iEdge] == CUT);
+                
+                // Unfortunately, need to tear everything down
+                // and rebuild the merge-find structures.
+                {
+                    int nEdges = _mesh.edges.size();
+                    int nVerts = _mesh.verts.size();
+                    int nFaces = _dualMesh.verts.size();
+
+                    int newEdgeStatuses[] = VecMath.copyvec(_edgeStatuses);
+                    newEdgeStatuses[iEdge] = UNDECIDED;
+                    newEdgeStatuses[_mesh.getEdge(iEdge).opposite().myIndex()] = UNDECIDED;
+
+                    VecMath.fillvec(_edgeStatuses, UNDECIDED);
+                    _nFolds = 0;
+                    _nCuts = 0;
+                    _nUndecideds = nEdges;
+                    _vertComponents = new SizeTrackingMergeFind(nVerts+1);
+                    _faceComponents = new SizeTrackingMergeFind(nFaces+1);
+
+                    // now it's all clear (maybe need a clear() or reset()?)
+
+                    FORI (jEdge, newEdgeStatuses.length)
+                        if (newEdgeStatuses[jEdge] == CUT)
+                            cut(jEdge, true);
+                }
+
+                _vertToParentEdgeInd = null; // only makes sense when net is complete
+                _topSortedVertInds = null; // only makes sense when net is complete
             }
             public void cut(int iEdge, boolean andForcedFolds)
             {
@@ -10136,7 +10217,7 @@ OFF
                 public int optimizationTypeIndex;
                 public int selectedTris[][];
                 public int selectedDualVertIndices[];
-                public int netCuts[];
+                public int netEdgeStatuses[];
                 public State(Mesh mesh, boolean doContinuouslyDelaunayize, boolean doOptimize, int optimizationTypeIndex, int selectedTris[][], int selectedDualVertIndices[], Net net)
                 {
                     this.mesh = new Mesh(mesh);
@@ -10145,7 +10226,7 @@ OFF
                     this.optimizationTypeIndex = optimizationTypeIndex;
                     this.selectedTris = (int[][])Arrays.copy(selectedTris, 2);
                     this.selectedDualVertIndices = VecMath.copyvec(selectedDualVertIndices);
-                    this.netCuts = (net==null ? null : VecMath.copyvec(net._vertToParentEdgeInd));
+                    this.netEdgeStatuses = (net==null ? null : VecMath.copyvec(net._edgeStatuses));
                 }
             }
             public State before;
@@ -10555,7 +10636,7 @@ OFF
                 "Random",
                 "Manual",
             };
-        private Listenable.Int netMethod = new Listenable.Int(0, netMethodNames.length-1, NETMETHOD_UPWARD);
+        private Listenable.Int netMethod = new Listenable.Int(0, netMethodNames.length-1, NETMETHOD_MANUAL);
 
         private java.awt.Canvas theCanvas = null;
 
