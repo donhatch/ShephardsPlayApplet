@@ -16,7 +16,7 @@ User should be able to:
 
 
 BUGS:
-    - optimization seems to be broken?
+    - optimization seems to be broken? (not recalculating most of the time when it should)
 
 TO DO:
     - color lagoon edges yellow when dragging cut?
@@ -48,10 +48,7 @@ TO DO:
         - snap closest image to exact image? hmm, not sure
         - mode to place new verts in kaleidescope? (draw dots at images of cursor?)
 
-    - +/- should maybe look at undo and redo stack, and use it if possible, to save memory
-
-    - show perpendicular of edges, somehow, so can see when and how off balance
-    - mode to highlight all good ways out of given lagoon
+    - +/- should maybe look at undo and redo stack, and use it if possible, to save memory?
 
     - animation of optimization
     - animation of swap (what was I talking about here?)
@@ -3091,7 +3088,7 @@ public class ShephardsPlayApplet
                         }
                     }
 
-                    if (false) // edges are too busy, maybe should be separate option
+                    if (true) // edges are too busy, maybe should be separate option
                     {
                         ArrayList edges = mesh.edges;
                         FORIDOWN (iEdge, edges.size())
@@ -3433,7 +3430,8 @@ public class ShephardsPlayApplet
                                 boolean dualEdgeIsCut[] = new boolean[mesh.edges.size()]; // all false initially
 
                                 Mesh.Edge dualVertIndexToParentEdge[] = new Mesh.Edge[dualMesh.verts.size()]; // all null initially
-                                if (netMethod.get() == NETMETHOD_RANDOM)
+                                int netMethodValue = netMethod.get();
+                                if (netMethodValue == NETMETHOD_RANDOM)
                                 {
                                     boolean netVerbose = !(showNet.get() && showNetFlow);
                                     if (netVerbose)
@@ -3541,8 +3539,8 @@ public class ShephardsPlayApplet
                                     if (netVerbose)
                                         System.out.println("   done computing random net");
                                 }
-                                else if (netMethod.get() == NETMETHOD_UPWARD
-                                      || netMethod.get() == NETMETHOD_OUTWARD)
+                                else if (netMethodValue == NETMETHOD_UPWARD
+                                      || netMethodValue == NETMETHOD_OUTWARD)
                                 {
                                     FORIDOWN (iEdge, mesh.edges.size())
                                     {
@@ -3583,7 +3581,7 @@ public class ShephardsPlayApplet
                                                 threeFinalPositions[i] = new double[] {finalVertex.x, finalVertex.y};
                                         }
 
-                                        int bestSide = netMethod.get()==NETMETHOD_OUTWARD ? 
+                                        int bestSide = netMethodValue==NETMETHOD_OUTWARD ? 
                                                        /*
                                                        MAXI3(VecMath.dot(threeDirections[0], triCenterDualVertPos),
                                                              VecMath.dot(threeDirections[1], triCenterDualVertPos),
@@ -3660,7 +3658,7 @@ public class ShephardsPlayApplet
                                         // to avoid a cycle in the graph
                                         {
                                             Mesh.Edge maybeParentEdge = (dualMesh.getEdge(e.myIndex())).opposite();
-                                            if (netMethod.get() == NETMETHOD_OUTWARD)
+                                            if (netMethodValue == NETMETHOD_OUTWARD)
                                                 dualVertIndexToParentEdge[triCenterDualVert.myIndex()] = maybeParentEdge;
                                             else
                                                 if (GT(maybeParentEdge.direction[1], 0, 1e-6)
@@ -3670,6 +3668,108 @@ public class ShephardsPlayApplet
                                         }
                                     }
                                 } // UPWARD or OUTWARD
+                                else if (netMethodValue == NETMETHOD_CUT_SHARPEST
+                                      || netMethodValue == NETMETHOD_CUT_DULLEST
+                                      || netMethodValue == NETMETHOD_CUT_LONGEST
+                                      || netMethodValue == NETMETHOD_CUT_SHORTEST)
+                                {
+                                    boolean seenEdge[] = new boolean[mesh.edges.size()]; // all false initially
+                                    FORIDOWN (iEdge, seenEdge.length)
+                                    {
+                                        if (seenEdge[iEdge])
+                                            continue;
+
+                                        // Walk around the primal face,
+                                        // accumulating the bestest dual edge.
+                                        // XXX doing a lot of extra work!! need to keep track of done edges
+                                        Mesh.Edge edge = mesh.getEdge(iEdge);
+
+                                        boolean verbose = (MIN(edge.initialVertex().myIndex(), edge.finalVertex().myIndex()) == 4
+                                                        && MAX(edge.initialVertex().myIndex(), edge.finalVertex().myIndex()) == 5); // XXX get rid when debugged adequately
+                                        verbose = false;
+
+                                        if (verbose)
+                                            System.out.println("    examining edge "+edge);
+                                        double bestValue = Double.NaN; // initialize to something to shut up compiler
+                                        int bestIndex = -1;
+
+                                        {
+                                            Mesh.Edge thisEdge = edge;
+                                            do
+                                            {
+                                                if (verbose)
+                                                    System.out.println("        is this better? "+thisEdge);
+                                                int thisEdgeIndex = thisEdge.myIndex();
+                                                double thisValue;
+                                                if (netMethodValue == NETMETHOD_CUT_SHARPEST
+                                                 || netMethodValue == NETMETHOD_CUT_DULLEST)
+                                                {
+                                                    // sharpest dual edge === longest primal edge
+                                                    Mesh.Vertex v0 = thisEdge.initialVertex();
+                                                    Mesh.Vertex v1 = thisEdge.finalVertex();
+                                                    double edgeLength2 = SQR(v1.x-v0.x)
+                                                                       + SQR(v1.y-v0.y);
+                                                    thisValue = edgeLength2;
+                                                    if (netMethodValue == NETMETHOD_CUT_DULLEST)
+                                                        thisValue = -thisValue;
+                                                }
+                                                else // CUT_LONGEST or CUT_SHORTEST
+                                                {
+                                                    Mesh.Edge dualEdge = dualMesh.getEdge(thisEdgeIndex);
+                                                    if (verbose)
+                                                        System.out.println("        dual edge: "+dualEdge);
+                                                    Mesh.Vertex v0 = dualEdge.initialVertex();
+                                                    Mesh.Vertex v1 = dualEdge.finalVertex();
+                                                    double edgeLength2 = (v0==null||v1==null ? Double.POSITIVE_INFINITY
+                                                                                             : SQR(v1.x-v0.x)
+                                                                                             + SQR(v1.y-v0.y));
+                                                    thisValue = edgeLength2;
+                                                    if (netMethodValue == NETMETHOD_CUT_SHORTEST)
+                                                        thisValue = -thisValue;
+                                                    if (verbose)
+                                                        System.out.println("        thisValue: "+thisValue);
+                                                }
+                                                if (verbose && bestIndex != -1)
+                                                {
+                                                    PRINT(thisValue);
+                                                    PRINT(bestValue);
+                                                    PRINT(GT(thisValue, bestValue, SQR(1e-6)));
+                                                    PRINT(GEQ(thisValue, bestValue, SQR(1e-6)));
+                                                    PRINT(MIN(thisEdgeIndex,mesh.getEdge(thisEdgeIndex).opposite().myIndex()) < MIN(bestIndex,mesh.getEdge(bestIndex).opposite().myIndex()));
+                                                }
+                                                if (bestIndex == -1
+                                                 || (GT(thisValue, bestValue, SQR(1e-6))
+
+                                                //|| (GEQ(thisValue, bestValue, SQR(1e-6)) // GEQ macro doesn't work for comparing -Infinity with -Infinity! argh!
+                                                  || ((thisValue >= bestValue-SQR(1e-6))
+
+                                                   && (MIN(thisEdgeIndex,mesh.getEdge(thisEdgeIndex).opposite().myIndex()) < MIN(bestIndex,mesh.getEdge(bestIndex).opposite().myIndex()))) ) ) // tie breaker: lowest index wins
+                                                {
+                                                    if (verbose)
+                                                        System.out.println("            yes better: "+thisEdge);
+                                                    bestValue = thisValue;
+                                                    bestIndex = thisEdgeIndex;
+                                                }
+                                                else
+                                                {
+                                                    if (verbose)
+                                                        System.out.println("            no, not better");
+                                                }
+                                                seenEdge[thisEdgeIndex] = true;
+                                            } while ((thisEdge=thisEdge.next()) != edge);
+                                        }
+                                        assert(bestIndex != -1);
+                                        dualEdgeIsCut[bestIndex] = true;
+                                        dualEdgeIsCut[mesh.getEdge(bestIndex).opposite().myIndex()] = true; // currently not necessary but makes things cleaner
+                                    }
+                                }
+                                else if (netMethodValue == NETMETHOD_FOLD_SHARPEST
+                                      || netMethodValue == NETMETHOD_FOLD_DULLEST
+                                      || netMethodValue == NETMETHOD_FOLD_LONGEST
+                                      || netMethodValue == NETMETHOD_FOLD_SHORTEST)
+                                {
+                                    unimplemented(); // XXX TODO: IMPLEMENT ME
+                                }
                                 else // MANUAL
                                 {
                                     // nothing
@@ -10571,17 +10671,33 @@ OFF
         int optimizationType = availableOptimizationTypes[optimizationTypeIndex.get()];
 
 
-            private static final int NETMETHOD_UPWARD = 0;
-            private static final int NETMETHOD_OUTWARD = 1;
-            private static final int NETMETHOD_RANDOM = 2;
-            private static final int NETMETHOD_MANUAL = 3;
+            private static final int NETMETHOD_MANUAL = 0;
+            private static final int NETMETHOD_RANDOM = 1;
+            private static final int NETMETHOD_UPWARD = 2;
+            private static final int NETMETHOD_OUTWARD = 3;
+            private static final int NETMETHOD_CUT_SHARPEST = 4;
+            private static final int NETMETHOD_CUT_DULLEST = 5;
+            private static final int NETMETHOD_CUT_LONGEST = 6;
+            private static final int NETMETHOD_CUT_SHORTEST = 7;
+            private static final int NETMETHOD_FOLD_SHARPEST = 8;
+            private static final int NETMETHOD_FOLD_DULLEST = 9;
+            private static final int NETMETHOD_FOLD_LONGEST = 10;
+            private static final int NETMETHOD_FOLD_SHORTEST = 11;
             private static final String netMethodNames[] = {
+                "Manual",
+                "Random",
                 "Upward",
                 "Outward",
-                "Random",
-                "Manual",
+                "Cut Sharpest at each vert",
+                "Cut Dullest at each vert",
+                "Cut Longest at each vert",
+                "Cut Shortest at each vert",
+                "Fold Sharpest at each face",
+                "Fold Dullest at each face",
+                "Fold Longest at each face",
+                "Fold Shortest at each face",
             };
-        private Listenable.Int netMethod = new Listenable.Int(0, netMethodNames.length-1, NETMETHOD_MANUAL);
+        private Listenable.Int netMethod = new Listenable.Int(0, netMethodNames.length-1, NETMETHOD_CUT_SHORTEST);
 
         private java.awt.Canvas theCanvas = null;
 
