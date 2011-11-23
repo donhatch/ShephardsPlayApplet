@@ -16,6 +16,7 @@ User should be able to:
 
 
 BUGS:
+    - I think Net.getNextEdge() is unnecessary-- next() is never null! what was I thinking?
     - optimization seems to be broken? (not recalculating most of the time when it should)
 
 TO DO:
@@ -3428,6 +3429,7 @@ public class ShephardsPlayApplet
                             if (theNet == null)
                             {
                                 boolean dualEdgeIsCut[] = new boolean[mesh.edges.size()]; // all false initially
+                                boolean dualEdgeIsFold[] = null; // only needed in some cases
 
                                 Mesh.Edge dualVertIndexToParentEdge[] = new Mesh.Edge[dualMesh.verts.size()]; // all null initially
                                 int netMethodValue = netMethod.get();
@@ -3671,8 +3673,33 @@ public class ShephardsPlayApplet
                                 else if (netMethodValue == NETMETHOD_CUT_SHARPEST
                                       || netMethodValue == NETMETHOD_CUT_DULLEST
                                       || netMethodValue == NETMETHOD_CUT_LONGEST
-                                      || netMethodValue == NETMETHOD_CUT_SHORTEST)
+                                      || netMethodValue == NETMETHOD_CUT_SHORTEST
+                                      || netMethodValue == NETMETHOD_FOLD_SHARPEST
+                                      || netMethodValue == NETMETHOD_FOLD_DULLEST
+                                      || netMethodValue == NETMETHOD_FOLD_LONGEST
+                                      || netMethodValue == NETMETHOD_FOLD_SHORTEST)
                                 {
+                                    Mesh meshToUse, dualMeshToUse;
+                                    if (netMethodValue == NETMETHOD_CUT_SHARPEST
+                                     || netMethodValue == NETMETHOD_CUT_DULLEST
+                                     || netMethodValue == NETMETHOD_CUT_LONGEST
+                                     || netMethodValue == NETMETHOD_CUT_SHORTEST)
+                                    {
+                                        System.out.println("USING PRIMAL MESH");
+                                        meshToUse = mesh;
+                                        dualMeshToUse = dualMesh;
+                                    }
+                                    else
+                                    {
+                                        System.out.println("USING DUAL MESH");
+                                        meshToUse = dualMesh;
+                                        dualMeshToUse = mesh;
+
+                                        // need dualEdgeIsFold, not dualEdgeIsCut
+                                        dualEdgeIsFold = dualEdgeIsCut;
+                                        dualEdgeIsCut = null;
+                                    }
+
                                     boolean seenEdge[] = new boolean[mesh.edges.size()]; // all false initially
                                     FORIDOWN (iEdge, seenEdge.length)
                                     {
@@ -3681,10 +3708,9 @@ public class ShephardsPlayApplet
 
                                         // Walk around the primal face,
                                         // accumulating the bestest dual edge.
-                                        // XXX doing a lot of extra work!! need to keep track of done edges
-                                        Mesh.Edge edge = mesh.getEdge(iEdge);
+                                        Mesh.Edge edge = meshToUse.getEdge(iEdge);
 
-                                        boolean verbose = (MIN(edge.initialVertex().myIndex(), edge.finalVertex().myIndex()) == 4
+                                        boolean verbose = edge.initialVertex() != null && edge.finalVertex() != null && (MIN(edge.initialVertex().myIndex(), edge.finalVertex().myIndex()) == 4
                                                         && MAX(edge.initialVertex().myIndex(), edge.finalVertex().myIndex()) == 5); // XXX get rid when debugged adequately
                                         verbose = false;
 
@@ -3702,20 +3728,24 @@ public class ShephardsPlayApplet
                                                 int thisEdgeIndex = thisEdge.myIndex();
                                                 double thisValue;
                                                 if (netMethodValue == NETMETHOD_CUT_SHARPEST
-                                                 || netMethodValue == NETMETHOD_CUT_DULLEST)
+                                                 || netMethodValue == NETMETHOD_CUT_DULLEST
+                                                 || netMethodValue == NETMETHOD_FOLD_LONGEST
+                                                 || netMethodValue == NETMETHOD_FOLD_SHORTEST)
                                                 {
                                                     // sharpest dual edge === longest primal edge
                                                     Mesh.Vertex v0 = thisEdge.initialVertex();
                                                     Mesh.Vertex v1 = thisEdge.finalVertex();
-                                                    double edgeLength2 = SQR(v1.x-v0.x)
-                                                                       + SQR(v1.y-v0.y);
+                                                    double edgeLength2 = (v0==null||v1==null ? Double.POSITIVE_INFINITY
+                                                                                             : SQR(v1.x-v0.x)
+                                                                                             + SQR(v1.y-v0.y));
                                                     thisValue = edgeLength2;
-                                                    if (netMethodValue == NETMETHOD_CUT_DULLEST)
+                                                    if (netMethodValue == NETMETHOD_CUT_DULLEST
+                                                     || netMethodValue == NETMETHOD_FOLD_SHORTEST)
                                                         thisValue = -thisValue;
                                                 }
-                                                else // CUT_LONGEST or CUT_SHORTEST
+                                                else // CUT_LONGEST or CUT_SHORTEST or FOLD_SHARPEST or FOLD_DULLEST
                                                 {
-                                                    Mesh.Edge dualEdge = dualMesh.getEdge(thisEdgeIndex);
+                                                    Mesh.Edge dualEdge = dualMeshToUse.getEdge(thisEdgeIndex);
                                                     if (verbose)
                                                         System.out.println("        dual edge: "+dualEdge);
                                                     Mesh.Vertex v0 = dualEdge.initialVertex();
@@ -3724,7 +3754,8 @@ public class ShephardsPlayApplet
                                                                                              : SQR(v1.x-v0.x)
                                                                                              + SQR(v1.y-v0.y));
                                                     thisValue = edgeLength2;
-                                                    if (netMethodValue == NETMETHOD_CUT_SHORTEST)
+                                                    if (netMethodValue == NETMETHOD_CUT_SHORTEST
+                                                     || netMethodValue == NETMETHOD_FOLD_DULLEST)
                                                         thisValue = -thisValue;
                                                     if (verbose)
                                                         System.out.println("        thisValue: "+thisValue);
@@ -3735,7 +3766,7 @@ public class ShephardsPlayApplet
                                                     PRINT(bestValue);
                                                     PRINT(GT(thisValue, bestValue, SQR(1e-6)));
                                                     PRINT(GEQ(thisValue, bestValue, SQR(1e-6)));
-                                                    PRINT(MIN(thisEdgeIndex,mesh.getEdge(thisEdgeIndex).opposite().myIndex()) < MIN(bestIndex,mesh.getEdge(bestIndex).opposite().myIndex()));
+                                                    PRINT(MIN(thisEdgeIndex,meshToUse.getEdge(thisEdgeIndex).opposite().myIndex()) < MIN(bestIndex,meshToUse.getEdge(bestIndex).opposite().myIndex()));
                                                 }
                                                 if (bestIndex == -1
                                                  || (GT(thisValue, bestValue, SQR(1e-6))
@@ -3743,7 +3774,7 @@ public class ShephardsPlayApplet
                                                 //|| (GEQ(thisValue, bestValue, SQR(1e-6)) // GEQ macro doesn't work for comparing -Infinity with -Infinity! argh!
                                                   || ((thisValue >= bestValue-SQR(1e-6))
 
-                                                   && (MIN(thisEdgeIndex,mesh.getEdge(thisEdgeIndex).opposite().myIndex()) < MIN(bestIndex,mesh.getEdge(bestIndex).opposite().myIndex()))) ) ) // tie breaker: lowest index wins
+                                                   && (MIN(thisEdgeIndex,meshToUse.getEdge(thisEdgeIndex).opposite().myIndex()) < MIN(bestIndex,meshToUse.getEdge(bestIndex).opposite().myIndex()))) ) ) // tie breaker: lowest index wins
                                                 {
                                                     if (verbose)
                                                         System.out.println("            yes better: "+thisEdge);
@@ -3758,17 +3789,21 @@ public class ShephardsPlayApplet
                                                 seenEdge[thisEdgeIndex] = true;
                                             } while ((thisEdge=thisEdge.next()) != edge);
                                         }
-                                        assert(bestIndex != -1);
-                                        dualEdgeIsCut[bestIndex] = true;
-                                        dualEdgeIsCut[mesh.getEdge(bestIndex).opposite().myIndex()] = true; // currently not necessary but makes things cleaner
+                                        if (netMethodValue == NETMETHOD_FOLD_SHARPEST
+                                         || netMethodValue == NETMETHOD_FOLD_DULLEST
+                                         || netMethodValue == NETMETHOD_FOLD_LONGEST
+                                         || netMethodValue == NETMETHOD_FOLD_SHORTEST)
+                                        {
+                                            // this is kind of silly... should just use the Net directly
+                                            dualEdgeIsFold[bestIndex] = true;
+                                            dualEdgeIsFold[meshToUse.getEdge(bestIndex).opposite().myIndex()] = true; // currently not necessary but makes things cleaner
+                                        }
+                                        else
+                                        {
+                                            dualEdgeIsCut[bestIndex] = true;
+                                            dualEdgeIsCut[meshToUse.getEdge(bestIndex).opposite().myIndex()] = true; // currently not necessary but makes things cleaner
+                                        }
                                     }
-                                }
-                                else if (netMethodValue == NETMETHOD_FOLD_SHARPEST
-                                      || netMethodValue == NETMETHOD_FOLD_DULLEST
-                                      || netMethodValue == NETMETHOD_FOLD_LONGEST
-                                      || netMethodValue == NETMETHOD_FOLD_SHORTEST)
-                                {
-                                    unimplemented(); // XXX TODO: IMPLEMENT ME
                                 }
                                 else // MANUAL
                                 {
@@ -3778,11 +3813,14 @@ public class ShephardsPlayApplet
                                 {
                                     theNet = new Net(dualMesh, mesh);
                                     int nEdges = dualMesh.edges.size();
-                                    FORI(iEdge, nEdges)
-                                    {
-                                        if (dualEdgeIsCut[iEdge])
-                                            theNet.cut(iEdge, true);
-                                    }
+                                    if (dualEdgeIsCut != null)
+                                        FORI(iEdge, nEdges)
+                                            if (dualEdgeIsCut[iEdge])
+                                                theNet.cut(iEdge, true);
+                                    if (dualEdgeIsFold != null)
+                                        FORI(iEdge, nEdges)
+                                            if (dualEdgeIsFold[iEdge])
+                                                theNet.fold(iEdge, true);
                                     int root = nDualVerts;
                                     if (theNet._nUndecideds == 0)
                                         theNet.chooseDirections(root);
@@ -9434,6 +9472,7 @@ OFF
                 Mesh.Edge nextEdge = edge.next();
                 if (nextEdge == null)
                 {
+                    assert(false); // XXX this never happens?? is this whole function unnecessary?
                     //PRINT(nextEdge);
                     // blech, final vertex is the infinite one.
                     // use dual mesh to find next.
@@ -9782,7 +9821,54 @@ OFF
                 assert(_faceComponents.find(i0)
                     != _faceComponents.find(i1));
 
-                assumpt(!andForcedCuts); // haven't implemented that yet
+                if (andForcedCuts)
+                {
+                    // Note, I'm just doing this blindly,
+                    // using the code copied from cut() with cut changed to fold and vice-versa
+
+                    // After setting status
+                    // but before merging,
+                    // walk around the *smaller* of the two face components
+                    // and fold any edges (other than iEdge itself)
+                    // between the two components we're about to merge.
+                    // Choosing the smaller guarantees time O(n log(n))
+                    // for constructing the whole tree
+                    // (well, maybe more in the case of a very-large-arity vert).
+                    // 
+                    Mesh.Edge towardsSmaller;
+                    int biggerComponentLeader;
+                    int smallerComponentLeader;
+                    if (_faceComponents.size(i0) < _faceComponents.size(i1))
+                    {
+                        towardsSmaller = dualEdge.opposite();
+                        biggerComponentLeader = _faceComponents.find(i1);
+                        smallerComponentLeader = _faceComponents.find(i0);
+                    }
+                    else
+                    {
+                        towardsSmaller = dualEdge;
+                        biggerComponentLeader = _faceComponents.find(i0);
+                        smallerComponentLeader = _faceComponents.find(i1);
+                    }
+                    for (Mesh.Edge nextEdge = nextInTreeOrExit(FOLD, towardsSmaller);
+                         nextEdge != towardsSmaller.opposite();
+                         nextEdge = nextInTreeOrExit(FOLD, nextEdge))
+                    {
+                        if (_edgeStatuses[nextEdge.myIndex()] == UNDECIDED) // it's an exit, and it hasn't already been decided to be a fold
+                        {
+                            int jEdge = nextEdge.myIndex();
+                            Mesh.Vertex w0 = nextEdge.initialVertex();
+                            Mesh.Vertex w1 = nextEdge.finalVertex();
+                            int j0 = (w0!=null ? w0.myIndex() : _mesh.verts.size());
+                            int j1 = (w1!=null ? w1.myIndex() : _mesh.verts.size());
+                            assert(_faceComponents.find(j0) == smallerComponentLeader);
+                            if (_faceComponents.find(j1) == biggerComponentLeader)
+                            {
+                                cut(jEdge, false);
+                            }
+                        }
+                    }
+                }
 
                 _faceComponents.merge(i0, i1);
             } // fold
@@ -10697,7 +10783,7 @@ OFF
                 "Fold Longest at each face",
                 "Fold Shortest at each face",
             };
-        private Listenable.Int netMethod = new Listenable.Int(0, netMethodNames.length-1, NETMETHOD_CUT_SHORTEST);
+        private Listenable.Int netMethod = new Listenable.Int(0, netMethodNames.length-1, NETMETHOD_FOLD_SHARPEST);
 
         private java.awt.Canvas theCanvas = null;
 
