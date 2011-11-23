@@ -58,7 +58,7 @@ TO DO:
     - figure out why stack traces show .java on top even after renumbering
     - write a generic applet to reduce pain each time
     - other mesh editing operations (split face by edge, split edge by vertex, join adjacent vertices, separate a vertex into two (but how to assign the neighbors?))  (idea: same interface as split face by edge... but only works if on two different faces... maybe connec dual verts?)
-    - BUG: figure out how to make it not repaint continuously when resizing (my other appets too)
+    - BUG: figure out how to make it not repaint continuously when resizing (my other appets too) (is this just a canvas problem?)
     - BUG: when only part of window gets exposed, only the exposed part gets painted?  hmm, not sure I have control over this
     - BUG: can't reconnect an isolated vertex to the rest
     - look at this, maybe clues about positive octant penalty functions...
@@ -1231,7 +1231,13 @@ public class ShephardsPlayApplet
                         if (theNet._edgeStatuses[iEdge] == Net.CUT
                          && mesh.getEdge(iEdge).myIndex() < mesh.getEdge(iEdge).opposite().myIndex())
                             writer.print(" "+edgeToOutputIndex[iEdge]);
+                    writer.println();
 
+                    writer.print("# Folds:");
+                    FORI (iEdge, theNet._edgeStatuses.length)
+                        if (theNet._edgeStatuses[iEdge] == Net.FOLD
+                         && mesh.getEdge(iEdge).myIndex() < mesh.getEdge(iEdge).opposite().myIndex())
+                            writer.print(" "+edgeToOutputIndex[iEdge]);
                     writer.println();
                 }
 
@@ -1322,30 +1328,47 @@ public class ShephardsPlayApplet
                         faces[iFace][i] = Integer.parseInt(tokens[i+1]);
                 }
 
-                //System.out.println("reading another line");
-                line = reader.readLine();
-
-                reader.close();
-
-                mesh = new Mesh(verts, faces);
-
-                if (line != null)
+                // Read optional cuts and folds in comments at the end
+                int edgeStatuses[] = null; // we'll lazily set this to something if we see a Cuts or Folds line
+                while ((line = reader.readLine()) != null)
                 {
                     // XXX TODO: be more lenient with syntax
-                    if (line.startsWith("# Cuts: "))
+                    if (line.startsWith("# Cuts:"))
                     {
-                        tokens = com.donhatchsw.compat.regex.split(line.substring(8).trim(), "\\s+");
-                        //PRINTARRAY(tokens);
-                        int edgeStatuses[] = VecMath.fillvec(mesh.edges.size(), Net.UNDECIDED);
+                        if (edgeStatuses == null) edgeStatuses = VecMath.fillvec(mesh.edges.size(), Net.UNDECIDED);
+                        tokens = com.donhatchsw.compat.regex.split(line.substring(7).trim(), "\\s+");
+
+                        // regex.split("", "\\s+") returns {""} when I think it should return {}.
+                        // so, we have to special-case that, sigh.
+                        if (tokens.length == 1 && tokens[0] == "") tokens = new String[]{};
+
                         FORI (iToken, tokens.length)
                             edgeStatuses[Integer.parseInt(tokens[iToken])] = Net.CUT;
-                        theNet = new Net(getDualMesh(), mesh, edgeStatuses);
+                    }
+                    else if (line.startsWith("# Folds:"))
+                    {
+                        if (edgeStatuses == null) edgeStatuses = VecMath.fillvec(mesh.edges.size(), Net.UNDECIDED);
+                        tokens = com.donhatchsw.compat.regex.split(line.substring(8).trim(), "\\s+");
+
+                        // regex.split("", "\\s+") returns {""} when I think it should return {}.
+                        // so, we have to special-case that, sigh.
+                        if (tokens.length == 1 && tokens[0] == "") tokens = new String[]{};
+
+                        FORI (iToken, tokens.length)
+                            edgeStatuses[Integer.parseInt(tokens[iToken])] = Net.FOLD;
                     }
                     else
                     {
                         System.out.println("WARNING: unrecognized line after OFF data: "+line);
                     }
                 }
+
+                reader.close();
+
+                mesh = new Mesh(verts, faces);
+
+                if (edgeStatuses != null) // if there was Cut and/or Fold info at the end...
+                    theNet = new Net(getDualMesh(), mesh, edgeStatuses);
 
                 if (doContinuouslyDelaunayize.get()) delaunayize();
             }
@@ -9384,14 +9407,12 @@ OFF
 
                 assert(edgeStatuses.length == mesh.edges.size());
 
-                // for now, do folds first since andForcedCuts isn't implemented
-                // XXX TODO: revisit this if I implement andForcedCuts
-                FORI (iEdge, edgeStatuses.length)
-                    if (edgeStatuses[iEdge] == FOLD)
-                        fold(iEdge, false);
                 FORI (iEdge, edgeStatuses.length)
                     if (edgeStatuses[iEdge] == CUT)
                         cut(iEdge, true);
+                FORI (iEdge, edgeStatuses.length)
+                    if (edgeStatuses[iEdge] == FOLD)
+                        fold(iEdge, true);
 
                 if (_nUndecideds == 0)
                     chooseDirections(mesh.verts.size());
