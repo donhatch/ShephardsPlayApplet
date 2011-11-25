@@ -1051,8 +1051,9 @@ public class ShephardsPlayApplet
             System.out.println("    right click: delete a vertex");
             System.out.println("    shift-middle drag: pan entire picture");
             System.out.println("    shift-left drag: create new edge between two vertices");
-            System.out.println("    ctrl-left and ctrl-middle: add/drag vertex and all reflections of it");
             System.out.println("Keys:");
+            System.out.println("    '1'...'6' - create and drag vertices with rotational symmetry (1 for none)");
+            System.out.println("    shift-'1'...shift-'6' - create and drag vertices with left-right mirror and rotational symmetry");
             System.out.println("    'V' - cycle verbosity (to java console or system output)");
             System.out.println("    ' ' - just repaint");
             System.out.println("    'A' - toggle doAntiAliasing");
@@ -1677,16 +1678,31 @@ public class ShephardsPlayApplet
                                 snappedThisP,
                             };
 
-                            if (e.isControlDown())
+                            if (rotationalSymmetry > 1
+                             || leftRightSymmetry)
                             {
-                                // add a mirror image.
-                                // prepend instead of appending, so that the last thing we do
-                                // is the one that will be dragged.
-                                vertsToAdd = (double[][])Arrays.concat(new double[][]{{-snappedThisP[0], snappedThisP[1]}}, vertsToAdd);
-                                // TODO: detect entire symmetry group
+                                double xforms[][][] = {};
+                                if (leftRightSymmetry)
+                                    xforms = (double[][][])Arrays.append(xforms, new double[][] {{-1,0},{0,1}});
+                                if (rotationalSymmetry > 1)
+                                {
+                                    double rotationAngle = 2*Math.PI/rotationalSymmetry;
+                                    double c = Math.cos(rotationAngle);
+                                    double s = Math.sin(rotationAngle);
+                                    xforms = (double[][][])Arrays.append(xforms, new double[][] {
+                                        { c,s},
+                                        {-s,c},
+                                    });
+                                }
+                                vertsToAdd = generateVertices(vertsToAdd,
+                                                              xforms);
                             }
 
-                            FORI (iVertToAdd, vertsToAdd.length)
+                            // we add them in reverse order, so that the original one
+                            // will be the last one added, so that it will be the one to be dragged
+                            // (hmm, this probably doesn't matter any more,
+                            // since the drag respects the symmetries as well)
+                            FORIDOWN (iVertToAdd, vertsToAdd.length)
                             {
                                 double vertToAdd[] = vertsToAdd[iVertToAdd];
                                 double x = vertToAdd[0];
@@ -2089,44 +2105,30 @@ public class ShephardsPlayApplet
                         }
                         else if (beingDraggedVertIndex != -1)
                         {
-                            if (e.isControlDown())
+                            if (rotationalSymmetry > 1
+                             || leftRightSymmetry)
                             {
-                                // Drag all 6 points of kaleidoscope
+                                // Drag all points of kaleidoscope
 
-                                // XXX should do it around whatever center we can find
-                                // XXX should do it with whatever rotational periodicity we can find
-
-#if 1
-                                // rotation by 120 degrees, row-oriented
-                                double A[][] = {
-                                   { Math.cos(DTOR(120)), Math.sin(DTOR(120))},
-                                   {-Math.sin(DTOR(120)), Math.cos(DTOR(120))},
-                                };
-                                // left-right reflection
-                                double B[][] = {
-                                    {-1,0},
-                                    {0,1},
-                                };
-                                double AA[][] = VecMath.mxm(A,A);
-                                double I[][] = VecMath.mxm(AA,A);
-                                double AB[][] = VecMath.mxm(A,B);
-                                double AAB[][] = VecMath.mxm(AA,B);
-                                double group[][][] = {I,A,AA,B,AB,AAB};
-#endif
-#if 0
-                                // rotation by 180 degrees, row-oriented
-                                double A[][] = {
-                                   { Math.cos(DTOR(180)), Math.sin(DTOR(180))},
-                                   {-Math.sin(DTOR(180)), Math.cos(DTOR(180))},
-                                };
-                                // left-right reflection
-                                double B[][] = {
-                                    {-1,0},
-                                    {0,1},
-                                };
-                                double I[][] = VecMath.mxm(A,A);
-                                double group[][][] = {I,A};
-#endif
+                                double group[][][] = new double[rotationalSymmetry * (leftRightSymmetry ? 2 : 1)][][];
+                                {
+                                    double angle = 2*Math.PI/rotationalSymmetry;
+                                    double c = Math.cos(angle);
+                                    double s = Math.sin(angle);
+                                    double A[][] = {
+                                        { c,s},
+                                        {-s,c},
+                                    };
+                                    group[0] = new double[][]{{1,0},{0,1}}; // identity
+                                    FORI (i, rotationalSymmetry-1)
+                                        group[i+1] = VecMath.mxm(group[i], A);
+                                    if (leftRightSymmetry)
+                                    {
+                                        group[rotationalSymmetry] = new double[][]{{-1,0},{0,1}}; // left-right reflection
+                                        FORI (i, rotationalSymmetry-1)
+                                            group[rotationalSymmetry+i+1] = VecMath.mxm(group[rotationalSymmetry+i], A);
+                                    }
+                                }
 
                                 double v[] = {mesh.getVert(beingDraggedVertIndex).x,
                                               mesh.getVert(beingDraggedVertIndex).y};
@@ -2890,6 +2892,23 @@ public class ShephardsPlayApplet
                         System.out.println("nonEventVerbose -> "+nonEventVerbose);
                         theCanvas.repaint();
                         break;
+
+                    case '1': case '2': case '3': case '4': case '5': case '6':
+                    {
+                        rotationalSymmetry = c - '0';
+                        System.out.println("rotationalSymmetry -> "+rotationalSymmetry+", without left-right symmetry");
+                        leftRightSymmetry = false;
+                        // repaint not needed, I don't think... unless we're going to try to transform existing verts
+                        break;
+                    }
+                    case '!': case '@': case '#': case '$': case '%': case '^':
+                    {
+                        rotationalSymmetry = ")!@#$%^&*(".indexOf(c);
+                        System.out.println("rotationalSymmetry -> "+rotationalSymmetry+", with left-right symmetry");
+                        leftRightSymmetry = true;
+                        // repaint not needed, I don't think... unless we're going to try to transform existing verts
+                        break;
+                    }
 
                     case '7': case '&': case '8': case '*':
                     {
@@ -10809,6 +10828,11 @@ OFF
         private double gridSnapQuantum = 1./64; // no way to change, currently
         private boolean thermometerIsLinear = false;
         private int thermometerWidth = 10;
+
+        // symmetry to try to use when clicking or dragging with ctrl down
+        private boolean leftRightSymmetry = false;
+        private int rotationalSymmetry = 1;
+
 
     //
     // Applet-generic member variables...
