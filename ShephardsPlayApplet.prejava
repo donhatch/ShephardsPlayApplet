@@ -88,6 +88,7 @@ import com.donhatchsw.util.LinearProgramming;
 import com.donhatchsw.util.MergeFind;
 import com.donhatchsw.util.UndoTreeSquirrel;
 import com.donhatchsw.util.TriangulationOptimizer;
+import com.donhatchsw.util.FuzzyPointHashTable;
 import com.donhatchsw.util.Minimizer;
 import com.donhatchsw.util.Listenable;
 import com.donhatchsw.compat.ArrayList;
@@ -1481,13 +1482,73 @@ public class ShephardsPlayApplet
                                        int newRotationalSymmetry, boolean newLeftRightSymmetry)
         {
             System.out.println("    in changeMeshSymmetry");
-            if (!oldLeftRightSymmetry
-             && !newLeftRightSymmetry)
+            if (oldRotationalSymmetry == newRotationalSymmetry
+             && oldLeftRightSymmetry == newLeftRightSymmetry)
             {
+                System.out.println("    out changeMeshSymmetry (nothing changed)");
+                return; // nothing change; no point in introducing round-off error
             }
-            else if (oldLeftRightSymmetry
-                  && newLeftRightSymmetry)
+
+            int nOldVerts = mesh.verts.size();
+            PRINT(nOldVerts);
+            double oldVerts[][] = new double[nOldVerts][3];
+            FORI (iOldVert, nOldVerts)
             {
+                Mesh.Vertex vert = mesh.getVert(iOldVert);
+                oldVerts[iOldVert][0] = vert.x;
+                oldVerts[iOldVert][1] = vert.y;
+                oldVerts[iOldVert][2] = vert.h;
+            }
+
+            ArrayList/*<double[]>*/ newVerts = new ArrayList();
+
+            // as recommended in FuzzyPointHashTable doc...
+            double littleEps = 1e-12;
+            double bigEps = 1e-10;
+            double bucketSize = 1/1024.;
+            FuzzyPointHashTable newVertsTable = new FuzzyPointHashTable(littleEps,
+                                                                        bigEps,
+                                                                        bucketSize);
+            Object dummy = new Object(); // we really want a hash set, not hash table, so need a dummy object, distinct from null
+            FORI (iOldVert, nOldVerts)
+            {
+                double oldVert[] = oldVerts[iOldVert];
+                double magnitude = MyMath.hypot(oldVert[0], oldVert[1]);
+                double oldAngle = Math.atan2(oldVert[1],
+                                             oldLeftRightSymmetry ? Math.abs(oldVert[0])
+                                                                  : oldVert[0]);
+                double frac = (oldAngle/(2*Math.PI) + .25) * oldRotationalSymmetry; // so -90 degrees produces frac=0
+                FORI (iReflect, (newLeftRightSymmetry ? 2 : 1))
+                    FORI (iNewImage, newRotationalSymmetry)
+                    {
+                        double newAngle = ((iNewImage+frac) / newRotationalSymmetry - .25) * (2*Math.PI);
+                        double newVert[] = {
+                            magnitude * Math.cos(newAngle),
+                            magnitude * Math.sin(newAngle),
+                        };
+                        if (iReflect == 1)
+                            newVert[0] = -newVert[0];
+                        if (newVertsTable.put(newVert,dummy) == null) // i.e. if it wasn't already there
+                        {
+                            newVerts.add(new double[] {
+                                newVert[0],
+                                newVert[1],
+                                oldVert[2], // takes one of the old heights arbitrarily, if multiple
+                            });
+                        }
+                    }
+            }
+
+            // For now, don't try to retain any connectivity.
+            mesh = new Mesh();
+            int nNewVerts = newVerts.size();
+            PRINT(nNewVerts);
+            FORI (iNewVert, nNewVerts)
+            {
+                double newVert[] = (double[])newVerts.get(iNewVert);
+                mesh.addIsolatedVertex(newVert[0],
+                                       newVert[1],
+                                       newVert[2]);
             }
             System.out.println("    out changeMeshSymmetry");
         } // changeMeshSymmetry
@@ -2924,11 +2985,17 @@ public class ShephardsPlayApplet
                         boolean newLeftRightSymmetry = false;
 
                         System.out.println("rotationalSymmetry -> "+newRotationalSymmetry+", without left-right symmetry");
-                        changeMeshSymmetry(oldRotationalSymmetry, oldLeftRightSymmetry,
-                                           newRotationalSymmetry, newLeftRightSymmetry);
                         rotationalSymmetry = newRotationalSymmetry;
                         leftRightSymmetry = newLeftRightSymmetry;
-                        // repaint not needed, I don't think... unless we're going to try to transform existing verts
+
+                        UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                        changeMeshSymmetry(oldRotationalSymmetry, oldLeftRightSymmetry,
+                                           newRotationalSymmetry, newLeftRightSymmetry);
+                        if (doContinuouslyDelaunayize.get()) delaunayize();
+                        UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                        undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                        theCanvas.repaint();
                         break;
                     }
                     case '!': case '@': case '#': case '$': case '%': case '^':
@@ -2938,11 +3005,17 @@ public class ShephardsPlayApplet
                         int newRotationalSymmetry = ")!@#$%^&*(".indexOf(c);
                         boolean newLeftRightSymmetry = true;
                         System.out.println("rotationalSymmetry -> "+newRotationalSymmetry+", with left-right symmetry");
-                        changeMeshSymmetry(oldRotationalSymmetry, oldLeftRightSymmetry,
-                                           newRotationalSymmetry, newLeftRightSymmetry);
                         rotationalSymmetry = newRotationalSymmetry;
                         leftRightSymmetry = newLeftRightSymmetry;
-                        // repaint not needed, I don't think... unless we're going to try to transform existing verts
+
+                        UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                        changeMeshSymmetry(oldRotationalSymmetry, oldLeftRightSymmetry,
+                                           newRotationalSymmetry, newLeftRightSymmetry);
+                        if (doContinuouslyDelaunayize.get()) delaunayize();
+                        UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                        undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                        theCanvas.repaint();
                         break;
                     }
 
