@@ -1051,6 +1051,7 @@ public class ShephardsPlayApplet
             System.out.println("    right click: delete a vertex");
             System.out.println("    shift-middle drag: pan entire picture");
             System.out.println("    shift-left drag: create new edge between two vertices");
+            System.out.println("    ctrl-click-and-drag: snap to grid when create and dragging vertices");
             System.out.println("Keys:");
             System.out.println("    '1'...'6' - set rotational symmetry for creating and dragging verts (1=none)");
             System.out.println("    shift-'1'...shift-'6' - set left-right mirror and rotational symmetry");
@@ -1077,7 +1078,6 @@ public class ShephardsPlayApplet
             System.out.println("    'M'/'m' - increase/decrease magnification focus region");
             System.out.println("    'P'/'p' - increase/decrease magnified pixel size");
             System.out.println("    ctrl-'m' - toggle magnifying glass");
-            System.out.println("    ctrl-'g' - toggle snapToGrid");
             System.out.println("    'a' - toggle doArrowsTowardsSharpestDihedrals (green)");
             System.out.println("    alt-'a' - toggle doArrowsTowardsShortestEdges (cyan)");
             System.out.println("    'n' - toggle showNet");
@@ -1456,6 +1456,17 @@ public class ShephardsPlayApplet
                         vert.y *= scale;
                         vert.h *= scale*scale;
                     }
+                    Mesh dualMesh = getDualMesh();
+                    FORIDOWN(iDualVert, dualMesh.verts.size())
+                    {
+                        Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
+                        dualVert.x -= center[0];
+                        dualVert.y -= center[1];
+
+                        dualVert.x *= scale;
+                        dualVert.y *= scale;
+                        dualVert.h *= scale*scale; // XXX probably wrong
+                    }
                 }
             }
 
@@ -1465,6 +1476,21 @@ public class ShephardsPlayApplet
             theCanvas.repaint();
         } // frame
 
+
+        public void changeMeshSymmetry(int oldRotationalSymmetry, boolean oldLeftRightSymmetry,
+                                       int newRotationalSymmetry, boolean newLeftRightSymmetry)
+        {
+            System.out.println("    in changeMeshSymmetry");
+            if (!oldLeftRightSymmetry
+             && !newLeftRightSymmetry)
+            {
+            }
+            else if (oldLeftRightSymmetry
+                  && newLeftRightSymmetry)
+            {
+            }
+            System.out.println("    out changeMeshSymmetry");
+        } // changeMeshSymmetry
 
 
         public void init()
@@ -1588,6 +1614,7 @@ public class ShephardsPlayApplet
 
                 double thisP[] = new double[2];
                 mostRecentGraphics.pick((e.getX()+.5)/globalMagFactor, (e.getY()+.5)/globalMagFactor, thisP);
+                boolean snapToGrid = e.isControlDown();
                 double snappedThisP[] = !snapToGrid ? thisP : new double[] {
                     (double)Math.round(thisP[0]/gridSnapQuantum)*gridSnapQuantum,
                     (double)Math.round(thisP[1]/gridSnapQuantum)*gridSnapQuantum,
@@ -1952,6 +1979,7 @@ public class ShephardsPlayApplet
 
                 double thisP[] = new double[2];
                 mostRecentGraphics.pick((e.getX()+.5)/globalMagFactor, (e.getY()+.5)/globalMagFactor, thisP);
+                boolean snapToGrid = e.isControlDown();
                 double snappedThisP[] = !snapToGrid ? thisP : new double[] {
                     (double)Math.round(thisP[0]/gridSnapQuantum)*gridSnapQuantum,
                     (double)Math.round(thisP[1]/gridSnapQuantum)*gridSnapQuantum,
@@ -2060,6 +2088,7 @@ public class ShephardsPlayApplet
 
                 double thisP[] = new double[2];
                 mostRecentGraphics.pick((e.getX()+.5)/globalMagFactor, (e.getY()+.5)/globalMagFactor, thisP);
+                boolean snapToGrid = e.isControlDown();
                 double snappedThisP[] = !snapToGrid ? thisP : new double[] {
                     (double)Math.round(thisP[0]/gridSnapQuantum)*gridSnapQuantum,
                     (double)Math.round(thisP[1]/gridSnapQuantum)*gridSnapQuantum,
@@ -2692,12 +2721,6 @@ public class ShephardsPlayApplet
                         theCanvas.repaint();
                         break;
 
-                    case CTRL('g'): // toggle snapToGrid
-                        snapToGrid ^= true;
-                        System.out.println("snapToGrid -> "+snapToGrid);
-                        // no need to repaint
-                        break;
-
                     case 'M':
                         System.out.print("magWidth "+magWidth);
                         magWidth += 2;
@@ -2895,17 +2918,30 @@ public class ShephardsPlayApplet
 
                     case '1': case '2': case '3': case '4': case '5': case '6':
                     {
-                        rotationalSymmetry = c - '0';
-                        System.out.println("rotationalSymmetry -> "+rotationalSymmetry+", without left-right symmetry");
-                        leftRightSymmetry = false;
+                        int oldRotationalSymmetry = rotationalSymmetry;
+                        boolean oldLeftRightSymmetry = leftRightSymmetry;
+                        int newRotationalSymmetry = c - '0';
+                        boolean newLeftRightSymmetry = false;
+
+                        System.out.println("rotationalSymmetry -> "+newRotationalSymmetry+", without left-right symmetry");
+                        changeMeshSymmetry(oldRotationalSymmetry, oldLeftRightSymmetry,
+                                           newRotationalSymmetry, newLeftRightSymmetry);
+                        rotationalSymmetry = newRotationalSymmetry;
+                        leftRightSymmetry = newLeftRightSymmetry;
                         // repaint not needed, I don't think... unless we're going to try to transform existing verts
                         break;
                     }
                     case '!': case '@': case '#': case '$': case '%': case '^':
                     {
-                        rotationalSymmetry = ")!@#$%^&*(".indexOf(c);
-                        System.out.println("rotationalSymmetry -> "+rotationalSymmetry+", with left-right symmetry");
-                        leftRightSymmetry = true;
+                        int oldRotationalSymmetry = rotationalSymmetry;
+                        boolean oldLeftRightSymmetry = leftRightSymmetry;
+                        int newRotationalSymmetry = ")!@#$%^&*(".indexOf(c);
+                        boolean newLeftRightSymmetry = true;
+                        System.out.println("rotationalSymmetry -> "+newRotationalSymmetry+", with left-right symmetry");
+                        changeMeshSymmetry(oldRotationalSymmetry, oldLeftRightSymmetry,
+                                           newRotationalSymmetry, newLeftRightSymmetry);
+                        rotationalSymmetry = newRotationalSymmetry;
+                        leftRightSymmetry = newLeftRightSymmetry;
                         // repaint not needed, I don't think... unless we're going to try to transform existing verts
                         break;
                     }
@@ -10824,7 +10860,6 @@ OFF
         private int highlightedDualEdgeIndex = -1;
         private boolean showOrigin = false;
         private boolean showGrid = true;
-        private boolean snapToGrid = false;
         private double gridSnapQuantum = 1./64; // no way to change, currently
         private boolean thermometerIsLinear = false;
         private int thermometerWidth = 10;
