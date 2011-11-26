@@ -1057,8 +1057,10 @@ public class ShephardsPlayApplet
             System.out.println("    shift-left drag: create new edge between two vertices");
             System.out.println("    ctrl-click-and-drag: snap to grid when create and dragging vertices");
             System.out.println("Keys:");
-            System.out.println("    '1'...'6' - set rotational symmetry for creating and dragging verts (1=none)");
-            System.out.println("    shift-'1'...shift-'6' - set left-right mirror and rotational symmetry");
+            System.out.println("    '1'...'9' - set rotational symmetry for creating and dragging verts (1=none)");
+            System.out.println("    shift-'1'...shift-'9' - set left-right mirror and rotational symmetry");
+            System.out.println("    '0' - set rotational symmetry to 10");
+            System.out.println("    shift-'0' - set left-right mirror and rotational symmetry to 10");
             System.out.println("    'V' - cycle verbosity (to java console or system output)");
             System.out.println("    ' ' - just repaint");
             System.out.println("    'A' - toggle doAntiAliasing");
@@ -1077,7 +1079,7 @@ public class ShephardsPlayApplet
             System.out.println("    'w' - add or remove closest red point from list of points to show curvature center of");
             System.out.println("    'O' - toggle doOptimize");
             System.out.println("    'l' - toggle showLabels");
-            System.out.println("    '0' - toggle showOrigin");
+            //System.out.println("    '0' - toggle showOrigin");
             System.out.println("    'g' - toggle showGrid");
             System.out.println("    'M'/'m' - increase/decrease magnification focus region");
             System.out.println("    'P'/'p' - increase/decrease magnified pixel size");
@@ -1495,6 +1497,7 @@ public class ShephardsPlayApplet
             int nOldVerts = mesh.verts.size();
             PRINT(nOldVerts);
             double oldVerts[][] = new double[nOldVerts][3];
+            double maxAbsCoord = 0.;
             FORI (iOldVert, nOldVerts)
             {
                 Mesh.Vertex vert = mesh.getVert(iOldVert);
@@ -1502,13 +1505,18 @@ public class ShephardsPlayApplet
                 oldVerts[iOldVert][1] = vert.y;
                 oldVerts[iOldVert][2] = vert.h;
             }
+            double oldBbox[][] = VecMath.bbox(oldVerts);
+            double workAreaSize = (nOldVerts==0 ? 1. : MAX4(ABS(oldBbox[0][0]),
+                                                            ABS(oldBbox[0][1]),
+                                                            ABS(oldBbox[1][0]),
+                                                            ABS(oldBbox[1][1])));
 
             ArrayList/*<double[]>*/ newVerts = new ArrayList();
 
             // as recommended in FuzzyPointHashTable doc...
-            double littleEps = 1e-12;
-            double bigEps = 1e-10;
-            double bucketSize = 1/1024.;
+            double littleEps = 1e-12 * workAreaSize;
+            double bigEps = 1e-10 * workAreaSize;
+            double bucketSize = 1/1024. * workAreaSize;
             FuzzyPointHashTable newVertsTable = new FuzzyPointHashTable(littleEps,
                                                                         bigEps,
                                                                         bucketSize);
@@ -1528,6 +1536,13 @@ public class ShephardsPlayApplet
                         frac = 1. - frac;
                     frac *= 2.;
                 }
+
+                if (false) // nah, this looks like hell
+                {
+                    // make it a conformal mapping (raising to a power in the complex plane)...
+                    magnitude = Math.pow(magnitude, (double)oldRotationalSymmetry/(double)newRotationalSymmetry);
+                }
+
                 FORI (iReflect, (newLeftRightSymmetry ? 2 : 1))
                     FORI (iNewImage, newRotationalSymmetry)
                     {
@@ -1722,6 +1737,8 @@ public class ShephardsPlayApplet
                         // Select closest vertex
                         //
                         beingDraggedVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1]);
+                        Mesh.Vertex vert = mesh.getVert(beingDraggedVertIndex);
+                        beingDraggedVertUnsnappedXY = new double[]{vert.x, vert.y}; // XXX not sure this is right at this point
                         rubberBandingNewEdge = true;
                     }
                     else // shift is not down
@@ -1782,22 +1799,21 @@ public class ShephardsPlayApplet
                                     xforms = (double[][][])Arrays.append(xforms, new double[][] {{-1,0},{0,1}});
                                 if (rotationalSymmetry > 1)
                                 {
-                                    double rotationAngle = 2*Math.PI/rotationalSymmetry;
-                                    double c = Math.cos(rotationAngle);
-                                    double s = Math.sin(rotationAngle);
+                                    double c = cosPiTimes(2,rotationalSymmetry); // sin(2*pi/rotationalSymmetry)
+                                    double s = sinPiTimes(2,rotationalSymmetry); // sin(2*pi/rotationalSymmetry)
+
                                     xforms = (double[][][])Arrays.append(xforms, new double[][] {
                                         { c,s},
                                         {-s,c},
                                     });
                                 }
+                                PRINTARRAY(xforms);
                                 vertsToAdd = generateVertices(vertsToAdd,
                                                               xforms);
                             }
 
                             // we add them in reverse order, so that the original one
                             // will be the last one added, so that it will be the one to be dragged
-                            // (hmm, this probably doesn't matter any more,
-                            // since the drag respects the symmetries as well)
                             FORIDOWN (iVertToAdd, vertsToAdd.length)
                             {
                                 double vertToAdd[] = vertsToAdd[iVertToAdd];
@@ -1946,6 +1962,8 @@ public class ShephardsPlayApplet
                                 mesh.sanityCheck();
 
                                 beingDraggedVertIndex = verts.size()-1; // start dragging the one we just added
+                                beingDraggedVertUnsnappedXY = new double[]{vertsToAdd[vertsToAdd.length-1][0],
+                                                                           vertsToAdd[vertsToAdd.length-1][1]};
                             }
 
                             // added something-- invalidate dual mesh
@@ -1967,11 +1985,14 @@ public class ShephardsPlayApplet
                         System.out.println("Dragging vertex "+beingDraggedVertIndex);
                     else
                     {
+                        Mesh.Vertex beingDraggedVert = mesh.getVert(beingDraggedVertIndex);
+                        beingDraggedVertUnsnappedXY = new double[]{beingDraggedVert.x, beingDraggedVert.y};
                         if (snapToGrid)
                         {
                             if (e.isShiftDown())
                             {
                                 // Snap all the vertices we're about to drag
+                                // XXX need to store unsnapped for all of them!
                                 FORIDOWN (iVert, mesh.verts.size())
                                 {
                                     Mesh.Vertex vert = mesh.getVert(iVert);
@@ -1981,11 +2002,10 @@ public class ShephardsPlayApplet
                             }
                             else
                             {
-                                Mesh.Vertex vert = mesh.getVert(beingDraggedVertIndex);
-                                System.out.println("Snapping vertex "+beingDraggedVertIndex+" from "+vert.x+" "+vert.y+" "+vert.h+"");
-                                vert.x = (double)Math.round(vert.x/gridSnapQuantum)*gridSnapQuantum;
-                                vert.y = (double)Math.round(vert.y/gridSnapQuantum)*gridSnapQuantum;
-                                System.out.println("Dragging vertex "+beingDraggedVertIndex+" from "+vert.x+" "+vert.y+" "+vert.h+"");
+                                System.out.println("Snapping vertex "+beingDraggedVertIndex+" from "+beingDraggedVert.x+" "+beingDraggedVert.y+" "+beingDraggedVert.h+"");
+                                beingDraggedVert.x = (double)Math.round(beingDraggedVert.x/gridSnapQuantum)*gridSnapQuantum;
+                                beingDraggedVert.y = (double)Math.round(beingDraggedVert.y/gridSnapQuantum)*gridSnapQuantum;
+                                System.out.println("Dragging vertex "+beingDraggedVertIndex+" from "+beingDraggedVert.x+" "+beingDraggedVert.y+" "+beingDraggedVert.h+"");
                             }
                             if (doContinuouslyDelaunayize.get()) delaunayize();
                         }
@@ -2114,6 +2134,9 @@ public class ShephardsPlayApplet
                 }
                 else if (whichButton == java_awt_event_MouseEvent_BUTTON2)
                 {
+                    beingDraggedVertIndex = -1;
+                    beingDraggedNetEdgeIndex = -1;
+
                     button2IsDown = false;
                 }
                 else if (whichButton == java_awt_event_MouseEvent_BUTTON3)
@@ -2158,6 +2181,7 @@ public class ShephardsPlayApplet
                 double thisP[] = new double[2];
                 mostRecentGraphics.pick((e.getX()+.5)/globalMagFactor, (e.getY()+.5)/globalMagFactor, thisP);
                 boolean snapToGrid = e.isControlDown();
+#if 0
                 double snappedThisP[] = !snapToGrid ? thisP : new double[] {
                     (double)Math.round(thisP[0]/gridSnapQuantum)*gridSnapQuantum,
                     (double)Math.round(thisP[1]/gridSnapQuantum)*gridSnapQuantum,
@@ -2166,6 +2190,7 @@ public class ShephardsPlayApplet
                     (double)Math.round(prevP[0]/gridSnapQuantum)*gridSnapQuantum,
                     (double)Math.round(prevP[1]/gridSnapQuantum)*gridSnapQuantum,
                 };
+#endif
 
                 if (button1IsDown || button2IsDown)
                 {
@@ -2186,18 +2211,18 @@ public class ShephardsPlayApplet
                             // No need to invalidate anything.
                             FORIDOWN (iVert, mesh.verts.size())
                             {
-                                mesh.getVert(iVert).x += snappedThisP[0]-snappedPrevP[0];
-                                mesh.getVert(iVert).y += snappedThisP[1]-snappedPrevP[1];
+                                mesh.getVert(iVert).x += thisP[0]-prevP[0];
+                                mesh.getVert(iVert).y += thisP[1]-prevP[1];
                             }
                             Mesh dualMesh = getDualMesh();
                             FORIDOWN (iDualVert, dualMesh.verts.size())
                             {
-                                dualMesh.getVert(iDualVert).x += snappedThisP[0]-snappedPrevP[0];
-                                dualMesh.getVert(iDualVert).y += snappedThisP[1]-snappedPrevP[1];
+                                dualMesh.getVert(iDualVert).x += thisP[0]-prevP[0];
+                                dualMesh.getVert(iDualVert).y += thisP[1]-prevP[1];
                                 double momentAndArea[] = dualMesh.getVert(iDualVert).momentAndArea;
                                 assert(momentAndArea.length == 4);
-                                momentAndArea[0] += (snappedThisP[0]-snappedPrevP[0]) * momentAndArea[3];
-                                momentAndArea[1] += (snappedThisP[1]-snappedPrevP[1]) * momentAndArea[3];
+                                momentAndArea[0] += (thisP[0]-prevP[0]) * momentAndArea[3];
+                                momentAndArea[1] += (thisP[1]-prevP[1]) * momentAndArea[3];
                                 // height doesn't change
                             }
                         }
@@ -2227,10 +2252,11 @@ public class ShephardsPlayApplet
                                             group[rotationalSymmetry+i+1] = VecMath.mxm(group[rotationalSymmetry+i], A);
                                     }
                                 }
+                                PRINTARRAY(group);
 
                                 double v[] = {mesh.getVert(beingDraggedVertIndex).x,
                                               mesh.getVert(beingDraggedVertIndex).y};
-                                double dv[] = VecMath.vmv(snappedThisP, snappedPrevP);
+                                double dv[] = VecMath.vmv(thisP, prevP);
 
 
                                 double newVertPositions[][] = new double[mesh.verts.size()][2];
@@ -2275,8 +2301,18 @@ public class ShephardsPlayApplet
                             else
                             {
                                 // Drag just the selected vert
-                                mesh.getVert(beingDraggedVertIndex).x += snappedThisP[0]-snappedPrevP[0];
-                                mesh.getVert(beingDraggedVertIndex).y += snappedThisP[1]-snappedPrevP[1];
+                                beingDraggedVertUnsnappedXY[0] += thisP[0] - prevP[0];
+                                beingDraggedVertUnsnappedXY[1] += thisP[1] - prevP[1];
+
+                                Mesh.Vertex beingDraggedVert = mesh.getVert(beingDraggedVertIndex);
+                                beingDraggedVert.x = beingDraggedVertUnsnappedXY[0];
+                                beingDraggedVert.y = beingDraggedVertUnsnappedXY[1];
+
+                                if (snapToGrid)
+                                {
+                                    beingDraggedVert.x = (double)Math.round(beingDraggedVert.x/gridSnapQuantum)*gridSnapQuantum;
+                                    beingDraggedVert.y = (double)Math.round(beingDraggedVert.y/gridSnapQuantum)*gridSnapQuantum;
+                                }
                             }
 
                             if (doContinuouslyDelaunayize.get()) delaunayize();
@@ -2309,7 +2345,7 @@ public class ShephardsPlayApplet
                 prevP = thisP;
 
                 if (eventVerbose >= 2) System.out.println("  out mouseDragged: "+e);
-            }
+            } // mouseDragged
             public void mouseMoved(java.awt.event.MouseEvent e)
             {
                 if (eventVerbose >= 3) System.out.println("    in mouseMoved: "+e);
@@ -2335,7 +2371,7 @@ public class ShephardsPlayApplet
                 }
 
                 if (eventVerbose >= 3) System.out.println("    out mouseMoved: "+e);
-            }
+            } // mouseMoved
 
             //
             // KeyListener methods...
@@ -2476,6 +2512,24 @@ public class ShephardsPlayApplet
                         }
                         break;
                     }
+                    case java.awt.event.KeyEvent.VK_CONTROL:
+                    {
+                        if (!controlIsDown)
+                        {
+                            System.out.println("ctrl newly down!");
+                            if (beingDraggedVertIndex != -1)
+                            {
+                                Mesh.Vertex beingDraggedVert = mesh.getVert(beingDraggedVertIndex);
+                                beingDraggedVert.x = beingDraggedVertUnsnappedXY[0];
+                                beingDraggedVert.y = beingDraggedVertUnsnappedXY[1];
+                                beingDraggedVert.x = (double)Math.round(beingDraggedVert.x/gridSnapQuantum)*gridSnapQuantum;
+                                beingDraggedVert.y = (double)Math.round(beingDraggedVert.y/gridSnapQuantum)*gridSnapQuantum;
+                                theCanvas.repaint();
+                            }
+                        }
+                        controlIsDown = true;
+                        break;
+                    }
 
                     default:
                         // don't print anything, or we'll print too much (e.g. Shift, and any keys we handle in keyTyped())
@@ -2483,12 +2537,37 @@ public class ShephardsPlayApplet
                         break;
                 }
                 if (eventVerbose >= 1) System.out.println("out keyPressed: "+e);
-            }
+            } // keyPressed
             public void keyReleased(java.awt.event.KeyEvent e)
             {
                 if (eventVerbose >= 1) System.out.println("in keyReleased: "+e);
+                switch(e.getKeyCode())
+                {
+                    case java.awt.event.KeyEvent.VK_CONTROL:
+                    {
+                        if (controlIsDown)
+                        {
+                            // note, one of the ctrl keys might still be down at this point
+                            // (if they were both down previously),
+                            // but most likely they are both now up.
+                            // if we get this wrong it's not a huge deal.
+                            System.out.println("ctrl newly up!");
+                            if (beingDraggedVertIndex != -1)
+                            {
+                                Mesh.Vertex beingDraggedVert = mesh.getVert(beingDraggedVertIndex);
+                                beingDraggedVert.x = beingDraggedVertUnsnappedXY[0];
+                                beingDraggedVert.y = beingDraggedVertUnsnappedXY[1];
+                                theCanvas.repaint();
+                            }
+                        }
+                        controlIsDown = false;
+                        break;
+                    }
+                    default:
+                        break;
+                }
                 if (eventVerbose >= 1) System.out.println("out keyReleased: "+e);
-            }
+            } // keyReleased
             public void keyTyped(java.awt.event.KeyEvent e)
             {
                 if (eventVerbose >= 1) System.out.println("in keyTyped: "+e);
@@ -2621,9 +2700,9 @@ public class ShephardsPlayApplet
                         if (closestEdgeIndex != -1)
                         {
                             System.out.println("Swapping diagonal edge e"+closestEdgeIndex);
+                            doContinuouslyDelaunayize.set(false); // otherwise it's not obvious what the hell happened
                             mesh.swapDiagonal(mesh.getEdge(closestEdgeIndex), /*onlyIfMoreDelaunay=*/false, /*verbose=*/true);
                             mesh.sanityCheck();
-                            if (doContinuouslyDelaunayize.get()) delaunayize();
                             dirtyDualMesh();
                         }
 
@@ -2641,9 +2720,9 @@ public class ShephardsPlayApplet
                         if (closestEdgeIndex != -1)
                         {
                             System.out.println("Swapping diagonal edge e"+closestEdgeIndex);
+                            doContinuouslyDelaunayize.set(false); // otherwise it's not obvious what the hell happened
                             mesh.swapDiagonal(mesh.getEdge(closestEdgeIndex), /*onlyIfMoreDelaunay=*/true, /*verbose=*/true);
                             mesh.sanityCheck();
-                            if (doContinuouslyDelaunayize.get()) delaunayize(); // silly, it will just undo the swap in this case
                             dirtyDualMesh();
                         }
                         UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
@@ -2825,13 +2904,13 @@ public class ShephardsPlayApplet
                         break;
 
 
-
-
+#if 0 // conflicts with symmetry stuff... disable for now
                     case '0': // toggle showOrigin
                         showOrigin ^= true;
                         System.out.println("showOrigin -> "+showOrigin);
                         theCanvas.repaint();
                         break;
+#endif
 
                     case 'O': // toggle doOptimize
                     {
@@ -2985,11 +3064,14 @@ public class ShephardsPlayApplet
                         theCanvas.repaint();
                         break;
 
-                    case '1': case '2': case '3': case '4': case '5': case '6':
+                    case '1': case '2': case '3': case '4': case '5':
+                    case '6': case '7': case '8': case '9': case '0':
                     {
                         int oldRotationalSymmetry = rotationalSymmetry;
                         boolean oldLeftRightSymmetry = leftRightSymmetry;
                         int newRotationalSymmetry = c - '0';
+                        if (newRotationalSymmetry == 0)
+                            newRotationalSymmetry = 10;
                         boolean newLeftRightSymmetry = false;
 
                         System.out.println("rotationalSymmetry -> "+newRotationalSymmetry+", without left-right symmetry");
@@ -3006,11 +3088,14 @@ public class ShephardsPlayApplet
                         theCanvas.repaint();
                         break;
                     }
-                    case '!': case '@': case '#': case '$': case '%': case '^':
+                    case '!': case '@': case '#': case '$': case '%':
+                    case '^': case '&': case '*': case '(': case ')':
                     {
                         int oldRotationalSymmetry = rotationalSymmetry;
                         boolean oldLeftRightSymmetry = leftRightSymmetry;
                         int newRotationalSymmetry = ")!@#$%^&*(".indexOf(c);
+                        if (newRotationalSymmetry == 0)
+                            newRotationalSymmetry = 10;
                         boolean newLeftRightSymmetry = true;
                         System.out.println("rotationalSymmetry -> "+newRotationalSymmetry+", with left-right symmetry");
                         rotationalSymmetry = newRotationalSymmetry;
@@ -3027,6 +3112,7 @@ public class ShephardsPlayApplet
                         break;
                     }
 
+#if 0 // maybe bind some other keys to this, when I get back to it
                     case '7': case '&': case '8': case '*':
                     {
                         int oldIndex = netless8OptimizationIndex;
@@ -3056,6 +3142,7 @@ public class ShephardsPlayApplet
                         }
                         break;
                     }
+#endif
 
                     case CTRL('b'): // blue noise pattern
                     {
@@ -10799,6 +10886,110 @@ OFF
             accumulator[accumulator.length-1] += increment[increment.length-1]; // A
         }
 
+        // =============== BEGIN: stolen from CSG.prejava
+
+            // greatest common divisor
+            private static int gcd(int a, int b)
+            {
+                return b==0 ? a : gcd(b, a%b);
+            }
+
+            // sin(pi*n/d) squared times sign, but do it without trig if it's a nice angle
+            private static double sinSquaredPiTimes(int n, int d)
+            {
+                assert(d != 0);
+                int sign = 1;
+                if (n < 0)
+                {
+                    n *= -1;
+                    sign *= -1;
+                }
+                if (d < 0)
+                {
+                    d *= -1;
+                    sign *= -1;
+                }
+                int gcd = gcd(n,d);
+                n /= gcd;
+                d /= gcd;
+                n %= 2*d;
+                // so now 0 <= n/d < 2, i.e. in [0..360] degrees
+                if (n > d)
+                {
+                    n = 2*d - n;
+                    sign *= -1;
+                }
+                // so now 0 <= n/d <= 1, i.e. in [0..180] degrees
+                if (2*n > d)
+                {
+                    n = d - n;
+                }
+                // so now 0 <= n/d <= 1/2, i.e. in [0..90] degrees
+                if (4*n > d)
+                    return sign*(1 - cosSquaredPiTimes(n, d));
+                // so now 0 <= n/d <= 1/4, i.e. in [0..45] degrees
+                assert(0 <= n && 4*n <= d);
+                //System.out.println("    "+n+"/"+d+"");
+                if (true)
+                {
+                    // http://mathworld.wolfram.com/TrigonometryAngles.html
+                    if (n==0)          // 0 degrees
+                        return sign * 0;
+                    if (n==1 && d==12) // 15 degrees
+                        return sign * ((2.-Math.sqrt(3.))/4.);
+                    if (n==1 && d==10) // 18 degrees
+                        return sign * ((3.-Math.sqrt(5.))/8.);
+                    if (n==1 && d==8) // 22.5 degrees
+                        return sign * ((2.-Math.sqrt(2.))/4.);
+                    if (n==1 && d==6)  // 30 degrees
+                        return sign * (1./4.);
+                    if (n==1 && d==5)  // 36 degrees
+                        return sign * ((5.-Math.sqrt(5.))/8.);
+                    if (n==1 && d==4)  // 45 degrees
+                        return sign * (1./2.);
+                }
+                //System.out.println("    "+n+"/"+d+" !!!");
+                double s = Math.sin(Math.PI*n/d);
+                return sign*s*s;
+            } // sinSquaredPiTimes
+
+            // cos(pi*n/d) squared, but do it without trig if it's a nice angle
+            private static double cosSquaredPiTimes(int n, int d)
+            {
+                // cos(pi*n/d) = sin(pi/2 - pi*n/d)
+                //             = sin(pi * (1/2 - n/d))
+                //             = sin(pi * (1/2 - n/d))
+                //             = sin(pi * (d-2*n)/(2*d)
+                return sinSquaredPiTimes(d-2*n, 2*d);
+            }
+
+            // tan(pi*n/d) squared, but do it without trig if it's a nice angle
+            private static double tanSquaredPiTimes(int n, int d)
+            {
+                double s = sinSquaredPiTimes(n, d);
+                return s / (1 - s);
+            }
+            // cot(pi*n/d) squared, but do it without trig if it's a nice angle
+            private static double cotSquaredPiTimes(int n, int d)
+            {
+                double s = sinSquaredPiTimes(n, d);
+                return (1 - s) / s;
+            }
+        // =============== END: stolen from CSG.prejava
+        private static double sinPiTimes(int n, int d)
+        {
+            double temp = sinSquaredPiTimes(n, d);
+            return temp<0 ? -Math.sqrt(-temp)
+                          :  Math.sqrt(temp);
+        }
+        private static double cosPiTimes(int n, int d)
+        {
+            double temp = cosSquaredPiTimes(n, d);
+            return temp<0 ? -Math.sqrt(-temp)
+                          :  Math.sqrt(temp);
+        }
+
+
         public void drawBitmapCentered(java.awt.Graphics g,
                                        java.awt.Dimension size,
                                        String[] rows)
@@ -10847,6 +11038,7 @@ OFF
             theNet = null;
         }
         private int beingDraggedVertIndex = -1;
+        private double[] beingDraggedVertUnsnappedXY = null;
         private int beingDraggedNetEdgeIndex = -1;
         private double[] beingDraggedNetEdgeDelta = null;
         private boolean rubberBandingNewEdge = false;
@@ -10979,6 +11171,7 @@ OFF
         private boolean button1IsDown = false;
         private boolean button2IsDown = false;
         private boolean button3IsDown = false;
+        private boolean controlIsDown = false;
         private UndoItem.State stateWhenPressed = null;
 
 
