@@ -20,6 +20,7 @@ BUGS:
     - optimization seems to be broken? (not recalculating most of the time when it should)
 
 TO DO:
+    - deleting a vertex should respect symmetries
     - collapse to-add verts via symmetries (e.g. so we don't add multiple verts at origin)
     - color lagoon edges yellow when dragging cut?
     - should save/restore cuts in terms of primal from,to verts to be robust? maybe
@@ -1516,14 +1517,21 @@ public class ShephardsPlayApplet
             {
                 double oldVert[] = oldVerts[iOldVert];
                 double magnitude = MyMath.hypot(oldVert[0], oldVert[1]);
-                double oldAngle = Math.atan2(oldVert[1],
-                                             oldLeftRightSymmetry ? Math.abs(oldVert[0])
-                                                                  : oldVert[0]);
-                double frac = (oldAngle/(2*Math.PI) + .25) * oldRotationalSymmetry; // so -90 degrees produces frac=0
+                double oldAngle = Math.atan2(oldVert[1], oldVert[0]);
+                // find fraction in the canonical fundamental region...
+                double frac = (oldAngle/(2*Math.PI) + .25) // so -90 degrees produces frac=0
+                            * oldRotationalSymmetry;
+                frac -= Math.floor(frac); // so frac should now be between 0 and 1
+                if (oldLeftRightSymmetry)
+                {
+                    if (frac > .5)
+                        frac = 1. - frac;
+                    frac *= 2.;
+                }
                 FORI (iReflect, (newLeftRightSymmetry ? 2 : 1))
                     FORI (iNewImage, newRotationalSymmetry)
                     {
-                        double newAngle = ((iNewImage+frac) / newRotationalSymmetry - .25) * (2*Math.PI);
+                        double newAngle = ((iNewImage+frac*(newLeftRightSymmetry ? .5 : 1)) / newRotationalSymmetry - .25) * (2*Math.PI);
                         double newVert[] = {
                             magnitude * Math.cos(newAngle) * (iReflect==1 ? -1. : 1.),
                             magnitude * Math.sin(newAngle),
