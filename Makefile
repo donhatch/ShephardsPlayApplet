@@ -50,6 +50,7 @@ CPPFLAGS += -Wall -Werror
         # The following is the way to do it on linux I think
 	#javacpp ${CPPFLAGS} ${JAVAC} -classpath ".:./donhatchsw.jar" $*.prejava
         # Need to do the following instead on cygwin... ?
+        # (gets further if I change the ':' to ';', but still doesn't run)
 	javacpp ${CPPFLAGS} ${JAVAC} $*.prejava
 
 	javarenumber -v 0 $*.class
