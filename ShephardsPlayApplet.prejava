@@ -16,6 +16,9 @@ User should be able to:
 
 
 BUGS:
+    - avg not being drawn in right place any more
+    - lagoon exit colors not right any more (probably same issue?)
+    - why do I need that extendAndOrthogonalize?  it shouldn't be getting non-orthogonal so quickly!
     - painting doesn't happen continuously when dragging when there's a lot on the screen! (it doesn't update til you stop dragging) ARGH!
     - miniball still not handling dup vertices well
     - can't run it with donhatchsw.jar?? can build it though! (using ; instead of :)
@@ -241,12 +244,18 @@ public class ShephardsPlayApplet
                     addActionListener(new java.awt.event.ActionListener() {
                         public void actionPerformed(java.awt.event.ActionEvent e)
                         {
+                            // XXX dup code
                             UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
-
+                            synchronized(showNet) // since another thread checks it once in a while
+                            {
+                                showNet.set(false); // so user won't get confused when clicking doesn't make verts appear
+                            }
                             mesh = new Mesh();
                             selectedTris = new int[][] {};
                             selectedDualVertIndices = new int[] {};
+                            resetMats();
                             if (doContinuouslyDelaunayize.get()) delaunayize();
+                            dirtyDualMesh(); // before snapping after state, so theNet will be cleared XXX aren't there a zillion places we're neglecting to take this into account?
 
                             UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
                             undoTreeSquirrel.Do(new UndoItem(before, after));
@@ -1083,12 +1092,12 @@ public class ShephardsPlayApplet
         {
             System.out.println("===================================================================");
             System.out.println("Mouse:");
-            System.out.println("    left click: add a vertex and drag it");
-            System.out.println("    middle drag: drag a vertex");
+            System.out.println("    left: add or drag a vertex");
+            System.out.println("    middle: rotate picture in 3d");
             System.out.println("    right click: delete a vertex");
             System.out.println("    shift-middle drag: pan entire picture");
             System.out.println("    shift-left drag: create new edge between two vertices");
-            System.out.println("    ctrl-click-and-drag: snap to grid when create and dragging vertices");
+            System.out.println("    ctrl-left: snap to grid when creating and dragging vertices");
             System.out.println("Keys:");
             System.out.println("    '1'...'9' - set rotational symmetry for creating and dragging verts (1=none)");
             System.out.println("    shift-'1'...shift-'9' - set left-right mirror and rotational symmetry");
@@ -1490,6 +1499,10 @@ public class ShephardsPlayApplet
         {
             UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
 
+            {
+                // XXX do I want this?
+                resetMats();
+            }
             {
                 double minx = Double.POSITIVE_INFINITY;
                 double miny = Double.POSITIVE_INFINITY;
@@ -2089,6 +2102,10 @@ public class ShephardsPlayApplet
                             }
                         }
                     }
+                    else
+                    {
+                        draggingRotation = true;
+                    }
                 }
                 else if (whichButton == java_awt_event_MouseEvent_BUTTON3)
                 {
@@ -2215,6 +2232,7 @@ public class ShephardsPlayApplet
                 {
                     beingDraggedVertIndex = -1;
                     beingDraggedNetEdgeIndex = -1;
+                    draggingRotation = false;
 
                     button2IsDown = false;
                 }
@@ -2271,7 +2289,87 @@ public class ShephardsPlayApplet
                 };
 #endif
 
-                if (button1IsDown || button2IsDown)
+                if (draggingRotation)
+                {
+                    // increment tilt according to deltaY,
+                    // and twirl according to deltaX
+                    double deltaX = thisP[0]-prevP[0];
+                    double deltaY = thisP[1]-prevP[1];
+
+                    if (true)
+                    {
+                        // rotate the rotate part...
+                        double rotMat33[][] = new double[3][3];
+                        VecMath.copymat(rotMat33, rotMat);
+
+                        {
+                            // don't use axis-angle,
+                            // use tilt (z->y)
+                            // and twirl (x->y)
+                            double cx = Math.cos(deltaX);
+                            double sx = Math.sin(deltaX);
+                            double cy = Math.cos(deltaY);
+                            double sy = Math.sin(deltaY);
+                            double twirlMat[][] = {
+                                {cx, sx, 0},
+                                {-sx, cx, 0},
+                                {0, 0, 1},
+                            };
+                            double tiltMat[][] = {
+                                {1, 0, 0},
+                                {0, cy,-sy},
+                                {0, sy, cy},
+                            };
+                            rotMat33 = VecMath.mxmxm(twirlMat, rotMat33, tiltMat);
+                        }
+
+                        // restrict +z axis to yz plane.
+                        // that is, rotMat33[2][0] must be 0.
+                        // (it will be, aside from accumulated roundoff error,
+                        // since we're only doing tilts and twirls)
+                        // also, its y and z components must be non-negative.
+                        rotMat33[2][0] = 0.;
+                        rotMat33[2][1] = MAX(rotMat33[2][1], 0.);
+                        rotMat33[2][2] = MAX(rotMat33[2][2], 0.);
+                        VecMath.vxv3(rotMat33[0],rotMat33[1],rotMat33[2]);
+                        VecMath.vxv3(rotMat33[1],rotMat33[2],rotMat33[0]);
+
+                        // XXX TODO: shouldn't need this so soon I don't think??
+                        VecMath.extendAndOrthogonalize(3,3, rotMat33, rotMat33);
+                        VecMath.normalize(rotMat33[0], rotMat33[0]);
+                        VecMath.normalize(rotMat33[1], rotMat33[1]);
+                        VecMath.normalize(rotMat33[2], rotMat33[2]);
+                        VecMath.copymat(rotMat, rotMat33);
+                    }
+
+                    if (true)
+                    {
+
+                        // tweak the scale part:
+                        // make it so if the z axis didn't rotate much, z scale is 0.
+                        // this is so that all the perpendiculars and stuff will look right
+                        // when looking at it top-down.
+                        double zLocalInWorld[] = rotMat[2];
+                        double angle = VecMath.angleBetweenUnitVectors(3, zLocalInWorld, new double[]{0,0,1});
+                        if (angle <= DTOR(10.))
+                        {
+                            localScaleMat[2][2] = angle / DTOR(10.);
+                            //OUT("flattish");
+                        }
+                        else
+                        {
+                            localScaleMat[2][2] = 1.;
+                            //OUT("bumpy");
+                        }
+                    }
+
+                    localToWorld = VecMath.mxmxmxm(localScaleMat,
+                                                   rotMat,
+                                                   transMat,
+                                                   perspMat); // XXX TODO: no version that takes a destination?
+                }
+
+                if (button1IsDown || button2IsDown) // XXX wean away from the button2IsDown thing
                 {
                     if (rubberBandingNewEdge)
                     {
@@ -3118,11 +3216,13 @@ public class ShephardsPlayApplet
                     }
                     case 'c': // clear
                     {
+                        // XXX dup code
                         UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
                         synchronized(showNet) // since another thread checks it once in a while
                         {
                             showNet.set(false); // so user won't get confused when clicking doesn't make verts appear
                         }
+                        resetMats();
                         mesh = new Mesh();
                         selectedTris = new int[][] {};
                         selectedDualVertIndices = new int[] {};
@@ -3497,9 +3597,10 @@ public class ShephardsPlayApplet
 
 
                 double minSize = (double)MIN(size.width, size.height);
-                MyGraphics mg = new MyGraphics(g, size,
+                MyGraphics3D mg = new MyGraphics3D(g, size,
                                         -size.width/minSize,size.width/minSize,
-                                        -size.height/minSize,size.height/minSize);
+                                        -size.height/minSize,size.height/minSize,
+                                        localToWorld);
                 mostRecentGraphics = mg;
 
                 if (implementAntiAliasingInHardware)
@@ -3522,9 +3623,9 @@ public class ShephardsPlayApplet
                 {
                     // experiment with grids... not sure exactly what I want yet
 
-                    // XXX get these for real
-                    double xmax = 5.;
-                    double ymax = 5.;
+                    double xmax = size.width/minSize;
+                    double ymax = size.height/minSize;
+                    
 
                     // bigger levels are finer
                     // level 0 : 1 apart
@@ -3550,11 +3651,11 @@ public class ShephardsPlayApplet
                              || iGridLine % 2 == 1)
                             {
                                 double x = iGridLine / (double)gridLinesPerUnit;
-                                mg.drawLine(-ymax, x,
-                                             ymax, x,
-                                             doAntiAliasing);
-                                mg.drawLine(-ymax, -x,
-                                             ymax, -x,
+                                mg.drawLine(x, -ymax, 0.,
+                                            x,  ymax, 0.,
+                                            doAntiAliasing);
+                                mg.drawLine(-x, -ymax, 0.,
+                                            -x,  ymax, 0.,
                                              doAntiAliasing);
                             }
                         }
@@ -3564,14 +3665,17 @@ public class ShephardsPlayApplet
                              || iGridLine % 2 == 1)
                             {
                                 double y = iGridLine / (double)gridLinesPerUnit;
-                                mg.drawLine( y, -xmax,
-                                             y,  xmax,
+                                mg.drawLine(-xmax, y, 0.,
+                                             xmax, y, 0.,
                                              doAntiAliasing);
-                                mg.drawLine(-y, -xmax,
-                                            -y,  xmax,
+                                mg.drawLine(-xmax, -y, 0.,
+                                             xmax, -y, 0.,
                                              doAntiAliasing);
                             }
                         }
+
+
+
                     }
                 }
 
@@ -3580,11 +3684,11 @@ public class ShephardsPlayApplet
                     int nVerts = mesh.verts.size();
 
                     double xys[][] = new double[nVerts][2];
+                    // actually this is damn silly... a 3d sphere might make sense... but currently we only know how to draw circles, not ellipses
                     FORI (iVert, nVerts)
                     {
                         Mesh.Vertex vert = mesh.getVert(iVert);
-                        xys[iVert][0] = vert.x;
-                        xys[iVert][1] = vert.y;
+                        mg.xform(vert.x, vert.y, vert.h, xys[iVert]);
                     }
                     double center[] = new double[2];
                     //MiniBall.verboseLevel = 2; // 2 for nice diagram
@@ -3787,7 +3891,7 @@ public class ShephardsPlayApplet
                         if (true)
                         {
                             // Compute avg a different way, for curiosity
-                            double momentAndAreaSum[] = new double[3]; // zeros
+                            double momentAndAreaSum[] = new double[4]; // zeros
                             FORI (i, selectedDualVertIndices.length)
                             {
                                 int ind = selectedDualVertIndices[i];
@@ -3801,6 +3905,7 @@ public class ShephardsPlayApplet
                             double avgAlternate[] = {
                                 momentAndAreaSum[0] / A,
                                 momentAndAreaSum[1] / A,
+                                momentAndAreaSum[2] / A,
                             };
                             PRINTVEC(avgAlternate);
 
@@ -4043,7 +4148,9 @@ public class ShephardsPlayApplet
                                                 triCenterDualVert.y + .05 * threeDirections[bestSide][1],
                                             };
                                             mg.drawPoint(whereToDrawMark[0],
-                                                         whereToDrawMark[1], 5);
+                                                         whereToDrawMark[1],
+                                                         0.,
+                                                         5);
                                         }
 
 
@@ -4346,7 +4453,7 @@ public class ShephardsPlayApplet
                                 // starts in the lagoon, ends outside it.
                                 // is it a good exit?
                                 double initialVertexCoords[] = {initialVertex.x, initialVertex.y};
-                                double goodness = VecMath.dot(dualEdge.direction,
+                                double goodness = VecMath.dot(2, dualEdge.direction,
                                                               VecMath.vmv(2, initialVertexCoords, avg));
                                 boolean isGoodExit = GEQ(goodness, 0., SQR(1e-6));
 
@@ -4363,8 +4470,10 @@ public class ShephardsPlayApplet
                                         double rayLength = 1.;
                                         mg.drawLine(initialVertex.x - rayLength * dualEdge.direction[1],
                                                     initialVertex.y + rayLength * dualEdge.direction[0],
+                                                    initialVertex.hActual(),
                                                     initialVertex.x + rayLength * dualEdge.direction[1],
                                                     initialVertex.y - rayLength * dualEdge.direction[0],
+                                                    initialVertex.hActual(),
                                                     doAntiAliasing);
                                     }
                                 }
@@ -4407,6 +4516,7 @@ public class ShephardsPlayApplet
                                     mg.setColor(java.awt.Color.red);
                                     mg.drawPoint(dualMesh.getEdge(iEdge).initialVertex().x,
                                                  dualMesh.getEdge(iEdge).initialVertex().y,
+                                                 dualMesh.getEdge(iEdge).initialVertex().hActual(),
                                                  10);
                                 }
                             }
@@ -4440,12 +4550,13 @@ public class ShephardsPlayApplet
                                     Mesh.Edge netEdgeBeingDragged = dualMesh.getEdge(beingDraggedNetEdgeIndex);
                                     Mesh.Vertex initialVertex = netEdgeBeingDragged.initialVertex();
 
-                                    double lagoonMomentAndWeight[] = new double[3]; // zeros
+                                    double lagoonMomentAndWeight[] = new double[4]; // zeros
                                     accumulateMomentAndArea(lagoonMomentAndWeight, momentAndWeightStrictlyBelowEachDualVertex[initialVertex.myIndex()]);
                                     accumulateMomentAndArea(lagoonMomentAndWeight, initialVertex.momentAndArea);
                                     lagoonCenter = new double[] {
-                                        lagoonMomentAndWeight[0] / lagoonMomentAndWeight[2],
-                                        lagoonMomentAndWeight[1] / lagoonMomentAndWeight[2],
+                                        lagoonMomentAndWeight[0] / lagoonMomentAndWeight[3],
+                                        lagoonMomentAndWeight[1] / lagoonMomentAndWeight[3],
+                                        lagoonMomentAndWeight[2] / SQR(lagoonMomentAndWeight[3]),
                                     };
                                 }
                             }
@@ -4464,10 +4575,10 @@ public class ShephardsPlayApplet
                                 {
                                     // Dragging a cut: highlight alternative exits--
                                     // cyan for good, magenta for bad.
-                                    boolean isGood = LEQ(VecMath.dot(alternativeExit.direction,
-                                                                     VecMath.vmv(lagoonCenter,
-                                                                                 new double[]{alternativeExitVertex.x,
-                                                                                              alternativeExitVertex.y})), 0., SQR(1e-6));
+                                    boolean isGood = LEQ(VecMath.dot(2, alternativeExit.direction,
+                                                                        VecMath.vmv(2, lagoonCenter,
+                                                                                       new double[]{alternativeExitVertex.x,
+                                                                                                    alternativeExitVertex.y})), 0., SQR(1e-6));
                                     color = isGood ? java.awt.Color.cyan : java.awt.Color.magenta;
                                 }
                                 else
@@ -4493,7 +4604,7 @@ public class ShephardsPlayApplet
                     // we draw the non-cut edges first, then the cut edges--
                     // this makes the tree appear more connected.
                     //
-                    double destPoint[] = new double[2]; // scratch for loop
+                    double destPoint[] = new double[3]; // scratch for loop
                     int nPasses = showNet.get() ? 2 : 1;
                     FORI (iPass, nPasses)
                         FORIDOWN (iDualEdge, mesh.edges.size())
@@ -4517,6 +4628,7 @@ public class ShephardsPlayApplet
                                     continue; // don't bother drawing it in both directions
                                 destPoint[0] = rightDualVert.x;
                                 destPoint[1] = rightDualVert.y;
+                                destPoint[2] = rightDualVert.hActual();
                             }
                             else
                             {
@@ -4528,10 +4640,12 @@ public class ShephardsPlayApplet
                                                edge.finalVertex().y};
                                 double toEdgeVec[] = VecMath.xv2(
                                                          VecMath.vmv(v0, v1));
+                                toEdgeVec = (double[])Arrays.append(toEdgeVec, 0.); // XXX TODO: get this right
                                 VecMath.normalize(toEdgeVec, toEdgeVec);
                                 double rayLength = 1.; // for edges to infinity
                                 destPoint[0] = leftDualVert.x + rayLength*toEdgeVec[0];
                                 destPoint[1] = leftDualVert.y + rayLength*toEdgeVec[1];
+                                destPoint[2] = (leftDualVert.h + rayLength*toEdgeVec[2]) - .5 * (SQR(destPoint[0]) + SQR(destPoint[1]));
                             }
 
                             if ((iDualEdge == beingDraggedNetEdgeIndex
@@ -4552,14 +4666,14 @@ public class ShephardsPlayApplet
                                     mg.setColor(darkBlue);
 
 
-                                mg.drawLine(leftDualVert.x+beingDraggedNetEdgeDelta[0], leftDualVert.y+beingDraggedNetEdgeDelta[1],
-                                            destPoint[0]+beingDraggedNetEdgeDelta[0], destPoint[1]+beingDraggedNetEdgeDelta[1],
+                                mg.drawLine(leftDualVert.x+beingDraggedNetEdgeDelta[0], leftDualVert.y+beingDraggedNetEdgeDelta[1], leftDualVert.hActual(),
+                                            destPoint[0]+beingDraggedNetEdgeDelta[0], destPoint[1]+beingDraggedNetEdgeDelta[1], destPoint[2],
                                             doAntiAliasing);
                                 // restore
                                 mg.setColor(dualEdgeColors[dualEdge.myIndex()]);
                             }
-                            mg.drawLine(leftDualVert.x, leftDualVert.y,
-                                        destPoint[0],destPoint[1],
+                            mg.drawLine(leftDualVert.x, leftDualVert.y, leftDualVert.hActual(),
+                                        destPoint[0],destPoint[1], destPoint[2],
                                         doAntiAliasing);
                         }
 
@@ -4618,7 +4732,9 @@ public class ShephardsPlayApplet
                         //System.out.println("    drawing dual vert at "+Arrays.toStringCompact(dualVert));
                         mg.setColor(dualVertColors[iDualVert]); // TODO: only if changed?
                         mg.drawPoint(dualVert.x,
-                                     dualVert.y, showNet.get() ? 2 : 5);
+                                     dualVert.y,
+                                     dualVert.hActual(),
+                                     showNet.get() ? 2 : 5);
 
                     }
 
@@ -4683,7 +4799,8 @@ public class ShephardsPlayApplet
                                         double t = (pos-norm2s[iParent])/(norm2s[iChild]-norm2s[iParent]);
                                         double x = LERP(parent.x, child.x, t);
                                         double y = LERP(parent.y, child.y, t);
-                                        mg.drawPoint(x, y, 3);
+                                        double h = LERP(parent.hActual(), child.hActual(), t);
+                                        mg.drawPoint(x, y, h, 3);
                                     }
                                 }
                                 else
@@ -4697,7 +4814,8 @@ public class ShephardsPlayApplet
                                     {
                                         double x = child.x - pos * parentEdge.direction[0];
                                         double y = child.y - pos * parentEdge.direction[1];
-                                        mg.drawPoint(x, y, 3);
+                                        double h = child.hActual() - pos * 0; // XXX TODO: fix this
+                                        mg.drawPoint(x, y, h, 3);
                                     }
                                 }
                             }
@@ -4713,6 +4831,7 @@ public class ShephardsPlayApplet
                         mg.setColor(dualVertSelectionColor);
                         mg.drawPoint(avg[0],
                                      avg[1],
+                                     avg[2],
                                      7);
                     }
 
@@ -4722,6 +4841,7 @@ public class ShephardsPlayApplet
                         mg.setColor(dualVertSelectionColor);
                         mg.drawPoint(lagoonCenter[0],
                                      lagoonCenter[1],
+                                     lagoonCenter[2],
                                      3);
                     }
 
@@ -4770,10 +4890,13 @@ public class ShephardsPlayApplet
                             double whereToDrawMark[] = {
                                 triCenterDualVert.x + .02 * toEdgeVec[0],
                                 triCenterDualVert.y + .02 * toEdgeVec[1],
+                                triCenterDualVert.h + .02 * toEdgeVec[2],
                             };
                             //VecMath.vpsxv(whereToDrawMark, whereToDrawMark, .004, VecMath.random(2));
                             mg.drawPoint(whereToDrawMark[0],
-                                         whereToDrawMark[1], 5);
+                                         whereToDrawMark[1],
+                                         whereToDrawMark[2],
+                                         5);
                         }
                     } // doArrowsTowardsSharpestDihedrals
                     if (doArrowsTowardsShortestEdges)
@@ -4820,10 +4943,13 @@ public class ShephardsPlayApplet
                             double whereToDrawMark[] = {
                                 triCenterDualVert.x + .02 * toEdgeVec[0],
                                 triCenterDualVert.y + .02 * toEdgeVec[1],
+                                triCenterDualVert.h + .02 * toEdgeVec[2],
                             };
                             //VecMath.vpsxv(whereToDrawMark, whereToDrawMark, .005, VecMath.random(2));
                             mg.drawPoint(whereToDrawMark[0],
-                                         whereToDrawMark[1], 5);
+                                         whereToDrawMark[1],
+                                         whereToDrawMark[2],
+                                         5);
 
                         }
                     } // doArrowsTowardsShortestEdges
@@ -4843,7 +4969,9 @@ public class ShephardsPlayApplet
                     {
                         Mesh.Vertex vert = (Mesh.Vertex)verts.get(iVert);
                         mg.drawPoint(vert.x,
-                                     vert.y, 3);
+                                     vert.y,
+                                     vert.hActual(),
+                                     3);
                     }
 
                     if (showTriangles >= 2)
@@ -4855,7 +4983,9 @@ public class ShephardsPlayApplet
                             Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge*2);
                             Mesh.Vertex v0 = edge.initialVertex();
                             Mesh.Vertex v1 = edge.finalVertex();
-                            mg.drawLine(v0.x,v0.y, v1.x,v1.y, doAntiAliasing);
+                            mg.drawLine(v0.x,v0.y,v0.hActual(),
+                                        v1.x,v1.y,v1.hActual(),
+                                        doAntiAliasing);
                         }
                     }
                 }
@@ -4879,7 +5009,7 @@ public class ShephardsPlayApplet
                 {
                     // draw a subtle dot at the origin
                     mg.setColor(java.awt.Color.white);
-                    mg.drawPoint(0., 0., 1);
+                    mg.drawPoint(0., 0., 0., 1);
                 }
                 // if showing an optimization path, display a message about it
                 if (netless8OptimizationIndex != -1)
@@ -5046,7 +5176,7 @@ public class ShephardsPlayApplet
                                 mg.drawString(""+(int)Math.round(dN*incrDegrees),
                                               Mv[0],Mv[1], -1., 1.);
                             else
-                                mg.drawPoint(Mv[0],Mv[1], 1);
+                                mg.drawPoint(Mv[0],Mv[1], 0., 1);
                         }
                         else
                             iPoint--; // cancel loop iteration
@@ -8133,6 +8263,11 @@ OFF
                     //return Arrays.indexOfUsingEqualsSymbol(verts, this);
                     return _myIndex;
                 }
+
+                public double hActual()
+                {
+                    return this.h - .5 * (SQR(this.x) + SQR(this.y));
+                }
             } // public class Vertex
             public class Edge
             {
@@ -9787,9 +9922,11 @@ OFF
                         // XXX but this is not robust? but it may be better in some senses, especially if we're doing non-triangles too
                         dualEdge.direction = VecMath.normalize(VecMath.vmv(
                             new double[]{dualEdge.finalVertex().x,
-                                         dualEdge.finalVertex().y},
+                                         dualEdge.finalVertex().y,
+                                         dualEdge.finalVertex().h},
                             new double[]{dualEdge._initialVertex.x,
-                                         dualEdge._initialVertex.y}));
+                                         dualEdge._initialVertex.y,
+                                         dualEdge._initialVertex.h}));
                     }
                     else
                     {
@@ -9801,6 +9938,7 @@ OFF
                         double v1[] = {primalEdge.finalVertex().x,
                                        primalEdge.finalVertex().y};
                         dualEdge.direction = VecMath.normalize(VecMath.xv2(VecMath.vmv(v1, v0)));
+                        dualEdge.direction = (double[])Arrays.append(dualEdge.direction, 0.); // XXX TODO: get a real direction in 3d if possible? not sure how
                     }
 
                     assert(dualEdge._opposite.direction == null);
@@ -11085,6 +11223,35 @@ OFF
             double vprojectedOntoV1[] = VecMath.sxv(t, v1);
             return VecMath.distsqrd(v, vprojectedOntoV1);
         }
+        private static double[][] axisAngleRotationMatrix(double axis[], double radians)
+        {
+            double invAxisLength = 1./VecMath.norm(axis);
+            double x = axis[0]*invAxisLength;
+            double y = axis[1]*invAxisLength;
+            double z = axis[2]*invAxisLength;
+            double c = Math.cos(radians);
+            double s = Math.sin(radians);
+            double C = 1. - c;
+            // http://en.wikipedia.org/wiki/Rotation_matrix
+            // but transposed
+            double M[][] = {
+                {x*x*C+c, x*x*C+z*s, x*z*C-y*s},
+                {x*y*C-z*s, y*y*C+c, y*z*C+x*s},
+                {z*x*C+y*s, z*y*C-x*s, z*z*C+c},
+            };
+            return M;
+        }
+        // XXX TODO: should the xform be part of MyGraphics?
+        private static void drawLineXformed(MyGraphics mg, double xform[][], double x0, double y0, double x1, double y1, boolean doAntiAliasing)
+        {
+            double p0[] = {x0,y0,0};
+            double p1[] = {x1,y1,0};
+            double q0[] = VecMath.vxm(p0, xform);
+            double q1[] = VecMath.vxm(p1, xform);
+            mg.drawLine(q0[0], q0[1],
+                        q1[0], q1[1],
+                        doAntiAliasing);
+        }
 
         private static void accumulateMomentAndArea(double accumulator[/*3 or 4*/],
                                                     double increment[/*3 or 4*/])
@@ -11446,7 +11613,31 @@ OFF
         private boolean leftRightSymmetry = false;
         private int rotationalSymmetry = 1;
 
-        private double localToWorld[][] = VecMath.identitymat(4,3);
+        // XXX get rid of the following I think
+        private double localScaleMat[][];
+        private double rotMat[][];
+        private double transMat[][];
+        private double perspMat[][];
+        private double localToWorld[][]; // product of the above 4
+        { resetMats(); }
+        private void resetMats()
+        {
+            localScaleMat = VecMath.identitymat(4);
+            localScaleMat[2][2] = 0.; // flatten initially
+            rotMat = VecMath.identitymat(4);
+            transMat = VecMath.identitymat(4);
+            perspMat = new double[][] {
+                {1,0,0,0},
+                {0,1,0,0},
+                {0,0,1,-1./4.},
+                {0,0,-4.,1},
+            };
+            localToWorld = VecMath.mxmxmxm(localScaleMat,
+                                           rotMat,
+                                           transMat,
+                                           perspMat); // XXX TODO: no version that takes a destination?
+        }
+        private boolean draggingRotation = false;
 
 
     //
