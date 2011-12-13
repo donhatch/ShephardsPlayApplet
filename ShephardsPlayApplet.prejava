@@ -16,6 +16,7 @@ User should be able to:
 
 
 BUGS:
+    - rubberbanding not right in 3d
     - avg not being drawn in right place any more
     - lagoon exit colors not right any more (probably same issue?)
     - why do I need that extendAndOrthogonalize?  it shouldn't be getting non-orthogonal so quickly!
@@ -1093,7 +1094,7 @@ public class ShephardsPlayApplet
             System.out.println("===================================================================");
             System.out.println("Mouse:");
             System.out.println("    left: add or drag a vertex");
-            System.out.println("    middle: rotate picture in 3d");
+            System.out.println("    middle (or alt-left): rotate picture in 3d");
             System.out.println("    right click: delete a vertex");
             System.out.println("    shift-middle drag: pan entire picture");
             System.out.println("    shift-left drag: create new edge between two vertices");
@@ -2296,6 +2297,10 @@ public class ShephardsPlayApplet
                     double deltaX = thisP[0]-prevP[0];
                     double deltaY = thisP[1]-prevP[1];
 
+                    // too slow unless we multiply it by something!
+                    deltaX *= 5.;
+                    deltaY *= 5.;
+
                     if (true)
                     {
                         // rotate the rotate part...
@@ -3029,7 +3034,7 @@ public class ShephardsPlayApplet
                             // deleted something-- invalidate dual mesh
                             dirtyDualMesh();
                         }
-                        doContinuouslyDelaunayize.set(false);
+                        doContinuouslyDelaunayize.set(false); // otherwise it will mysteriously come back!
                         UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
@@ -3574,6 +3579,7 @@ public class ShephardsPlayApplet
                     }
                 } // drawLabels
 
+
             // PAINT/DISPLAY/DRAW
             public void paint(java.awt.Graphics frontBufferGraphics)
             {
@@ -3775,9 +3781,28 @@ public class ShephardsPlayApplet
                 java.awt.Color perpColorBad = darkRed;
                 java.awt.Color perpColorGood = darkGreen;
 
+                int nVerts = mesh.verts.size();
+                int nEdges = mesh.edges.size();
                 Mesh dualMesh = getDualMesh();
                 int nDualVerts = dualMesh.verts.size();
                 int nDualEdges = dualMesh.edges.size();
+                assert(nDualEdges == nEdges);
+
+                //
+                // Attempt to classify the primal elements
+                // as front facing, back facing, or side (neither front nor back).
+                //
+                int faceFacings[] = new int[nDualVerts+1]; // initially all 0 = FACING_UNKNOWN
+                int edgeFacings[] = new int[nEdges]; // initially all 0 = FACING_UNKNOWN
+                int vertFacings[] = new int[nVerts]; // initially all 0 = FACING_UNKNOWN
+                int dualFaceFacings[] = new int[nVerts]; // initially all 0 = FACING_UNKNOWN
+                int dualEdgeFacings[] = new int[nEdges]; // initially all 0 = FACING_UNKNOWN
+                int dualVertFacings[] = new int[nDualVerts+1]; // initially all 0 = FACING_UNKNOWN
+                getFacings(mg, mesh, dualMesh, faceFacings, edgeFacings, vertFacings);
+                getFacings(mg, dualMesh, mesh, dualFaceFacings, dualEdgeFacings, dualVertFacings);
+
+
+
                 int nOffBalanceCuts = -1;
 
                 if (true)
@@ -3812,7 +3837,6 @@ public class ShephardsPlayApplet
 
 
                         java.util.Hashtable edgeEndsToEdge = new java.util.Hashtable();
-                        int nEdges = mesh.edges.size();
                         assert(nEdges == dualMesh.edges.size());
                         FORI (iEdge, nEdges)
                         {
@@ -4316,7 +4340,6 @@ public class ShephardsPlayApplet
 
                                 {
                                     theNet = new Net(dualMesh, mesh);
-                                    int nEdges = dualMesh.edges.size();
                                     if (dualEdgeIsCut != null)
                                         FORI(iEdge, nEdges)
                                             if (dualEdgeIsCut[iEdge])
@@ -4617,6 +4640,10 @@ public class ShephardsPlayApplet
                             if (leftDualVert == null)
                                 continue; // primal face was not a triangle, or inside out
 
+                            if (!doShowInsideOutDualVerts
+                             && dualEdgeFacings[iDualEdge] == FACING_FRONT) // FRONT is BACK for dual, bleah
+                                continue;
+
                             mg.setColor(dualEdgeColors[dualEdge.myIndex()]);
 
                             Mesh.Vertex rightDualVert = dualEdge.initialVertex();
@@ -4730,10 +4757,12 @@ public class ShephardsPlayApplet
 
                         //System.out.println("    drawing dual vert at "+Arrays.toStringCompact(dualVert));
                         mg.setColor(dualVertColors[iDualVert]); // TODO: only if changed?
-                        mg.drawPoint(dualVert.x,
-                                     dualVert.y,
-                                     dualVert.hActual(),
-                                     showNet.get() ? 2 : 5);
+                        if (doShowInsideOutDualVerts
+                         || dualVertFacings[iDualVert] != FACING_FRONT) // FRONT is BACK for dual, bleah
+                            mg.drawPoint(dualVert.x,
+                                         dualVert.y,
+                                         dualVert.hActual(),
+                                         showNet.get() ? 2 : 5);
 
                     }
 
@@ -4955,6 +4984,7 @@ public class ShephardsPlayApplet
                 } // if (true) (draw dual diagram)
 
 
+
                 //
                 // Draw the primal mesh in white
                 //
@@ -4964,27 +4994,35 @@ public class ShephardsPlayApplet
                     mg.setColor(new java.awt.Color(240,240,240));
 
                     ArrayList verts = mesh.verts;
-                    FORIDOWN (iVert, verts.size())
+                    FORI (iVert, nVerts)
                     {
-                        Mesh.Vertex vert = (Mesh.Vertex)verts.get(iVert);
-                        mg.drawPoint(vert.x,
-                                     vert.y,
-                                     vert.hActual(),
-                                     3);
+                        if (doShowInsideOutDualVerts
+                         || vertFacings[iVert] != FACING_BACK)
+                        {
+                            Mesh.Vertex vert = (Mesh.Vertex)verts.get(iVert);
+                            mg.drawPoint(vert.x,
+                                         vert.y,
+                                         vert.hActual(),
+                                         3);
+                        }
                     }
 
                     if (showTriangles >= 2)
                     {
 
                         ArrayList edges = mesh.edges;
-                        FORIDOWN (iEdge, edges.size()/2)
+                        FORIDOWN (iWholeEdge, edges.size()/2)
                         {
-                            Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge*2);
-                            Mesh.Vertex v0 = edge.initialVertex();
-                            Mesh.Vertex v1 = edge.finalVertex();
-                            mg.drawLine(v0.x,v0.y,v0.hActual(),
-                                        v1.x,v1.y,v1.hActual(),
-                                        doAntiAliasing);
+                            if (doShowInsideOutDualVerts
+                             || edgeFacings[iWholeEdge*2] != FACING_BACK)
+                            {
+                                Mesh.Edge edge = (Mesh.Edge)edges.get(iWholeEdge*2);
+                                Mesh.Vertex v0 = edge.initialVertex();
+                                Mesh.Vertex v1 = edge.finalVertex();
+                                mg.drawLine(v0.x,v0.y,v0.hActual(),
+                                            v1.x,v1.y,v1.hActual(),
+                                            doAntiAliasing);
+                            }
                         }
                     }
                 }
@@ -5334,6 +5372,128 @@ public class ShephardsPlayApplet
             } // makeSureBackBufferIsRight
         } // class TheCanvas
 
+            private static final int FACING_UNKNOWN = 0; // assumed below
+            private static final int FACING_BACK = 1;
+            private static final int FACING_SIDE = 2;
+            private static final int FACING_FRONT = 3;
+            private static void getFacings(MyGraphics3D mg,
+                                           Mesh mesh, Mesh dualMesh,
+                                           int faceFacings[],
+                                           int edgeFacings[],
+                                           int vertFacings[])
+            {
+                int nVerts = mesh.verts.size();
+                int nEdges = mesh.edges.size();
+                int nDualVerts = dualMesh.verts.size();
+
+                double projectedVertCoords[][] = new double[nVerts][2];
+                ArrayList verts = mesh.verts;
+                FORI (iVert, nVerts)
+                {
+                    Mesh.Vertex vert = (Mesh.Vertex)verts.get(iVert);
+                    mg.xform(vert.x, vert.y, vert.hActual(),
+                             projectedVertCoords[iVert]);
+                }
+                // compute face facings...
+                //System.out.println("computing face facings");
+                FORI (iEdge, nEdges)
+                {
+                    Mesh.Edge edgeI = mesh.getEdge(iEdge);
+                    Mesh.Vertex leftDualVert = dualMesh.getEdge(iEdge).finalVertex();
+                    int iLeftFace = leftDualVert==null ? nDualVerts : leftDualVert.myIndex();
+                    if (faceFacings[iLeftFace] == FACING_UNKNOWN)
+                    {
+                        // fan from edge's initial vertex
+                        Mesh.Vertex v0 = edgeI.initialVertex();
+                        if (v0 == null)
+                            continue; // vertex is at infinity, can't compute anything here
+                        int i0 = v0.myIndex();
+                        double projectedFaceArea = 0.;
+                        for (Mesh.Edge edgeJ = edgeI.next();
+                             edgeJ.finalVertex() != v0;
+                             edgeJ = edgeJ.next())
+                        {
+                            Mesh.Vertex v1 = edgeJ.initialVertex();
+                            if (v1 == null)
+                                continue;
+                            Mesh.Vertex v2 = edgeJ.finalVertex();
+                            if (v2 == null)
+                                continue;
+                            int i1 = v1.myIndex();
+                            int i2 = v2.myIndex();
+                            projectedFaceArea += twiceTriangleArea(projectedVertCoords[i0],
+                                                                   projectedVertCoords[i1],
+                                                                   projectedVertCoords[i2]);
+                        }
+                        if (LT(projectedFaceArea, 0., SQR(1e-6)))
+                            faceFacings[iLeftFace] = FACING_BACK;
+                        else if (GT(projectedFaceArea, 0., SQR(1e-6)))
+                            faceFacings[iLeftFace] = FACING_FRONT;
+                        else
+                            faceFacings[iLeftFace] = FACING_SIDE;
+                    }
+                }
+                // compute edge facings...
+                //System.out.println("computing edge facings");
+                FORI (iEdge, nEdges)
+                {
+                    if (edgeFacings[iEdge] == FACING_UNKNOWN)
+                    {
+                        Mesh.Edge edgeI = mesh.getEdge(iEdge);
+                        Mesh.Edge dualEdgeI = dualMesh.getEdge(iEdge);
+                        Mesh.Vertex leftDualVert = dualEdgeI.finalVertex();
+                        Mesh.Vertex rightDualVert = dualEdgeI.initialVertex();
+                        int iLeftFace = leftDualVert==null ? nDualVerts : leftDualVert.myIndex();
+                        int iRightFace = rightDualVert==null ? nDualVerts : rightDualVert.myIndex();
+                        int leftFaceFacing = faceFacings[iLeftFace];
+                        int rightFaceFacing = faceFacings[iRightFace];
+                        edgeFacings[iEdge] = leftFaceFacing==rightFaceFacing ? leftFaceFacing
+                                                                             : FACING_SIDE;
+                        int oEdge = edgeI.opposite().myIndex();
+                        edgeFacings[oEdge] = edgeFacings[iEdge];
+                    }
+                }
+                // compute vert facings...
+                //System.out.println("computing vert facings");
+                FORI (iEdge, nEdges)
+                {
+                    // only need to do initial vertex-- edge.opposite() will do final vertex
+                    Mesh.Vertex v0 = mesh.getEdge(iEdge).initialVertex();
+                    if (v0 == null)
+                        continue;
+                    int i0 = v0.myIndex();
+                    if (vertFacings[i0] == FACING_UNKNOWN)
+                        vertFacings[i0] = edgeFacings[iEdge];
+                    else if (vertFacings[i0] != edgeFacings[iEdge])
+                        vertFacings[i0] = FACING_SIDE;
+                }
+
+                if (false)
+                {
+                    System.out.println("--------");
+                    final char facingToChar[] = {'?','-','0','+'};
+                    {
+                        StringBuffer sb = new StringBuffer();
+                        FORI (i, faceFacings.length)
+                            sb.append(facingToChar[faceFacings[i]]);
+                        System.out.println("    face facings: "+sb);
+                    }
+                    {
+                        StringBuffer sb = new StringBuffer();
+                        FORI (i, edgeFacings.length)
+                            sb.append(facingToChar[edgeFacings[i]]);
+                        System.out.println("    edge facings: "+sb);
+                    }
+                    {
+                        StringBuffer sb = new StringBuffer();
+                        FORI (i, vertFacings.length)
+                            sb.append(facingToChar[vertFacings[i]]);
+                        System.out.println("    vert facings: "+sb);
+                    }
+                    System.out.println("--------");
+                }
+            } // getFacings
+
             private void delaunayize()
             {
                 //
@@ -5345,19 +5505,14 @@ public class ShephardsPlayApplet
                 //
                 int nVerts = mesh.verts.size();
                 double verts[][] = new double[nVerts][/*3*/];
+                double vertsForHull[][] = new double[nVerts][/*3*/];
                 FORI (iVert, nVerts)
                 {
                     Mesh.Vertex v = mesh.getVert(iVert);
                     verts[iVert] = new double[]{v.x, v.y, v.h};
+                    vertsForHull[iVert] = new double[]{v.x, v.y, v.hActual()};
                 }
 
-                double vertsForHull[][] = new double[nVerts][3];
-                FORI (iVert, nVerts)
-                {
-                    vertsForHull[iVert][0] = verts[iVert][0];
-                    vertsForHull[iVert][1] = verts[iVert][1];
-                    vertsForHull[iVert][2] = verts[iVert][2] - .5 * (SQR(verts[iVert][0]) + SQR(verts[iVert][1]));
-                }
                 //PRINTARRAY(verts);
                 //PRINTARRAY(vertsForHull);
                 // normalize to range -1..1 in all three dimensions
@@ -5395,6 +5550,7 @@ public class ShephardsPlayApplet
                 // Analyze all the edges first before deleting any,
                 // so that we are only looking at triangle areas.
                 //
+                if (!doShowInsideOutDualVerts)
                 {
                     ArrayList edgesToDelete = new ArrayList();
                     int nEdges = mesh.edges.size();
