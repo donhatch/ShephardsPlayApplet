@@ -16,7 +16,7 @@ User should be able to:
 
 
 BUGS:
-    - some instability in the ray directions?
+    - facings still messed up for faces consisting of two rays
     - rubberbanding not right in 3d
     - avg not being drawn in right place any more
     - lagoon exit colors not right any more (probably same issue?)
@@ -37,6 +37,8 @@ BUGS:
             left is too right by 1 pixel
 
 TO DO:
+    - clip lines to eye plane rather than culling them if either end point is on wrong side
+    - do the math to pick/drag on the plane in 3d?  (even better eventually, the paraboloid! yeah!)
     - get change ambiguous doThis and doThat to this(), that(), thisFlag, thatFlag
     - time to show in 3d I think (project onto actual paraboloid)
     - if mouse press is close enough to a vertex, drag instead of create new...
@@ -2307,7 +2309,8 @@ public class ShephardsPlayApplet
                     deltaX *= 5.;
                     deltaY *= 5.;
 
-                    twirl += deltaX;
+                    if (tilt > 0. || deltaY > 0.) // so we ignore pure x jiggle when tilt is maxed
+                        twirl += deltaX;
                     tilt += deltaY;
 
                     while (twirl < -Math.PI) twirl += 2*Math.PI;
@@ -3429,7 +3432,7 @@ public class ShephardsPlayApplet
             }
 
                 // common code used twice
-                private void drawLabels(MyGraphics mg,
+                private void drawLabels(MyGraphics3D mg,
                                         Mesh mesh,
                                         boolean isDualMesh)
                 {
@@ -3499,6 +3502,7 @@ public class ShephardsPlayApplet
                             Mesh.Vertex vert = (Mesh.Vertex)verts.get(iVert);
                             double x = vert.x;
                             double y = vert.y;
+                            double z = vert.hActual();
                             double ang;
                             if (trySmartVertexAngles)
                             {
@@ -3516,6 +3520,7 @@ public class ShephardsPlayApplet
                             mg.drawString("v"+iVert,
                                           x+offx,
                                           y+offy,
+                                          z,
                                           -offx/offmax, offy/offmax);
                         }
                     }
@@ -3531,11 +3536,14 @@ public class ShephardsPlayApplet
                             double rayLength = 1.;
                             double x0 = (v0!=null ? v0.x : v1.x - edge.direction[0]*rayLength);
                             double y0 = (v0!=null ? v0.y : v1.y - edge.direction[1]*rayLength);
+                            double z0 = (v0!=null ? v0.hActual() : v1.hActual() - edge.direction[2]*rayLength);
                             double x1 = (v1!=null ? v1.x : v0.x + edge.direction[0]*rayLength);
                             double y1 = (v1!=null ? v1.y : v0.y + edge.direction[1]*rayLength);
+                            double z1 = (v1!=null ? v1.hActual() : v0.hActual() + edge.direction[2]*rayLength);
 
                             double x = (x0+x1)/2;
                             double y = (y0+y1)/2;
+                            double z = (z0+z1)/2;
                             double ang = Math.PI/2 + Math.atan2(y1-y0, x1-x0);
                             if (isDualMesh)
                                 ang += Math.PI;
@@ -3546,6 +3554,7 @@ public class ShephardsPlayApplet
                             mg.drawString("e"+iEdge,
                                           x+offx,
                                           y+offy,
+                                          z,
                                           -offx/offmax, offy/offmax);
                         }
                     }
@@ -4777,6 +4786,10 @@ public class ShephardsPlayApplet
                             int parentEdgeInd = theNet._vertToParentEdgeInd[iChild];
                             if (parentEdgeInd != -1)
                             {
+                                if (!doShowInsideOutDualVerts
+                                 && dualEdgeFacings[parentEdgeInd] == FACING_FRONT) // FRONT is BACK for dual, bleah
+                                    continue;
+
                                 Mesh.Edge parentEdge = dualMesh.getEdge(parentEdgeInd);
                                 Mesh.Vertex parent = parentEdge.finalVertex();
                                 if (parent != null)
@@ -5355,12 +5368,31 @@ public class ShephardsPlayApplet
 
                 double projectedVertCoords[][] = new double[nVerts][2];
                 ArrayList verts = mesh.verts;
+                ArrayList edges = mesh.edges;
                 FORI (iVert, nVerts)
                 {
                     Mesh.Vertex vert = (Mesh.Vertex)verts.get(iVert);
                     mg.xform(vert.x, vert.y, vert.hActual(),
                              projectedVertCoords[iVert]);
                 }
+                double projectedRayHeadCoords[][] = new double[nEdges][2];
+                FORI (iEdge, nEdges)
+                {
+                    Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
+                    Mesh.Vertex v1 = edge.finalVertex();
+                    if (v1 != null)
+                        projectedRayHeadCoords[iEdge] = projectedVertCoords[v1.myIndex()];
+                    else
+                    {
+                        Mesh.Vertex v0 = edge.initialVertex();
+                        mg.xform(v0.x+edge.direction[0],
+                                 v0.y+edge.direction[1],
+                                 v0.hActual()+edge.direction[2],
+                                 projectedRayHeadCoords[iEdge]);
+                    }
+                }
+
+
                 // compute face facings...
                 //System.out.println("computing face facings");
                 FORI (iEdge, nEdges)
@@ -5376,21 +5408,17 @@ public class ShephardsPlayApplet
                             continue; // vertex is at infinity, can't compute anything here
                         int i0 = v0.myIndex();
                         double projectedFaceArea = 0.;
+
                         for (Mesh.Edge edgeJ = edgeI.next();
                              edgeJ.finalVertex() != v0;
                              edgeJ = edgeJ.next())
                         {
-                            Mesh.Vertex v1 = edgeJ.initialVertex();
-                            if (v1 == null)
-                                continue;
-                            Mesh.Vertex v2 = edgeJ.finalVertex();
-                            if (v2 == null)
-                                continue;
-                            int i1 = v1.myIndex();
-                            int i2 = v2.myIndex();
                             projectedFaceArea += twiceTriangleArea(projectedVertCoords[i0],
-                                                                   projectedVertCoords[i1],
-                                                                   projectedVertCoords[i2]);
+
+                                                                   projectedRayHeadCoords[edgeJ.opposite().myIndex()],
+
+                                                                   projectedRayHeadCoords[edgeJ.myIndex()]
+                                                                   );
                         }
                         if (LT(projectedFaceArea, 0., SQR(1e-6)))
                             faceFacings[iLeftFace] = FACING_BACK;
@@ -5400,7 +5428,7 @@ public class ShephardsPlayApplet
                             faceFacings[iLeftFace] = FACING_SIDE;
                     }
                 }
-                // compute edge facings...
+                // compute edge facings from incident face facings...
                 //System.out.println("computing edge facings");
                 FORI (iEdge, nEdges)
                 {
@@ -5420,7 +5448,7 @@ public class ShephardsPlayApplet
                         edgeFacings[oEdge] = edgeFacings[iEdge];
                     }
                 }
-                // compute vert facings...
+                // compute vert facings from incident edge facings...
                 //System.out.println("computing vert facings");
                 FORI (iEdge, nEdges)
                 {
