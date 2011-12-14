@@ -4639,7 +4639,7 @@ public class ShephardsPlayApplet
                         {
                             if (nPasses == 2
                              && (theNet._edgeStatuses[iDualEdge]==Net.CUT) != (iPass==1))
-                                continue; // draw cuts iff iPass==1
+                                continue; // when two passes, draw cuts iff iPass==1
 
                             Mesh.Edge dualEdge = dualMesh.getEdge(iDualEdge);
                             Mesh.Vertex leftDualVert = dualEdge.finalVertex();
@@ -4652,6 +4652,7 @@ public class ShephardsPlayApplet
 
                             mg.setColor(dualEdgeColors[dualEdge.myIndex()]);
 
+                            // dual edge goes from right to left so...
                             Mesh.Vertex rightDualVert = dualEdge.initialVertex();
 
                             if (rightDualVert != null)
@@ -4665,19 +4666,30 @@ public class ShephardsPlayApplet
                             else
                             {
                                 Mesh.Edge edge = mesh.getEdge(iDualEdge);
-                                // Draw a ray out to infinity
-                                double v0[] = {edge.initialVertex().x,
-                                               edge.initialVertex().y};
-                                double v1[] = {edge.finalVertex().x,
-                                               edge.finalVertex().y};
-                                double toEdgeVec[] = VecMath.xv2(
-                                                         VecMath.vmv(v0, v1));
-                                toEdgeVec = (double[])Arrays.append(toEdgeVec, 0.); // XXX TODO: get this right
+                                // Draw a ray out to infinity.
+                                // In 2d, this is easy-- its direction is just the primal edge dir
+                                // rotated 90 degrees.
+                                // But in 3d, what should it be?
+                                // Well, the line is the intersection of two dual face planes,
+                                // corresponding to two primal vertices.
+                                // The line direction is the cross product
+                                // of the two plane normal dirs.
+                                // Luckily, the plane normal dirs are functions
+                                // of the primal xy's (the h's don't matter).
+                                // So, what is the surface normal (not necessarily unit length)
+                                // of the paraboloid at x,y,(x^2+y^2)/2?
+                                // It's x,y,1.
+                                //
+                                Mesh.Vertex v0 = edge.initialVertex();
+                                Mesh.Vertex v1 = edge.finalVertex();
+                                double n0[] = {v0.x, v0.y, 1};
+                                double n1[] = {v1.x, v1.y, 1};
+                                double toEdgeVec[] = VecMath.vxv3(n1,n0); // seems like this whole section of code is kind of backwards, it's it?
                                 VecMath.normalize(toEdgeVec, toEdgeVec);
                                 double rayLength = 1.; // for edges to infinity
                                 destPoint[0] = leftDualVert.x + rayLength*toEdgeVec[0];
                                 destPoint[1] = leftDualVert.y + rayLength*toEdgeVec[1];
-                                destPoint[2] = (leftDualVert.h + rayLength*toEdgeVec[2]) - .5 * (SQR(destPoint[0]) + SQR(destPoint[1]));
+                                destPoint[2] = leftDualVert.hActual() + rayLength*toEdgeVec[2];
                             }
 
                             if ((iDualEdge == beingDraggedNetEdgeIndex
