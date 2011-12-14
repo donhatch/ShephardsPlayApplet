@@ -4667,25 +4667,8 @@ public class ShephardsPlayApplet
                             {
                                 Mesh.Edge edge = mesh.getEdge(iDualEdge);
                                 // Draw a ray out to infinity.
-                                // In 2d, this is easy-- its direction is just the primal edge dir
-                                // rotated 90 degrees.
-                                // But in 3d, what should it be?
-                                // Well, the line is the intersection of two dual face planes,
-                                // corresponding to two primal vertices.
-                                // The line direction is the cross product
-                                // of the two plane normal dirs.
-                                // Luckily, the plane normal dirs are functions
-                                // of the primal xy's (the h's don't matter).
-                                // So, what is the surface normal (not necessarily unit length)
-                                // of the paraboloid at x,y,(x^2+y^2)/2?
-                                // It's x,y,1.
-                                //
-                                Mesh.Vertex v0 = edge.initialVertex();
-                                Mesh.Vertex v1 = edge.finalVertex();
-                                double n0[] = {v0.x, v0.y, 1};
-                                double n1[] = {v1.x, v1.y, 1};
-                                double toEdgeVec[] = VecMath.vxv3(n1,n0); // seems like this whole section of code is kind of backwards, it's it?
-                                VecMath.normalize(toEdgeVec, toEdgeVec);
+                                double toEdgeVec[] = dualEdge.opposite().direction; // XXX seems like this whole secion is kind of backwards, isn't it?
+
                                 double rayLength = 1.; // for edges to infinity
                                 destPoint[0] = leftDualVert.x + rayLength*toEdgeVec[0];
                                 destPoint[1] = leftDualVert.y + rayLength*toEdgeVec[1];
@@ -4860,7 +4843,7 @@ public class ShephardsPlayApplet
                                     {
                                         double x = child.x - pos * parentEdge.direction[0];
                                         double y = child.y - pos * parentEdge.direction[1];
-                                        double h = child.hActual() - pos * 0; // XXX TODO: fix this
+                                        double h = child.hActual() - pos * parentEdge.direction[2];
                                         mg.drawPoint(x, y, h, 3);
                                     }
                                 }
@@ -10096,22 +10079,35 @@ OFF
                         dualEdge.direction = VecMath.normalize(VecMath.vmv(
                             new double[]{dualEdge.finalVertex().x,
                                          dualEdge.finalVertex().y,
-                                         dualEdge.finalVertex().h},
+                                         dualEdge.finalVertex().hActual()},
                             new double[]{dualEdge._initialVertex.x,
                                          dualEdge._initialVertex.y,
-                                         dualEdge._initialVertex.h}));
+                                         dualEdge._initialVertex.hActual()}));
                     }
                     else
                     {
                         // It's a ray.  Compute the direction
                         // as the perpendicular to the corresponding primal edge.
+                        // In 2d, this is easy-- its direction is just the primal edge dir
+                        // rotated 90 degrees.
+                        // But in 3d, what should it be?
+                        // Well, the line is the intersection of two dual face planes,
+                        // corresponding to two primal vertices.
+                        // So the line direction is the cross product
+                        // of the two plane normal dirs.
+                        // Luckily, the plane normal dirs are functions
+                        // of the primal xy's (the h's don't matter; they just push the plane in or out).
+                        // So, what is the surface normal (not necessarily unit length)
+                        // of the paraboloid at x,y,(x^2+y^2)/2?
+                        // It's x,y,1.
+                        // That was easy.
+                        //
                         Mesh.Edge primalEdge = primal.getEdge(iEdge);
-                        double v0[] = {primalEdge._initialVertex.x,
-                                       primalEdge._initialVertex.y};
-                        double v1[] = {primalEdge.finalVertex().x,
-                                       primalEdge.finalVertex().y};
-                        dualEdge.direction = VecMath.normalize(VecMath.xv2(VecMath.vmv(v1, v0)));
-                        dualEdge.direction = (double[])Arrays.append(dualEdge.direction, 0.); // XXX TODO: get a real direction in 3d if possible? not sure how
+                        Mesh.Vertex v0 = primalEdge.initialVertex();
+                        Mesh.Vertex v1 = primalEdge.finalVertex();
+                        double n0[] = {v0.x, v0.y, 1};
+                        double n1[] = {v1.x, v1.y, 1};
+                        dualEdge.direction = VecMath.normalize(VecMath.vxv3(n0,n1));
                     }
 
                     assert(dualEdge._opposite.direction == null);
