@@ -16,6 +16,7 @@ User should be able to:
 
 
 BUGS:
+    - some instability in the ray directions?
     - rubberbanding not right in 3d
     - avg not being drawn in right place any more
     - lagoon exit colors not right any more (probably same issue?)
@@ -255,7 +256,7 @@ public class ShephardsPlayApplet
                             mesh = new Mesh();
                             selectedTris = new int[][] {};
                             selectedDualVertIndices = new int[] {};
-                            resetMats();
+                            resetLocalToWorld();
                             if (doContinuouslyDelaunayize.get()) delaunayize();
                             dirtyDualMesh(); // before snapping after state, so theNet will be cleared XXX aren't there a zillion places we're neglecting to take this into account?
 
@@ -1503,7 +1504,7 @@ public class ShephardsPlayApplet
 
             {
                 // XXX do I want this?
-                resetMats();
+                resetLocalToWorld();
             }
             {
                 double minx = Double.POSITIVE_INFINITY;
@@ -2306,50 +2307,22 @@ public class ShephardsPlayApplet
                     deltaX *= 5.;
                     deltaY *= 5.;
 
-                    if (true)
+                    twirl += deltaX;
+                    tilt += deltaY;
+
+                    while (twirl < -Math.PI) twirl += 2*Math.PI;
+                    while (twirl >  Math.PI) twirl -= 2*Math.PI;
+
+                    // any excess tilt is turned into twirl towards zero
+                    if (tilt < 0.)
                     {
-                        // rotate the rotate part...
-                        double rotMat33[][] = new double[3][3];
-                        VecMath.copymat(rotMat33, rotMat);
-
-                        {
-                            // don't use axis-angle,
-                            // use tilt (z->y)
-                            // and twirl (x->y)
-                            double cx = Math.cos(deltaX);
-                            double sx = Math.sin(deltaX);
-                            double cy = Math.cos(deltaY);
-                            double sy = Math.sin(deltaY);
-                            double twirlMat[][] = {
-                                {cx, sx, 0},
-                                {-sx, cx, 0},
-                                {0, 0, 1},
-                            };
-                            double tiltMat[][] = {
-                                {1, 0, 0},
-                                {0, cy,-sy},
-                                {0, sy, cy},
-                            };
-                            rotMat33 = VecMath.mxmxm(twirlMat, rotMat33, tiltMat);
-                        }
-
-                        // restrict +z axis to yz plane.
-                        // that is, rotMat33[2][0] must be 0.
-                        // (it will be, aside from accumulated roundoff error,
-                        // since we're only doing tilts and twirls)
-                        // also, its y component must be non-negative.
-                        rotMat33[2][0] = 0.;
-                        rotMat33[2][1] = MAX(rotMat33[2][1], 0.);
-                        VecMath.vxv3(rotMat33[0],rotMat33[1],rotMat33[2]);
-                        VecMath.vxv3(rotMat33[1],rotMat33[2],rotMat33[0]);
-
-                        // XXX TODO: shouldn't need this so soon I don't think??
-                        VecMath.extendAndOrthogonalize(3,3, rotMat33, rotMat33);
-                        VecMath.normalize(rotMat33[0], rotMat33[0]);
-                        VecMath.normalize(rotMat33[1], rotMat33[1]);
-                        VecMath.normalize(rotMat33[2], rotMat33[2]);
-                        VecMath.copymat(rotMat, rotMat33);
+                        if (twirl < 0.)
+                            twirl = MIN(twirl + -tilt, 0.);
+                        else
+                            twirl = MAX(twirl - -tilt, 0.);
+                        tilt = 0.;
                     }
+                    tilt = MIN(tilt, Math.PI); // XXX do similar transfer?
 
                     if (true)
                     {
@@ -2358,24 +2331,17 @@ public class ShephardsPlayApplet
                         // make it so if the z axis didn't rotate much, z scale is 0.
                         // this is so that all the perpendiculars and stuff will look right
                         // when looking at it top-down.
-                        double zLocalInWorld[] = rotMat[2];
-                        double angle = VecMath.angleBetweenUnitVectors(3, zLocalInWorld, new double[]{0,0,1});
-                        if (angle <= DTOR(10.))
+                        if (tilt < DTOR(10.))
                         {
-                            localScaleMat[2][2] = angle / DTOR(10.);
+                            localScale[2] = tilt / DTOR(10.);
                             //OUT("flattish");
                         }
                         else
                         {
-                            localScaleMat[2][2] = 1.;
+                            localScale[2] = 1.;
                             //OUT("bumpy");
                         }
                     }
-
-                    localToWorld = VecMath.mxmxmxm(localScaleMat,
-                                                   rotMat,
-                                                   transMat,
-                                                   perspMat); // XXX TODO: no version that takes a destination?
                 }
 
                 if (button1IsDown || button2IsDown) // XXX wean away from the button2IsDown thing
@@ -3231,7 +3197,7 @@ public class ShephardsPlayApplet
                         {
                             showNet.set(false); // so user won't get confused when clicking doesn't make verts appear
                         }
-                        resetMats();
+                        resetLocalToWorld();
                         mesh = new Mesh();
                         selectedTris = new int[][] {};
                         selectedDualVertIndices = new int[] {};
@@ -3611,7 +3577,7 @@ public class ShephardsPlayApplet
                 MyGraphics3D mg = new MyGraphics3D(g, size,
                                         -size.width/minSize,size.width/minSize,
                                         -size.height/minSize,size.height/minSize,
-                                        localToWorld);
+                                        getLocalToWorld());
                 mostRecentGraphics = mg;
 
                 if (implementAntiAliasingInHardware)
@@ -11782,29 +11748,52 @@ OFF
         private boolean leftRightSymmetry = false;
         private int rotationalSymmetry = 1;
 
-        // XXX get rid of the following I think
-        private double localScaleMat[][];
-        private double rotMat[][];
-        private double transMat[][];
-        private double perspMat[][];
-        private double localToWorld[][]; // product of the above 4
-        { resetMats(); }
-        private void resetMats()
+
+        private double localScale[];
+        private double twirl; // x->y
+        private double tilt; // z->y
+        private double eyeW[];
+        private double localToWorld[][]; // product of matrices of the above 4
+        { resetLocalToWorld(); }
+        private void resetLocalToWorld()
         {
-            localScaleMat = VecMath.identitymat(4);
-            localScaleMat[2][2] = 0.; // flatten initially
-            rotMat = VecMath.identitymat(4);
-            transMat = VecMath.identitymat(4);
-            perspMat = new double[][] {
+            localScale = new double[] {1,1,1};
+            twirl = 0.;
+            tilt = 0.;
+            eyeW = new double[] {0.,0.,4.}; // XXX doesn't work if not on z axis
+        }
+        private double[][] getLocalToWorld()
+        {
+            double localScaleMat[][] = {
+                {localScale[0],0,0,0},
+                {0,localScale[1],0,0},
+                {0,0,localScale[2],0},
+                {0,0,0,            1},
+            };
+            double cx = Math.cos(twirl);
+            double sx = Math.sin(twirl);
+            double cy = Math.cos(tilt);
+            double sy = Math.sin(tilt);
+            double twirlMat[][] = {
+                { cx, sx, 0, 0},
+                {-sx, cx, 0, 0},
+                { 0,   0, 1, 0},
+                { 0,   0, 0, 1},
+            };
+            double tiltMat[][] = {
+                {1, 0,  0,  0},
+                {0, cy,-sy, 0},
+                {0, sy, cy, 0},
+                {0, 0, 0,   1},
+            };
+            // XXX the following assumes the eye is on the Z axis
+            double perspMat[][] = new double[][] {
                 {1,0,0,0},
                 {0,1,0,0},
-                {0,0,1,-1./4.},
-                {0,0,-4.,1},
+                {0,0,1,-1./eyeW[2]},
+                {0,0,-eyeW[2],1},
             };
-            localToWorld = VecMath.mxmxmxm(localScaleMat,
-                                           rotMat,
-                                           transMat,
-                                           perspMat); // XXX TODO: no version that takes a destination?
+            return VecMath.mxmxmxm(localScaleMat, twirlMat, tiltMat, perspMat);
         }
         private boolean draggingRotation = false;
 
