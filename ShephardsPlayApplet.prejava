@@ -16,10 +16,18 @@ User should be able to:
 
 
 BUGS:
+    - clear, make points in order:
+              1
+              |\\
+              | 0-3
+              |//
+              2
+      then delete 2->3 and 1->3 in order, to make a whisker 0->3.
+      that works, but doing it in various other orders doesn't??
     - rubberbanding not right in 3d
-    - avg not being drawn in right place any more
+    - avg not being drawn in right place any more (or at all?)
     - lagoon exit colors not right any more (probably same issue?)
-    - why do I need that extendAndOrthogonalize?  it shouldn't be getting non-orthogonal so quickly!
+    - why do I need that extendAndOrthogonalize?  it shouldn't be getting non-orthogonal so quickly! (that was when using trackball... maybe a moot issue now)
     - painting doesn't happen continuously when dragging when there's a lot on the screen! (it doesn't update til you stop dragging) ARGH!
     - miniball still not handling dup vertices well
     - can't run it with donhatchsw.jar?? can build it though! (using ; instead of :)
@@ -38,7 +46,7 @@ BUGS:
 TO DO:
     - clip lines to eye plane rather than culling them if either end point is on wrong side
     - do the math to pick/drag on the plane in 3d?  (even better eventually, the paraboloid! yeah!)
-    - get change ambiguous doThis and doThat to this(), that(), thisFlag, thatFlag
+    - get change ambiguous doThis and doThat to this(), that(), thisFlag, thatFlag?
     - time to show in 3d I think (project onto actual paraboloid)
     - if mouse press is close enough to a vertex, drag instead of create new...
       "close enough" should be in pixels.
@@ -2308,14 +2316,17 @@ public class ShephardsPlayApplet
                     deltaX *= 5.;
                     deltaY *= 5.;
 
-                    if (tilt > 0. || deltaY > 0.) // so we ignore pure x jiggle when tilt is maxed
+                    // so we ignore pure x jiggle when tilt is maxed...
+                    if (!(tilt <= 0. && deltaY <= 0.)
+                     && !(tilt >= Math.PI && deltaY >= 0))
                         twirl += deltaX;
                     tilt += deltaY;
 
                     while (twirl < -Math.PI) twirl += 2*Math.PI;
                     while (twirl >  Math.PI) twirl -= 2*Math.PI;
 
-                    // any excess tilt is turned into twirl towards zero
+                    // any excess tilt is turned into twirl towards zero,
+                    // making it park at tilt=0, twirl=0
                     if (tilt < 0.)
                     {
                         if (twirl < 0.)
@@ -2324,7 +2335,14 @@ public class ShephardsPlayApplet
                             twirl = MAX(twirl - -tilt, 0.);
                         tilt = 0.;
                     }
-                    tilt = MIN(tilt, Math.PI); // XXX do similar transfer?
+                    else if (tilt > Math.PI)
+                    {
+                        if (twirl < 0.)
+                            twirl = MIN(twirl + (tilt-Math.PI), 0.);
+                        else
+                            twirl = MAX(twirl - (tilt-Math.PI), 0.);
+                        tilt = Math.PI;
+                    }
 
                     if (true)
                     {
@@ -2335,12 +2353,12 @@ public class ShephardsPlayApplet
                         // when looking at it top-down.
                         if (tilt < DTOR(10.))
                         {
-                            localScale[2] = tilt / DTOR(10.);
+                            localScaleZ = tilt / DTOR(10.);
                             //OUT("flattish");
                         }
                         else
                         {
-                            localScale[2] = 1.;
+                            localScaleZ = 1.;
                             //OUT("bumpy");
                         }
                     }
@@ -3023,6 +3041,7 @@ public class ShephardsPlayApplet
                         }
                         FORIDOWN (iVert, mesh.verts.size())
                             mesh.getVert(iVert).h = 0.;
+                        dirtyDualMesh();
                         if (doContinuouslyDelaunayize.get()) delaunayize();
                         UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
@@ -3433,7 +3452,8 @@ public class ShephardsPlayApplet
                 // common code used twice
                 private void drawLabels(MyGraphics3D mg,
                                         Mesh mesh,
-                                        boolean isDualMesh)
+                                        boolean isDualMesh,
+                                        double edgeInitialCoords[][]) // optional-- only used for dual... for primal, we just get from verts directly
                 {
                     boolean trySmartVertexAngles = true;
 
@@ -3532,13 +3552,28 @@ public class ShephardsPlayApplet
                             Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
                             Mesh.Vertex v0 = edge.initialVertex();
                             Mesh.Vertex v1 = edge.finalVertex();
-                            double rayLength = 1.;
-                            double x0 = (v0!=null ? v0.x : v1.x - edge.direction[0]*rayLength);
-                            double y0 = (v0!=null ? v0.y : v1.y - edge.direction[1]*rayLength);
-                            double z0 = (v0!=null ? v0.hActual() : v1.hActual() - edge.direction[2]*rayLength);
-                            double x1 = (v1!=null ? v1.x : v0.x + edge.direction[0]*rayLength);
-                            double y1 = (v1!=null ? v1.y : v0.y + edge.direction[1]*rayLength);
-                            double z1 = (v1!=null ? v1.hActual() : v0.hActual() + edge.direction[2]*rayLength);
+
+                            double x0,y0,z0, x1,y1,z1;
+                            if (edgeInitialCoords != null)
+                            {
+                                int oEdge = edge.opposite().myIndex();
+                                x0 = edgeInitialCoords[iEdge][0];
+                                y0 = edgeInitialCoords[iEdge][1];
+                                z0 = edgeInitialCoords[iEdge][2];
+                                x1 = edgeInitialCoords[oEdge][0];
+                                y1 = edgeInitialCoords[oEdge][1];
+                                z1 = edgeInitialCoords[oEdge][2];
+                            }
+                            else
+                            {
+                                double rayLength = 1.;
+                                x0 = (v0!=null ? v0.x : v1.x - edge.direction[0]*rayLength);
+                                y0 = (v0!=null ? v0.y : v1.y - edge.direction[1]*rayLength);
+                                z0 = (v0!=null ? v0.hActual() : v1.hActual() - edge.direction[2]*rayLength);
+                                x1 = (v1!=null ? v1.x : v0.x + edge.direction[0]*rayLength);
+                                y1 = (v1!=null ? v1.y : v0.y + edge.direction[1]*rayLength);
+                                z1 = (v1!=null ? v1.hActual() : v0.hActual() + edge.direction[2]*rayLength);
+                            }
 
                             double x = (x0+x1)/2;
                             double y = (y0+y1)/2;
@@ -3769,17 +3804,86 @@ public class ShephardsPlayApplet
                 assert(nDualEdges == nEdges);
 
                 //
-                // Attempt to classify the primal elements
+                // Gather coords of dual verts and dual ray ends.
+                // dualEdgeInitialCoords[iDualEdge] will be dualVertCoords[initial vertex]
+                // if there is an initial vertex, otherwise an appropriately computed
+                // place to draw the edge from.
+                //
+                double dualVertCoords[][] = new double[nDualVerts][];
+                double dualEdgeInitialCoords[][] = new double[nEdges][];
+                {
+                    FORI (iDualVert, nDualVerts)
+                    {
+                        Mesh.Vertex v = dualMesh.getVert(iDualVert);
+                        dualVertCoords[iDualVert] = new double[]{v.x, v.y, v.hActual()};
+                    }
+                    FORI (iDualEdge, nDualEdges)
+                    {
+                        Mesh.Edge dualEdge = dualMesh.getEdge(iDualEdge);
+                        Mesh.Vertex v0 = dualEdge.initialVertex();
+                        if (v0 != null)
+                            dualEdgeInitialCoords[iDualEdge] = dualVertCoords[v0.myIndex()];
+                        else
+                        {
+                            Mesh.Vertex v1 = dualEdge.finalVertex();
+                            if (v1 != null)
+                            {
+                                dualEdgeInitialCoords[iDualEdge] = new double[] {
+                                    v1.x - dualEdge.direction[0],
+                                    v1.y - dualEdge.direction[1],
+                                    (v1.hActual() - dualEdge.direction[2]),
+                                };
+                            }
+                            else
+                            {
+                                // Both ends infinite.
+                                // This edge is the dual of an isolated edge or whisker
+                                // in the primal.
+                                // In this case we want to draw a perpendicular line,
+                                // of length 1.
+                                //
+                                // We know the edge direction,
+                                // we need its center.
+                                // this will lie directly above (or below)
+                                // the point on the dual (original primal) edge line
+                                // that's deepest in the paraboloid.
+                                // the formula for this has to be
+                                // lerp(w0,w1,t) where t is some simple
+                                // multiple of w0.h-w1.h I bet.
+                                Mesh.Edge primalEdge = mesh.getEdge(iDualEdge);
+                                Mesh.Vertex w0 = primalEdge.initialVertex();
+                                Mesh.Vertex w1 = primalEdge.finalVertex();
+                                double t = .5 + (w0.h - w1.h) / (SQR(w1.x-w0.x)+SQR(w1.y-w0.y)); // XXX beware the zero divide
+                                double p[] = {LERP(w0.x,w1.x,t),
+                                              LERP(w0.y,w1.y,t),
+                                              LERP(w0.hActual(),w1.hActual(),t)};
+                                // whatever depth it was below the paraboloid, raise it to that height above it for the dual
+                                p[2] = LERP(p[2], -.5*(SQR(p[0])+SQR(p[1])), 2.);
+                                VecMath.vpsxv(p, p, .5, dualEdge.direction);
+                                dualEdgeInitialCoords[iDualEdge] = p;
+                                // XXX might have direction backwards... no big deal, this isn't used for much except drawing the edge, it's okay if we draw it backwards
+                            }
+                        }
+                    }
+                }
+
+
+                //
+                // Classify the primal and dual elements
                 // as front facing, back facing, or side (neither front nor back).
                 //
-                int faceFacings[] = new int[nDualVerts+1]; // initially all 0 = FACING_UNKNOWN
-                int edgeFacings[] = new int[nEdges]; // initially all 0 = FACING_UNKNOWN
-                int vertFacings[] = new int[nVerts]; // initially all 0 = FACING_UNKNOWN
-                int dualFaceFacings[] = new int[nVerts]; // initially all 0 = FACING_UNKNOWN
-                int dualEdgeFacings[] = new int[nEdges]; // initially all 0 = FACING_UNKNOWN
-                int dualVertFacings[] = new int[nDualVerts+1]; // initially all 0 = FACING_UNKNOWN
-                getFacings(mg, mesh, dualMesh, faceFacings, edgeFacings, vertFacings);
-                getFacings(mg, dualMesh, mesh, dualFaceFacings, dualEdgeFacings, dualVertFacings);
+                int faceFacings[] = new int[nDualVerts+1];
+                int edgeFacings[] = new int[nEdges];
+                int vertFacings[] = new int[nVerts]; 
+                int dualFaceFacings[] = new int[nVerts];
+                int dualEdgeFacings[] = new int[nEdges];
+                int dualVertFacings[] = new int[nDualVerts+1];
+                double eyeInLocalSpace[] = VecMath.mxv(getRotMat(), eye); // multiply on wrong side, i.e. apply transpose i.e. inverse
+                eyeInLocalSpace[2] /= MAX(localScaleZ, 1e-6);
+                getFacings(eyeInLocalSpace, mesh, dualMesh, faceFacings, edgeFacings, vertFacings);
+                getFacings(eyeInLocalSpace, dualMesh, mesh, dualFaceFacings, dualEdgeFacings, dualVertFacings);
+                PRINTARRAY(faceFacings);
+                PRINTARRAY(dualFaceFacings);
 
                 //
                 // Draw the primal mesh in white.
@@ -3922,7 +4026,7 @@ public class ShephardsPlayApplet
                         // XXX GET RID OF THIS FIRST WAY!
                         double areaSum = 0.;
                         double moment[] = {0.,0.};
-                        double dualVertCoords[] = new double[2]; // scratch for loop
+                        double dualVertCoord[] = new double[2]; // scratch for loop
                         FORI (i, selectedDualVertIndices.length)
                         {
                             int ind = selectedDualVertIndices[i];
@@ -3930,11 +4034,11 @@ public class ShephardsPlayApplet
                                 continue;
                             dualVertColors[ind] = dualVertSelectionColor;
                             Mesh.Vertex dualVert = dualMesh.getVert(ind);
-                            dualVertCoords[0] = dualVert.x;
-                            dualVertCoords[1] = dualVert.y;
+                            dualVertCoord[0] = dualVert.x;
+                            dualVertCoord[1] = dualVert.y;
                             VecMath.vpsxv(moment,
                                           moment,
-                                          dualVert.weight, dualVertCoords);
+                                          dualVert.weight, dualVertCoord);
                             areaSum += dualVert.weight;
                         }
                         if (areaSum != 0.)
@@ -4518,14 +4622,15 @@ public class ShephardsPlayApplet
                                         else
                                             mg.setColor(perpColorBad);
 
-                                        // draw perpendicular at the zero level
+                                        // draw perpendicular at the zero level (not at the vertex),
+                                        // to emphasize the wrongness if viewing non-orthogonally
                                         double rayLength = 1.;
                                         mg.drawLine(initialVertex.x - rayLength * dualEdge.direction[1],
                                                     initialVertex.y + rayLength * dualEdge.direction[0],
-                                                    initialVertex.hActual(),
+                                                    0,
                                                     initialVertex.x + rayLength * dualEdge.direction[1],
                                                     initialVertex.y - rayLength * dualEdge.direction[0],
-                                                    initialVertex.hActual(),
+                                                    0,
                                                     doAntiAliasing);
                                     }
                                 }
@@ -4656,116 +4761,34 @@ public class ShephardsPlayApplet
                     // we draw the non-cut edges first, then the cut edges--
                     // this makes the tree appear more connected.
                     //
-                    double destPoint[] = new double[3]; // scratch for loop
-                    int nPasses = showNet.get() ? 2 : 1;
-                    FORI (iPass, nPasses)
-                        FORIDOWN (iDualEdge, mesh.edges.size())
-                        {
-                            if (nPasses == 2
-                             && (theNet._edgeStatuses[iDualEdge]==Net.CUT) != (iPass==1))
-                                continue; // when two passes, draw cuts iff iPass==1
-
-                            Mesh.Edge dualEdge = dualMesh.getEdge(iDualEdge);
-                            Mesh.Vertex leftDualVert = dualEdge.finalVertex();
-                            if (leftDualVert == null)
-                                continue; // primal face was not a triangle, or inside out
-
-                            if (!doShowInsideOutDualVerts
-                             && dualEdgeFacings[iDualEdge] == FACING_FRONT) // FRONT is BACK for dual, bleah
-                                continue;
-
-                            mg.setColor(dualEdgeColors[dualEdge.myIndex()]);
-
-                            // dual edge goes from right to left so...
-                            Mesh.Vertex rightDualVert = dualEdge.initialVertex();
-
-                            if (rightDualVert != null)
-                            {
-                                if (leftDualVert.myIndex() >= rightDualVert.myIndex())
-                                    continue; // don't bother drawing it in both directions
-                                destPoint[0] = rightDualVert.x;
-                                destPoint[1] = rightDualVert.y;
-                                destPoint[2] = rightDualVert.hActual();
-                            }
-                            else
-                            {
-                                Mesh.Edge edge = mesh.getEdge(iDualEdge);
-                                // Draw a ray out to infinity.
-                                double toEdgeVec[] = dualEdge.opposite().direction; // XXX seems like this whole secion is kind of backwards, isn't it?
-
-                                double rayLength = 1.; // for edges to infinity
-                                destPoint[0] = leftDualVert.x + rayLength*toEdgeVec[0];
-                                destPoint[1] = leftDualVert.y + rayLength*toEdgeVec[1];
-                                destPoint[2] = leftDualVert.hActual() + rayLength*toEdgeVec[2];
-                            }
-
-                            if ((iDualEdge == beingDraggedNetEdgeIndex
-                             || dualMesh.getEdge(iDualEdge).opposite().myIndex() == beingDraggedNetEdgeIndex)
-                             && VecMath.normsqrd(beingDraggedNetEdgeDelta) != 0.)
-                            {
-                                if (dualEdgeColors[dualEdge.myIndex()] == java.awt.Color.cyan)
-                                {
-                                    //mg.setColor(darkGreen);
-                                    mg.setColor(darkCyan);
-                                }
-                                else if (dualEdgeColors[dualEdge.myIndex()] == java.awt.Color.magenta)
-                                {
-                                    //mg.setColor(darkRed);
-                                    mg.setColor(darkMagenta);
-                                }
-                                else if (dualEdgeColors[dualEdge.myIndex()] == java.awt.Color.blue)
-                                    mg.setColor(darkBlue);
-
-
-                                mg.drawLine(leftDualVert.x+beingDraggedNetEdgeDelta[0], leftDualVert.y+beingDraggedNetEdgeDelta[1], leftDualVert.hActual(),
-                                            destPoint[0]+beingDraggedNetEdgeDelta[0], destPoint[1]+beingDraggedNetEdgeDelta[1], destPoint[2],
-                                            doAntiAliasing);
-                                // restore
-                                mg.setColor(dualEdgeColors[dualEdge.myIndex()]);
-                            }
-                            mg.drawLine(leftDualVert.x, leftDualVert.y, leftDualVert.hActual(),
-                                        destPoint[0],destPoint[1], destPoint[2],
-                                        doAntiAliasing);
-                        }
-
-                    //
-                    // And, as polish for voronoi diagrams,
-                    // draw perpendicular lines
-                    // at each isolated edge or whisker.
-                    // XXX should do this along hairs... or maybe every edge that is not on a triangle on either side? nah
-                    //
-                    mg.setColor(dualColor);
-                    FORIDOWN (iEdge, mesh.edges.size())
                     {
-                        Mesh.Edge edge = mesh.getEdge(iEdge);
-                        if (edge.opposite().myIndex() < iEdge)
-                            continue; // check in only one of the two directions
-
-                        // TODO: which of these? argh
-                        if (edge.next() == edge.opposite())
-
-                        //Mesh.Edge dualEdge = dualMesh.getEdge(iEdge);
-                        //if ((dualEdge.initialVertex() == null || dualEdge.initialVertex().weight == 0.)
-                        // && (dualEdge.finalVertex() == null || dualEdge.finalVertex().weight == 0.))
-
+                        double destPoint[] = new double[3]; // scratch for loop
+                        int nPasses = showNet.get() ? 2 : 1;
+                        FORI (iPass, nPasses)
                         {
-                            double v0[] = {edge.initialVertex().x,
-                                           edge.initialVertex().y};
-                            double v1[] = {edge.finalVertex().x,
-                                           edge.finalVertex().y};
-                            double toEdgeVec[] = VecMath.xv2(
-                                                     VecMath.vmv(v0, v1));
-                            VecMath.normalize(toEdgeVec, toEdgeVec);
-                            double midPoint[] = VecMath.lerp(v0, v1, .5);
-                            double lineLength = 1.;
-                            double fromPoint[] = VecMath.vpsxv(midPoint, -lineLength*.5, toEdgeVec);
-                            double toPoint[] = VecMath.vpsxv(midPoint, lineLength*.5, toEdgeVec);
-                            mg.drawLine(fromPoint[0],fromPoint[1],
-                                        toPoint[0], toPoint[1],
-                                        doAntiAliasing);
+                            FORIDOWN (iDualEdge, mesh.edges.size())
+                            {
+                                if (nPasses == 2
+                                 && (theNet._edgeStatuses[iDualEdge]==Net.CUT) != (iPass==1))
+                                    continue; // when two passes, draw cuts iff iPass==1
+
+
+                                if (!doShowInsideOutDualVerts
+                                 && dualEdgeFacings[iDualEdge] == FACING_BACK)
+                                    continue;
+
+                                mg.setColor(dualEdgeColors[iDualEdge]);
+
+                                int oDualEdge = dualMesh.getEdge(iDualEdge).opposite().myIndex();
+
+                                double from[] = dualEdgeInitialCoords[iDualEdge];
+                                double to[] = dualEdgeInitialCoords[oDualEdge];
+                                mg.drawLine(from[0], from[1], from[2],
+                                            to[0], to[1], to[2],
+                                            doAntiAliasing);
+                            }
                         }
                     }
-
 
                     //
                     // Draw dual verts
@@ -4783,12 +4806,12 @@ public class ShephardsPlayApplet
                         //System.out.println("    drawing dual vert at "+Arrays.toStringCompact(dualVert));
                         mg.setColor(dualVertColors[iDualVert]); // TODO: only if changed?
                         if (doShowInsideOutDualVerts
-                         || dualVertFacings[iDualVert] != FACING_FRONT) // FRONT is BACK for dual, bleah
-                            mg.drawPoint(dualVert.x,
-                                         dualVert.y,
-                                         dualVert.hActual(),
+                         || dualVertFacings[iDualVert] != FACING_BACK)
+                        {
+                            double p[] = dualVertCoords[iDualVert];
+                            mg.drawPoint(p[0], p[1], p[2],
                                          showNet.get() ? 2 : 5);
-
+                        }
                     }
 
                     if (showNet.get() && showNetFlow
@@ -4796,7 +4819,7 @@ public class ShephardsPlayApplet
                     {
                         //
                         // Figure out distance (both 2-norm and infinity-norm) from each vertex
-                        // to the root-most one in its tree
+                        // to the root-most one in its tree, in 2 dimensions
                         //
                         double norm2s[] = new double[nDualVerts]; // zeros initially
                         double normInfs[] = new double[nDualVerts]; // zeros initially
@@ -4836,11 +4859,12 @@ public class ShephardsPlayApplet
                             if (parentEdgeInd != -1)
                             {
                                 if (!doShowInsideOutDualVerts
-                                 && dualEdgeFacings[parentEdgeInd] == FACING_FRONT) // FRONT is BACK for dual, bleah
+                                 && dualEdgeFacings[parentEdgeInd] == FACING_BACK)
                                     continue;
 
                                 Mesh.Edge parentEdge = dualMesh.getEdge(parentEdgeInd);
                                 Mesh.Vertex parent = parentEdge.finalVertex();
+                                // TODO: combine the following two cases, using edgeInitialCoords instead of doing the ray calculation yet again
                                 if (parent != null)
                                 {
                                     int iParent = parent.myIndex();
@@ -5022,11 +5046,11 @@ public class ShephardsPlayApplet
                     if (showTriangles >= 1) // 0=off, 1=verts, 2 = verts and tris
                     {
                         mg.setColor(java.awt.Color.white);
-                        drawLabels(mg, mesh, false); // primal
+                        drawLabels(mg, mesh, false, null); // primal
                     }
                     //mg.setColor(java.awt.Color.red);
                     mg.setColor(dualColor);
-                    drawLabels(mg, dualMesh, true); // dual
+                    drawLabels(mg, dualMesh, true, dualEdgeInitialCoords); // dual
                 } // if (showLabels)
 
                 if (showOrigin)
@@ -5359,95 +5383,46 @@ public class ShephardsPlayApplet
             } // makeSureBackBufferIsRight
         } // class TheCanvas
 
-            private static final int FACING_UNKNOWN = 0; // assumed below
+            private static final int FACING_UNKNOWN = 0;
             private static final int FACING_BACK = 1;
             private static final int FACING_SIDE = 2;
             private static final int FACING_FRONT = 3;
-            private static void getFacings(MyGraphics3D mg,
+            private static void getFacings(double eyeInLocalSpace[],
                                            Mesh mesh, Mesh dualMesh,
                                            int faceFacings[],
                                            int edgeFacings[],
                                            int vertFacings[])
             {
+                VecMath.fillvec(faceFacings, FACING_UNKNOWN);
+                VecMath.fillvec(edgeFacings, FACING_UNKNOWN);
+                VecMath.fillvec(vertFacings, FACING_UNKNOWN);
+
                 int nVerts = mesh.verts.size();
                 int nEdges = mesh.edges.size();
                 int nDualVerts = dualMesh.verts.size();
 
-                double projectedVertCoords[][] = new double[nVerts][2];
-                ArrayList verts = mesh.verts;
-                ArrayList edges = mesh.edges;
-                FORI (iVert, nVerts)
-                {
-                    Mesh.Vertex vert = (Mesh.Vertex)verts.get(iVert);
-                    mg.xform(vert.x, vert.y, vert.hActual(),
-                             projectedVertCoords[iVert]);
-                }
-                double projectedRayHeadCoords[][] = new double[nEdges][2];
-                FORI (iEdge, nEdges)
-                {
-                    Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
-                    Mesh.Vertex v1 = edge.finalVertex();
-                    if (v1 != null)
-                        projectedRayHeadCoords[iEdge] = projectedVertCoords[v1.myIndex()];
-                    else
-                    {
-                        Mesh.Vertex v0 = edge.initialVertex();
-                        mg.xform(v0.x+edge.direction[0],
-                                 v0.y+edge.direction[1],
-                                 v0.hActual()+edge.direction[2],
-                                 projectedRayHeadCoords[iEdge]);
-                    }
-                }
-
-
                 // compute face facings...
                 //System.out.println("computing face facings");
-                FORI (iEdge, nEdges)
+                FORI (iFace, nDualVerts)
                 {
-                    Mesh.Edge edgeI = mesh.getEdge(iEdge);
-                    Mesh.Vertex leftDualVert = dualMesh.getEdge(iEdge).finalVertex();
-                    int iLeftFace = leftDualVert==null ? nDualVerts : leftDualVert.myIndex();
-                    if (faceFacings[iLeftFace] == FACING_UNKNOWN)
-                    {
-                        // fan from edge's initial vertex
-                        Mesh.Vertex v0 = edgeI.initialVertex();
-                        if (v0 == null)
-                            continue; // vertex is at infinity, can't compute anything here
-                        int i0 = v0.myIndex();
-                        double projectedFaceArea = 0.;
-
-                        for (Mesh.Edge edgeJ = edgeI.next();
-                             edgeJ.finalVertex() != v0;
-                             edgeJ = edgeJ.next())
-                        {
-                            projectedFaceArea += twiceTriangleArea(projectedVertCoords[i0],
-
-                                                                   projectedRayHeadCoords[edgeJ.opposite().myIndex()],
-
-                                                                   projectedRayHeadCoords[edgeJ.myIndex()]
-                                                                   );
-                        }
-
-                        // to fix case where the face has only one finite vertex
-                        // (and two rays to infinity)...
-                        projectedFaceArea += twiceTriangleArea(projectedVertCoords[i0],
-                                                               projectedRayHeadCoords[edgeI.myIndex()],
-                                                               projectedRayHeadCoords[edgeI.prev().opposite().myIndex()]);
-
-
-                        if (LT(projectedFaceArea, 0., SQR(1e-6)))
-                            faceFacings[iLeftFace] = FACING_BACK;
-                        else if (GT(projectedFaceArea, 0., SQR(1e-6)))
-                            faceFacings[iLeftFace] = FACING_FRONT;
-                        else
-                            faceFacings[iLeftFace] = FACING_SIDE;
-                    }
+                    Mesh.Vertex dualVert = dualMesh.getVert(iFace);
+                    double facePlaneNormal[] = {dualVert.x, dualVert.y, 1}; // not unit length
+                    double facePlaneOffset = -dualVert.hActual(); // magic!  I don't know why, but this is the correct value
+                    double frontness = VecMath.dot(facePlaneNormal, eyeInLocalSpace)
+                                     - facePlaneOffset;
+                    // XXX not sure the epsilons make sense... maybe normalize facePlaneNormal and offset, just so we can think straight about that?
+                    if (LT(frontness, 0., SQR(1e-6)))
+                        faceFacings[iFace] = FACING_BACK;
+                    else if (GT(frontness, 0., SQR(1e-6)))
+                        faceFacings[iFace] = FACING_FRONT;
+                    else
+                        faceFacings[iFace] = FACING_SIDE;
                 }
                 // compute edge facings from incident face facings...
                 //System.out.println("computing edge facings");
                 FORI (iEdge, nEdges)
                 {
-                    if (edgeFacings[iEdge] == FACING_UNKNOWN)
+                    if (edgeFacings[iEdge] == FACING_UNKNOWN) // if not already done by opposite edge
                     {
                         Mesh.Edge edgeI = mesh.getEdge(iEdge);
                         Mesh.Edge dualEdgeI = dualMesh.getEdge(iEdge);
@@ -5457,6 +5432,7 @@ public class ShephardsPlayApplet
                         int iRightFace = rightDualVert==null ? nDualVerts : rightDualVert.myIndex();
                         int leftFaceFacing = faceFacings[iLeftFace];
                         int rightFaceFacing = faceFacings[iRightFace];
+                        // XXX not sure this is quite right-- maybe UNKNOWN should yield to all others?
                         edgeFacings[iEdge] = leftFaceFacing==rightFaceFacing ? leftFaceFacing
                                                                              : FACING_SIDE;
                         int oEdge = edgeI.opposite().myIndex();
@@ -10079,49 +10055,47 @@ OFF
                 if (dualEdge.direction != null)
                     continue; // did this one already
 
-                if (dualEdge._initialVertex != null)
+                if (dualEdge._initialVertex != null
+                 && dualEdge.finalVertex() != null)
                 {
-                    if (dualEdge.finalVertex() != null)
-                    {
-                        // it's a usual edge... get the direction by subtracting vertices
-                        // XXX but this is not robust? but it may be better in some senses, especially if we're doing non-triangles too
-                        dualEdge.direction = VecMath.normalize(VecMath.vmv(
-                            new double[]{dualEdge.finalVertex().x,
-                                         dualEdge.finalVertex().y,
-                                         dualEdge.finalVertex().hActual()},
-                            new double[]{dualEdge._initialVertex.x,
-                                         dualEdge._initialVertex.y,
-                                         dualEdge._initialVertex.hActual()}));
-                    }
-                    else
-                    {
-                        // It's a ray.  Compute the direction
-                        // as the perpendicular to the corresponding primal edge.
-                        // In 2d, this is easy-- its direction is just the primal edge dir
-                        // rotated 90 degrees.
-                        // But in 3d, what should it be?
-                        // Well, the line is the intersection of two dual face planes,
-                        // corresponding to two primal vertices.
-                        // So the line direction is the cross product
-                        // of the two plane normal dirs.
-                        // Luckily, the plane normal dirs are functions
-                        // of the primal xy's (the h's don't matter; they just push the plane in or out).
-                        // So, what is the surface normal (not necessarily unit length)
-                        // of the paraboloid at x,y,(x^2+y^2)/2?
-                        // It's x,y,1.
-                        // That was easy.
-                        //
-                        Mesh.Edge primalEdge = primal.getEdge(iEdge);
-                        Mesh.Vertex v0 = primalEdge.initialVertex();
-                        Mesh.Vertex v1 = primalEdge.finalVertex();
-                        double n0[] = {v0.x, v0.y, 1};
-                        double n1[] = {v1.x, v1.y, 1};
-                        dualEdge.direction = VecMath.normalize(VecMath.vxv3(n0,n1));
-                    }
-
-                    assert(dualEdge._opposite.direction == null);
-                    dualEdge._opposite.direction = VecMath.sxv(-1., dualEdge.direction);
+                    // it's a usual edge... get the direction by subtracting vertices
+                    // XXX but this is not robust? but it may be better in some senses, especially if we're doing non-triangles too
+                    dualEdge.direction = VecMath.normalize(VecMath.vmv(
+                        new double[]{dualEdge.finalVertex().x,
+                                     dualEdge.finalVertex().y,
+                                     dualEdge.finalVertex().hActual()},
+                        new double[]{dualEdge._initialVertex.x,
+                                     dualEdge._initialVertex.y,
+                                     dualEdge._initialVertex.hActual()}));
                 }
+                else
+                {
+                    // It's a ray, forward or backward.  Compute the direction
+                    // as the perpendicular to the corresponding primal edge.
+                    // In 2d, this is easy-- its direction is just the primal edge dir
+                    // rotated 90 degrees.
+                    // But in 3d, what should it be?
+                    // Well, the line is the intersection of two dual face planes,
+                    // corresponding to two primal vertices.
+                    // So the line direction is the cross product
+                    // of the two plane normal dirs.
+                    // Luckily, the plane normal dirs are functions
+                    // of the primal xy's (the h's don't matter; they just push the plane in or out).
+                    // So, what is the surface normal (not necessarily unit length)
+                    // of the paraboloid at x,y,(x^2+y^2)/2?
+                    // It's x,y,1.
+                    // That was easy.
+                    //
+                    Mesh.Edge primalEdge = primal.getEdge(iEdge);
+                    Mesh.Vertex v0 = primalEdge.initialVertex();
+                    Mesh.Vertex v1 = primalEdge.finalVertex();
+                    double n0[] = {v0.x, v0.y, 1};
+                    double n1[] = {v1.x, v1.y, 1};
+                    dualEdge.direction = VecMath.normalize(VecMath.vxv3(n0,n1));
+                }
+
+                assert(dualEdge._opposite.direction == null);
+                dualEdge._opposite.direction = VecMath.sxv(-1., dualEdge.direction);
             }
 
             return dual;
@@ -11401,6 +11375,7 @@ OFF
             double vprojectedOntoV1[] = VecMath.sxv(t, v1);
             return VecMath.distsqrd(v, vprojectedOntoV1);
         }
+        // XXX unused
         private static double[][] axisAngleRotationMatrix(double axis[], double radians)
         {
             double invAxisLength = 1./VecMath.norm(axis);
@@ -11418,17 +11393,6 @@ OFF
                 {z*x*C+y*s, z*y*C-x*s, z*z*C+c},
             };
             return M;
-        }
-        // XXX TODO: should the xform be part of MyGraphics?
-        private static void drawLineXformed(MyGraphics mg, double xform[][], double x0, double y0, double x1, double y1, boolean doAntiAliasing)
-        {
-            double p0[] = {x0,y0,0};
-            double p1[] = {x1,y1,0};
-            double q0[] = VecMath.vxm(p0, xform);
-            double q1[] = VecMath.vxm(p1, xform);
-            mg.drawLine(q0[0], q0[1],
-                        q1[0], q1[1],
-                        doAntiAliasing);
         }
 
         private static void accumulateMomentAndArea(double accumulator[/*3 or 4*/],
@@ -11602,12 +11566,12 @@ OFF
                 return sign*s*s;
             } // sinSquaredPiTimes
 
-            // cos(pi*n/d) squared, but do it without trig if it's a nice angle
+            // cos(pi*n/d) squared times sign, but do it without trig if it's a nice angle
             private static double cosSquaredPiTimes(int n, int d)
             {
                 // cos(pi*n/d) = sin(pi/2 - pi*n/d)
                 //             = sin(pi * (1/2 - n/d))
-                //             = sin(pi * (1/2 - n/d))
+                //             = sin(pi * (d/(2*d) - 2*n/(2*d)))
                 //             = sin(pi * (d-2*n)/(2*d)
                 return sinSquaredPiTimes(d-2*n, 2*d);
             }
@@ -11616,13 +11580,13 @@ OFF
             private static double tanSquaredPiTimes(int n, int d)
             {
                 double s = sinSquaredPiTimes(n, d);
-                return s / (1 - s); // XXX I think sign is wrong
+                return s / (1 - s); // XXX pretty sure sign is wrong
             }
             // cot(pi*n/d) squared, but do it without trig if it's a nice angle
             private static double cotSquaredPiTimes(int n, int d)
             {
                 double s = sinSquaredPiTimes(n, d);
-                return (1 - s) / s; // XXX I think sign is wrong
+                return (1 - s) / s; // XXX pretty sure sign is wrong
             }
         // =============== END: stolen from CSG.prejava
         private static double sinPiTimes(int n, int d)
@@ -11792,27 +11756,21 @@ OFF
         private int rotationalSymmetry = 1;
 
 
-        private double localScale[];
+        private double localScaleZ;
         private double twirl; // x->y
         private double tilt; // z->y
-        private double eyeW[];
+        private double eye[];
         private double localToWorld[][]; // product of matrices of the above 4
         { resetLocalToWorld(); }
         private void resetLocalToWorld()
         {
-            localScale = new double[] {1,1,1};
+            localScaleZ = 0.; // yes, zero-- we flatten when parked at tilt=0 or tilt=Math.PI
             twirl = 0.;
             tilt = 0.;
-            eyeW = new double[] {0.,0.,4.}; // XXX doesn't work if not on z axis
+            eye = new double[] {0.,0.,4.}; // XXX doesn't work if not on z axis
         }
-        private double[][] getLocalToWorld()
+        private double[][] getRotMat()
         {
-            double localScaleMat[][] = {
-                {localScale[0],0,0,0},
-                {0,localScale[1],0,0},
-                {0,0,localScale[2],0},
-                {0,0,0,            1},
-            };
             double cx = Math.cos(twirl);
             double sx = Math.sin(twirl);
             double cy = Math.cos(tilt);
@@ -11829,14 +11787,25 @@ OFF
                 {0, sy, cy, 0},
                 {0, 0, 0,   1},
             };
+            return VecMath.mxm(twirlMat, tiltMat);
+        }
+        private double[][] getLocalToWorld()
+        {
+            double localScaleMat[][] = {
+                {1,0,0,0},
+                {0,1,0,0},
+                {0,0,localScaleZ,0},
+                {0,0,0,1},
+            };
+            double rotMat[][] = getRotMat();
             // XXX the following assumes the eye is on the Z axis
             double perspMat[][] = new double[][] {
                 {1,0,0,0},
                 {0,1,0,0},
-                {0,0,1,-1./eyeW[2]},
-                {0,0,-eyeW[2],1},
+                {0,0,1,-1./eye[2]},
+                {0,0,-eye[2],1},
             };
-            return VecMath.mxmxmxm(localScaleMat, twirlMat, tiltMat, perspMat);
+            return VecMath.mxmxm(localScaleMat, rotMat, perspMat);
         }
         private boolean draggingRotation = false;
 
