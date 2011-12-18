@@ -16,6 +16,7 @@ User should be able to:
 
 
 BUGS:
+    - lost highlighting of selected verts!
     - clear, make points in order:
               1
               |\\
@@ -25,7 +26,6 @@ BUGS:
       then delete 2->3 and 1->3 in order, to make a whisker 0->3.
       that works, but doing it in various other orders doesn't??
     - rubberbanding not right in 3d
-    - avg not being drawn in right place any more (or at all?)
     - lagoon exit colors not right any more (probably same issue?)
     - why do I need that extendAndOrthogonalize?  it shouldn't be getting non-orthogonal so quickly! (that was when using trackball... maybe a moot issue now)
     - painting doesn't happen continuously when dragging when there's a lot on the screen! (it doesn't update til you stop dragging) ARGH!
@@ -3882,8 +3882,8 @@ public class ShephardsPlayApplet
                 eyeInLocalSpace[2] /= MAX(localScaleZ, 1e-6);
                 getFacings(eyeInLocalSpace, mesh, dualMesh, faceFacings, edgeFacings, vertFacings);
                 getFacings(eyeInLocalSpace, dualMesh, mesh, dualFaceFacings, dualEdgeFacings, dualVertFacings);
-                PRINTARRAY(faceFacings);
-                PRINTARRAY(dualFaceFacings);
+                //PRINTARRAY(faceFacings);
+                //PRINTARRAY(dualFaceFacings);
 
                 //
                 // Draw the primal mesh in white.
@@ -4023,55 +4023,23 @@ public class ShephardsPlayApplet
                     double avg[] = null;
                     if (selectedDualVertIndices.length >= 1)
                     {
-                        // XXX GET RID OF THIS FIRST WAY!
-                        double areaSum = 0.;
-                        double moment[] = {0.,0.};
-                        double dualVertCoord[] = new double[2]; // scratch for loop
+                        double momentAndAreaSum[] = new double[4]; // zeros
                         FORI (i, selectedDualVertIndices.length)
                         {
                             int ind = selectedDualVertIndices[i];
                             if (ind == -1)
                                 continue;
-                            dualVertColors[ind] = dualVertSelectionColor;
                             Mesh.Vertex dualVert = dualMesh.getVert(ind);
-                            dualVertCoord[0] = dualVert.x;
-                            dualVertCoord[1] = dualVert.y;
-                            VecMath.vpsxv(moment,
-                                          moment,
-                                          dualVert.weight, dualVertCoord);
-                            areaSum += dualVert.weight;
+                            accumulateMomentAndArea(momentAndAreaSum, dualVert.momentAndArea);
                         }
-                        if (areaSum != 0.)
-                            avg = VecMath.sxv(1./areaSum, moment);
-                        PRINTVEC(avg);
-
-                        if (true)
-                        {
-                            // Compute avg a different way, for curiosity
-                            double momentAndAreaSum[] = new double[4]; // zeros
-                            FORI (i, selectedDualVertIndices.length)
-                            {
-                                int ind = selectedDualVertIndices[i];
-                                if (ind == -1)
-                                    continue;
-                                Mesh.Vertex dualVert = dualMesh.getVert(ind);
-                                accumulateMomentAndArea(momentAndAreaSum, dualVert.momentAndArea);
-                            }
-                            PRINTVEC(momentAndAreaSum);
-                            double A = momentAndAreaSum[2];
-                            double avgAlternate[] = {
-                                momentAndAreaSum[0] / A,
-                                momentAndAreaSum[1] / A,
-                                momentAndAreaSum[2] / A,
-                            };
-                            PRINTVEC(avgAlternate);
-
-                            avg = avgAlternate;
-                        }
+                        PRINTVEC(momentAndAreaSum);
+                        double A = momentAndAreaSum[3];
+                        avg = new double[] {
+                            momentAndAreaSum[0] / A,
+                            momentAndAreaSum[1] / A,
+                            momentAndAreaSum[2] / (A*A),
+                        };
                     }
-
-
-
 
                     //
                     // If showing net, compute a net.
