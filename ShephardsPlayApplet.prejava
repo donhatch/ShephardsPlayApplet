@@ -1819,7 +1819,7 @@ public class ShephardsPlayApplet
                         //
                         // Select closest vertex
                         //
-                        beingDraggedVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1]);
+                        beingDraggedVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1], mostRecentGraphics);
                         Mesh.Vertex vert = mesh.getVert(beingDraggedVertIndex);
                         beingDraggedVertUnsnappedXY = new double[]{vert.x, vert.y}; // XXX not sure this is right at this point
                         rubberBandingNewEdge = true;
@@ -1870,7 +1870,7 @@ public class ShephardsPlayApplet
                             // Add a vertex...
                             // but only if not very close to an existing one.
                             //
-                            int closestVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1]);
+                            int closestVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1],mostRecentGraphics);
                             if (closestVertIndex != -1)
                             {
                                 // we want to measure the distance
@@ -2097,7 +2097,7 @@ public class ShephardsPlayApplet
                     if (e.isShiftDown())
                     {
                         // Drag all verts (XXX need different way of expressing this I think, now that middle button being used for rotate)
-                        beingDraggedVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1]);
+                        beingDraggedVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1],mostRecentGraphics);
                         if (beingDraggedVertIndex == -1)
                             System.out.println("Dragging vertex "+beingDraggedVertIndex);
                         else
@@ -2143,7 +2143,7 @@ public class ShephardsPlayApplet
                         //
                         // Delete closest vertex
                         //
-                        beingDraggedVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1]);
+                        beingDraggedVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1],mostRecentGraphics);
                         if (beingDraggedVertIndex != -1)
                             mesh.deleteVertex(mesh.getVert(beingDraggedVertIndex));
                         beingDraggedVertIndex = -1;
@@ -2193,7 +2193,7 @@ public class ShephardsPlayApplet
                         {
                             mesh.addIsolatedVertex(snappedThisP[0], snappedThisP[1], 0);
                         }
-                        int finalVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1]);
+                        int finalVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1],mostRecentGraphics);
                         if (beingDraggedVertIndex != -1
                          && finalVertIndex != -1
                          && beingDraggedVertIndex != finalVertIndex)
@@ -2451,7 +2451,7 @@ public class ShephardsPlayApplet
                                 {
                                     double image[] = VecMath.vxm(v,group[iGroup]);
                                     int iImage = mesh.indexOfClosestVert(
-                                                    image[0], image[1]);
+                                                    image[0], image[1],mostRecentGraphics);
 
                                     double imageVertPosition[] = {
                                         mesh.getVert(iImage).x,
@@ -2567,7 +2567,7 @@ public class ShephardsPlayApplet
                         }
                         System.out.print("Up");
                         System.out.flush();
-                        int iVert = mesh.indexOfClosestVert(prevP[0], prevP[1]);
+                        int iVert = mesh.indexOfClosestVert(prevP[0], prevP[1],mostRecentGraphics);
                         if (iVert != -1)
                         {
                             // pull the dual face *out* of the screen,
@@ -2598,7 +2598,7 @@ public class ShephardsPlayApplet
                         }
                         System.out.print("Down");
                         System.out.flush();
-                        int iVert = mesh.indexOfClosestVert(prevP[0], prevP[1]);
+                        int iVert = mesh.indexOfClosestVert(prevP[0], prevP[1],mostRecentGraphics);
                         // push the dual face *into* of the screen,
                         // i.e. decrease its height,
                         // i.e. increase height of primal vert.
@@ -2939,6 +2939,7 @@ public class ShephardsPlayApplet
                             int closestIndex = -1;
                             int nDualVerts = dualMesh.verts.size();
                             PRINT(nDualVerts);
+                            double scratch[] = new double[3];
                             FORI (iDualVert, nDualVerts) // beginning to end, so we choose first of equal
                             {
                                 Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
@@ -2949,7 +2950,9 @@ public class ShephardsPlayApplet
                                     if (dualVert.weight < 0)
                                         continue; // the triangle is inside out; it's the boundary
                                 }
-                                double thisDistSqrd = VecMath.distsqrd(prevP, new double[]{dualVert.x,dualVert.y});
+
+                                mostRecentGraphics.xform(dualVert.x, dualVert.y, dualVert.hActual(), scratch);
+                                double thisDistSqrd = VecMath.distsqrd(2, prevP, scratch);
                                 if (thisDistSqrd < closestDistSqrd)
                                 {
                                     closestDistSqrd = thisDistSqrd;
@@ -8868,15 +8871,18 @@ OFF
                 // XXX should we do the fast remove, moving the last one into the slot?  well, is there an advantage to keeping the vertices in order?  Probably.
             }
 
-            public int indexOfClosestVert(double x, double y)
+            // XXX TODO: this shouldn't need graphics, just the xform
+            public int indexOfClosestVert(double x, double y, MyGraphics3D mg)
             {
                 double closestDistSqrd = Double.POSITIVE_INFINITY;
                 int closestVertIndex = -1;
+                double scratch[] = new double[3];
                 FORI (iVert, verts.size()) // beginning to end, so we choose first of equal
                 {
                     Vertex vert = (Vertex)verts.get(iVert);
-                    double thisDistSqrd = SQR(vert.x-x)
-                                        + SQR(vert.y-y);
+                    mg.xform(vert.x, vert.y, vert.hActual(), scratch);
+                    double thisDistSqrd = SQR(scratch[0]-x)
+                                        + SQR(scratch[1]-y);
                     if (thisDistSqrd < closestDistSqrd)
                     {
                         closestDistSqrd = thisDistSqrd;
@@ -11789,7 +11795,7 @@ OFF
         private boolean implementAntiAliasingInHardware = true; // XXX should have a better name for this-- really mean let java runtime do it
         private boolean doDoubleBuffer = true;
         private java.awt.Image backBufferImage = null;
-        private MyGraphics mostRecentGraphics = null;
+        private MyGraphics3D mostRecentGraphics = null;
         private double globalMagFactor = 1.; // no way to set, currently... phase out?
         private Listenable.Boolean showMag = new Listenable.Boolean(false);
         private int magFactor = 9;
