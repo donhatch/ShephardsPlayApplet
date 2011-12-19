@@ -16,7 +16,7 @@ User should be able to:
 
 
 BUGS:
-    - a lot of the rays look like they are in the wrong direction
+    - symmetry=3, rotate in 3d, drag a point... it often gets stuck??
     - clear, make points in order:
               1
               |\\
@@ -1454,8 +1454,10 @@ public class ShephardsPlayApplet
                 vert.h += .5 * (SQR(vert.x) + SQR(vert.y)); // convert from "actual"
                 assert(vert.momentAndArea == null);
             }
+
             // don't recalculate dual mesh, rather, just rescale its points accordingly.
             // this makes it so we don't have to blow away the net.
+            // XXX silly to do this in the case when we're about to re-delaunayize
             FORIDOWN(iDualVert, dualMesh.verts.size())
             {
                 Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
@@ -1493,6 +1495,9 @@ public class ShephardsPlayApplet
                     }
                 }
             }
+
+            // dual directions are now totally messed up... fix them
+            fixDualDirections(mesh, dualMesh);
 
             // should be no need to re-delaunayize if uniform scale
             if (scaleX != scaleY)
@@ -10030,6 +10035,17 @@ OFF
             //
             // Give each dual edge a direction.
             //
+            fixDualDirections(primal, dual);
+            return dual;
+        } // makeDualMesh()
+
+        // called at end of makeDualMesh,
+        // and also after rescaling or tweaking
+        public static void fixDualDirections(Mesh primal, Mesh dual)
+        {
+            int nEdges = dual.edges.size();
+            FORI (iEdge, nEdges)
+                dual.getEdge(iEdge).direction = null;
             FORI (iEdge, nEdges)
             {
                 Mesh.Edge dualEdge = dual.getEdge(iEdge);
@@ -10078,9 +10094,7 @@ OFF
                 assert(dualEdge._opposite.direction == null);
                 dualEdge._opposite.direction = VecMath.sxv(-1., dualEdge.direction);
             }
-
-            return dual;
-        } // makeDualMesh()
+        } // fixDualDirections
 
 
         public static class Net
