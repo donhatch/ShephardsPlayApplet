@@ -1455,57 +1455,57 @@ public class ShephardsPlayApplet
                 assert(vert.momentAndArea == null);
             }
 
-            // don't recalculate dual mesh, rather, just rescale its points accordingly.
-            // this makes it so we don't have to blow away the net.
-            // XXX silly to do this in the case when we're about to re-delaunayize
-            FORIDOWN(iDualVert, dualMesh.verts.size())
+            if (scaleX != scaleY && doContinuouslyDelaunayize.get()) // no need to re-delaunayize if uniform scale
             {
-                Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
-                dualVert.h -= .5 * (SQR(dualVert.x) + SQR(dualVert.y)); // convert to "actual"
-                dualVert.x *= scaleY; // converse
-                dualVert.y *= scaleX; // converse
-                dualVert.h *= scaleX * scaleY;
-                dualVert.h += .5 * (SQR(dualVert.x) + SQR(dualVert.y)); // convert from "actual"
-                assert(dualVert.momentAndArea.length == 4);
-
-                // holy hell this is incredibly hard to get right!!
-                dualVert.momentAndArea[2] -= .5 * (SQR(dualVert.momentAndArea[0]) + SQR(dualVert.momentAndArea[1])); // convert to "actual"
-
-                dualVert.momentAndArea[0] *= SQR(scaleX) * scaleY;
-                dualVert.momentAndArea[1] *= scaleX * SQR(scaleY);
-                dualVert.momentAndArea[2] *= CUB(scaleX*scaleY);
-                dualVert.momentAndArea[3] *= scaleX*scaleY;
-
-                dualVert.momentAndArea[2] += .5 * (SQR(dualVert.momentAndArea[0]) + SQR(dualVert.momentAndArea[1])); // convert from "actual"
-
-                if (true)
+                delaunayize();
+                dirtyDualMesh();
+            }
+            else
+            {
+                // don't recalculate dual mesh, rather, just rescale its points accordingly.
+                // this makes it so we don't have to blow away the net.
+                FORIDOWN(iDualVert, dualMesh.verts.size())
                 {
-                    if (iDualVert == 0)
+                    Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
+                    dualVert.h -= .5 * (SQR(dualVert.x) + SQR(dualVert.y)); // convert to "actual"
+                    dualVert.x *= scaleY; // converse
+                    dualVert.y *= scaleX; // converse
+                    dualVert.h *= scaleX * scaleY;
+                    dualVert.h += .5 * (SQR(dualVert.x) + SQR(dualVert.y)); // convert from "actual"
+                    assert(dualVert.momentAndArea.length == 4);
+
+                    // holy hell this is incredibly hard to get right!!
+                    dualVert.momentAndArea[2] -= .5 * (SQR(dualVert.momentAndArea[0]) + SQR(dualVert.momentAndArea[1])); // convert to "actual"
+
+                    dualVert.momentAndArea[0] *= SQR(scaleX) * scaleY;
+                    dualVert.momentAndArea[1] *= scaleX * SQR(scaleY);
+                    dualVert.momentAndArea[2] *= CUB(scaleX*scaleY);
+                    dualVert.momentAndArea[3] *= scaleX*scaleY;
+
+                    dualVert.momentAndArea[2] += .5 * (SQR(dualVert.momentAndArea[0]) + SQR(dualVert.momentAndArea[1])); // convert from "actual"
+
+                    if (false)
                     {
-                        PRINT(dualVert.x);
-                        PRINT(dualVert.y);
-                        PRINT(dualVert.h);
-                        PRINT(dualVert.momentAndArea[0]/dualVert.momentAndArea[3]);
-                        PRINT(dualVert.momentAndArea[1]/dualVert.momentAndArea[3]);
-                        PRINT(dualVert.momentAndArea[2]/SQR(dualVert.momentAndArea[3]));
-                        PRINT(dualVert.momentAndArea[0]);
-                        PRINT(dualVert.momentAndArea[1]);
-                        PRINT(dualVert.momentAndArea[2]);
-                        PRINT(dualVert.momentAndArea[3]);
+                        if (iDualVert == 0)
+                        {
+                            PRINT(dualVert.x);
+                            PRINT(dualVert.y);
+                            PRINT(dualVert.h);
+                            PRINT(dualVert.momentAndArea[0]/dualVert.momentAndArea[3]);
+                            PRINT(dualVert.momentAndArea[1]/dualVert.momentAndArea[3]);
+                            PRINT(dualVert.momentAndArea[2]/SQR(dualVert.momentAndArea[3]));
+                            PRINT(dualVert.momentAndArea[0]);
+                            PRINT(dualVert.momentAndArea[1]);
+                            PRINT(dualVert.momentAndArea[2]);
+                            PRINT(dualVert.momentAndArea[3]);
+                        }
                     }
                 }
+
+                // dual directions are now totally messed up... fix them
+                fixDualDirections(mesh, dualMesh);
             }
 
-            // dual directions are now totally messed up... fix them
-            fixDualDirections(mesh, dualMesh);
-
-            // should be no need to re-delaunayize if uniform scale
-            if (scaleX != scaleY)
-                if (doContinuouslyDelaunayize.get())
-                {
-                    delaunayize();
-                    dirtyDualMesh();
-                }
             UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
             undoTreeSquirrel.Do(new UndoItem(before, after));
             theCanvas.repaint();
