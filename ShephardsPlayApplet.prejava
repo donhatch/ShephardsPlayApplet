@@ -31,7 +31,7 @@ BUGS:
     - miniball still not handling dup vertices well
     - can't run it with donhatchsw.jar?? can build it though! (using ; instead of :)
     - assertion failure in convex hull sometimes, when adding first point with rotsym=5 or rotsym=2,mirror continuousdelaunay, DUMP.convexHullAssertFail[45].off
-    - lots of assert-fails with r=1,lr=true with small numbers of points
+    - lots of assert-fails in convex hull stuff with r=1,lr=true with small numbers of points
     - optimization seems to be broken? (not recalculating most of the time when it should)
     - use exact group calculation rather than generateVertices when adding a point
     - circle drawing is off, e.g. miniball with:
@@ -43,11 +43,8 @@ BUGS:
             left is too right by 1 pixel
 
 TO DO:
-    - clip lines to eye plane rather than culling them if either end point is on wrong side
     - change ambiguous doThis and doThat to this(), that(), thisFlag, thatFlag?
     - time to show in 3d I think (project onto actual paraboloid)
-    - if mouse press is close enough to a vertex, drag instead of create new...
-      "close enough" should be in pixels.
     - I think I can get rid of the mesh x,y,h
       and have just have the momentAndArea
       (call it coords? not sure)
@@ -61,7 +58,7 @@ TO DO:
       show the nearest-neighbor-interpolation thing
       (i.e. use the DT of all but the dragged point,
       and show the new cell stealing area from others, in a diff color)
-    - add a bit of symbolic fuzzy fudge to convex hull, to make it think flat edges are a bit convex?
+    - add a bit of symbolic fuzzy fudge to convex hull, to make it think flat edges are a bit convex? oh wait, is this just a question of sidedness testing afterwards? hmm
     - make IsMiniBall robust to degeneracies
     - should respect symmetries:
         - adjusting vertex height
@@ -6041,7 +6038,10 @@ public class ShephardsPlayApplet
                     // do regular tri grid, verts of {3,6}
                     int nX = 5; // how many verts along one side of hexagonal grid
                     int nRots = 6;
-                    double verts[][] = new double[nX*(nX-1)/2 * nRots + 1 + nRots][3]; // zeros initially, heights stay zero
+                    int nVerts = nX*(nX-1)/2 * nRots + 1 + nRots;
+                    if (nX == 5)
+                        nVerts += nRots;
+                    double verts[][] = new double[nVerts][3]; // zeros initially, heights stay zero
                     int iVert = 0;
                     verts[iVert][0] = 0; verts[iVert][1] = 0; iVert++;
                     FORI (iRot, nRots)
@@ -6057,12 +6057,29 @@ public class ShephardsPlayApplet
                                 VecMath.sxvpsxv(verts[iVert++], x, m[0], y, m[1]);
                             }
 
-                        double x = cosPiTimes(1,6);
-                        double y = sinPiTimes(1,6);
-                        VecMath.sxvpsxv(verts[iVert++], x, m[0], y, m[1]);
+                        if (nX == 5)
+                        {
+                            // special case that looks nice, but isn't general
+                            {
+                                double x = .999;
+                                double y = Math.sqrt(3.)/4.;
+                                VecMath.sxvpsxv(verts[iVert++], x, m[0], y, m[1]);
+                            }
+                            {
+                                double x = 7/8.;
+                                double y = Math.sqrt(3.)*3./8.;
+                                VecMath.sxvpsxv(verts[iVert++], x, m[0], y, m[1]);
+                            }
+                        }
+                        else
+                        {
+                            double x = cosPiTimes(1,6);
+                            double y = sinPiTimes(1,6);
+                            VecMath.sxvpsxv(verts[iVert++], x, m[0], y, m[1]);
+                        }
                     }
-                    PRINT(iVert);
-                    PRINT(verts.length);
+                    //PRINT(iVert);
+                    //PRINT(verts.length);
                     assert(iVert == verts.length);
                     mesh = new Mesh(verts, new int[][]{});
                 }
