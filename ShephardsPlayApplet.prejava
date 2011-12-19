@@ -4,7 +4,6 @@ that will let me play with triangulations with heights,
 and produce the dual diagrams with heights.
 
 BUGS:
-    - rubberbanding doesn't work most of the time?
     - clear, make points in order:
               1
               |\\
@@ -13,9 +12,10 @@ BUGS:
               2
       then delete 2->3 and 1->3 in order, to make a whisker 0->3.
       that works, but doing it in various other orders doesn't??
+      hmm, can't reproduce, maybe it was a sidedness thing that has since been fixed
     - symmetry=3, rotate in 3d, drag a point... it often gets stuck??
     - why do I need that extendAndOrthogonalize?  it shouldn't be getting non-orthogonal so quickly! (that was when using trackball... maybe a moot issue now)
-    - painting doesn't happen continuously when dragging when there's a lot on the screen! (it doesn't update til you stop dragging) ARGH!
+    - painting doesn't happen continuously when dragging when there's a lot on the screen! (it doesn't update til you stop dragging) ARGH!  maybe this is a function of using Canvas? also maybe non-Canvas will not flash when resizing
     - miniball still not handling dup vertices well
     - can't run it with donhatchsw.jar?? can build it though! (using ; instead of :)
     - assertion failure in convex hull sometimes, when adding first point with rotsym=5 or rotsym=2,mirror continuousdelaunay, DUMP.convexHullAssertFail[45].off
@@ -1954,7 +1954,7 @@ public class ShephardsPlayApplet
                                         }
                                         else // edges.size() >= 1
                                         {
-                                            // There was already an edge.
+                                            // There was already at least one edge.
                                             // Find out which face we are on
                                             // (all triangles CCW), and kis that face.
                                             // if we are not inside any face by that criterion,
@@ -2202,6 +2202,7 @@ public class ShephardsPlayApplet
                             mesh.addEdgeBetweenTwoVertices(mesh.getVert(beingDraggedVertIndex),
                                                            mesh.getVert(finalVertIndex));
                             mesh.sanityCheck();
+                            PRINT(mesh.edges.size());
 
                             // added something-- invalidate dual mesh
                             dirtyDualMesh();
@@ -8744,51 +8745,124 @@ OFF
             public void addEdgeBetweenTwoVertices(Vertex v0, Vertex v1)
             {
                 assert(v0 != v1);
-                if (verts.size() == 2)
-                {
-                    // XXX this case might not be necessary?
-                    addEdgeBetweenTwoIsolatedVertices(v0, v1);
-                    return;
-                }
-                // find the face containing both vertices
-                // that has greatest area.
-                Edge bestBeforeThisEdge = null;
-                Edge bestBeforeThatEdge = null;
-                double bestTwiceFaceArea = Double.NEGATIVE_INFINITY;
                 int nEdges = edges.size();
+
+                // First find any edge beginning at v0,
+                // and any beginning at v1
+                Edge someEdgeStartingAtV0 = null;
+                Edge someEdgeStartingAtV1 = null;
                 FORI (iEdge, nEdges)
                 {
-                    Edge e0 = (Edge)edges.get(iEdge);
-                    if (e0.initialVertex() == v0)
+                    Edge e = (Edge)edges.get(iEdge);
+                    if (e.initialVertex() == v0)
                     {
-                        if (e0.finalVertex() == v1)
-                        {
-                            return; // the vertices are neighbors... definitely don't do anything in this case
-                        }
-                        // walk around the face CCW looking for v1
-                        for (Edge e = e0; e.finalVertex() != v0; e = e.next())
-                        {
-                            if (e.finalVertex() == v1)
-                            {
-                                double twiceFaceArea = twiceFaceArea(e0);
-                                if (twiceFaceArea > bestTwiceFaceArea)
-                                {
-                                    bestBeforeThisEdge = e0;
-                                    bestBeforeThatEdge = e.next();
-                                    bestTwiceFaceArea = twiceFaceArea;
-                                }
-                                break;
-                            }
-                        }
+                        someEdgeStartingAtV0 = e;
+                        if (e.finalVertex() == v1)
+                            return; // v0,v1 already connected-- definitely don't do anything!
+                    }
+                    else if (e.initialVertex() == v1)
+                    {
+                        someEdgeStartingAtV1 = e;
+                        // no need to check whether final is v0, we'll catch it in the other direction
                     }
                 }
-                if (bestBeforeThisEdge != null)
+
+                // Then walk around ccw to find the *best* place to insert the edge
+                // among v0's edges and among v1's edges
+
+                if (someEdgeStartingAtV1 != null)
                 {
-                    addDiagonal(bestBeforeThisEdge,
-                                bestBeforeThatEdge);
-                    return;
+                    // figure out the best place among v1's edges
+                    // to add v0.
+                    double bestGoodness = Double.NEGATIVE_INFINITY;
+                    Edge bestBeforeThisEdge = null;
+                    double ang = Math.atan2(v0.y-v1.y, v0.x-v1.x);
+                    // for each edge out of v1, ccw
+                    Edge nextEdgeOutOfV1 = null;
+                    for (Edge thisEdgeOutOfV1 = someEdgeStartingAtV1; ; thisEdgeOutOfV1 = nextEdgeOutOfV1)
+                    {
+                        // XXX dup code!
+                        nextEdgeOutOfV1 = thisEdgeOutOfV1.prev().opposite();
+                        //PRINT(thisEdgeOutOfV1);
+                        //PRINT(nextEdgeOutOfV1);
+                        Vertex thisNeighbor = thisEdgeOutOfV1.finalVertex();
+                        Vertex nextNeighbor = nextEdgeOutOfV1.finalVertex();
+                        double thisAng = Math.atan2(thisNeighbor.y-v1.y,
+                                                    thisNeighbor.x-v1.x);
+                        // change thisAng by multiples of 2*Math.PI
+                        // so that it's >= ang by as little as possible
+                        // XXX not sure this is robust... can something fall between the cracks?
+                        while (thisAng < ang) thisAng += 2*Math.PI;
+                        while (thisAng > ang) thisAng -= 2*Math.PI;
+
+                        double thisGoodness = -(ang-thisAng); // want to minimize ang-thisAng, so maximize -(ang-thisAng)
+                        //PRINT(RTOD(thisGoodness));
+                        if (thisGoodness > bestGoodness)
+                        {
+                            bestBeforeThisEdge = thisEdgeOutOfV1;
+                            bestGoodness = thisGoodness;
+                        }
+
+                        if (nextEdgeOutOfV1 == someEdgeStartingAtV1)
+                            break;
+                    }
+                    assert(bestBeforeThisEdge != null);
+                    System.out.println("    Sticking v"+v0.myIndex()+" between v"+bestBeforeThisEdge.finalVertex().myIndex()+" and v"+bestBeforeThisEdge.prev().opposite().finalVertex().myIndex()+" in v"+v1.myIndex()+"'s neighbors");
+                    someEdgeStartingAtV1 = bestBeforeThisEdge;
                 }
-                // XXX TODO: more cases, if either or both of the vertices are isolated, or otherwise connecting two components
+                if (someEdgeStartingAtV0 != null)
+                {
+                    // figure out the best place among v0's edges
+                    // to add v1.
+                    double bestGoodness = Double.NEGATIVE_INFINITY;
+                    Edge bestBeforeThisEdge = null;
+                    double ang = Math.atan2(v1.y-v0.y, v1.x-v0.x);
+                    // for each edge out of v0, ccw
+                    Edge nextEdgeOutOfV0 = null;
+                    for (Edge thisEdgeOutOfV0 = someEdgeStartingAtV0; ; thisEdgeOutOfV0 = nextEdgeOutOfV0)
+                    {
+                        // XXX dup code!
+                        nextEdgeOutOfV0 = thisEdgeOutOfV0.prev().opposite();
+                        //PRINT(thisEdgeOutOfV0);
+                        //PRINT(nextEdgeOutOfV0);
+                        Vertex thisNeighbor = thisEdgeOutOfV0.finalVertex();
+                        Vertex nextNeighbor = nextEdgeOutOfV0.finalVertex();
+                        double thisAng = Math.atan2(thisNeighbor.y-v0.y,
+                                                    thisNeighbor.x-v0.x);
+                        // change thisAng by multiples of 2*Math.PI
+                        // so that it's >= ang by as little as possible
+                        // XXX not sure this is robust... can something fall between the cracks? think about it
+                        while (thisAng < ang) thisAng += 2*Math.PI;
+                        while (thisAng > ang) thisAng -= 2*Math.PI;
+
+                        double thisGoodness = -(ang-thisAng); // want to minimize ang-thisAng, so maximize -(ang-thisAng)
+                        //PRINT(RTOD(thisGoodness));
+                        if (thisGoodness > bestGoodness)
+                        {
+                            bestBeforeThisEdge = thisEdgeOutOfV0;
+                            bestGoodness = thisGoodness;
+                        }
+
+                        if (nextEdgeOutOfV0 == someEdgeStartingAtV0)
+                            break;
+                    }
+                    assert(bestBeforeThisEdge != null);
+                    System.out.println("    Sticking v"+v1.myIndex()+" between v"+bestBeforeThisEdge.finalVertex().myIndex()+" and v"+bestBeforeThisEdge.prev().opposite().finalVertex().myIndex()+" in v"+v0.myIndex()+"'s neighbors");
+                    someEdgeStartingAtV0 = bestBeforeThisEdge;
+                }
+
+
+                if (someEdgeStartingAtV0 != null)
+                    if (someEdgeStartingAtV1 != null)
+                        addDiagonal(someEdgeStartingAtV0,
+                                    someEdgeStartingAtV1);
+                    else
+                        addWhisker(someEdgeStartingAtV0, v1);
+                else
+                    if (someEdgeStartingAtV1 != null)
+                        addWhisker(someEdgeStartingAtV1, v0);
+                    else
+                        addEdgeBetweenTwoIsolatedVertices(v0, v1);
             } // addEdgeBetweenTwoVertices
 
             public double twiceFaceArea(Edge e0)
@@ -11923,6 +11997,17 @@ OFF
     {
         System.out.println("in main");
 
+        if (false)
+        {
+            // frickin heck, ALMOST!
+            // this prevents flicker when resizing,
+            // but it leaves crap in a lot of places between widgets
+
+            // http://stackoverflow.com/questions/5452439/awt-canvas-flickering-on-manual-resize
+            System.setProperty("sun.awt.noerasebackground", "true");
+        }
+
+
         final java.awt.Frame frame = new java.awt.Frame("Shephards Play Applet") {
             public boolean handleEvent(java.awt.Event event)
             {
@@ -11984,6 +12069,7 @@ OFF
         frame.move(200, 20);
         frame.resize(200,200);
         frame.resize(1001, 701);
+        frame.resize(1001, 360);
         frame.show();
 
         //Misc.printPlatonicSolidVertexCurvatures();
