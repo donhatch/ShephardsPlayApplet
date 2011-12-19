@@ -16,6 +16,7 @@ User should be able to:
 
 
 BUGS:
+    - a lot of the rays look like they are in the wrong direction
     - clear, make points in order:
               1
               |\\
@@ -42,8 +43,8 @@ BUGS:
             left is too right by 1 pixel
 
 TO DO:
-    - clip lines to eye plane rather than culling them if either end point is on wrong side
     - do the math to pick/drag on the plane in 3d?  (even better eventually, the paraboloid! yeah!)
+    - clip lines to eye plane rather than culling them if either end point is on wrong side
     - get change ambiguous doThis and doThat to this(), that(), thisFlag, thatFlag?
     - time to show in 3d I think (project onto actual paraboloid)
     - if mouse press is close enough to a vertex, drag instead of create new...
@@ -1780,7 +1781,8 @@ public class ShephardsPlayApplet
                 }
 
                 double thisP[] = new double[2];
-                mostRecentGraphics.pick((e.getX()+.5)/globalMagFactor, (e.getY()+.5)/globalMagFactor, thisP);
+                mostRecentGraphics.pick(e.getX()+.5, e.getY()+.5, thisP);
+
                 boolean snapToGrid = e.isControlDown();
                 double snappedThisP[] = !snapToGrid ? thisP : new double[] {
                     (double)Math.round(thisP[0]/gridSnapQuantum)*gridSnapQuantum,
@@ -1876,9 +1878,12 @@ public class ShephardsPlayApplet
                                 // we want to measure the distance
                                 // in actual pixels, from the actual
                                 // integer pixel coord where the vertex appears.
+                                // XXX TODO: this is getting really arcane, need a more straightforward procedure
                                 Mesh.Vertex closestVert = mesh.getVert(closestVertIndex);
+                                double scratch[] = new double[3];
+                                mostRecentGraphics.xform(closestVert.x, closestVert.y, closestVert.hActual(), scratch);
                                 double vertPixelCoords[] = new double[2];
-                                mostRecentGraphics.unpick(closestVert.x, closestVert.y, vertPixelCoords);
+                                mostRecentGraphics.unpick(scratch[0], scratch[1], vertPixelCoords);
                                 int maxPixelDist = MAX(ABS(e.getX()-(int)Math.round(vertPixelCoords[0]-.5)),
                                                        ABS(e.getY()-(int)Math.round(vertPixelCoords[1]-.5)));
                                 //PRINT(maxPixelDist);
@@ -1902,6 +1907,31 @@ public class ShephardsPlayApplet
                             }
                             else
                             {
+
+                                {
+                                    // try to pick a point on the paraboloid.  good luck with that!
+                                    double pointOnParaboloid[];
+                                    if (localScaleZ == 0)
+                                        pointOnParaboloid = new double[] {thisP[0], thisP[1], -.5*(SQR(snappedThisP[0])+SQR(snappedThisP[1]))};
+                                    else
+                                    {
+                                        double eyeInLocalSpace[] = VecMath.mxv(getRotMat(), eye); // multiply on wrong side, i.e. apply transpose i.e. inverse
+                                        eyeInLocalSpace[2] /= MAX(localScaleZ, 1e-6);
+                                        double towardsPointInLocalSpace[] = VecMath.mxv(getRotMat(), new double[]{thisP[0],thisP[1],0.});
+                                        eyeInLocalSpace[2] /= localScaleZ;
+                                        towardsPointInLocalSpace[2] /= localScaleZ;
+                                        double t = rayIntersectParaboloid(
+                                                        eyeInLocalSpace,
+                                                        VecMath.vmv(towardsPointInLocalSpace, eyeInLocalSpace));
+                                        pointOnParaboloid = VecMath.lerp(eyeInLocalSpace, towardsPointInLocalSpace, t);
+                                    }
+                                    double projectedThisP[] = VecMath.copyvec(2, pointOnParaboloid);
+                                    snappedThisP = !snapToGrid ? projectedThisP : new double[] {
+                                        (double)Math.round(projectedThisP[0]/gridSnapQuantum)*gridSnapQuantum,
+                                        (double)Math.round(projectedThisP[1]/gridSnapQuantum)*gridSnapQuantum,
+                                    };
+                                }
+
 
                                 double vertsToAdd[][] = {
                                     snappedThisP,
@@ -2177,7 +2207,7 @@ public class ShephardsPlayApplet
                 if (eventVerbose >= 1) System.out.println("in mouseReleased: "+e);
 
                 double thisP[] = new double[2];
-                mostRecentGraphics.pick((e.getX()+.5)/globalMagFactor, (e.getY()+.5)/globalMagFactor, thisP);
+                mostRecentGraphics.pick(e.getX()+.5, e.getY()+.5, thisP);
                 boolean snapToGrid = e.isControlDown();
                 double snappedThisP[] = !snapToGrid ? thisP : new double[] {
                     (double)Math.round(thisP[0]/gridSnapQuantum)*gridSnapQuantum,
@@ -2290,7 +2320,7 @@ public class ShephardsPlayApplet
                 if (eventVerbose >= 2) System.out.println("  in mouseDragged: "+e);
 
                 double thisP[] = new double[2];
-                mostRecentGraphics.pick((e.getX()+.5)/globalMagFactor, (e.getY()+.5)/globalMagFactor, thisP);
+                mostRecentGraphics.pick(e.getX()+.5, e.getY()+.5, thisP);
                 boolean snapToGrid = e.isControlDown();
 #if 0
                 double snappedThisP[] = !snapToGrid ? thisP : new double[] {
@@ -2528,7 +2558,7 @@ public class ShephardsPlayApplet
                 if (mostRecentGraphics != null)
                 {
                     double thisP[] = new double[2];
-                    mostRecentGraphics.pick((e.getX()+.5)/globalMagFactor, (e.getY()+.5)/globalMagFactor, thisP);
+                    mostRecentGraphics.pick(e.getX()+.5, e.getY()+.5, thisP);
                     if (showNet.get())
                     {
                         int closestDualEdgeIndex = getDualMesh().indexOfClosestEdge(thisP, true);
@@ -3901,7 +3931,8 @@ public class ShephardsPlayApplet
                     FORI (iVert, nVerts)
                     {
                         if (doShowInsideOutDualVerts
-                         || vertFacings[iVert] != FACING_BACK)
+                         || vertFacings[iVert] != FACING_BACK
+                         || iVert == beingDraggedVertIndex)
                         {
                             Mesh.Vertex vert = (Mesh.Vertex)verts.get(iVert);
                             mg.drawPoint(vert.x,
@@ -5336,8 +5367,8 @@ public class ShephardsPlayApplet
                 if (doDoubleBuffer)
                 {
                     java.awt.Dimension size = getSize();
-                    int shouldBeWidth = (int)Math.ceil((double)size.width/(double)globalMagFactor);
-                    int shouldBeHeight = (int)Math.ceil((double)size.height/(double)globalMagFactor);
+                    int shouldBeWidth = (int)Math.ceil((double)size.width);
+                    int shouldBeHeight = (int)Math.ceil((double)size.height);
                     if (backBufferImage == null
                      || backBufferImage.getWidth(this) != shouldBeWidth
                      || backBufferImage.getHeight(this) != shouldBeHeight)
@@ -6932,9 +6963,9 @@ OFF
                     final Mesh dual = makeDualMesh(primal,
                                                    false,  // includeNonArity3
                                                    false); // includeInsideOut
-                    int nVerts = primal.verts.size();
-                    int nDualVerts = dual.verts.size();
-                    int nEdges = primal.edges.size();
+                    final int nVerts = primal.verts.size();
+                    final int nDualVerts = dual.verts.size();
+                    final int nEdges = primal.edges.size();
                     assert(nEdges == dual.edges.size());
 
                     final int tris[][/*3*/] = new int[nDualVerts][3];
@@ -7038,7 +7069,6 @@ OFF
                                           + fromsAndTosTris.length;
                             double goodnessVector[] = new double[nGoodness];
                             int iGoodness = 0;
-                            int nEdges = primal.edges.size();
 
                             System.out.println("    -----------------------");
 
@@ -9895,7 +9925,7 @@ OFF
                     // I think.
                     // (assumimg doShowInsideOutDualVerts is true)
                     // XXX Odd, this seems to behave better all around (I expected rays to go in wrong direction,
-                    // but it works better than the other way... should think about why
+                    // but it works better than the other way... should think about why)
                     dualEdge._next = dual.getEdge(primalEdge._next._opposite._myIndex);
                     dualEdge._prev = dual.getEdge(primalEdge._opposite._prev._myIndex);
                 }
@@ -11350,6 +11380,44 @@ OFF
             double vprojectedOntoV1[] = VecMath.sxv(t, v1);
             return VecMath.distsqrd(v, vprojectedOntoV1);
         }
+
+        // return t such that p + t*v is on the paraboloid x,y,-.5*(x^2+y^2)
+        // i.e. such that:
+        //      pz + t*vz = -.5 * ((px + t*vx)^2 + (py + t*vy)^2)
+        //                = -.5 * (px^2 + 2*t*px*vx + t^2*vx^2 + py^2 + 2*t*py*vy + t^2*vy^2)
+        //                = -.5 * ((px^2+py^2) + 2*t*(px*vx+py*vy) + t^2*(vx^2+vy^2))
+        //    ((px^2+py^2) + 2*t*(px*vx+py*vy) + t^2*(vx^2+vy^2)) + 2*pz + 2*t*vz == 0
+        //    (vx^2+vy^2)*t^2 + 2*(px*vx+py*vy + vz)*t + (px^2+py^2 + 2*pz) == 0
+
+        private static double rayIntersectParaboloid(double p[], double v[])
+        {
+            double a = SQR(v[0])+SQR(v[1]);
+            double b = 2*(p[0]*v[0] + p[1]*v[1] + v[2]);
+            double c = SQR(p[0]) + SQR(p[1]) + 2*p[2];
+            // numerical recipes in c, p. 184
+            double discr = b*b - 4*a*c;
+            double q = -.5 * (b + (b < 0 ? -1 : 1) * Math.sqrt(ABS(discr)));
+            double tThis = q/a;
+            double tThat = c/q;
+            double t0 = MIN(tThis, tThat);
+            double t1 = MAX(tThis, tThat);
+            if (discr < 0.)
+            {
+                // return the max of the two.
+                // if we're lucky, this will be something like
+                // a sensible mirror reflection of... well it's hard to explain.
+                return t1;
+            }
+            else
+            {
+                if (t0 >= 0.)
+                    return t0;
+                else
+                    return t1;
+            }
+        } // rayIntersectParaboloid
+
+
         // XXX unused
         private static double[][] axisAngleRotationMatrix(double axis[], double radians)
         {
@@ -11796,7 +11864,6 @@ OFF
         private boolean doDoubleBuffer = true;
         private java.awt.Image backBufferImage = null;
         private MyGraphics3D mostRecentGraphics = null;
-        private double globalMagFactor = 1.; // no way to set, currently... phase out?
         private Listenable.Boolean showMag = new Listenable.Boolean(false);
         private int magFactor = 9;
         private int magWidth = 25;
