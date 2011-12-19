@@ -45,7 +45,7 @@ BUGS:
 TO DO:
     - do the math to pick/drag on the plane in 3d?  (even better eventually, the paraboloid! yeah!)
     - clip lines to eye plane rather than culling them if either end point is on wrong side
-    - get change ambiguous doThis and doThat to this(), that(), thisFlag, thatFlag?
+    - change ambiguous doThis and doThat to this(), that(), thisFlag, thatFlag?
     - time to show in 3d I think (project onto actual paraboloid)
     - if mouse press is close enough to a vertex, drag instead of create new...
       "close enough" should be in pixels.
@@ -1782,12 +1782,18 @@ public class ShephardsPlayApplet
 
                 double thisP[] = new double[2];
                 mostRecentGraphics.pick(e.getX()+.5, e.getY()+.5, thisP);
+                double projectedThisP[] = new double[3];
+                pickPointOnParaboloid(thisP, 0., projectedThisP);
+
 
                 boolean snapToGrid = e.isControlDown();
-                double snappedThisP[] = !snapToGrid ? thisP : new double[] {
-                    (double)Math.round(thisP[0]/gridSnapQuantum)*gridSnapQuantum,
-                    (double)Math.round(thisP[1]/gridSnapQuantum)*gridSnapQuantum,
+                double snappedProjectedThisP[] = !snapToGrid ? projectedThisP : new double[] {
+                    (double)Math.round(projectedThisP[0]/gridSnapQuantum)*gridSnapQuantum,
+                    (double)Math.round(projectedThisP[1]/gridSnapQuantum)*gridSnapQuantum,
+                    0., // we'll fix this in a moment
                 };
+                snappedProjectedThisP[2] = 0. - .5 * (SQR(snappedProjectedThisP[0]) + SQR(snappedProjectedThisP[1]));
+
 
                 stateWhenPressed = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
 
@@ -1802,7 +1808,7 @@ public class ShephardsPlayApplet
                         //
                         // Add an edge from the closest vertex
                         //
-                        System.out.println("    Adding an edge at "+snappedThisP[0]+" "+snappedThisP[1]+" "+0+"");
+                        System.out.println("    Adding an edge at "+snappedProjectedThisP[0]+" "+snappedProjectedThisP[1]+" "+0+"");
 
                         //
                         // If there are no vertices, add one
@@ -1811,7 +1817,7 @@ public class ShephardsPlayApplet
                         if (verts.size() == 0)
                         {
                             System.out.println("        (Adding a vertex first)");
-                            mesh.addIsolatedVertex(snappedThisP[0], snappedThisP[1], 0);
+                            mesh.addIsolatedVertex(snappedProjectedThisP[0], snappedProjectedThisP[1], 0);
 
                             // added something-- invalidate dual mesh
                             dirtyDualMesh();
@@ -1907,34 +1913,8 @@ public class ShephardsPlayApplet
                             }
                             else
                             {
-
-                                {
-                                    // try to pick a point on the paraboloid.  good luck with that!
-                                    double pointOnParaboloid[];
-                                    if (localScaleZ == 0)
-                                        pointOnParaboloid = new double[] {thisP[0], thisP[1], -.5*(SQR(snappedThisP[0])+SQR(snappedThisP[1]))};
-                                    else
-                                    {
-                                        double eyeInLocalSpace[] = VecMath.mxv(getRotMat(), eye); // multiply on wrong side, i.e. apply transpose i.e. inverse
-                                        eyeInLocalSpace[2] /= MAX(localScaleZ, 1e-6);
-                                        double towardsPointInLocalSpace[] = VecMath.mxv(getRotMat(), new double[]{thisP[0],thisP[1],0.});
-                                        eyeInLocalSpace[2] /= localScaleZ;
-                                        towardsPointInLocalSpace[2] /= localScaleZ;
-                                        double t = rayIntersectParaboloid(
-                                                        eyeInLocalSpace,
-                                                        VecMath.vmv(towardsPointInLocalSpace, eyeInLocalSpace));
-                                        pointOnParaboloid = VecMath.lerp(eyeInLocalSpace, towardsPointInLocalSpace, t);
-                                    }
-                                    double projectedThisP[] = VecMath.copyvec(2, pointOnParaboloid);
-                                    snappedThisP = !snapToGrid ? projectedThisP : new double[] {
-                                        (double)Math.round(projectedThisP[0]/gridSnapQuantum)*gridSnapQuantum,
-                                        (double)Math.round(projectedThisP[1]/gridSnapQuantum)*gridSnapQuantum,
-                                    };
-                                }
-
-
                                 double vertsToAdd[][] = {
-                                    snappedThisP,
+                                    snappedProjectedThisP,
                                 };
 
                                 if (rotationalSymmetry > 1
@@ -2322,16 +2302,6 @@ public class ShephardsPlayApplet
                 double thisP[] = new double[2];
                 mostRecentGraphics.pick(e.getX()+.5, e.getY()+.5, thisP);
                 boolean snapToGrid = e.isControlDown();
-#if 0
-                double snappedThisP[] = !snapToGrid ? thisP : new double[] {
-                    (double)Math.round(thisP[0]/gridSnapQuantum)*gridSnapQuantum,
-                    (double)Math.round(thisP[1]/gridSnapQuantum)*gridSnapQuantum,
-                };
-                double snappedPrevP[] = !snapToGrid ? prevP : new double[] {
-                    (double)Math.round(prevP[0]/gridSnapQuantum)*gridSnapQuantum,
-                    (double)Math.round(prevP[1]/gridSnapQuantum)*gridSnapQuantum,
-                };
-#endif
 
                 if (draggingRotation)
                 {
@@ -2428,6 +2398,12 @@ public class ShephardsPlayApplet
                         }
                         else if (beingDraggedVertIndex != -1)
                         {
+                            Mesh.Vertex beingDraggedVert = mesh.getVert(beingDraggedVertIndex);
+                            double projectedThisP[] = new double[3];
+                            pickPointOnParaboloid(thisP, beingDraggedVert.h, projectedThisP);
+                            double projectedPrevP[] = new double[3];
+                            pickPointOnParaboloid(prevP, beingDraggedVert.h, projectedPrevP);
+
                             if (rotationalSymmetry > 1
                              || leftRightSymmetry)
                             {
@@ -2459,9 +2435,9 @@ public class ShephardsPlayApplet
                                 }
                                 //PRINTARRAY(group);
 
-                                double v[] = {mesh.getVert(beingDraggedVertIndex).x,
-                                              mesh.getVert(beingDraggedVertIndex).y};
-                                double dv[] = VecMath.vmv(thisP, prevP);
+                                double v[] = {beingDraggedVert.x,
+                                              beingDraggedVert.y};
+                                double dv[] = VecMath.vmv(projectedThisP, projectedPrevP);
 
 
                                 double newVertPositions[][] = new double[mesh.verts.size()][2];
@@ -2506,10 +2482,9 @@ public class ShephardsPlayApplet
                             else
                             {
                                 // Drag just the selected vert
-                                beingDraggedVertUnsnappedXY[0] += thisP[0] - prevP[0];
-                                beingDraggedVertUnsnappedXY[1] += thisP[1] - prevP[1];
+                                beingDraggedVertUnsnappedXY[0] += projectedThisP[0] - projectedPrevP[0];
+                                beingDraggedVertUnsnappedXY[1] += projectedThisP[1] - projectedPrevP[1];
 
-                                Mesh.Vertex beingDraggedVert = mesh.getVert(beingDraggedVertIndex);
                                 beingDraggedVert.x = beingDraggedVertUnsnappedXY[0];
                                 beingDraggedVert.y = beingDraggedVertUnsnappedXY[1];
 
@@ -2517,6 +2492,7 @@ public class ShephardsPlayApplet
                                 {
                                     beingDraggedVert.x = (double)Math.round(beingDraggedVert.x/gridSnapQuantum)*gridSnapQuantum;
                                     beingDraggedVert.y = (double)Math.round(beingDraggedVert.y/gridSnapQuantum)*gridSnapQuantum;
+                                    // and leave its h alone
                                 }
                             }
 
@@ -11799,6 +11775,7 @@ OFF
         private int rotationalSymmetry = 1;
 
 
+        private boolean draggingRotation = false;
         private double localScaleZ;
         private double twirl; // x->y
         private double tilt; // z->y
@@ -11850,7 +11827,37 @@ OFF
             };
             return VecMath.mxmxm(localScaleMat, rotMat, perspMat);
         }
-        private boolean draggingRotation = false;
+        // Uses:
+        //  localScaleZ
+        //  getRotMat()
+        //  eye
+        void pickPointOnParaboloid(double thisP[], double paraboloidLevel, double resultPointOnParaboloid[])
+        {
+            double pointOnParaboloid[];
+            if (localScaleZ == 0)
+            {
+                resultPointOnParaboloid[0] = thisP[0];
+                resultPointOnParaboloid[1] = thisP[1];
+                resultPointOnParaboloid[2] = -.5*(SQR(thisP[0])+SQR(thisP[1]));
+            }
+            else
+            {
+                double eyeInLocalSpace[] = VecMath.mxv(getRotMat(), eye); // multiply on wrong side, i.e. apply transpose i.e. inverse
+                eyeInLocalSpace[2] /= MAX(localScaleZ, 1e-6);
+                double towardsPointInLocalSpace[] = VecMath.mxv(getRotMat(), new double[]{thisP[0],thisP[1],0.});
+                eyeInLocalSpace[2] /= localScaleZ;
+                towardsPointInLocalSpace[2] /= localScaleZ;
+
+                eyeInLocalSpace[2] -= paraboloidLevel;
+                towardsPointInLocalSpace[2] -= paraboloidLevel;
+
+                double t = rayIntersectParaboloid(
+                                eyeInLocalSpace,
+                                VecMath.vmv(towardsPointInLocalSpace, eyeInLocalSpace));
+                VecMath.lerp(3, resultPointOnParaboloid, eyeInLocalSpace, towardsPointInLocalSpace, t);
+                resultPointOnParaboloid[2] += paraboloidLevel;
+            }
+        } // pickPointOnParaboloid
 
 
     //
