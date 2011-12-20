@@ -4,6 +4,7 @@ that will let me play with triangulations with heights,
 and produce the dual diagrams with heights.
 
 BUGS:
+    - tri grid, save, quit, rerun, load -> assert-fail
     - clear, make points in order:
               1
               |\\
@@ -5392,6 +5393,64 @@ public class ShephardsPlayApplet
                     else
                         faceFacings[iFace] = FACING_SIDE;
                 }
+
+                // Bleah, the faces that don't have dual verts
+                // need to be computed by a separate method.
+                FORI (iEdge, nEdges)
+                {
+                    Mesh.Edge edgeI = mesh.getEdge(iEdge);
+                    Mesh.Edge dualEdgeI = dualMesh.getEdge(iEdge);
+                    Mesh.Vertex leftDualVert = dualEdgeI.finalVertex();
+                    int iLeftFace = leftDualVert==null ? nDualVerts : leftDualVert.myIndex();
+                    if (faceFacings[iLeftFace] == FACING_UNKNOWN)
+                    {
+                        double normal[] = {0,0,0}; // for starters
+                        double moment[] = {0,0,0}; // for starters
+                        double centroid[] = null;
+                        // XXX TODO: centroid of verts might be more robust than area centroid? yeah I think so
+                        double area = 0.;
+                        {
+                            Mesh.Vertex v0 = edgeI.initialVertex();
+                            double v0coords[] = {v0.x, v0.y, v0.hActual()};
+                            double v1coords[] = new double[3]; // scratch for loop
+                            double v2coords[] = new double[3]; // scratch for loop
+                            double thisCentroid[] = new double[3]; // scratch for loop
+                            double thisWeightedNormal[] = new double[3]; // scratch for loop
+                            for (Mesh.Edge edgeJ = edgeI.next(); edgeJ != edgeI; edgeJ = edgeJ.next())
+                            {
+                                Mesh.Vertex v1 = edgeJ.initialVertex();
+                                Mesh.Vertex v2 = edgeJ.finalVertex();
+                                v1coords[0] = v1.x;
+                                v1coords[1] = v1.y;
+                                v1coords[2] = v1.hActual();
+                                v2coords[0] = v2.x;
+                                v2coords[1] = v2.y;
+                                v2coords[2] = v2.hActual();
+                                VecMath.vmv(v1coords, v1coords, v0coords);
+                                VecMath.vmv(v2coords, v2coords, v0coords);
+                                VecMath.vxv3(thisWeightedNormal, v1coords, v2coords);
+                                VecMath.vpv(normal, normal, thisWeightedNormal);
+                                double thisArea = VecMath.norm(thisWeightedNormal);
+                                area += thisArea;
+                                VecMath.sxvpsxv(thisCentroid, 1/3., v1coords, 1/3., v2coords); // relative to v0
+                                VecMath.vpsxv(moment, moment, thisArea, thisCentroid);
+                            }
+                            centroid = VecMath.vpsxv(v0coords, 1./area, moment);
+                        }
+                        double frontness = VecMath.dot(normal, eyeInLocalSpace)
+                                         - VecMath.dot(normal, centroid);
+                        //PRINT(frontness);
+                        // XXX not sure the epsilons make sense... maybe normalize normal, just so we can think straight about that?
+                        if (LT(frontness, 0., SQR(1e-6)))
+                            faceFacings[iLeftFace] = FACING_BACK;
+                        else if (GT(frontness, 0., SQR(1e-6)))
+                            faceFacings[iLeftFace] = FACING_FRONT;
+                        else
+                            faceFacings[iLeftFace] = FACING_SIDE;
+                        //PRINTVEC(normal);
+                    }
+                }
+
                 // compute edge facings from incident face facings...
                 //System.out.println("computing edge facings");
                 FORI (iEdge, nEdges)
@@ -6025,7 +6084,7 @@ public class ShephardsPlayApplet
                 if (rotationalSymmetry % 3 == 0)
                 {
                     // do regular tri grid, verts of {3,6}
-                    double r = .5;
+                    double r = Math.sqrt(.5);
                     int nX = 5; // how many verts along one side of hexagonal grid
                     int nRots = 6;
                     int nVerts = nX*(nX-1)/2 * nRots + 1 + nRots;
