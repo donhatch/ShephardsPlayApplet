@@ -16,12 +16,16 @@
 JAVAC=javac1.3
 JAVAROOT=c:/jdk1.3.1_20
 
+#JAVAC=javac1.6
+#JAVAROOT="c:/Program Files (x86)/Java/jdk1.6.0_17"
+
 
 
 JARFILE = ShephardsPlayApplet.jar
 CLASSES = \
         GraphicsAntiAliasingSetter.class \
         MyGraphics.class \
+        MyGraphics3D.class \
         Misc.class \
         ShephardsPlayApplet.class \
         ${NULL}
@@ -74,6 +78,7 @@ renumber: $(JARFILE).is_renumbered
 
 
 MyGraphics.class: macros.h Makefile donhatchsw.jar
+MyGraphics3D.class: macros.h Makefile donhatchsw.jar
 GraphicsAntiAliasingSetter.class: macros.h Makefile donhatchsw.jar
 ShephardsPlayApplet.class: macros.h Makefile donhatchsw.jar
 
