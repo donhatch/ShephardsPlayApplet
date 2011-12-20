@@ -57,6 +57,7 @@
 #define CLAMP(x,a,b) ((x)<=(a)?(a):(x)>=(b)?(b):(x))
 #define BIT(x,i) (((x)>>(i))&1)
 #define SQR(x) ((x)*(x))
+#define CUB(x) ((x)*(x)*(x))
 #define TRIANGLED(x) (((x)*((x)+1)) / 2)
 #define RTOD(r) ((r)*(180./Math.PI))
 #define DTOR(r) ((r)*(Math.PI/180.))
