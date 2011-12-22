@@ -22,6 +22,20 @@ BUGS:
             left is too right by 1 pixel
 
 TO DO:
+    - add a bit of symbolic fuzzy fudge to convex hull, to make it think flat edges are a bit convex? oh wait, is this just a question of sidedness testing afterwards? hmm. I did it, it seems to work for small things but it doesn't keep me from needing to add those extra verts to the grids??
+    - should respect symmetries:
+        - adjusting vertex height
+        - deleting a vertex
+    - collapse to-add verts via symmetries (e.g. so we don't add multiple verts at origin)
+    - improve kaleidescope:
+        - detect and use center
+        - detect and use complete symmetry group
+        - key to increase or decrease period (requires vertex in center?)
+        - snap closest image to exact image? hmm, not sure
+        - mode to place new verts in kaleidescope? (draw dots at images of cursor?)
+    - when increasing or decreasing rotational symmetry, show animation?
+    - need a way to ask where remaining bad lagoon exits are (finding them visually
+      is a needle in a haystack sometimes)
     - change ambiguous doThis and doThat to this(), that(), thisFlag, thatFlag?
     - time to show in 3d I think (project onto actual paraboloid)
     - I think I can get rid of the mesh x,y,h
@@ -31,18 +45,14 @@ TO DO:
       on the primal, since weights are all 1...
       and on the dual, no one ever just tweaks one in isolation.
       (however, note that things like rescale get incredibly painful)
+      (I think I'm going to scratch this, it would make everything
+      more opaque)
 
-    - when increasing or decreasing rotational symmetry, show animation?
     - when dragging a point with doContinuouslyDelaunayize true,
       show the nearest-neighbor-interpolation thing
       (i.e. use the DT of all but the dragged point,
       and show the new cell stealing area from others, in a diff color)
-    - add a bit of symbolic fuzzy fudge to convex hull, to make it think flat edges are a bit convex? oh wait, is this just a question of sidedness testing afterwards? hmm
     - make IsMiniBall robust to degeneracies
-    - should respect symmetries:
-        - adjusting vertex height
-        - deleting a vertex
-    - collapse to-add verts via symmetries (e.g. so we don't add multiple verts at origin)
     - color lagoon edges yellow when dragging cut?
     - should save/restore cuts in terms of primal from,to verts to be robust? maybe
 
@@ -65,12 +75,6 @@ TO DO:
               - match total length?
               - match bbox?
 
-    - improve kaleidescope:
-        - detect and use center
-        - detect and use complete symmetry group
-        - key to increase or decrease period (requires vertex in center?)
-        - snap closest image to exact image? hmm, not sure
-        - mode to place new verts in kaleidescope? (draw dots at images of cursor?)
 
     - +/- should maybe look at undo and redo stack, and use it if possible, to save memory?
 
@@ -1905,22 +1909,22 @@ public class ShephardsPlayApplet
                                 if (rotationalSymmetry > 1
                                  || leftRightSymmetry)
                                 {
-                                    double xforms[][][] = {};
+                                    double xformGenerators[][][] = {};
                                     if (leftRightSymmetry)
-                                        xforms = (double[][][])Arrays.append(xforms, new double[][] {{-1,0},{0,1}});
+                                        xformGenerators = (double[][][])Arrays.append(xformGenerators, new double[][] {{-1,0},{0,1}});
                                     if (rotationalSymmetry > 1)
                                     {
                                         double c = cosPiTimes(2,rotationalSymmetry); // cos(2*pi/rotationalSymmetry)
                                         double s = sinPiTimes(2,rotationalSymmetry); // sin(2*pi/rotationalSymmetry)
 
-                                        xforms = (double[][][])Arrays.append(xforms, new double[][] {
+                                        xformGenerators = (double[][][])Arrays.append(xformGenerators, new double[][] {
                                             { c,s},
                                             {-s,c},
                                         });
                                     }
-                                    PRINTARRAY(xforms);
+                                    PRINTARRAY(xformGenerators);
                                     vertsToAdd = generateVertices(vertsToAdd,
-                                                                  xforms);
+                                                                  xformGenerators);
                                 }
 
                                 // we add them in reverse order, so that the original one
@@ -2395,30 +2399,7 @@ public class ShephardsPlayApplet
                             {
                                 // Drag all points of kaleidoscope
 
-                                double group[][][] = new double[rotationalSymmetry * (leftRightSymmetry ? 2 : 1)][][];
-                                {
-                                    // could avoid half the work without introducing roundoff error,
-                                    // by only doing half of them and taking inverses (transposes),
-                                    // but whatever, this sure isn't a bottleneck
-                                    FORI (i, rotationalSymmetry)
-                                    {
-                                        double c = cosPiTimes(2*i,rotationalSymmetry); // cos(2*pi * i/rotationalSymmetry)
-                                        double s = sinPiTimes(2*i,rotationalSymmetry); // sin(2*pi * i/rotationalSymmetry)
-                                        group[i] = new double[][] {
-                                            { c,s},
-                                            {-s,c},
-                                        };
-                                    }
-
-
-                                    if (leftRightSymmetry)
-                                    {
-                                        double leftRightReflection[][] = new double[][]{{-1,0},{0,1}};
-                                        FORI (i, rotationalSymmetry)
-                                            group[rotationalSymmetry+i] =
-                                                VecMath.mxm(group[i],leftRightReflection);
-                                    }
-                                }
+                                double group[][][] = computeSymmetryGroup(rotationalSymmetry, leftRightSymmetry);
                                 //PRINTARRAY(group);
 
                                 double v[] = {beingDraggedVert.x,
@@ -5560,7 +5541,7 @@ public class ShephardsPlayApplet
 
                 //
                 // Now get rid of each edge
-                // that separates two negative-area faces.
+                // that separates two non-positive-area faces.
                 // Analyze all the edges first before deleting any,
                 // so that we are only looking at triangle areas.
                 //
@@ -5571,8 +5552,8 @@ public class ShephardsPlayApplet
                     for (int iEdge = 0; iEdge < nEdges; iEdge += 2) // only one of an edge and its opposite
                     {
                         Mesh.Edge edge = mesh.getEdge(iEdge);
-                        if (mesh.twiceFaceArea(edge) < 0
-                         && mesh.twiceFaceArea(edge.opposite()) < 0)
+                        if (mesh.twiceFaceArea(edge) <= SQR(1e-6)
+                         && mesh.twiceFaceArea(edge.opposite()) <= SQR(1e-6))
                             edgesToDelete.add(edge);
                     }
                     int nEdgesToDelete = edgesToDelete.size();
@@ -11576,6 +11557,35 @@ OFF
                 accumulator[2] += increment[2]; // h/A^2
             accumulator[accumulator.length-1] += increment[increment.length-1]; // A
         }
+
+        private static double[][/*2*/][/*2*/] computeSymmetryGroup(int rotationalSymmetry, boolean leftRightSymmetry)
+        {
+            double group[][][] = new double[rotationalSymmetry * (leftRightSymmetry ? 2 : 1)][][];
+            {
+                // could avoid half the work without introducing roundoff error,
+                // by only doing half of them and taking inverses (transposes),
+                // but whatever, this sure isn't a bottleneck
+                FORI (i, rotationalSymmetry)
+                {
+                    double c = cosPiTimes(2*i,rotationalSymmetry); // cos(2*pi * i/rotationalSymmetry)
+                    double s = sinPiTimes(2*i,rotationalSymmetry); // sin(2*pi * i/rotationalSymmetry)
+                    group[i] = new double[][] {
+                        { c,s},
+                        {-s,c},
+                    };
+                }
+
+
+                if (leftRightSymmetry)
+                {
+                    double leftRightReflection[][] = new double[][]{{-1,0},{0,1}};
+                    FORI (i, rotationalSymmetry)
+                        group[rotationalSymmetry+i] =
+                            VecMath.mxm(group[i],leftRightReflection);
+                }
+            }
+            return group;
+        } // computeSymmetryGroup
 
         // =============== BEGIN: stolen from CSG.prejava
 
