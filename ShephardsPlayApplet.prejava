@@ -4,6 +4,8 @@ that will let me play with triangulations with heights,
 and produce the dual diagrams with heights.
 
 BUGS:
+    - snapping should work orthogonally to symmetry (should just snap original, not images, I think... and then make images be the images of the snapped?)
+    - I think selection of what to drag is messed up if not ortho and nontrivial symmetry group
     - tri grid, '+' 3 times, tilt 180 degrees -> assert fail in IsMiniBall
         (very big radius?)
     - symmetry=3, rotate in 3d, drag a point... it often gets stuck??
@@ -27,9 +29,6 @@ TO DO:
     - think about how user can express grid params
     - uniform hyperbolic grid? hmm
     - add a bit of symbolic fuzzy fudge to convex hull, to make it think flat edges are a bit convex? oh wait, is this just a question of sidedness testing afterwards? hmm. I did it, it seems to work for small things but it doesn't keep me from needing to add those extra verts to the grids??
-    - should respect symmetries:
-        - adjusting vertex height
-        - deleting a vertex
     - collapse to-add verts via symmetries (e.g. so we don't add multiple verts at origin)
     - improve kaleidescope:
         - detect and use center
@@ -2144,11 +2143,20 @@ public class ShephardsPlayApplet
                     else
                     {
                         //
-                        // Delete closest vertex
+                        // Delete closest vertex,
+                        // and all its reflections and rotations in the symmetry group
                         //
                         beingDraggedVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1],mostRecentGraphics);
+                        PRINT(beingDraggedVertIndex);
                         if (beingDraggedVertIndex != -1)
-                            mesh.deleteVertex(mesh.getVert(beingDraggedVertIndex));
+                        {
+                            Mesh.Vertex beingDraggedVert = mesh.getVert(beingDraggedVertIndex);
+                            double v[] = {beingDraggedVert.x, beingDraggedVert.y};
+                            double group[][][] = computeSymmetryGroup(rotationalSymmetry, leftRightSymmetry);
+                            Mesh.Vertex vertsToDelete[] = findAllVertsThatAreImages(mesh, v, group, 1e-6);
+                            FORI (iVertToDelete, vertsToDelete.length)
+                                mesh.deleteVertex(vertsToDelete[iVertToDelete]);
+                        }
                         beingDraggedVertIndex = -1;
 
                         // vertices got re-ordered, so we must clear the selection (for now).
@@ -2428,7 +2436,7 @@ public class ShephardsPlayApplet
                                 {
                                     double image[] = VecMath.vxm(v,group[iGroup]);
                                     int iImage = mesh.indexOfClosestVert(
-                                                    image[0], image[1],mostRecentGraphics);
+                                                    image[0], image[1],mostRecentGraphics); // TODO: this is totally wrong unless identity xform
 
                                     double imageVertPosition[] = {
                                         mesh.getVert(iImage).x,
@@ -2547,16 +2555,25 @@ public class ShephardsPlayApplet
                         int iVert = mesh.indexOfClosestVert(prevP[0], prevP[1],mostRecentGraphics);
                         if (iVert != -1)
                         {
-                            // pull the dual face *out* of the screen,
-                            // i.e. increase its height,
-                            // i.e. decrease height of primal vert.
-                            if (e.isShiftDown())
-                                mesh.getVert(iVert).h -= incr*10;
-                            else if (e.isControlDown())
-                                mesh.getVert(iVert).h -= incr*.1;
-                            else
-                                mesh.getVert(iVert).h -= incr;
-                            System.out.println("    verts["+iVert+"].h -> "+mesh.getVert(iVert).h);
+                            Mesh.Vertex vertI = mesh.getVert(iVert);
+                            double v[] = {vertI.x, vertI.y};
+                            double group[][][] = computeSymmetryGroup(rotationalSymmetry, leftRightSymmetry);
+                            Mesh.Vertex vertsToMove[] = findAllVertsThatAreImages(mesh, v, group, 1e-6);
+
+                            FORI (iVertToMove, vertsToMove.length)
+                            {
+                                Mesh.Vertex vert = vertsToMove[iVertToMove];
+                                // pull the dual face *out* of the screen,
+                                // i.e. increase its height,
+                                // i.e. decrease height of primal vert.
+                                if (e.isShiftDown())
+                                    vert.h -= incr*10;
+                                else if (e.isControlDown())
+                                    vert.h -= incr*.1;
+                                else
+                                    vert.h -= incr;
+                                System.out.println("    verts["+vert.myIndex()+"].h -> "+vert.h);
+                            }
                             if (doContinuouslyDelaunayize.get()) delaunayize();
                         }
                         UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
@@ -2576,17 +2593,29 @@ public class ShephardsPlayApplet
                         System.out.print("Down");
                         System.out.flush();
                         int iVert = mesh.indexOfClosestVert(prevP[0], prevP[1],mostRecentGraphics);
-                        // push the dual face *into* of the screen,
-                        // i.e. decrease its height,
-                        // i.e. increase height of primal vert.
-                        if (e.isShiftDown())
-                            mesh.getVert(iVert).h += incr*10;
-                        else if (e.isControlDown())
-                            mesh.getVert(iVert).h += incr*.1;
-                        else
-                            mesh.getVert(iVert).h += incr;
-                        System.out.println("    verts["+iVert+"].h -> "+mesh.getVert(iVert).h);
-                        if (doContinuouslyDelaunayize.get()) delaunayize();
+                        if (iVert != -1)
+                        {
+                            Mesh.Vertex vertI = mesh.getVert(iVert);
+                            double v[] = {vertI.x, vertI.y};
+                            double group[][][] = computeSymmetryGroup(rotationalSymmetry, leftRightSymmetry);
+                            Mesh.Vertex vertsToMove[] = findAllVertsThatAreImages(mesh, v, group, 1e-6);
+
+                            FORI (iVertToMove, vertsToMove.length)
+                            {
+                                Mesh.Vertex vert = vertsToMove[iVertToMove];
+                                // push the dual face *into* the screen,
+                                // i.e. decrease its height,
+                                // i.e. increase height of primal vert.
+                                if (e.isShiftDown())
+                                    vert.h += incr*10;
+                                else if (e.isControlDown())
+                                    vert.h += incr*.1;
+                                else
+                                    vert.h += incr;
+                                System.out.println("    verts["+vert.myIndex()+"].h -> "+vert.h);
+                            }
+                            if (doContinuouslyDelaunayize.get()) delaunayize();
+                        }
                         UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         dirtyDualMesh();
@@ -11564,6 +11593,37 @@ OFF
             }
             return group;
         } // computeSymmetryGroup
+
+        private static Mesh.Vertex[] findAllVertsThatAreImages(Mesh mesh, double v[/*2*/], double group[][/*2*/][/*2*/], double eps)
+        {
+            int nVerts = mesh.verts.size();
+            boolean foundVert[] = new boolean[nVerts];
+            int nFound = 0;
+            FORI (iGroup, group.length)
+            {
+                double image[] = VecMath.vxm(v,group[iGroup]);
+                FORI (iVert, nVerts)
+                {
+                    if (!foundVert[iVert])
+                    {
+                        Mesh.Vertex vertI = mesh.getVert(iVert);
+                        if (EQ(image[0], vertI.x, eps)
+                         && EQ(image[1], vertI.y, eps))
+                        {
+                            foundVert[iVert] = true;
+                            nFound++;
+                        }
+                    }
+                }
+            }
+            Mesh.Vertex answer[] = new Mesh.Vertex[nFound];
+            nFound = 0;
+            FORI (iVert, nVerts)
+                if (foundVert[iVert])
+                    answer[nFound++] = mesh.getVert(iVert);
+            assert(nFound == answer.length);
+            return answer;
+        } // findAllVertsThatAreImages
 
         // =============== BEGIN: stolen from CSG.prejava
 
