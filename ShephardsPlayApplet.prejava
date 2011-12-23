@@ -4,6 +4,7 @@ that will let me play with triangulations with heights,
 and produce the dual diagrams with heights.
 
 BUGS:
+    - 'd' to delete edge not working in non-ortho
     - snapping should work orthogonally to symmetry (should just snap original, not images, I think... and then make images be the images of the snapped?)
     - tri grid, '+' 3 times, tilt 180 degrees -> assert fail in IsMiniBall
         (very big radius?)
@@ -12,7 +13,7 @@ BUGS:
     - painting doesn't happen continuously when dragging when there's a lot on the screen! (it doesn't update til you stop dragging) ARGH!  maybe this is a function of using Canvas? also maybe non-Canvas will not flash when resizing
     - miniball still not handling dup vertices well
     - can't run it with donhatchsw.jar?? can build it though! (using ; instead of :)
-    - assertion failure in convex hull sometimes, when adding first point with rotsym=5 or rotsym=2,mirror continuousdelaunay, DUMP.convexHullAssertFail[45].off
+    - assertion failure in convex hull sometimes, when adding first point with rotsym=4 or rotsym=5 or rotsym=2,mirror continuousdelaunay, DUMP.convexHullAssertFail[45].off
     - lots of assert-fails in convex hull stuff with r=1,lr=true with small numbers of points
     - optimization seems to be broken? (not recalculating most of the time when it should)
     - use exact group calculation rather than generateVertices when adding a point
@@ -25,6 +26,9 @@ BUGS:
             left is too right by 1 pixel
 
 TO DO:
+    - respect symmetry:
+        - snapping
+        - rubberbanding
     - think about how user can express grid params
     - uniform hyperbolic grid? hmm
     - add a bit of symbolic fuzzy fudge to convex hull, to make it think flat edges are a bit convex? oh wait, is this just a question of sidedness testing afterwards? hmm. I did it, it seems to work for small things but it doesn't keep me from needing to add those extra verts to the grids??
@@ -2188,11 +2192,15 @@ public class ShephardsPlayApplet
 
                 double thisP[] = new double[2];
                 mostRecentGraphics.pick(e.getX()+.5, e.getY()+.5, thisP);
+                double projectedThisP[] = new double[3];
+                pickPointOnParaboloid(thisP, 0., projectedThisP);
                 boolean snapToGrid = e.isControlDown();
-                double snappedThisP[] = !snapToGrid ? thisP : new double[] {
-                    (double)Math.round(thisP[0]/gridSnapQuantum)*gridSnapQuantum,
-                    (double)Math.round(thisP[1]/gridSnapQuantum)*gridSnapQuantum,
+                double snappedProjectedThisP[] = !snapToGrid ? projectedThisP : new double[] {
+                    (double)Math.round(projectedThisP[0]/gridSnapQuantum)*gridSnapQuantum,
+                    (double)Math.round(projectedThisP[1]/gridSnapQuantum)*gridSnapQuantum,
+                    0., // we'll fix this in a moment
                 };
+                snappedProjectedThisP[2] = 0. - .5 * (SQR(snappedProjectedThisP[0]) + SQR(snappedProjectedThisP[1]));
 
                 int whichButton = getButton(e);
                 if (whichButton == java_awt_event_MouseEvent_BUTTON1)
@@ -2201,7 +2209,7 @@ public class ShephardsPlayApplet
                     {
                         if (mesh.verts.size() == 1)
                         {
-                            mesh.addIsolatedVertex(snappedThisP[0], snappedThisP[1], 0);
+                            mesh.addIsolatedVertex(snappedProjectedThisP[0], snappedProjectedThisP[1], 0);
                         }
                         int finalVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1],mostRecentGraphics);
                         if (beingDraggedVertIndex != -1
