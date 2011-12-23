@@ -4,6 +4,10 @@ that will let me play with triangulations with heights,
 and produce the dual diagrams with heights.
 
 BUGS:
+    - press or release ctrl (snapToGrid) in middle of dragging with symmetry on loses the images
+    - when non-ortho, snap-to-grid produces coords with some round-off error, e.g. 0.12500000000000003
+    - clear and click with shift down-- creates a zero-length edge, I think it shouldn't.
+      just make it so the rubberbanding won't create a new vert to exact same place.
     - 'd' to delete edge not working in non-ortho
     - snapping should work orthogonally to symmetry (should just snap original, not images, I think... and then make images be the images of the snapped?)
     - tri grid, '+' 3 times, tilt 180 degrees -> assert fail in IsMiniBall
@@ -27,7 +31,6 @@ BUGS:
 
 TO DO:
     - respect symmetry:
-        - snapping
         - rubberbanding
     - think about how user can express grid params
     - uniform hyperbolic grid? hmm
@@ -1803,7 +1806,7 @@ public class ShephardsPlayApplet
                         //
                         // Add an edge from the closest vertex
                         //
-                        System.out.println("    Adding an edge at "+snappedProjectedThisP[0]+" "+snappedProjectedThisP[1]+" "+0+"");
+                        System.out.println("    Rubberbanding a new edge from "+snappedProjectedThisP[0]+" "+snappedProjectedThisP[1]+" "+0+"");
 
                         //
                         // If there are no vertices, add one
@@ -1874,7 +1877,7 @@ public class ShephardsPlayApplet
                             // but only if not very close to an existing one.
                             //
                             int closestVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1],mostRecentGraphics);
-                            if (closestVertIndex != -1)
+                            if (closestVertIndex != -1) // if we have a candidate...
                             {
                                 // we want to measure the distance
                                 // in actual pixels, from the actual
@@ -1891,22 +1894,43 @@ public class ShephardsPlayApplet
                                 if (maxPixelDist > 3)
                                     closestVertIndex = -1; // too far
                             }
-                            if (closestVertIndex != -1)
+                            if (closestVertIndex != -1) // if it wasn't too far
                             {
                                 beingDraggedVertIndex = closestVertIndex;
                                 System.out.println("Dragging vertex "+beingDraggedVertIndex);
                                 Mesh.Vertex beingDraggedVert = mesh.getVert(beingDraggedVertIndex);
                                 beingDraggedVertUnsnappedXY = new double[]{beingDraggedVert.x, beingDraggedVert.y};
+
+
                                 if (snapToGrid)
                                 {
-                                    System.out.println("Snapping vertex "+beingDraggedVertIndex+" from "+beingDraggedVert.x+" "+beingDraggedVert.y+" "+beingDraggedVert.h+"");
-                                    beingDraggedVert.x = (double)Math.round(beingDraggedVert.x/gridSnapQuantum)*gridSnapQuantum;
-                                    beingDraggedVert.y = (double)Math.round(beingDraggedVert.y/gridSnapQuantum)*gridSnapQuantum;
-                                    System.out.println("Dragging vertex "+beingDraggedVertIndex+" from "+beingDraggedVert.x+" "+beingDraggedVert.y+" "+beingDraggedVert.h+"");
+                                    double unsnappedCoords[] = {beingDraggedVert.x, beingDraggedVert.y};
+                                    double snappedCoords[] = {(double)Math.round(beingDraggedVert.x/gridSnapQuantum)*gridSnapQuantum,
+                                                              (double)Math.round(beingDraggedVert.y/gridSnapQuantum)*gridSnapQuantum};
+                                    double group[][][] = computeSymmetryGroup(rotationalSymmetry, leftRightSymmetry);
+                                    int nVerts = mesh.verts.size();
+                                    FORI (iGroup, group.length)
+                                    {
+                                        double unsnappedImage[] = VecMath.vxm(unsnappedCoords,group[iGroup]);
+                                        FORI (iVert, nVerts)
+                                        {
+                                            Mesh.Vertex vertI = mesh.getVert(iVert);
+                                            if (EQ(unsnappedImage[0], vertI.x, 1e-6)
+                                             && EQ(unsnappedImage[1], vertI.y, 1e-6))
+                                            {
+                                                double snappedImage[] = VecMath.vxm(snappedCoords,group[iGroup]);
+                                                System.out.println("Snapping vertex "+iVert+" from "+vertI.x+" "+vertI.y+" "+vertI.h+"");
+                                                vertI.x = snappedImage[0];
+                                                vertI.y = snappedImage[1];
+                                                System.out.println("Dragging vertex "+iVert+" from "+vertI.x+" "+vertI.y+" "+vertI.h+"");
+                                            }
+                                        }
+                                    }
+
                                     if (doContinuouslyDelaunayize.get()) delaunayize();
                                 }
                             }
-                            else
+                            else // closest was too far-- add a new vert
                             {
                                 double vertsToAdd[][] = {
                                     VecMath.copyvec(2, snappedProjectedThisP),
@@ -2083,8 +2107,9 @@ public class ShephardsPlayApplet
                                     mesh.sanityCheck();
 
                                     beingDraggedVertIndex = verts.size()-1; // start dragging the one we just added
-                                    beingDraggedVertUnsnappedXY = new double[]{vertsToAdd[vertsToAdd.length-1][0],
-                                                                               vertsToAdd[vertsToAdd.length-1][1]};
+                                    // XXX not sure the following is right, since it's already been snapped, right? or has it?
+                                    beingDraggedVertUnsnappedXY = new double[]{vertsToAdd[0][0],
+                                                                               vertsToAdd[0][1]};
                                 }
 
                                 // added something-- invalidate dual mesh
@@ -2209,6 +2234,7 @@ public class ShephardsPlayApplet
                     {
                         if (mesh.verts.size() == 1)
                         {
+                            System.out.println("    Adding vertex "+mesh.verts.size()+" at "+snappedProjectedThisP[0]+" "+snappedProjectedThisP[1]+" "+0+"");
                             mesh.addIsolatedVertex(snappedProjectedThisP[0], snappedProjectedThisP[1], 0);
                         }
                         int finalVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1],mostRecentGraphics);
@@ -2308,10 +2334,9 @@ public class ShephardsPlayApplet
             {
                 if (eventVerbose >= 2) System.out.println("  in mouseDragged: "+e);
 
+                boolean snapToGrid = e.isControlDown();
                 double thisP[] = new double[2];
                 mostRecentGraphics.pick(e.getX()+.5, e.getY()+.5, thisP);
-                boolean snapToGrid = e.isControlDown();
-
                 if (draggingRotation)
                 {
                     // increment tilt according to deltaY,
@@ -2375,7 +2400,25 @@ public class ShephardsPlayApplet
                 {
                     if (rubberBandingNewEdge)
                     {
-                        // nothing, we'll just draw the rubberband in the new position when we repaint
+                        if (snapToGrid)
+                        {
+                            double projectedThisP[] = new double[3];
+                            pickPointOnParaboloid(thisP, 0., projectedThisP);
+                            double snappedProjectedThisP[] = !snapToGrid ? projectedThisP : new double[] {
+                                (double)Math.round(projectedThisP[0]/gridSnapQuantum)*gridSnapQuantum,
+                                (double)Math.round(projectedThisP[1]/gridSnapQuantum)*gridSnapQuantum,
+                                0., // we'll fix this in a moment
+                            };
+                            snappedProjectedThisP[2] = 0. - .5 * (SQR(snappedProjectedThisP[0]) + SQR(snappedProjectedThisP[1]));
+
+                            // now what??? project back to screen and set prevP to it.
+                            // argh, but then it will get clobbered at the bottom.
+                            // oh, set *thisP* to it, so prevP will get set to that! hacky
+
+                            double scratch[] = new double[3];
+                            mostRecentGraphics.xform(snappedProjectedThisP[0], snappedProjectedThisP[1], snappedProjectedThisP[2], scratch);
+                            VecMath.copyvec(2, thisP, scratch);
+                        }
                     }
                     else
                     {
@@ -2413,6 +2456,9 @@ public class ShephardsPlayApplet
                             double projectedPrevP[] = new double[3];
                             pickPointOnParaboloid(prevP, beingDraggedVert.h, projectedPrevP);
 
+                            beingDraggedVertUnsnappedXY[0] += projectedThisP[0] - projectedPrevP[0];
+                            beingDraggedVertUnsnappedXY[1] += projectedThisP[1] - projectedPrevP[1];
+
                             if (rotationalSymmetry > 1
                              || leftRightSymmetry)
                             {
@@ -2423,8 +2469,19 @@ public class ShephardsPlayApplet
 
                                 double v[] = {beingDraggedVert.x,
                                               beingDraggedVert.y};
-                                double dv[] = VecMath.vmv(2, projectedThisP, projectedPrevP);
-
+                                double dv[];
+                                if (snapToGrid)
+                                {
+                                    double beingDraggedVertSnappedXY[] = {
+                                        (double)Math.round(beingDraggedVertUnsnappedXY[0]/gridSnapQuantum)*gridSnapQuantum,
+                                        (double)Math.round(beingDraggedVertUnsnappedXY[1]/gridSnapQuantum)*gridSnapQuantum,
+                                    };
+                                    dv = VecMath.vmv(2, beingDraggedVertSnappedXY, v);
+                                }
+                                else
+                                {
+                                    dv = VecMath.vmv(2, beingDraggedVertUnsnappedXY, v);
+                                }
 
                                 int nVerts = mesh.verts.size();
                                 double newVertPositions[][] = new double[nVerts][2];
@@ -2440,6 +2497,7 @@ public class ShephardsPlayApplet
                                 // that means the mirror passes through it;
                                 // this will end up constraining it to the mirror
                                 // (and moving it twice as far along the mirror as otherwise, which is fine).
+                                // XXX should just move the reflection to the new reflection, I think, to prevent drift? hmm, but then we'd lose the nice locked-to-mirror behavior
                                 FORI (iGroup, group.length)
                                 {
                                     double image[] = VecMath.vxm(v,group[iGroup]);
@@ -2467,9 +2525,6 @@ public class ShephardsPlayApplet
                             else
                             {
                                 // Drag just the selected vert
-                                beingDraggedVertUnsnappedXY[0] += projectedThisP[0] - projectedPrevP[0];
-                                beingDraggedVertUnsnappedXY[1] += projectedThisP[1] - projectedPrevP[1];
-
                                 beingDraggedVert.x = beingDraggedVertUnsnappedXY[0];
                                 beingDraggedVert.y = beingDraggedVertUnsnappedXY[1];
 
