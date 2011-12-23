@@ -4,7 +4,6 @@ that will let me play with triangulations with heights,
 and produce the dual diagrams with heights.
 
 BUGS:
-    - press or release ctrl (snapToGrid) in middle of dragging with symmetry on loses the images
     - when non-ortho, snap-to-grid produces coords with some round-off error, e.g. 0.12500000000000003
     - clear and click with shift down-- creates a zero-length edge, I think it shouldn't.
       just make it so the rubberbanding won't create a new vert to exact same place.
@@ -2767,10 +2766,37 @@ public class ShephardsPlayApplet
                             if (beingDraggedVertIndex != -1)
                             {
                                 Mesh.Vertex beingDraggedVert = mesh.getVert(beingDraggedVertIndex);
-                                beingDraggedVert.x = beingDraggedVertUnsnappedXY[0];
-                                beingDraggedVert.y = beingDraggedVertUnsnappedXY[1];
-                                beingDraggedVert.x = (double)Math.round(beingDraggedVert.x/gridSnapQuantum)*gridSnapQuantum;
-                                beingDraggedVert.y = (double)Math.round(beingDraggedVert.y/gridSnapQuantum)*gridSnapQuantum;
+
+                                double oldCoords[] = {beingDraggedVert.x, beingDraggedVert.y};
+
+                                // only difference between ctrl-newly-down and ctrl-newly-up...
+                                double newCoords[] = {
+                                    (double)Math.round(beingDraggedVertUnsnappedXY[0]/gridSnapQuantum)*gridSnapQuantum,
+                                    (double)Math.round(beingDraggedVertUnsnappedXY[1]/gridSnapQuantum)*gridSnapQuantum,
+                                };
+
+                                double group[][][] = computeSymmetryGroup(rotationalSymmetry, leftRightSymmetry);
+                                int nVerts = mesh.verts.size();
+                                FORI (iGroup, group.length)
+                                {
+                                    double oldImage[] = VecMath.vxm(oldCoords,group[iGroup]);
+                                    FORI (iVert, nVerts)
+                                    {
+                                        Mesh.Vertex vertI = mesh.getVert(iVert);
+                                        if (EQ(oldImage[0], vertI.x, 1e-6)
+                                         && EQ(oldImage[1], vertI.y, 1e-6))
+                                        {
+                                            double newImage[] = VecMath.vxm(newCoords,group[iGroup]);
+                                            System.out.println("Snapping vertex "+iVert+" from "+vertI.x+" "+vertI.y+" "+vertI.h+"");
+                                            vertI.x = newImage[0];
+                                            vertI.y = newImage[1];
+                                            System.out.println("Dragging vertex "+iVert+" from "+vertI.x+" "+vertI.y+" "+vertI.h+"");
+                                        }
+                                    }
+                                }
+
+                                if (doContinuouslyDelaunayize.get()) delaunayize();
+
                                 theCanvas.repaint();
                             }
                         }
@@ -2802,8 +2828,34 @@ public class ShephardsPlayApplet
                             if (beingDraggedVertIndex != -1)
                             {
                                 Mesh.Vertex beingDraggedVert = mesh.getVert(beingDraggedVertIndex);
-                                beingDraggedVert.x = beingDraggedVertUnsnappedXY[0];
-                                beingDraggedVert.y = beingDraggedVertUnsnappedXY[1];
+
+                                double oldCoords[] = {beingDraggedVert.x, beingDraggedVert.y};
+
+                                // only difference between ctrl-newly-down and ctrl-newly-up...
+                                double newCoords[] = beingDraggedVertUnsnappedXY;
+
+                                double group[][][] = computeSymmetryGroup(rotationalSymmetry, leftRightSymmetry);
+                                int nVerts = mesh.verts.size();
+                                FORI (iGroup, group.length)
+                                {
+                                    double oldImage[] = VecMath.vxm(oldCoords,group[iGroup]);
+                                    FORI (iVert, nVerts)
+                                    {
+                                        Mesh.Vertex vertI = mesh.getVert(iVert);
+                                        if (EQ(oldImage[0], vertI.x, 1e-6)
+                                         && EQ(oldImage[1], vertI.y, 1e-6))
+                                        {
+                                            double newImage[] = VecMath.vxm(newCoords,group[iGroup]);
+                                            System.out.println("Snapping vertex "+iVert+" from "+vertI.x+" "+vertI.y+" "+vertI.h+"");
+                                            vertI.x = newImage[0];
+                                            vertI.y = newImage[1];
+                                            System.out.println("Dragging vertex "+iVert+" from "+vertI.x+" "+vertI.y+" "+vertI.h+"");
+                                        }
+                                    }
+                                }
+
+                                if (doContinuouslyDelaunayize.get()) delaunayize();
+
                                 theCanvas.repaint();
                             }
                         }
