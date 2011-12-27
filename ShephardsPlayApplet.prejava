@@ -30,6 +30,7 @@ BUGS:
             left is too right by 1 pixel
 
 TO DO:
+    - actually merge vertices when edge super small? (or guarantee cut?)
     - respect symmetry:
         - rubberbanding
     - think about how user can express grid params
@@ -1690,7 +1691,7 @@ public class ShephardsPlayApplet
             doCannedThingFarthestLagoonExitKillerAltB();
             //doCannedThingFarthestLagoonExitKillerOptimized();
             //doBlueNoiseThing();
-            //load("DUMP.off");
+            load("DUMP.off");
 
             if (eventVerbose >= 1) System.out.println("out init");
         } // init
@@ -2924,6 +2925,12 @@ public class ShephardsPlayApplet
                         theCanvas.repaint();
                         break;
 
+                    case 'R': // toggle pointOutRedNetEdges
+                        pointOutRedNetEdges = !pointOutRedNetEdges;
+                        System.out.println("pointOutRedNetEdges -> "+pointOutRedNetEdges);
+                        theCanvas.repaint();
+                        break;
+
                     case 'B': // toggle doDoubleBuffer
                         doDoubleBuffer ^= true;
                         System.out.println("doDoubleBuffer -> "+doDoubleBuffer);
@@ -4061,6 +4068,8 @@ public class ShephardsPlayApplet
 
 
                 int nOffBalanceCuts = -1;
+                int nNonZeroLengthWholeEdges = -1;
+                int nNonZeroLengthOffBalanceCuts = -1;
 
                 if (true)
                 {
@@ -4650,6 +4659,28 @@ public class ShephardsPlayApplet
                                         }
                                     }
                                 }
+
+                                // We want to omit zero-length (or very close to zero-length) edges
+                                // from the thermometer.
+                                // Count number of non-zero-length edges...
+                                // TODO: this should maybe just be in the above loop.
+                                nNonZeroLengthWholeEdges = 0; // and counting
+                                nNonZeroLengthOffBalanceCuts = 0; // and counting
+                                FORI (iDualEdge, nEdges)
+                                {
+                                    int oDualEdge = dualMesh.getEdge(iDualEdge).opposite().myIndex();
+                                    if (iDualEdge < oDualEdge)
+                                    {
+                                        double from[] = dualEdgeInitialCoords[iDualEdge];
+                                        double to[] = dualEdgeInitialCoords[oDualEdge];
+                                        if (GT(VecMath.distsqrd(from,to), 0., SQR(1e-6)))
+                                        {
+                                            nNonZeroLengthWholeEdges++;
+                                            if (dualEdgeIsOffBalanceCut[iDualEdge])
+                                                nNonZeroLengthOffBalanceCuts++;
+                                        }
+                                    }
+                                }
                             }
                             else
                             {
@@ -4911,6 +4942,16 @@ public class ShephardsPlayApplet
                                 mg.drawLine(from[0], from[1], from[2],
                                             to[0], to[1], to[2],
                                             doAntiAliasing);
+
+                                if (showNet.get()
+                                 && pointOutRedNetEdges
+                                 && mg.getColor() == java.awt.Color.red)
+                                {
+                                    mg.drawPoint((to[0]+from[0])*.5,
+                                                 (to[1]+from[1])*.5,
+                                                 (to[2]+from[2])*.5,
+                                                 7);
+                                }
                             }
                         }
                     }
@@ -5199,16 +5240,14 @@ public class ShephardsPlayApplet
                 if (nOffBalanceCuts != -1
                  && mesh.edges.size() > 0)
                 {
-                    int nWholeEdges = mesh.edges.size()/2; // half number of half-edges
-
-                    int heights[] = VecMath.fillvec(nWholeEdges, 2);
+                    int heights[] = VecMath.fillvec(nNonZeroLengthWholeEdges, 2);
                     int space = size.height+1;
-                    int spaceUsed = nWholeEdges * 2;
+                    int spaceUsed = nNonZeroLengthWholeEdges * 2;
                     if (thermometerIsLinear)
                     {
                         // roughly linear, distribute roundoff to lower part of screen
                         while (spaceUsed < space)
-                            for (int i = 0; i < nWholeEdges && spaceUsed < space; ++i)
+                            for (int i = 0; i < nNonZeroLengthWholeEdges && spaceUsed < space; ++i)
                             {
                                 heights[i]++;
                                 spaceUsed++;
@@ -5218,7 +5257,7 @@ public class ShephardsPlayApplet
                     {
                         // triangular numbers, larger at lower part of screen.
                         while (spaceUsed < space)
-                            for (int i = 0; i < nWholeEdges && spaceUsed < space; i++)
+                            for (int i = 0; i < nNonZeroLengthWholeEdges && spaceUsed < space; i++)
                             {
                                 for (int j = i; j >= 0 && spaceUsed < space; --j)
                                 {
@@ -5230,9 +5269,9 @@ public class ShephardsPlayApplet
                     else
                     {
                         // triangular numbers, larger at lower part of screen
-                        for (int i = 0; spaceUsed < space; i = MIN(i+1, nWholeEdges-1))
+                        for (int i = 0; spaceUsed < space; i = MIN(i+1, nNonZeroLengthWholeEdges-1))
                         {
-                            for (int j = MIN(i,nWholeEdges-1); j >= 0 && spaceUsed < space; --j)
+                            for (int j = MIN(i,nNonZeroLengthWholeEdges-1); j >= 0 && spaceUsed < space; --j)
                             {
                                 heights[j]++;
                                 spaceUsed++;
@@ -5249,9 +5288,9 @@ public class ShephardsPlayApplet
 
                     spaceUsed = 0;
                     g.setColor(java.awt.Color.red);
-                    FORI (iEdge, nWholeEdges)
+                    FORI (iEdge, nNonZeroLengthWholeEdges)
                     {
-                        if (iEdge == nOffBalanceCuts)
+                        if (iEdge == nNonZeroLengthOffBalanceCuts)
                             g.setColor(java.awt.Color.green);
                         //int x0 = size.width-width;
                         int x0 = 0;
@@ -5264,12 +5303,12 @@ public class ShephardsPlayApplet
                     }
 
                     mg.setColor(java.awt.Color.white);
-                    mg.drawString(""+nOffBalanceCuts+" / "+nWholeEdges+" off-balance cuts",
+                    mg.drawString(""+nNonZeroLengthOffBalanceCuts+" / "+nNonZeroLengthWholeEdges+" off-balance cuts",
                                   size.width/minSize,-size.height/minSize,
                                   1.2, 1.5,
                                   java.awt.Color.black); // background
 
-                }
+                } // thermometer
 
 
                 //
@@ -12106,6 +12145,7 @@ OFF
         private int showTriangles = 2; // 0: nothing, 1: verts, 2: and tris
         private Listenable.Boolean showNet = new Listenable.Boolean(false);
         private boolean showNetFlow = true;
+        private boolean pointOutRedNetEdges = false;
         private int netFlowIndex = 0;
         private int highlightedDualEdgeIndex = -1;
         private boolean showOrigin = false;
