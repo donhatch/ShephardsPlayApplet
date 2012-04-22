@@ -58,6 +58,8 @@ TO DO:
       (however, note that things like rescale get incredibly painful)
       (I think I'm going to scratch this, it would make everything
       more opaque)
+      (then again it would allow higher dimensions
+      or alternate interpretations)
 
     - when dragging a point with doContinuouslyDelaunayize true,
       show the nearest-neighbor-interpolation thing
@@ -627,62 +629,132 @@ public class ShephardsPlayApplet
                             }
                         });
                         add(new java.awt.Label(""), stretchxy);
-                        add(new java.awt.Checkbox("Net", doContinuouslyDelaunayize.get()) {
-                            public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                            {
-                                addItemListener(new java.awt.event.ItemListener() {
-                                    public void itemStateChanged(java.awt.event.ItemEvent e)
-                                    {
-                                        synchronized(showNet) // since another thread checks it once in a while
+                        add(new Col() {{
+                            add(new java.awt.Checkbox("Net", showNet.get()) {
+                                public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                                {
+                                    addItemListener(new java.awt.event.ItemListener() {
+                                        public void itemStateChanged(java.awt.event.ItemEvent e)
                                         {
-                                            showNet.set(getState());
+                                            synchronized(showNet) // since another thread checks it once in a while
+                                            {
+                                                showNet.set(getState());
+                                            }
+                                            theCanvas.repaint();
                                         }
-                                        theCanvas.repaint();
-                                    }
-                                });
-                                showNet.addListener(showNetListener = new Listenable.Listener() {
-                                    public void valueChanged()
-                                    {
-                                        setState(showNet.get()); // of the checkbox
-
-
-                                        // XXX TODO: arguably this should be in a different listener... it should happen even if we decided not to have this checkbox
-                                        if (showNet.get() && showNetFlow)
+                                    });
+                                    showNet.addListener(showNetListener = new Listenable.Listener() {
+                                        public void valueChanged()
                                         {
-                                            Runnable runnable = new Runnable() {
-                                                public void run()
-                                                {
-                                                    System.out.println("starting animator thread");
-                                                    int fps = 10; // XXX need user control of this?
-                                                    while (true) // while (showNet.get()), but synchronized
+                                            setState(showNet.get()); // of the checkbox
+
+
+                                            // XXX TODO: arguably this should be in a different listener... it should happen even if we decided not to have this checkbox
+                                            if (showNet.get() && showNetFlow.get())
+                                            {
+                                                Runnable runnable = new Runnable() {
+                                                    public void run()
                                                     {
-                                                        synchronized(showNet)
+                                                        System.out.println("starting animator thread");
+                                                        int fps = 10; // XXX need user control of this?
+                                                        while (true) // while (showNet.get()), but synchronized
                                                         {
-                                                            if (!showNet.get())
+                                                            synchronized(showNet)
+                                                            {
+                                                                if (!showNet.get())
+                                                                    break;
+                                                            }
+
+                                                            theCanvas.repaint();
+                                                            //System.out.println("    sleeping for "+(1000/fps)+" ms");
+                                                            try {
+                                                                Thread.sleep(1000/fps);
+                                                            } catch (InterruptedException e) {
                                                                 break;
+                                                            }
                                                         }
-
-                                                        theCanvas.repaint();
-                                                        //System.out.println("    sleeping for "+(1000/fps)+" ms");
-                                                        try {
-                                                            Thread.sleep(1000/fps);
-                                                        } catch (InterruptedException e) {
-                                                            break;
-                                                        }
+                                                        System.out.println("terminating animator thread");
+                                                        // XXX TODO: does master thread need to join?
                                                     }
-                                                    System.out.println("terminating animator thread");
-                                                    // XXX TODO: does master thread need to join?
-                                                }
-                                            };
-                                            Thread animatorThread = new Thread(runnable);
-                                            animatorThread.setDaemon(true); // make it so the java vm won't wait for it to finish before exiting
-                                            animatorThread.start();
-                                        }
+                                                };
+                                                Thread animatorThread = new Thread(runnable);
+                                                animatorThread.setDaemon(true); // make it so the java vm won't wait for it to finish before exiting
+                                                animatorThread.start();
+                                            }
 
-                                    }
-                                });
-                            }
-                        });
+                                        }
+                                    });
+                                }
+                            });
+                            add(new java.awt.Checkbox("Flow", showNetFlow.get()) {
+                                {
+                                    setEnabled(showNet.get());
+                                }
+                                public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                                {
+                                    addItemListener(new java.awt.event.ItemListener() {
+                                        public void itemStateChanged(java.awt.event.ItemEvent e)
+                                        {
+                                            synchronized(showNetFlow) // since another thread checks it once in a while
+                                            {
+                                                showNetFlow.set(getState());
+                                            }
+                                            theCanvas.repaint();
+                                        }
+                                    });
+                                    showNet.addListener(showNetListener2 = new Listenable.Listener() {
+                                        public void valueChanged()
+                                        {
+                                            setEnabled(showNet.get()); // of the showNetFlow checkbox
+                                        }
+                                    });
+                                    showNetFlow.addListener(showNetFlowListener = new Listenable.Listener() {
+                                        public void valueChanged()
+                                        {
+                                            setState(showNetFlow.get()); // of the checkbox
+
+
+                                            // XXX TODO: arguably this should be in a different listener... it should happen even if we decided not to have this checkbox
+                                            if (showNet.get() && showNetFlow.get())
+                                            {
+                                                Runnable runnable = new Runnable() {
+                                                    public void run()
+                                                    {
+                                                        System.out.println("starting animator thread");
+                                                        int fps = 10; // XXX need user control of this?
+                                                        while (true) // while (showNet.get() && showNetFlow.get()), but synchronized
+                                                        {
+                                                            synchronized(showNet)
+                                                            {
+                                                                synchronized(showNetFlow)
+                                                                {
+                                                                    if (!showNet.get() && !showNetFlow.get())
+                                                                        break;
+                                                                }
+                                                            }
+
+                                                            theCanvas.repaint();
+                                                            //System.out.println("    sleeping for "+(1000/fps)+" ms");
+                                                            try {
+                                                                Thread.sleep(1000/fps);
+                                                            } catch (InterruptedException e) {
+                                                                break;
+                                                            }
+                                                        }
+                                                        System.out.println("terminating animator thread");
+                                                        // XXX TODO: does master thread need to join?
+                                                    }
+                                                };
+                                                Thread animatorThread = new Thread(runnable);
+                                                animatorThread.setDaemon(true); // make it so the java vm won't wait for it to finish before exiting
+                                                animatorThread.start();
+                                            }
+
+                                        }
+                                    });
+                                }
+                            });
+                        }});
                         add(new java.awt.Choice() {
 #if 0 // doing this makes the Choice inoperable! (javac 1.3, runtime 1.6)
                             //public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
@@ -3724,6 +3796,204 @@ public class ShephardsPlayApplet
                 } // drawLabels
 
 
+                //
+                // Experimental--
+                // show the net of the faces in 3d, flattened onto the xy plane
+                //
+                void drawFlattenedNet(MyGraphics3D mg, Mesh mesh, Mesh dualMesh, double dualEdgeInitialCoords[][], int nVerts, int nEdges, java.awt.Color dualEdgeColors[/*nEdges*/])
+                {
+                    // We want a rotate/translate matrix for each dual face
+                    // (i.e. each primal vertex)
+                    // that takes the face to the xy plane,
+                    // in the form of the net.
+
+                    // Starting face should be the one containing the origin,
+                    // but for now we'll just use the dual vertex
+                    // closest to the origin.
+                    int iStartVert;
+                    {
+                        int iClosest = -1;
+                        double closestDist2 = Double.POSITIVE_INFINITY;
+                        FORI(iVert, nVerts)
+                        {
+                            Mesh.Vertex vert = mesh.getVert(iVert);
+                            double dist2 = SQR(vert.x) + SQR(vert.y);
+                            if (dist2 < closestDist2)
+                            {
+                                iClosest = iVert;
+                                closestDist2 = dist2;
+                            }
+                        }
+                        //PRINT(iClosest);
+                        iStartVert = iClosest;
+                    }
+
+
+                    double dualFaceMats[][][] = new double[nVerts][][];
+                    //
+                    // Compute the matrix for the starting dual face.
+                    //
+                    {
+                        Mesh.Vertex startVert = mesh.getVert(iStartVert);
+                        // XXX correct for scale
+                        double startDualFacePlaneNormal[] = {startVert.x, startVert.y, 1}; // not unit length
+                        double startDualFacePlaneOffset = -startVert.hActual(); // magic!  I don't know why, but this is the correct value
+
+                        // what translation by a multiple of startDualFacePlaneNormal
+                        // will take the dual face plane to the origin?
+                        // The equation of the face plane is:
+                        //      n dot x == offset
+                        // we want s such that:
+                        //      n dot (x + s*n) == 0
+                        // i.e. (n dot x) + s * (n dot n) == 0
+                        //      s = -(n dot x) / (n dot n)
+                        //        = -offset / (n dot n)
+                        double s = -startDualFacePlaneOffset / VecMath.normsqrd(startDualFacePlaneNormal);
+                        double translateVector[] = VecMath.sxv(s, startDualFacePlaneNormal);
+                        double translateMat[][] = {
+                            {1,0,0,0},
+                            {0,1,0,0},
+                            {0,0,1,0},
+                            {translateVector[0],
+                             translateVector[1],
+                             translateVector[2],1},
+                        };
+                        double rotMat33[][] = parallelTransport(VecMath.normalize(startDualFacePlaneNormal),
+                                                                new double[]{0,0,1});
+                        // XXX bleah, this seems awkward
+                        double rotMat44[][] = VecMath.identitymat(4);
+                        VecMath.copymat(rotMat44, rotMat33);
+                        double M0[][] = VecMath.mxm(translateMat, rotMat44);
+                        dualFaceMats[iStartVert] = M0;
+                    }
+
+                    // make a data structure that allows us to find neighbors of each dual face easily...
+                    Mesh.Edge firstEdgeStartingAtVertex[] = new Mesh.Edge[nVerts]; // null initially
+                    Mesh.Edge nextEdgeStartingAtVertex[] = new Mesh.Edge[nEdges]; // null initially
+                    FORI (iEdge, nEdges)
+                    {
+                        Mesh.Edge edge = mesh.getEdge(iEdge);
+                        int iVert = edge.initialVertex().myIndex();
+                        nextEdgeStartingAtVertex[edge.myIndex()] = firstEdgeStartingAtVertex[iVert];
+                        firstEdgeStartingAtVertex[iVert] = edge;
+                    }
+
+                    //
+                    // Now traverse outwards from the starting dual face,
+                    // computing the transform at each new face
+                    // and putting it into dualFaceMats.
+                    // 
+
+                    int stack[] = new int[nVerts];
+                    int stackSize = 0;
+                    stack[stackSize++] = iStartVert;
+                    while (stackSize > 0)
+                    {
+                        int iVert = stack[--stackSize];
+                        double M0[][] = dualFaceMats[iVert];
+                        double M0rotPart[][] = new double[3][3];
+                        VecMath.copymat(M0rotPart, M0);
+                        // For all neighbor verts whose matrix has not yet been computed...
+                        for (Mesh.Edge edge = firstEdgeStartingAtVertex[iVert];
+                             edge != null;
+                             edge = nextEdgeStartingAtVertex[edge.myIndex()])
+                        {
+                            int iEdge = edge.myIndex();
+                            Mesh.Vertex vertJ = edge.finalVertex();
+                            int jVert = vertJ.myIndex();
+                            if (theNet._edgeStatuses[iEdge] == Net.CUT)
+                                continue;
+                            if (dualFaceMats[jVert] != null) // this can happen if there are some undecideds
+                                continue;
+
+                            // Compute matrix for jVert'th dual face.
+                            // The incremental matrix should rotate (normal times M0)
+                            // to the +z axis, while keeping (dual edge times M0) fixed.
+
+                            // XXX correct for scale!
+                            double jDualFacePlaneNormal[] = {vertJ.x, vertJ.y, 1}; // not unit length
+                            jDualFacePlaneNormal = VecMath.vxm(jDualFacePlaneNormal, M0rotPart);
+
+
+                            Mesh.Edge dualEdge = dualMesh.getEdge(iEdge);
+                            Mesh.Vertex someVertOnDualEdge = dualEdge.initialVertex();
+                            if (someVertOnDualEdge == null)
+                                someVertOnDualEdge = dualEdge.finalVertex();
+                            // XXX correct for scale!
+                            double thisDualVertCoords[] = {someVertOnDualEdge.x,
+                                                           someVertOnDualEdge.y,
+                                                           someVertOnDualEdge.hActual()};
+                            thisDualVertCoords = VecMath.vxm(thisDualVertCoords, M0);
+
+
+
+
+                            double rotMat33[][] = parallelTransport(VecMath.normalize(jDualFacePlaneNormal),
+                                                                    new double[]{0,0,1});
+                            // XXX bleah, this seems awkward
+                            double rotMat44[][] = VecMath.identitymat(4);
+                            VecMath.copymat(rotMat44, rotMat33);
+
+                            // M = M0 * (translate dual vert to origin)
+                            //        * rotate
+                            //        * (translate origin to dual vert)
+                            double translateDualVertToOrigin[][] = {
+                                {1,0,0,0},
+                                {0,1,0,0},
+                                {0,0,1,0},
+                                {-thisDualVertCoords[0],
+                                 -thisDualVertCoords[1],
+                                 -thisDualVertCoords[2],1},
+                            };
+                            double translateOriginToDualVert[][] = {
+                                {1,0,0,0},
+                                {0,1,0,0},
+                                {0,0,1,0},
+                                {thisDualVertCoords[0],
+                                 thisDualVertCoords[1],
+                                 thisDualVertCoords[2],1},
+                            };
+                            double M[][] = VecMath.mxmxmxm(M0,
+                                                       translateDualVertToOrigin,
+                                                       rotMat44,
+                                                       translateOriginToDualVert);
+                            dualFaceMats[jVert] = M;
+
+                            stack[stackSize++] = jVert;
+                        }
+                    }
+
+
+
+
+                    FORI (iEdge, nEdges)
+                    {
+                        Mesh.Edge edge = mesh.getEdge(iEdge);
+                        Mesh.Vertex v0 = edge.initialVertex();
+                        Mesh.Edge dualEdge = dualMesh.getEdge(iEdge);
+                        double M[][] = dualFaceMats[v0.myIndex()];
+                        double coords[][] = {
+                            dualEdgeInitialCoords[iEdge],
+                            dualEdgeInitialCoords[dualEdge.opposite().myIndex()],
+                        };
+                        FORI (i, 2)
+                            coords[i] = VecMath.vxm(coords[i], M);
+                        if (theNet._edgeStatuses[iEdge] == Net.CUT)
+                            mg.setColor(java.awt.Color.yellow);
+                        else
+                            mg.setColor(new java.awt.Color(0.f,0.f,1/4.f)); // XXX darkBlue
+                        mg.setColor(dualEdgeColors[iEdge]);
+                        mg.drawLine(coords[0][0],
+                                    coords[0][1],
+                                    coords[0][2],
+                                    coords[1][0],
+                                    coords[1][1],
+                                    coords[1][2],
+                                    doAntiAliasing);
+                    }
+                } // drawFlattenedNet
+
+
             // PAINT/DISPLAY/DRAW
             public void paint(java.awt.Graphics frontBufferGraphics)
             {
@@ -3900,6 +4170,8 @@ public class ShephardsPlayApplet
                     v0.h = D[2];
                     v0.h += .5 * (SQR(v0.x) + SQR(v0.y));
                 }
+
+
 
                 //
                 // Draw the dual diagram in color...
@@ -4199,7 +4471,7 @@ public class ShephardsPlayApplet
                                 int netMethodValue = netMethod.get();
                                 if (netMethodValue == NETMETHOD_RANDOM)
                                 {
-                                    boolean netVerbose = !(showNet.get() && showNetFlow);
+                                    boolean netVerbose = !(showNet.get() && showNetFlow.get());
                                     if (netVerbose)
                                         System.out.println("   computing random net");
 
@@ -4776,6 +5048,8 @@ public class ShephardsPlayApplet
                         }
                     } // if (!showNet)
 
+
+
                     //
                     // Draw dual edges, in chosen colors
                     // 
@@ -4785,6 +5059,7 @@ public class ShephardsPlayApplet
                     //java.awt.Color darkBlue = new java.awt.Color(0.f,0.f,3/4.f);
                     //java.awt.Color darkBlue = new java.awt.Color(0.f,0.f,7/8.f);
                     java.awt.Color darkGray = new java.awt.Color(1/4.f,1/4.f,1/4.f);
+
 
                     if (showNet.get())
                     {
@@ -4911,6 +5186,13 @@ public class ShephardsPlayApplet
                         }
                     }
 
+
+                    if (showNet.get()
+                     && showFlattenedNet.get()
+                     && localScaleZ != 0.
+                     && tilt > Math.PI*.5) // i.e. if xy plane is behind rest of picture
+                        drawFlattenedNet(mg, mesh, dualMesh, dualEdgeInitialCoords, nVerts, nEdges, dualEdgeColors);
+
                     //
                     // Dual edges.
                     // If showing the cut tree,
@@ -4964,7 +5246,7 @@ public class ShephardsPlayApplet
                     FORIDOWN(iDualVert, dualMesh.verts.size())
                     {
                         // if showing flow, don't show regular verts (only show selected ones)
-                        if (showNet.get() && showNetFlow && dualVertColors[iDualVert] != dualVertSelectionColor)
+                        if (showNet.get() && showNetFlow.get() && dualVertColors[iDualVert] != dualVertSelectionColor)
                             continue;
 
 
@@ -4981,7 +5263,7 @@ public class ShephardsPlayApplet
                         }
                     }
 
-                    if (showNet.get() && showNetFlow
+                    if (showNet.get() && showNetFlow.get()
                      && theNet._topSortedVertInds != null) // TODO: can probably remove this check eventually, when I get topsort working even if only forest
                     {
                         //
@@ -5201,6 +5483,14 @@ public class ShephardsPlayApplet
 
                         }
                     } // doArrowsTowardsShortestEdges
+
+
+                    if (showNet.get()
+                     && showFlattenedNet.get()
+                     && localScaleZ != 0.
+                     && tilt <= Math.PI*.5) // i.e. if xy plane is in front of rest of picture
+                        drawFlattenedNet(mg, mesh, dualMesh, dualEdgeInitialCoords, nVerts, nEdges, dualEdgeColors);
+
                 } // if (true) (draw dual diagram)
 
 
@@ -8603,7 +8893,7 @@ OFF
 
             public class Vertex
             {
-                public double x, y, h; // x, y, "height"
+                public double x, y, h; // x, y, "height" above the paraboloid
                 public double weight = 1.; // optional, if this is a computed dual vertex, this should be the original triangle area
                 public double momentAndArea[/*4*/] = null; // optional... similar to weight. x*A,y*A,h*A^2,A where A is twice tri area
                 public int arity = 0; // number of edges having this vertex as initial vertex
@@ -11739,6 +12029,32 @@ OFF
             return M;
         }
 
+
+
+        // Find the row-oriented 3x3 rotation matrix that rotates unit vectors u to v,
+        // using householder reflections.
+        double[][] parallelTransport(double u[], double v[])
+        {
+            // reflect u to -v,
+            // then reflect -v to v.
+            double h[] = VecMath.vpv(u,v);
+            // H = I - 2 (h h^T) / (h^T h)
+            double H[][] = VecMath.mmm(VecMath.identitymat(h.length),
+                                       VecMath.mxs(VecMath.outerProduct(h,h),
+                                                   2/VecMath.normsqrd(h)));
+            // V = I - 2 (v v^T) / (v^T v)
+            //   = I - 2 (v v^T)  since v has unit length
+            // XXX actually in the case we use this, v is the +z axis,
+            // XXX in which case V just negates the z coord, trivial.
+            // XXX should probably have a special version of this function
+            // XXX for which v is a coord axis, or something
+            double V[][] = VecMath.mmm(VecMath.identitymat(v.length),
+                                       VecMath.mxs(VecMath.outerProduct(v,v),
+                                                   2.));
+            double answer[][] = VecMath.mxm(H,V);
+            return answer;
+        }
+
         private static void accumulateMomentAndArea(double accumulator[/*3 or 4*/],
                                                     double increment[/*3 or 4*/])
         {
@@ -12069,6 +12385,8 @@ OFF
         private Listenable.Listener optimizationTypeIndexListener = null;
         private Listenable.Listener showMagListener = null;
         private Listenable.Listener showNetListener = null;
+        private Listenable.Listener showNetListener2 = null;
+        private Listenable.Listener showNetFlowListener = null;
         private Listenable.Listener netMethodListener = null;
 
         private Listenable.Boolean doContinuouslyDelaunayize = new Listenable.Boolean(false);
@@ -12145,7 +12463,8 @@ OFF
         private boolean doShowPositiveOrthantnessVisualization = false; // XXX total hack-- it's cool but put it somewhere else!!
         private int showTriangles = 2; // 0: nothing, 1: verts, 2: and tris
         private Listenable.Boolean showNet = new Listenable.Boolean(false);
-        private boolean showNetFlow = true;
+        private Listenable.Boolean showFlattenedNet = new Listenable.Boolean(true);
+        private Listenable.Boolean showNetFlow = new Listenable.Boolean(true);
         private boolean pointOutRedNetEdges = false;
         private int netFlowIndex = 0;
         private int highlightedDualEdgeIndex = -1;
