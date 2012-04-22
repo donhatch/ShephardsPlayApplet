@@ -4,8 +4,7 @@ that will let me play with triangulations with heights,
 and produce the dual diagrams with heights.
 
 BUGS:
-    - picking edges on backwards net doesn't work, don't know why.
-      (actually picking edges on frontwards net kinda sucks when not top-down)
+    - picking net edges is wrong, need to do it in screen space
     - ctrl-d to swap primal with dual never seems to produce anything good any more
     - dragging edges doesn't work when not ortho yet
     - 'd' to delete edge not working in non-ortho
@@ -1939,7 +1938,7 @@ public class ShephardsPlayApplet
                                 {
                                     // begin dragging a net edge or fold
                                     //PRINT(beingDraggedNetEdgeIndex);
-                                    beingDraggedNetEdgeIndex = getDualMesh().indexOfClosestEdge(thisP, true);
+                                    beingDraggedNetEdgeIndex = getDualMesh().indexOfClosestEdge(projectedThisP, true); // XXX not right actually... want closest edge in screen space, not doing this paraboloid thing
                                     //PRINT(beingDraggedNetEdgeIndex);
                                     beingDraggedNetEdgeDelta = new double[]{0,0};
                                 }
@@ -2336,7 +2335,7 @@ public class ShephardsPlayApplet
                      && showNet.get())
                     {
                         Mesh dualMesh = getDualMesh();
-                        int targetEdgeIndex = dualMesh.indexOfClosestEdge(thisP, true);
+                        int targetEdgeIndex = dualMesh.indexOfClosestEdge(projectedThisP, true); // XXX not really right, see similar comment on mouse down
                         if (targetEdgeIndex != -1
                          && targetEdgeIndex != beingDraggedNetEdgeIndex
                          && dualMesh.getEdge(targetEdgeIndex).opposite().myIndex() != beingDraggedNetEdgeIndex)
@@ -2500,8 +2499,14 @@ public class ShephardsPlayApplet
                     {
                         if (beingDraggedNetEdgeIndex != -1)
                         {
-                            beingDraggedNetEdgeDelta[0] += thisP[0]-prevP[0]; // no snap to grid for this
-                            beingDraggedNetEdgeDelta[1] += thisP[1]-prevP[1]; // no snap to grid for this
+                            // XXX not really right... see similar comment on mouse down
+                            double projectedThisP[] = new double[3];
+                            pickPointOnParaboloid(thisP, 0., projectedThisP);
+                            double projectedPrevP[] = new double[3];
+                            pickPointOnParaboloid(prevP, 0., projectedPrevP);
+
+                            beingDraggedNetEdgeDelta[0] += projectedThisP[0]-projectedPrevP[0]; // no snap to grid for this
+                            beingDraggedNetEdgeDelta[1] += projectedThisP[1]-projectedPrevP[1]; // no snap to grid for this
                         }
                         else if (e.isShiftDown())
                         {
