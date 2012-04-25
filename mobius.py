@@ -27,6 +27,11 @@ def xform(z,p):
     # Worked out on paper...
 
     denominator = (1+zdotp)**2 + y2*p2
+    denominator = (1+zdotp)**2 + (z-zdotp/p2*p).dot(z-zdotp/p2*p) * p2
+    denominator = (1+zdotp)**2 + (z2 + zdotp**2/p2 - 2*zdotp**2/p2) * p2
+    denominator = (1+zdotp)**2 + (z2 - zdotp**2/p2) * p2
+    denominator = (1+zdotp)**2 + (z2*p2 - zdotp**2)
+    denominator = 1 + 2*zdotp + z2*p2
     pCoeff = (1 + 2*zdotp + z2)/denominator
     zCoeff = (1-p2)/denominator
     answer = pCoeff*p + zCoeff*z
