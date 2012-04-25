@@ -52,6 +52,12 @@ def xform(z,p):
     X_over_plength = (zdotp/p2 + 1 + zdotp + z2) / denominator
     answer = (X_over_plength - Y_over_y*zdotp/p2)*p + Y_over_y*z
 
+    pCoeff = (zdotp/p2 + 1 + zdotp + z2 - (1-p2)*zdotp/p2)/denominator
+    pCoeff = (1 + zdotp + z2 + zdotp)/denominator # GOT IT!
+    pCoeff = (1 + 2*zdotp + z2)/denominator
+    zCoeff = (1-p2)/denominator
+    answer = pCoeff*p + zCoeff*z
+
     return answer
 
 
