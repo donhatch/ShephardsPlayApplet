@@ -13,6 +13,8 @@ def xform(z,p):
     p2 = p.length2()
     if p2 == 0:
         return z
+    z2 = z.length2()
+
 
     # Let z = x u + y v
     # where u,v is the orthonormal basis
@@ -22,42 +24,12 @@ def xform(z,p):
     yv = z - zdotp/p2*p # = z - (z dot u)*u,  so v = yv normalized (but we never need to compute v explicitly)
     y2 = yv.length2()    # = y^2 where y=(z dot v)
 
+    # Worked out on paper...
+
     denominator = (1+zdotp)**2 + y2*p2
-    X_over_plength = ((zdotp/p2 + 1)*(1+zdotp) + y2) / denominator
-    Y_over_y = (1 - p2) / denominator
-
-    # answer = X*u + Y*v
-    #        = X*(p/||p||) + Y/y * y*v
-    answer = X_over_plength*p + Y_over_y*yv
-
-    # Oh! hmm, can we give an answer that's a straight linear combination of z and p?
-    #     answer = X_over_plength*p + Y_over_y*yv
-    #            = X_over_plength*p + Y_over_y*(z - zdotp/p2 * p)
-    #            = (X_over_plength - Y_over_y*zdotp/p2)*p + Y_over_y*z
-    answer = (X_over_plength - Y_over_y*zdotp/p2)*p + Y_over_y*z
-
-    # Keep simplifying, all divisions by p2 should drop out!
-    # when p is close to zero, denominator -> 1
-    # so the /p2's better cancel out of the numerator (or, at least, numerator*p)
-    # without any help from the denominator.
-    # Hmm, actually maybe that's all a big maybe... I think we want the direction of everything
-    # to cancel out in that case too? Not sure how to accomplish that.
-    #
-    # X_over_plength = ((zdotp/p2 + 1)*(1+zdotp) + y2) / denominator
-    #                = (zdotp/p2 + zdotp^2/p2 + 1 + zdotp + y2) / denominator
-    #                = (zdotp/p2 + zdotp^2/p2 + 1 + zdotp + (z-zdotp/p2*p) dot (z-zdotp/p2*p)) / denominator
-    #                = (zdotp/p2 + zdotp^2/p2 + 1 + zdotp + z.z + zdotp^2/p2 - 2*zdotp^2/p2) / denominator
-    #                = (zdotp/p2 + 1 + zdotp + z.z) / denominator
-    z2 = z.length2()
-    X_over_plength = (zdotp/p2 + 1 + zdotp + z2) / denominator
-    answer = (X_over_plength - Y_over_y*zdotp/p2)*p + Y_over_y*z
-
-    pCoeff = (zdotp/p2 + 1 + zdotp + z2 - (1-p2)*zdotp/p2)/denominator
-    pCoeff = (1 + zdotp + z2 + zdotp)/denominator # GOT IT!
     pCoeff = (1 + 2*zdotp + z2)/denominator
     zCoeff = (1-p2)/denominator
     answer = pCoeff*p + zCoeff*z
-
     return answer
 
 
