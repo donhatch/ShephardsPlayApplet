@@ -41,7 +41,7 @@ def ktop(k):
     return hhalf(k)
 
 def xform(z,p):
-    if type(z) in [list,Vec]: # XXX what's the right way to say this?
+    if isinstance(z,list): # list or Vec
         answer = xformVec(z,p)
         assert len(z) == len(p)
         if len(z) == 2:
@@ -64,7 +64,7 @@ def xformKleinCheat(z,p):
 
 # should allow z,p to be ideal,
 # as long as they are not opposites.
-# definitely z can be ideal (if p is ideal, everything should go to p)
+# in particular, if p is ideal, everything should go to p (except z=-p)
 def xformKlein(z,p):
     if type(z) == complex:
         return v2c(xformKlein(c2v(z),c2v(p)))
@@ -93,7 +93,7 @@ def length2(v):
         return Vec(v).length2()
 
 def htwice(v):
-    if type(v) in [int,float,complex]: # XXX is there a test for number?
+    if type(v) in [int,float,complex]: # XXX is there a test for number? oh it's not til python 2.6, number.Number
         return v * (2/(1+abs(v)**2))
     if type(v) == Vec:
         return v * (2/(1+v.length2()))
@@ -108,7 +108,7 @@ def hhalf(v):
     assert False
 
 def havg(a,b):
-    if type(a) == list:
+    if isinstance(a,list): # list or Vec
         return c2v(havg(v2c(a),v2c(b)))
 
     print xform(b,-a)
