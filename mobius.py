@@ -41,11 +41,7 @@ def ktop(k):
     return hhalf(k)
 
 def xform(z,p):
-    if type(z) != list:
-        answer = xformComplex(z,p)
-        Answer = v2c(xformVec(c2v(z),c2v(p)))
-        assert abs(answer-Answer) < 1e-9
-    else:
+    if type(z) in [list,Vec]: # XXX what's the right way to say this?
         answer = xformVec(z,p)
         assert len(z) == len(p)
         if len(z) == 2:
@@ -53,11 +49,41 @@ def xform(z,p):
             #print "Answer = "+`Answer`
             #print "answer = "+`answer`
             assert abs(v2c(Answer)-v2c(answer)) < 1e-9
+    elif type(z) in [int,float,complex]:
+        answer = xformComplex(z,p)
+        Answer = v2c(xformVec(c2v(z),c2v(p)))
+        assert abs(answer-Answer) < 1e-9
+    else:
+        print type(z)
+        assert False
 
     return answer
 
-def xformKlein(z,p):
+def xformKleinCheat(z,p):
     return ptok(xform(ktop(z),ktop(p)))
+
+# should allow z,p to be ideal,
+# as long as they are not opposites.
+# definitely z can be ideal (if p is ideal, everything should go to p)
+def xformKlein(z,p):
+    if type(z) == complex:
+        return v2c(xformKlein(c2v(z),c2v(p)))
+    if type(z) == list:
+        z = Vec(z)
+        p = Vec(p)
+
+    # formula (13) from paper "The Hyperbolic Triangle Centroid"
+    zp = z.dot(p)
+    gp = gamma(p)
+    invGp = invGamma(p)
+    do('gp')
+    do('invGp')
+    pCoeff = (1 + (zp/(1.+invGp)))/(1+zp)
+    zCoeff = invGp/(1+zp)
+    answer = pCoeff*p + zCoeff*z
+    do('answer')
+    return answer
+
 
 def length2(v):
     if type(v) == complex:
@@ -76,6 +102,8 @@ def htwice(v):
 def hhalf(v):
     if type(v) in [int,float,complex]: # XXX is there a test for number?
         return v / (1+sqrt(1-abs(v)**2))
+    if type(v) == list:
+        v = Vec(v)
     if type(v) == Vec:
         return v / (1+sqrt(1-v.length2()))
     assert False
@@ -250,7 +278,9 @@ def idealTriangleCenterSimple(a,b,c):
     return poincareCenter
 
 def gamma(v):
-    return 1/sqrt(1-length2(v))
+    return 1/invGamma(v)
+def invGamma(v):
+    return sqrt(1-length2(v))
 
 
 # from the paper "hyperbolic barycentric coordinates" by a.a.ungar.
@@ -504,3 +534,6 @@ if __name__ == '__main__':
         do('kleinOrthoCenter([-5/16.,-10/16.],[15/16.,0],[-5/16.,10/16.])')
         do('kleinOrthoCenter([0,0],[.5,0],[0,.5])')
         do('kleinOrthoCenter([-.5,-.5],[0,0],[-.5,.5])')
+    do('xformKleinCheat([.1,.2],[.4,.5])')
+    do('xformKlein([.1,.2],[.4,.5])')
+    #do('xformKlein([0,.999999],[.999999,0])')
