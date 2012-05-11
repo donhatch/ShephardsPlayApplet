@@ -35,6 +35,11 @@ def c2v(c):
 def v2c(v):
     return complex(v[0],v[1])
 
+def ptok(p):
+    return htwice(p)
+def ktop(k):
+    return hhalf(k)
+
 def xform(z,p):
     if type(z) != list:
         answer = xformComplex(z,p)
@@ -50,6 +55,9 @@ def xform(z,p):
             assert abs(v2c(Answer)-v2c(answer)) < 1e-9
 
     return answer
+
+def xformKlein(z,p):
+    return ptok(xform(ktop(z),ktop(p)))
 
 def length2(v):
     if type(v) == complex:
@@ -251,9 +259,13 @@ def gamma(v):
 def kleinOrthoCenter(a,b,c):
     if type(a) != complex:
         return c2v(kleinOrthoCenter(v2c(a),v2c(b),v2c(c)))
-    eab = xform(b,-a)
-    ebc = xform(c,-b)
-    eca = xform(a,-c)
+    print "    in kleinOrthoCenter"
+    do('a')
+    do('b')
+    do('c')
+    eab = xformKlein(b,-a)
+    ebc = xformKlein(c,-b)
+    eca = xformKlein(a,-c)
     gab = gamma(eab)
     gbc = gamma(ebc)
     gca = gamma(eca)
@@ -271,6 +283,24 @@ def kleinOrthoCenter(a,b,c):
     do('coeffa/denom')
     do('coeffb/denom')
     do('coeffc/denom')
+
+    # Messing around with intermediate formulas from the paper,
+    # to see where we went wrong...
+    Pc = ((gab*gbc-gca)*gamma(a)*a + (gca*gab-gbc)*gamma(b)*b) / ((gab*gbc-gca)*gamma(a) + (gca*gab-gbc)*gamma(b))
+    Pa = ((gbc*gca-gab)*gamma(b)*b + (gab*gbc-gca)*gamma(c)*c) / ((gbc*gca-gab)*gamma(b) + (gab*gbc-gca)*gamma(c))
+    Pb = ((gca*gab-gbc)*gamma(c)*c + (gbc*gca-gab)*gamma(a)*a) / ((gca*gab-gbc)*gamma(c) + (gca*gab-gab)*gamma(a))
+    do('Pa')
+    do('Pb')
+    do('Pc')
+    # In the case b is a right angle,
+    # equation 12.7 should hold,
+    # i.e. gab*gbc == gca. Does it?
+    do('gab*gbc')
+    do('gca')
+
+
+
+    print "    out kleinOrthoCenter"
     return coeffa/denom * a + coeffb/denom * b + coeffc/denom * c
 
 def idealTriangleCenter(a,b,c):
@@ -336,6 +366,9 @@ def idealTriangleCenter(a,b,c):
     s = .9999999
     do('s')
     do('kleinOrthoCenter(s*a,s*b,s*c)')
+    kleinEstimate = kleinOrthoCenter(s*a,s*b,s*c)
+    do('kleinEstimate')
+    do('kleinEstimate.conjugate()*klein_center') # should have imaginary part 0
 
     barya,baryb,baryc = computeBarycentrics(klein_center,a,b,c)
     do('barya')
@@ -364,7 +397,7 @@ def computeBarycentrics(p,a,b,c):
 def do(s):
     callerLocals = inspect.currentframe(1).f_locals
     answer = eval(s, globals(), callerLocals)
-    print s+' = '+`answer`
+    print '        '+s+' = '+`answer`
 
 # Little test program
 if __name__ == '__main__':
@@ -427,8 +460,9 @@ if __name__ == '__main__':
     do('idealTriangleCenter([-.5,-sqrt(3)/2],[1,0],[-.5,sqrt(3)/2])')
     do('idealTriangleCenter([-3/5.,-4/5.],[1,0],[-3/5.,4/5.])')
     do('idealTriangleCenter([0,-1],[1,0],[0,1])')
-    do('idealTriangleCenter([0,-1],[1,8],[0,1])')
-    do('idealTriangleCenter([0,-1],[1,0],[-.2,1])')
+
+    #do('idealTriangleCenter([0,-1],[1,8],[0,1])')
+    #do('idealTriangleCenter([0,-1],[1,0],[-.2,1])')
 
     #do('idealTriangleCenterSimple([0,-1],[1,0],[0,1])')
 
@@ -445,15 +479,18 @@ if __name__ == '__main__':
         do('idealTriangleCenterSimple([-.34,-.47], [1,0], [-.34,.47])')
         #do('idealTriangleCenter([.1,.2], [-.34,-.47], [-.36,.9])')
         #do('idealTriangleCenterSimple([.1,.2], [-.34,-.47], [-.36,.9])')
+    if False:
+        do('idealTriangleCenter([.1,.2], [-.34,-.47], [-.36,.9])')
 
 
-    # from work...
-    do('htwice(Vec([.5]))')
-    do('hhalf(Vec([.5]))')
-    do('htwice(hhalf(Vec([.5])))')
-    do('hhalf(htwice(Vec([.5])))')
-    do('idealTriangleCenter([0,-1],[1,0],[0,1])')
-    do('idealTriangleCenter([-.5,-sqrt(3)/2],[1,0],[-.5,sqrt(3)/2])')
+    if False:
+        # from work...
+        do('htwice(Vec([.5]))')
+        do('hhalf(Vec([.5]))')
+        do('htwice(hhalf(Vec([.5])))')
+        do('hhalf(htwice(Vec([.5])))')
+        do('idealTriangleCenter([0,-1],[1,0],[0,1])')
+        do('idealTriangleCenter([-.5,-sqrt(3)/2],[1,0],[-.5,sqrt(3)/2])')
     if False:
         do('idealTriangleCenter([-.5,-sqrt(3)/2],[-.5+.0001,sqrt(3)/2],[-.5,sqrt(3)/2])')
         do('idealTriangleCenter([0,-1],[-.5+.001,sqrt(3)/2],[-.5,sqrt(3)/2])')
@@ -462,3 +499,8 @@ if __name__ == '__main__':
     if False:
         do('idealTriangleCenter([-cos(pi/3),-sin(pi/3)],[1,0],[-cos(pi/3),sin(pi/3)])')
         do('idealTriangleCenter([-cos(pi/6),-sin(pi/6)],[1,0],[-cos(pi/6),sin(pi/6)])')
+    if False:
+        # Exercise kleinOrthoCenter
+        do('kleinOrthoCenter([-5/16.,-10/16.],[15/16.,0],[-5/16.,10/16.])')
+        do('kleinOrthoCenter([0,0],[.5,0],[0,.5])')
+        do('kleinOrthoCenter([-.5,-.5],[0,0],[-.5,.5])')
