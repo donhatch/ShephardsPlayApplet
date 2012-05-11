@@ -73,10 +73,9 @@ def xformKlein(z,p):
         p = Vec(p)
 
     # formula (13) from paper "The Hyperbolic Triangle Centroid"
+    # rearranged so it's robust even for ideal points
     zp = z.dot(p)
-    gp = gamma(p)
     invGp = invGamma(p)
-    do('gp')
     do('invGp')
     pCoeff = (1 + (zp/(1.+invGp)))/(1+zp)
     zCoeff = invGp/(1+zp)
@@ -536,4 +535,6 @@ if __name__ == '__main__':
         do('kleinOrthoCenter([-.5,-.5],[0,0],[-.5,.5])')
     do('xformKleinCheat([.1,.2],[.4,.5])')
     do('xformKlein([.1,.2],[.4,.5])')
-    #do('xformKlein([0,.999999],[.999999,0])')
+    do('xformKlein([0,.999999],[.999999,0])')
+    do('xformKlein([0,.999999],[.999999,0])')
+    do('xformKlein([0,1],[1,0])')
