@@ -304,6 +304,12 @@ def kleinOrthoCenter(a,b,c):
     coeffa = Cca*Cab*gamma(a)
     coeffb = Cab*Cbc*gamma(b)
     coeffc = Cbc*Cca*gamma(c)
+
+    coeffa = Cca*Cab*(invGamma(b)*invGamma(c))
+    coeffb = Cab*Cbc*(invGamma(c)*invGamma(a))
+    coeffc = Cbc*Cca*(invGamma(a)*invGamma(b))
+
+
     denom = coeffa+coeffb+coeffc
     do('coeffa')
     do('coeffb')
@@ -313,19 +319,19 @@ def kleinOrthoCenter(a,b,c):
     do('coeffb/denom')
     do('coeffc/denom')
 
-    # Messing around with intermediate formulas from the paper,
-    # to see where we went wrong...
-    Pc = ((gab*gbc-gca)*gamma(a)*a + (gca*gab-gbc)*gamma(b)*b) / ((gab*gbc-gca)*gamma(a) + (gca*gab-gbc)*gamma(b))
-    Pa = ((gbc*gca-gab)*gamma(b)*b + (gab*gbc-gca)*gamma(c)*c) / ((gbc*gca-gab)*gamma(b) + (gab*gbc-gca)*gamma(c))
-    Pb = ((gca*gab-gbc)*gamma(c)*c + (gbc*gca-gab)*gamma(a)*a) / ((gca*gab-gbc)*gamma(c) + (gca*gab-gab)*gamma(a))
-    do('Pa')
-    do('Pb')
-    do('Pc')
-    # In the case b is a right angle,
-    # equation 12.7 should hold,
-    # i.e. gab*gbc == gca. Does it?
-    do('gab*gbc')
-    do('gca')
+    if False:
+        # Messing around with intermediate formulas from the paper...
+        Pc = ((gab*gbc-gca)*gamma(a)*a + (gca*gab-gbc)*gamma(b)*b) / ((gab*gbc-gca)*gamma(a) + (gca*gab-gbc)*gamma(b))
+        Pa = ((gbc*gca-gab)*gamma(b)*b + (gab*gbc-gca)*gamma(c)*c) / ((gbc*gca-gab)*gamma(b) + (gab*gbc-gca)*gamma(c))
+        Pb = ((gca*gab-gbc)*gamma(c)*c + (gbc*gca-gab)*gamma(a)*a) / ((gca*gab-gbc)*gamma(c) + (gca*gab-gab)*gamma(a))
+        do('Pa')
+        do('Pb')
+        do('Pc')
+        # In the case b is a right angle,
+        # equation 12.7 should hold,
+        # i.e. gab*gbc == gca. Does it?
+        do('gab*gbc')
+        do('gca')
 
 
 
@@ -535,5 +541,4 @@ if __name__ == '__main__':
         do('kleinOrthoCenter([-.5,-.5],[0,0],[-.5,.5])')
     do('xformKleinCheat([.1,.2],[.4,.5])')
     do('xformKlein([.1,.2],[.4,.5])')
-    do('xformKlein([0,.999999],[.999999,0])')
     do('xformKlein([0,1],[1,0])')
