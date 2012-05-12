@@ -83,29 +83,121 @@ def xformKlein(z,p):
     do('answer')
     return answer
 
+def invGammaKleinSegment(a,b):
+    if type(a) == complex:
+        a = c2v(a)
+        b = c2v(b)
+
+    assert type(a) == Vec
+
+
+    if False:
+        ab = xformKlein(-a,b)
+        return invGamma(ab)
+
+    aa = a.dot(a)
+    ab = a.dot(b)
+    bb = b.dot(b)
+
+    print "-------"
+    if True:
+        if False:
+            foo = (1 - ab/(1+sqrt(1-bb)))*b - sqrt(1-bb)*a
+
+            length2foo = length2(foo)
+            print "-------"
+            do('length2foo')
+            length2foo = (1 - ab/(1+sqrt(1-bb)))**2*bb + (1-bb)*aa - 2*(1 - ab/(1+sqrt(1-bb)))*sqrt(1-bb)*ab
+            do('length2foo')
+            length2foo = (1 + (ab/(1+sqrt(1-bb)))**2 - 2*ab/(1+sqrt(1-bb))) * bb + (1-bb)*aa - 2*(1 - ab/(1+sqrt(1-bb)))*sqrt(1-bb)*ab
+            do('length2foo')
+            length2foo = (1 + ab**2/(1+sqrt(1-bb))**2 - 2*ab/(1+sqrt(1-bb))) * bb + (1-bb)*aa - (2*ab*sqrt(1-bb) - 2*ab**2/(1+sqrt(1-bb))*sqrt(1-bb))
+            do('length2foo')
+            length2foo = (aa + bb - aa*bb
+                        + bb*ab**2/(1+sqrt(1-bb))**2 - 2*bb*ab/(1+sqrt(1-bb)) - 2*ab*sqrt(1-bb) + 2*ab**2*sqrt(1-bb)/(1+sqrt(1-bb)))
+            do('length2foo')
+            # why is it symmetric in a,b?? it doesn't look it, yet
+            length2foo = (bb + aa - bb*aa
+                        + aa*ab**2/(1+sqrt(1-aa))**2 - 2*aa*ab/(1+sqrt(1-aa)) - 2*ab*sqrt(1-aa) + 2*ab**2*sqrt(1-aa)/(1+sqrt(1-aa)))
+            do('length2foo')
+
+        length2foo = (bb + aa - bb*aa + ab*(
+            aa*ab/(1+sqrt(1-aa))**2 - 2*aa/(1+sqrt(1-aa)) - 2*sqrt(1-aa) + 2*ab*sqrt(1-aa)/(1+sqrt(1-aa))
+        ))
+        if False:
+            do('length2foo')
+
+
+        answer = sqrt(1 - length2foo/(1-ab)**2)
+        do('answer')
+    if False:
+        # This was was right but inaccurate
+        # convert to poincare disk and do calculation there
+        A = hhalf(a)
+        B = hhalf(b)
+        AA = A.dot(A)
+        AB = A.dot(B)
+        BB = B.dot(B)
+        
+        # given p poincare,
+        #     k = 2*p/(1+pp)
+        # so kk = 4*pp/(1+pp)^2
+
+        pp = length2(A-B)/(1-2*AB+AA*BB)
+        kk = 4*pp/(1+pp)**2
+
+        answer = sqrt(1-kk)
+        do('answer')
+    if True:
+        # convert to poincare disk and do calculation there
+        A = a / (1+sqrt(1-length2(a)))
+        B = b / (1+sqrt(1-length2(b)))
+        AA = A.dot(A)
+        AB = A.dot(B)
+        BB = B.dot(B)
+        
+        # given p poincare,
+        #     k = 2*p/(1+pp)
+        # so sqrt(1-kk) = sqrt((1-k)*(1+k))
+
+        pp = length2(A-B)/(1-2*AB+AA*BB)
+        k = 2*sqrt(pp)/(1+pp)
+        answer = sqrt((1-k)*(1+k))
+
+        do('answer')
+    if True:
+        aa = a.dot(a)
+        ab = a.dot(b)
+        bb = b.dot(b)
+        # convert to poincare disk and do calculation there
+        A = a / (1+sqrt(1-length2(a)))
+        B = b / (1+sqrt(1-length2(b)))
+        AA = aa / (1+sqrt(1-length2(a)))**2
+        AB = ab / ((1+sqrt(1-length2(a)))*(1+sqrt(1-length2(b))))
+        BB = bb / (1+sqrt(1-length2(b)))**2
+
+        pp = (AA-2*AB+BB)/(1-2*AB+AA*BB)
+        k = 2*sqrt(pp)/(1+pp)
+        answer = sqrt((1-k)*(1+k))
+
+        do('answer')
+
+
+    return answer
+
 
 def length2(v):
-    if type(v) == complex:
-        return (v*v.conjugate()).real
+    if type(v) in [int,long,float,complex]:
+        return abs(v)**2
     elif type(v) == Vec:
         return v.length2()
     else:
         return Vec(v).length2()
 
 def htwice(v):
-    if type(v) in [int,float,complex]: # XXX is there a test for number? oh it's not til python 2.6, number.Number
-        return v * (2/(1+abs(v)**2))
-    if type(v) == Vec:
-        return v * (2/(1+v.length2()))
-    assert False
+    return v * (2/(1+length2(v)))
 def hhalf(v):
-    if type(v) in [int,float,complex]: # XXX is there a test for number?
-        return v / (1+sqrt(1-abs(v)**2))
-    if type(v) == list:
-        v = Vec(v)
-    if type(v) == Vec:
-        return v / (1+sqrt(1-v.length2()))
-    assert False
+    return v / (1+sqrt(1-length2(v)))
 
 def havg(a,b):
     if isinstance(a,list): # list or Vec
@@ -292,20 +384,20 @@ def kleinOrthoCenter(a,b,c):
     do('a')
     do('b')
     do('c')
-    eab = xformKlein(b,-a)
-    ebc = xformKlein(c,-b)
-    eca = xformKlein(a,-c)
-    gab = gamma(eab)
-    gbc = gamma(ebc)
-    gca = gamma(eca)
-    Cab = gbc*gca-gab
-    Cbc = gca*gab-gbc
-    Cca = gab*gbc-gca
-    coeffa = Cca*Cab*gamma(a)
-    coeffb = Cab*Cbc*gamma(b)
-    coeffc = Cbc*Cca*gamma(c)
 
-    coeffa = Cca*Cab*(invGamma(b)*invGamma(c))
+    fab = invGammaKleinSegment(a,b)
+    fbc = invGammaKleinSegment(b,c)
+    fca = invGammaKleinSegment(c,a)
+
+    Cab = fab-fbc*fca
+    Cbc = fbc-fca*fab
+    Cca = fca-fab*fbc
+
+    CcaCab = (fca-fab*fbc)*(fab-fbc*fca)
+    CcaCab = fca*fab - fab**2*fbc - fbc*fca**2 + fab*fbc**2*fca
+
+
+    coeffa = CcaCab*(invGamma(b)*invGamma(c))
     coeffb = Cab*Cbc*(invGamma(c)*invGamma(a))
     coeffc = Cbc*Cca*(invGamma(a)*invGamma(b))
 
@@ -487,19 +579,24 @@ if __name__ == '__main__':
     do('((p-.5)* (1-.5*p) + 3/4.*p) /  ((1-.5*p)**2 + 3/4.*p**2)')
 
     do('((p-.5)*(1-.5*p)+3./4*p)/((1-.5*p)**2+3./4*p**2)')
+
+    del p
+
+
     print "-----------------"
     do('havg(-.5,.5)')
     do('havg(.5,.6)')
     do('e2pcenter(0., .5)')
     do('e2pcenter(.55, .05)')
-    do('idealTriangleCenter([-.5,-sqrt(3)/2],[1,0],[-.5,sqrt(3)/2])')
-    do('idealTriangleCenter([-3/5.,-4/5.],[1,0],[-3/5.,4/5.])')
-    do('idealTriangleCenter([0,-1],[1,0],[0,1])')
+    if False:
+        do('idealTriangleCenter([-.5,-sqrt(3)/2],[1,0],[-.5,sqrt(3)/2])')
+        do('idealTriangleCenter([-3/5.,-4/5.],[1,0],[-3/5.,4/5.])')
+        do('idealTriangleCenter([0,-1],[1,0],[0,1])')
 
-    #do('idealTriangleCenter([0,-1],[1,8],[0,1])')
-    #do('idealTriangleCenter([0,-1],[1,0],[-.2,1])')
+        #do('idealTriangleCenter([0,-1],[1,8],[0,1])')
+        #do('idealTriangleCenter([0,-1],[1,0],[-.2,1])')
 
-    #do('idealTriangleCenterSimple([0,-1],[1,0],[0,1])')
+        #do('idealTriangleCenterSimple([0,-1],[1,0],[0,1])')
 
     if False:
         #do('idealTriangleCenter([-.5,-sqrt(3)/2],[sqrt(.5),sqrt(.5)],[sqrt(.5),-sqrt(.5)])')
@@ -535,10 +632,16 @@ if __name__ == '__main__':
         do('idealTriangleCenter([-cos(pi/3),-sin(pi/3)],[1,0],[-cos(pi/3),sin(pi/3)])')
         do('idealTriangleCenter([-cos(pi/6),-sin(pi/6)],[1,0],[-cos(pi/6),sin(pi/6)])')
     if False:
+        do('xformKlein([0,1],[1,0])')
+        do('xformKleinCheat([.1,.2],[.4,.5])')
+        do('xformKlein([.1,.2],[.4,.5])')
+    if True:
         # Exercise kleinOrthoCenter
         do('kleinOrthoCenter([-5/16.,-10/16.],[15/16.,0],[-5/16.,10/16.])')
         do('kleinOrthoCenter([0,0],[.5,0],[0,.5])')
         do('kleinOrthoCenter([-.5,-.5],[0,0],[-.5,.5])')
-    do('xformKleinCheat([.1,.2],[.4,.5])')
-    do('xformKlein([.1,.2],[.4,.5])')
-    do('xformKlein([0,1],[1,0])')
+        do('kleinOrthoCenter([.1,.2], [-.34,-.47], [-.36,.9])')
+
+        s = .9999999
+        do('kleinOrthoCenter([0,-s],[s,0],[0,s])')
+
