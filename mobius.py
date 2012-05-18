@@ -87,6 +87,9 @@ def invGammaKleinSegment(a,b):
     if type(a) == complex:
         a = c2v(a)
         b = c2v(b)
+    if type(a) == list:
+        a = Vec(a)
+        b = Vec(b)
 
     assert type(a) == Vec
 
@@ -132,18 +135,24 @@ def invGammaKleinSegment(a,b):
         do('answer')
     if False:
         # This was was right but inaccurate
-        # convert to poincare disk and do calculation there
+        # convert to poincare disk and do calculation there.
+        # A and B are the points in the poincare disk.
         A = hhalf(a)
         B = hhalf(b)
         AA = A.dot(A)
         AB = A.dot(B)
         BB = B.dot(B)
         
+
+        # pp = || (A-B) / (1 - A*conj(B)) ||
+        #    = ||A-B|| / ((1-A*conj(B)) * (1-B*conj(A)))
+        #    = ||A-B|| / ((1-A*conj(B)) * (1-B*conj(A)))
+        #    = ||A-B|| / (1-2*(A dot B) + (A dot A)*(B dot B))
+        pp = length2(A-B)/(1 - 2*AB + AA*BB)
+
         # given p poincare,
         #     k = 2*p/(1+pp)
         # so kk = 4*pp/(1+pp)^2
-
-        pp = length2(A-B)/(1-2*AB+AA*BB)
         kk = 4*pp/(1+pp)**2
 
         answer = sqrt(1-kk)
@@ -169,18 +178,73 @@ def invGammaKleinSegment(a,b):
         aa = a.dot(a)
         ab = a.dot(b)
         bb = b.dot(b)
-        # convert to poincare disk and do calculation there
-        A = a / (1+sqrt(1-length2(a)))
-        B = b / (1+sqrt(1-length2(b)))
-        AA = aa / (1+sqrt(1-length2(a)))**2
-        AB = ab / ((1+sqrt(1-length2(a)))*(1+sqrt(1-length2(b))))
-        BB = bb / (1+sqrt(1-length2(b)))**2
 
-        pp = (AA-2*AB+BB)/(1-2*AB+AA*BB)
+        afoo = (1+sqrt(1-aa))
+        bfoo = (1+sqrt(1-bb))
+
+        afoo2 = (1+(1-aa)+2*sqrt(1-aa))
+        bfoo2 = (1+(1-bb)+2*sqrt(1-bb))
+        afoo2 = (2-aa+2*sqrt(1-aa))
+        bfoo2 = (2-bb+2*sqrt(1-bb))
+
+
+        pp = (aa*bfoo2-2*ab*afoo*bfoo+bb*afoo2)/(afoo2*bfoo2-2*ab*afoo*bfoo+aa*bb)
+
         k = 2*sqrt(pp)/(1+pp)
         answer = sqrt((1-k)*(1+k))
 
         do('answer')
+    if True:
+        aa = a.dot(a)
+        ab = a.dot(b)
+        bb = b.dot(b)
+
+        afoo = (1+sqrt(1-aa))
+        bfoo = (1+sqrt(1-bb))
+
+        afoo2 = (2-aa+2*sqrt(1-aa))
+        bfoo2 = (2-bb+2*sqrt(1-bb))
+
+
+        pp = (aa*(2-bb+2*sqrt(1-bb))-2*ab*afoo*bfoo+bb*(2-aa+2*sqrt(1-aa))) / ((2-aa+2*sqrt(1-aa))*(2-bb+2*sqrt(1-bb))-2*ab*afoo*bfoo+aa*bb)
+        pp = (2*aa-2*bb*aa+2*aa*sqrt(1-bb)-2*ab*afoo*bfoo+2*bb+2*bb*sqrt(1-aa)) / ((2-aa+2*sqrt(1-aa))*(2-bb+2*sqrt(1-bb))-2*ab*afoo*bfoo+aa*bb)
+        pp = (2*aa-2*bb*aa+2*bb + 2*aa*sqrt(1-bb) - 2*ab*(1+sqrt(1-aa))*(1+sqrt(1-bb)) + 2*bb*sqrt(1-aa)) / ((2-aa+2*sqrt(1-aa))*(2-bb+2*sqrt(1-bb))-2*ab*(1+sqrt(1-aa))*(1+sqrt(1-bb))+aa*bb)
+
+        k = 2*sqrt(pp)/(1+pp)
+        answer = sqrt((1-k)*(1+k))
+
+        do('answer')
+    if False:
+        aa = a.dot(a)
+        ab = a.dot(b)
+        bb = b.dot(b)
+
+        pp = (aa-bb*aa+bb + aa*sqrt(1-bb) - ab*(1+sqrt(1-aa))*(1+sqrt(1-bb)) + bb*sqrt(1-aa)) / (  2 + aa*bb + 2*sqrt(1-aa)*sqrt(1-bb) - aa - bb + 2*sqrt*(1-aa) + 2*sqrt(1-bb) -aa*sqrt(1-bb) -bb*sqrt(1-aa) -ab*(1+sqrt(1-aa))*(1+sqrt(1-bb)))
+
+        k = 2*sqrt(pp)/(1+pp)
+        answer = sqrt((1-k)*(1+k))
+
+        do('answer')
+    if False:
+        aa = a.dot(a)
+        ab = a.dot(b)
+        bb = b.dot(b)
+
+        pp = (aa-bb*aa+bb + aa*sqrt(1-bb) - ab*(1+sqrt(1-aa))*(1+sqrt(1-bb)) + bb*sqrt(1-aa)) / (  2 + aa*bb + 2*sqrt(1-aa)*sqrt(1-bb) - aa - bb + 2*sqrt*(1-aa) + 2*sqrt(1-bb) -aa*sqrt(1-bb) -bb*sqrt(1-aa) -ab*(1+sqrt(1-aa))*(1+sqrt(1-bb)))
+
+        k = 2*sqrt(pp)/(1+pp)
+        answer = sqrt((1-k)*(1+k))
+
+        do('answer')
+    if True:
+        # and then a miracle happens... I read the book. easy as pie.
+        # gamma(xform(b,-a)) = gamma(a)*gamma(b)*(1 - (a dot b))
+        # so, invGamma(xform(b,-a)) = invGamma(a)*invGamma(b)/(1-(a dot b))
+        answer = invGamma(a)*invGamma(b)/(1-a.dot(b))
+        answer = sqrt((1-length2(a))*(1-length2(b)))/(1-a.dot(b))
+        do('answer')
+
+    # IDEA: can we just compute the coeffs in poincare space? might be easier
 
 
     return answer
@@ -350,7 +414,7 @@ def computeBarycentrics(p,a,b,c):
     bary_c = twiceTriArea(a,b,p) / denom
     return bary_a,bary_b,bary_c
 
-# this happens to work for iscosceles triangles, but not in general :-(
+# This works!!
 def idealTriangleCenterSimple(a,b,c):
     if type(a) == complex:
         return v2c(idealTriangleCenterSimple(c2v(a),c2v(b),c2v(c)))
@@ -358,6 +422,7 @@ def idealTriangleCenterSimple(a,b,c):
         a = Vec(a)
         b = Vec(b)
         c = Vec(c)
+    # fix non-units, so caller can be sloppy
     a = a.normalized()
     b = b.normalized()
     c = c.normalized()
@@ -366,6 +431,10 @@ def idealTriangleCenterSimple(a,b,c):
     ca2 = (a-c).length2()
     kleinCenter = (a*bc2 + b*ca2 + c*ab2) / (ab2 + bc2 + ca2)
     poincareCenter = hhalf(kleinCenter)
+
+    p = poincareCenter
+    do('xform(a,-p)+xform(b,-p)+xform(c,-p)')
+
     return poincareCenter
 
 def gamma(v):
@@ -507,6 +576,7 @@ def idealTriangleCenter(a,b,c):
     # the results should average to 0
     p = poincare_center
     do('xform(a,-p)+xform(b,-p)+xform(c,-p)')
+    do('poincare_center')
 
     print "    out idealTriangleCenter"
     return poincare_center
@@ -609,8 +679,6 @@ if __name__ == '__main__':
         do('idealTriangleCenter([1,0], [-.34,-.47], [-.34,.47])') # XXX sign is messed up!?
         do('idealTriangleCenterSimple([1,0], [-.34,.47], [-.34,-.47])')
         do('idealTriangleCenterSimple([-.34,-.47], [1,0], [-.34,.47])')
-        #do('idealTriangleCenter([.1,.2], [-.34,-.47], [-.36,.9])')
-        #do('idealTriangleCenterSimple([.1,.2], [-.34,-.47], [-.36,.9])')
     if False:
         do('idealTriangleCenter([.1,.2], [-.34,-.47], [-.36,.9])')
 
@@ -645,3 +713,9 @@ if __name__ == '__main__':
         s = .9999999
         do('kleinOrthoCenter([0,-s],[s,0],[0,s])')
 
+    do('idealTriangleCenter([.1,.2], [-.36,.9], [-.34,-.47])')
+    do('idealTriangleCenterSimple([.1,.2], [-.36,.9], [-.34,-.47])')
+    do('invGammaKleinSegment([.1,.2],[.5,.7])')
+    do('invGammaKleinSegment([.1,.2],[0,0])')
+    do('invGammaKleinSegment([1,0],[0,0])')
+    do('invGammaKleinSegment([1,0],[0,1])')
