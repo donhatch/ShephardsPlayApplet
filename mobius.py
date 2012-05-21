@@ -5,6 +5,25 @@ import cmath
 import inspect
 from Vec import Vec
 
+# A * B^T
+def mxmt(A,B):
+    return [[a.dot(b) for b in B] for a in A]
+def det(M):
+    if len(M) == 0:
+        return 1.
+    if len(M) == 1:
+        return M[0][0]
+    if len(M) == 2:
+        return M[0][0]*M[1][1]-M[0][1]*M[1][0]
+    if len(M) == 3:
+        return (M[0][0]*M[1][1]*M[2][2]
+              + M[0][1]*M[1][2]*M[2][0]
+              + M[0][2]*M[1][0]*M[2][1]
+              - M[0][0]*M[1][2]*M[2][1]
+              - M[0][1]*M[1][0]*M[2][2]
+              - M[0][2]*M[1][1]*M[2][0])
+    assert False
+
 # z,p are two vectors, of same dimension, of length < 1.
 # transform z by the isometry of the poincare disk
 # that takes the origin to p.
@@ -41,18 +60,21 @@ def ktop(k):
     return hhalf(k)
 
 def xform(z,p):
+    tol = 1e-2 # XXX hmm, one or both of those formulas obviously isn't robust
     if isinstance(z,list): # list or Vec
         answer = xformVec(z,p)
         assert len(z) == len(p)
         if len(z) == 2:
             Answer = c2v(xformComplex(v2c(z),v2c(p)))
-            print "Answer = "+`Answer`
-            print "answer = "+`answer`
-            assert abs(v2c(Answer)-v2c(answer)) < 1e-2 # XXX hmm, one or both of those formulas obviously isn't robust
+            #print "z = "+`z`
+            #print "p = "+`p`
+            #print "Answer = "+`Answer`
+            #print "answer = "+`answer`
+            assert abs(v2c(Answer)-v2c(answer)) <= tol
     elif type(z) in [int,float,complex]:
         answer = xformComplex(z,p)
         Answer = v2c(xformVec(c2v(z),c2v(p)))
-        assert abs(answer-Answer) < 1e-2 # XXX hmm, ditto
+        assert abs(answer-Answer) <= tol
     else:
         print type(z)
         assert False
@@ -402,9 +424,9 @@ def centroidOfUnits(a,b,c):
     return answer
 
 # magnitude of cross product of two complex numbers,
-# TODO: can this be expressed using complex arithmetic?
 def cross(a,b):
-    return a.real*b.imag - a.imag*b.real
+    #return a.real*b.imag - a.imag*b.real
+    return (a.conjugate()*b).imag + 1
 def twiceTriArea(a,b,c):
     return cross(b-a,c-a)
 def computeBarycentrics(p,a,b,c):
@@ -414,10 +436,43 @@ def computeBarycentrics(p,a,b,c):
     bary_c = twiceTriArea(a,b,p) / denom
     return bary_a,bary_b,bary_c
 
+def areaSquared(verts):
+    edgeVecs = [vert-verts[0] for vert in verts[1:]]
+    M = mxmt(edgeVecs, edgeVecs)
+    return det(M)
+
+def idealSimplexCenter(verts):
+    if type(verts[0]) == complex:
+        return v2c(idealSimplexCenter([c2v(vert) for vert in verts]))
+    if type(verts[0]) == list:
+        verts = [Vec(vert) for vert in verts]
+    print "    in idealSimplexCenter"
+    # fix non-units, so caller can be sloppy
+    verts = [vert.normalized() for vert in verts]
+    do('verts')
+
+    facetAreasSquared = [areaSquared([verts[j] for j in xrange(len(verts)) if j != i]) for i in xrange(len(verts))]
+    do('facetAreasSquared')
+    denominator = sum(facetAreasSquared)
+    kleinCenter = sum([facetAreaSquared/denominator * v for facetAreaSquared,v in zip(facetAreasSquared,verts)])
+
+    do('kleinCenter')
+    poincareCenter = hhalf(kleinCenter)
+    do('poincareCenter')
+
+    # Sanity check:
+    # if we transform the verts by minus the poincare center,
+    # the results should average to 0
+    p = poincareCenter
+    do('sum([xform(z,-p) for z in verts])')
+
+    print "    out idealSimplexCenter"
+    return poincareCenter
+
 # This works!!
-def idealTriangleCenterSimple(a,b,c):
+def idealTriangleCenterSmart(a,b,c):
     if type(a) == complex:
-        return v2c(idealTriangleCenterSimple(c2v(a),c2v(b),c2v(c)))
+        return v2c(idealTriangleCenterSmart(c2v(a),c2v(b),c2v(c)))
     if type(a) != Vec:
         a = Vec(a)
         b = Vec(b)
@@ -426,63 +481,64 @@ def idealTriangleCenterSimple(a,b,c):
     a = a.normalized()
     b = b.normalized()
     c = c.normalized()
+    print "    in idealTriangleCenterSmart"
 
     # Either of the following works...
 
     if False:
-        aCoeff = (c-b).length2()
-        bCoeff = (a-c).length2()
-        cCoeff = (b-a).length2()
-    else:
         aCoeff = 1-b.dot(c)
         bCoeff = 1-c.dot(a)
         cCoeff = 1-a.dot(b)
+    else:
+        # better
+        aCoeff = (c-b).length2()
+        bCoeff = (a-c).length2()
+        cCoeff = (b-a).length2()
+    denominator = aCoeff + bCoeff + cCoeff
+    aCoeff /= denominator
+    bCoeff /= denominator
+    cCoeff /= denominator
 
-    kleinCenter = (a*aCoeff + b*bCoeff + c*cCoeff) / (aCoeff + bCoeff + cCoeff)
+    kleinCenter = a*aCoeff + b*bCoeff + c*cCoeff
     poincareCenter = hhalf(kleinCenter)
 
     p = poincareCenter
     do('xform(a,-p)+xform(b,-p)+xform(c,-p)')
 
 
-    # hhalf(kleinCenter) = kleinCenter / (1+sqrt(1-length2(kleinCenter)))
+    # poincareCenter = hhalf(kleinCenter) = kleinCenter / (1+sqrt(1-length2(kleinCenter)))
     # We need a better way of estimating 1-length2(kleinCenter).
     # Even if kleinCenter is unstable due to a,b,c being close together, 1-length2(kleinCenter) should be totally stable.
     # 1-length2(kleinCenter)
     # = 1-kleinCenter.dot(kleinCenter)
-    # = 1 - (aCoeff*a+bCoeff*b+cCoeff*c).dot(itself) / (aCoeff+bCoeff+cCoeff)^2
-    # = 1 - (A*a+B*b+C*c).dot(itself) / (A+B+C)^2
-    # = 1 - (A^2*a.dot(a) + B^2*b.dot(b) + C^2*c.dot(c)
-    #      + 2*A*B*a.dot(b) + 2*B*C*b.dot(c) + 2*C*A*c.dot(a)) / (A+B+C)^2
-    # = 1 - ((1-bc)^2*aa + (1-ca)^2*bb + (1-ab)^2*cc
-    #      + 2*(1-bc)*(1-ca)*ab + 2*(1-ca)*(1-ab)*bc + 2*(1-ab)*(1-bc)*ca) / (3-ab-bc-ca)^2
-    # = 1 - ((1-bc)^2*aa + (1-ca)^2*bb + (1-ab)^2*cc
-    #      + 2*(1-bc-ca+bc*ca)*ab + 2*(1-ca-ab+ca*ab)*bc + 2*(1-ab-bc+ab*bc)*ca) / (3-ab-bc-ca)^2
-    # = ((3-ab-bc-ca)^2 - (1-bc)^2*aa - (1-ca)^2*bb - (1-ab)^2*cc
-    #      - 2*(1-bc-ca+bc*ca)*ab - 2*(1-ca-ab+ca*ab)*bc - 2*(1-ab-bc+ab*bc)*ca) / (3-ab-bc-ca)^2
-    # = (9+ab^2+bc^2+ca^2-6*ab-6*bc-6*ca+2*ab*bc+2*ab*ca+2*bc*ca   - (1-bc)^2*aa - (1-ca)^2*bb - (1-ab)^2*cc
-    #      - 2*(1-bc-ca+bc*ca)*ab - 2*(1-ca-ab+ca*ab)*bc - 2*(1-ab-bc+ab*bc)*ca) / (3-ab-bc-ca)^2
-    # = (9 + ab^2 + bc^2 + ca^2 - 8*ab - 8*bc - 8*ca + 6*ab*bc + 6*ab*ca + 6*bc*ca   - (1-bc)^2*aa - (1-ca)^2*bb - (1-ab)^2*cc
-    #      - 6*ab*bc*ca) / (3-ab-bc-ca)^2
-    # oh wait! aa=bb=cc=1 !
-    # = (9 + ab^2 + bc^2 + ca^2 - 8*ab - 8*bc - 8*ca + 6*ab*bc + 6*ab*ca + 6*bc*ca   - (1-bc)^2 - (1-ca)^2 - (1-ab)^2
-    #      - 6*ab*bc*ca) / (3-ab-bc-ca)^2
-    # = (9 + ab^2 + bc^2 + ca^2 - 8*ab - 8*bc - 8*ca + 6*ab*bc + 6*ab*ca + 6*bc*ca   - (1-2*bc+bc^2) - (1-2*ca+ca^2) - (1-2*ab+ab^2)
-    #      - 6*ab*bc*ca) / (3-ab-bc-ca)^2
-    # = (6 - 6*ab - 6*bc - 6*ca + 6*ab*bc + 6*ab*ca + 6*bc*ca - 6*ab*bc*ca) / (3-ab-bc-ca)^2
-    # = 6 * (1 - ab - bc - ca + ab*bc + ab*ca + bc*ca - ab*bc*ca) / (3-ab-bc-ca)^2
-    # = 6 * (1-ab)*(1-bc)*(1-ca) / (3-ab-bc-ca)^2
-    # oh wait! 1-ab = |a-b|^2/2 I think
-    # = (6 * |a-b|^2*|b-c|^2*|c-a|^2 / 8) / ((|a-b|^2 + |b-c|^2 + |c-a|^2)^2 / 4)
-    # = (3 * |a-b|^2*|b-c|^2*|c-a|^2) / (|a-b|^2 + |b-c|^2 + |c-a|^2)^2
-    # I think maybe that's it! doesn't degrade unless they are all equal.
-    do('1-length2(kleinCenter)')
-    do('(3 * (a-b).length2()*(b-c).length2()*(c-a).length2()) / ((a-b).length2() + (b-c).length2() + (c-a).length2())**2')
-    # holy moly it worked!
-    poincareCenter = kleinCenter / (1 + sqrt(3 * (a-b).length2()*(b-c).length2()*(c-a).length2()) / ((a-b).length2() + (b-c).length2() + (c-a).length2()))
+    # = 1 - (A*a+B*b+B*c).dot(A*a+B*b+C*c)
+    # = 1 - (A^2*a.a + B^2*b.b + C^2*c.c + 2*A*B*a.b + 2*B*C*b.c + 2*C*A*c.a)
+    # = 1 - (A^2*(1-(1-a.a)) + B^2*(1-(1-b.b)) + C^2*(1-(1-c.c)) + 2*A*B*(1-(1-a.b)) + 2*B*C*(1-(1-b.c)) + 2*C*A*(1-(1-c.a)))
+    # = 1 - (A^2+B^2+C^2+2*A*B+2*B*C+2*C*A) + 2*(A*B*(1-a.b) + B*C*(1-b.c) + C*A*(1-c.a))
+    # = 1 - (A+B+C)^2 + 2*(A*B*(1-a.b) + B*C*(1-b.c) + C*A*(1-c.a))
+    # = 1 - 1 + 2*(A*B*(1-a.b) + B*C*(1-b.c) + C*A*(1-c.a))
+    # = 2*(A*B*(1-a.b) + B*C*(1-b.c) + C*A*(1-c.a))
+    #     But |a-b|^2 = (a-b).(a-b) = a.a - 2*a.b + b.b = 2-2*a.b = 2*(1-a.b), so...
+    # = A*B*|b-a|^2 + B*C*|c-b|^2 + C*A*|a-c|^2
+    poincareCenter = kleinCenter / (1+sqrt(aCoeff*bCoeff*length2(b-a) + bCoeff*cCoeff*length2(c-b) + cCoeff*aCoeff*length2(a-c)))
     p = poincareCenter
     do('xform(a,-p)+xform(b,-p)+xform(c,-p)')
 
+    # GRRR that was worse!! why?? did I mess it up?
+    # okay, the following is a little better... still not what I was hoping though. maybe what I was hoping was not realistic.
+    # oh hell, it's not better with thin isosceles... bleah! what went wrong??
+    # maybe its main advantage is when summing lots of points, not sure
+
+    scaleFactor = (1+sqrt(aCoeff*bCoeff*length2(b-a) + bCoeff*cCoeff*length2(c-b) + cCoeff*aCoeff*length2(a-c)))
+    aCoeff /= scaleFactor
+    bCoeff /= scaleFactor
+    cCoeff /= scaleFactor
+    poincareCenter = aCoeff*a + bCoeff*b + cCoeff*c
+    p = poincareCenter
+    do('xform(a,-p)+xform(b,-p)+xform(c,-p)')
+
+
+    print "    out idealTriangleCenterSmart"
     return poincareCenter
 
 def gamma(v):
@@ -547,11 +603,11 @@ def kleinOrthoCenter(a,b,c):
     print "    out kleinOrthoCenter"
     return coeffa/denom * a + coeffb/denom * b + coeffc/denom * c
 
-def idealTriangleCenter(a,b,c):
+def idealTriangleCenterDumb(a,b,c):
     if type(a) != complex:
-        return c2v(idealTriangleCenter(v2c(a),v2c(b),v2c(c)))
+        return c2v(idealTriangleCenterDumb(v2c(a),v2c(b),v2c(c)))
 
-    print "    in idealTriangleCenter"
+    print "    in idealTriangleCenterDumb"
 
     # fix non-units, so caller can be sloppy
     a /= abs(a)
@@ -607,13 +663,6 @@ def idealTriangleCenter(a,b,c):
     klein_center = htwice(poincare_center)
     do('klein_center')
 
-    s = .9999999
-    do('s')
-    do('kleinOrthoCenter(s*a,s*b,s*c)')
-    kleinEstimate = kleinOrthoCenter(s*a,s*b,s*c)
-    do('kleinEstimate')
-    do('kleinEstimate.conjugate()*klein_center') # should have imaginary part 0
-
     barya,baryb,baryc = computeBarycentrics(klein_center,a,b,c)
     do('barya')
     do('baryb')
@@ -626,17 +675,25 @@ def idealTriangleCenter(a,b,c):
     do('xform(a,-p)+xform(b,-p)+xform(c,-p)')
     do('poincare_center')
 
-    print "    out idealTriangleCenter"
+    print "    out idealTriangleCenterDumb"
     return poincare_center
 
-def twiceTriArea(a,b,c):
-    return ((b-a).conjugate()*(c-a)).imag
-def computeBarycentrics(p,a,b,c):
-    sum = twiceTriArea(a,b,c)
-    do('sum')
-    return (twiceTriArea(p,b,c)/sum,
-            twiceTriArea(a,p,c)/sum,
-            twiceTriArea(a,b,p)/sum)
+
+def idealTriangleCenter(a,b,c):
+    print "in idealTriangleCenter"
+
+    dumb = idealTriangleCenterDumb(a,b,c)
+    do('dumb')
+
+    smart = idealTriangleCenterSmart(a,b,c)
+    do('smart')
+
+    general = idealSimplexCenter([a,b,c])
+    do('general')
+
+    print "out idealTriangleCenter"
+    return smart
+
 
 
 def do(s):
@@ -714,7 +771,7 @@ if __name__ == '__main__':
         #do('idealTriangleCenter([0,-1],[1,8],[0,1])')
         #do('idealTriangleCenter([0,-1],[1,0],[-.2,1])')
 
-        #do('idealTriangleCenterSimple([0,-1],[1,0],[0,1])')
+        #do('idealTriangleCenter([0,-1],[1,0],[0,1])')
 
     if False:
         #do('idealTriangleCenter([-.5,-sqrt(3)/2],[sqrt(.5),sqrt(.5)],[sqrt(.5),-sqrt(.5)])')
@@ -725,8 +782,8 @@ if __name__ == '__main__':
         do('htwice(hhalf(.5))');
         do('hhalf(htwice(.5))');
         do('idealTriangleCenter([1,0], [-.34,-.47], [-.34,.47])') # XXX sign is messed up!?
-        do('idealTriangleCenterSimple([1,0], [-.34,.47], [-.34,-.47])')
-        do('idealTriangleCenterSimple([-.34,-.47], [1,0], [-.34,.47])')
+        do('idealTriangleCenter([1,0], [-.34,.47], [-.34,-.47])')
+        do('idealTriangleCenter([-.34,-.47], [1,0], [-.34,.47])')
     if False:
         do('idealTriangleCenter([.1,.2], [-.34,-.47], [-.36,.9])')
 
@@ -745,9 +802,6 @@ if __name__ == '__main__':
         do('idealTriangleCenter([-1,0],[-.5+.001,sqrt(3)/2],[-.5,sqrt(3)/2])')
         do('idealTriangleCenter([-.5-.001,sqrt(3)/2],[-.5+.001,sqrt(3)/2],[-.5,sqrt(3)/2])')
     if False:
-        do('idealTriangleCenter([-cos(pi/3),-sin(pi/3)],[1,0],[-cos(pi/3),sin(pi/3)])')
-        do('idealTriangleCenter([-cos(pi/6),-sin(pi/6)],[1,0],[-cos(pi/6),sin(pi/6)])')
-    if False:
         do('xformKlein([0,1],[1,0])')
         do('xformKleinCheat([.1,.2],[.4,.5])')
         do('xformKlein([.1,.2],[.4,.5])')
@@ -762,7 +816,7 @@ if __name__ == '__main__':
         do('kleinOrthoCenter([0,-s],[s,0],[0,s])')
 
     do('idealTriangleCenter([.1,.2], [-.36,.9], [-.34,-.47])')
-    do('idealTriangleCenterSimple([.1,.2], [-.36,.9], [-.34,-.47])')
+    do('idealTriangleCenter([.1,.2], [-.36,.9], [-.34,-.47])')
     if False:
         do('invGammaKleinSegment([.1,.2],[.5,.7])')
         do('invGammaKleinSegment([.1,.2],[0,0])')
@@ -770,9 +824,25 @@ if __name__ == '__main__':
         do('invGammaKleinSegment([1,0],[0,1])')
     if False:
         do('idealTriangleCenter([.1,.2], [-.36,.9], [-.34,-.47])')
-        do('idealTriangleCenterSimple([.1,.2], [-.36,.9], [-.34,-.47])')
+        do('idealTriangleCenter([.1,.2], [-.36,.9], [-.34,-.47])')
 
-    do('idealTriangleCenterSimple([1,1],[1,1+1e-5],[1,1+2e-5])')
+    if False:
+        do('idealTriangleCenter([1,1],[1,1+1e-3],[1,1+2e-3])')
+        do('idealTriangleCenter([1,1],[1,1+1e-4],[1,1+2e-4])')
+        do('idealTriangleCenter([1,1],[1,1+1e-5],[1,1+2e-5])')
+        do('idealTriangleCenter([1,1],[1,1+1e-6],[1,1+2e-6])')
+    do('idealTriangleCenter([.1,.2], [.36,.9], [.34,.47])')
+    do('idealTriangleCenter([.1,.2,.3], [.36,.9,.754], [.34,.47,.2946])')
+
+    #do('idealSimplexCenter([[.1,.2], [.36,.9], [.34,.47],[.29,.567]])')
 
 
+    do('idealTriangleCenter([-cos(pi/3),-sin(pi/3)],[1,0],[-cos(pi/3),sin(pi/3)])')
+    do('idealTriangleCenter([-cos(pi/6),-sin(pi/6)],[1,0],[-cos(pi/6),sin(pi/6)])')
+    do('idealTriangleCenter([-cos(pi/10),-sin(pi/10)],[1,0],[-cos(pi/10),sin(pi/10)])')
+    do('idealTriangleCenter([-cos(pi/100),-sin(pi/100)],[1,0],[-cos(pi/100),sin(pi/100)])') # ditto... exact with smart, actually
 
+    do('idealTriangleCenter([-.123,-.89],[1,2],[-.492,.78])') # not good with dumb, very good with smart
+    do('idealTriangleCenter([1,1],[1,1+1e-5],[1,1+2e-5])') # totally sucky with dumb, kinda sucky with smart, as expected... need even smarter, need to avoid expressing in klein space
+    do('idealTriangleCenter([1,1],[1,1+1e-6],[1,1+2e-6])') # totally sucky with dumb, kinda sucky with smart, as expected... need even smarter, need to avoid expressing in klein space
+    do('idealTriangleCenter([1,1],[1,1-1e-6],[1,1+2e-6])') # totally sucky with dumb, kinda sucky with smart, as expected... need even smarter, need to avoid expressing in klein space
