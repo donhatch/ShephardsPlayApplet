@@ -1,13 +1,16 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 
 from math import *
 from Vec import Vec
+from Vec import Mat
 
-print "importing numpy"
-import numpy
-print "importing numpy.linalg"
-import numpy.linalg
-print "done."
+use_numpy = True
+if use_numpy:
+    print "importing numpy"
+    import numpy
+    print "importing numpy.linalg"
+    import numpy.linalg
+    print "done."
 
 
 # reciprocate about circle of radius 1 centered at the origin
@@ -121,6 +124,160 @@ def circumCenterAll(vs):
     return answer
 
 
+# possible radii:
+#   - equalize primal and dual perimeters
+#   - equalize primal and dual (square root of) areas
+#   - equalize primal and dual sum of vert distances from center
+#   - equalize primal and dual sum of squares of vert distances from center
+#   - equalize primal and dual max vert distance from center
+#   - equalize avg distance from perimeter to center
+#   - equalize avg distance from area to center
+#   - equalize geom mean of distances from verts to center
+#   - equalize geom mean of distance from perimter to center
+#   - equalize geom mean of distance from area to center
+def reciprocate(vs,c):
+    n = len(vs)
+    unitNormals = [(vs[-1-i]-vs[-i]).perpDot().normalized() for i in xrange(n)]
+    distances = [normal.dot(v-c) for normal,v in zip(unitNormals,reversed(vs))]
+    dualVerts = [c+normal/distance for normal,distance in zip(unitNormals,distances)]
+    # we've now reciprocated with respect to the unit sphere centered at c.
+
+    # equalize something.
+    # say, mean squared dist from verts to center.
+
+    if True:
+        # equalize avg squared distance from reciprocation center
+        primalMeasure = sqrt(sum([(v-c).length2() for v in vs])/n)
+        dualMeasure = sqrt(sum([(v-c).length2() for v in dualVerts])/n)
+    else:
+        # equalize avg distance from reciprocation center
+        primalMeasure = sum([(v-c).length() for v in vs])/n
+        dualMeasure   = sum([(v-c).length() for v in dualVerts])/n
+
+    #do('primalMeasure')
+    #do('dualMeasure')
+
+    adjustment = primalMeasure / dualMeasure
+    dualVerts = [c+adjustment*(v-c) for v in dualVerts]
+
+    return dualVerts
+
+# grr, it diverges
+def circumCenterSequence(vs):
+    print "    in circumCenterSequence"
+    vs = [Vec(v) for v in vs]
+    do('vs')
+
+
+    # first make sure reciprocate twice gives the original
+    c = circumCenter(vs)
+    dual = reciprocate(vs,c)
+    Vs = reciprocate(dual,c) # should be vs
+    do('Vs')
+
+    scratch = vs
+    for i in xrange(50):
+        c = circumCenter(scratch)
+        do('c')
+        scratch = reciprocate(scratch, c)
+    print "    out circumCenterSequence"
+    return None
+
+# Find x such that f(x) == y
+# by newton's method,
+# with derivative computed via finite diffences with given eps
+def newtonSolve(f,yTarget,xInitialGuess,eps):
+    dim = len(yTarget)
+    assert dim == len(xInitialGuess)
+    x = xInitialGuess
+    for i in xrange(10):
+        #do('i')
+        do('x')
+        y = f(x)
+        #do('y')
+        error = y - yTarget
+        jacobian = []
+        for iDim in xrange(dim):
+            xx = Vec(x) # copy
+            xx[iDim] += eps
+            jacobian.append((f(xx)-y)/eps)
+        invJacobian = Mat(jacobian).inverse()
+        #do('error')
+        #do('invJacobian')
+        #do('x')
+        #do('error * invJacobian')
+        x -= error * invJacobian
+    return x
+
+
+# Try to compute an in-center as follows:
+#       guess the incenter
+#       dual = reciprocate(primal, inCenterGuess)
+#       dualCircumCenter = circumCenter(dual)
+#       adjust guess by some function of (dualCircumCenter - guess)
+#       lerp(guess,dualCircumCenter,-1/3.) seems to be a good next guess
+#       i.e. guess + 1/3.*(guess-dualCircumCenter)
+def inCenterSolve(primal):
+    print "    in inCenterSolve"
+    primal = [Vec(v) for v in primal]
+
+    n = len(primal)
+    inCenterInitialGuess = sum(primal)/n # centroid of verts
+
+
+
+    if False:
+        inCenterGuess = inCenterInitialGuess
+
+
+        for i in xrange(50):
+            do('inCenterGuess')
+            dual = reciprocate(primal, inCenterGuess)
+            dualCircumCenter = circumCenter(dual)
+            #do('dualCircumCenter')
+            error = dualCircumCenter - inCenterGuess
+            #do('error.length()')
+            inCenterGuess -= 1/3. * error
+
+
+        answer = inCenterGuess
+
+        # Now do it all again, telling what fraction we'd need to get it right each time
+
+        inCenterGuess = sum(primal)/n # centroid of verts
+        for i in xrange(50):
+            do('inCenterGuess')
+            dual = reciprocate(primal, inCenterGuess)
+            dualCircumCenter = circumCenter(dual)
+            #do('dualCircumCenter')
+            error = dualCircumCenter - inCenterGuess
+            #do('error.length()')
+
+            # find frac such that answer = inCenterGuess - frac * error
+            if error.length2() != 0.:
+                frac = (inCenterGuess-answer).length() / error.length()
+                do('frac')
+            else:
+                print "        (done)"
+
+            inCenterGuess -= 1/3. * error
+
+
+
+    # now try it via newton solve.
+    # this seems to be MUCH better.
+    def f(inCenterGuess):
+        dual = reciprocate(primal, inCenterGuess)
+        dualCircumCenter = circumCenter(dual)
+        error = dualCircumCenter - inCenterGuess
+        return error
+    answer = newtonSolve(f,Vec(0,0),inCenterInitialGuess,1e-6)
+
+
+    print "    out inCenterSolve"
+    return answer
+
+
 def inCenter3(vs):
     assert len(vs) == 3
     a = Vec(vs[0])
@@ -141,13 +298,22 @@ def inCenter4(vs):
     assert n == 4
     inwardNormals = [(vs[(i+1)%n]-vs[i]).perpDot().normalized() for i in xrange(n)]
     offsets = [inwardNormals[i].dot(vs[i]) for i in xrange(n)]
-    M = numpy.matrix([
-        list(inwardNormals[0])+[1,0],
-        list(inwardNormals[1])+[0,1],
-        list(inwardNormals[2])+[1,0],
-        list(inwardNormals[3])+[0,1],
-    ])
-    xyrr = numpy.linalg.solve(M,offsets)
+    if use_numpy:
+        M = numpy.matrix([
+            list(inwardNormals[0])+[1,0],
+            list(inwardNormals[1])+[0,1],
+            list(inwardNormals[2])+[1,0],
+            list(inwardNormals[3])+[0,1],
+        ])
+        xyrr = numpy.linalg.solve(M,offsets)
+    else:
+        M = Mat([
+            list(inwardNormals[0])+[1,0],
+            list(inwardNormals[1])+[0,1],
+            list(inwardNormals[2])+[1,0],
+            list(inwardNormals[3])+[0,1],
+        ])
+        xyrr = M.inverse() * Vec(offsets)
     x,y,r,R = xyrr
     return Vec(x,y)
 
@@ -163,23 +329,37 @@ def inCenter(vs):
     centers = []
     radii = []
     for i in xrange(n-2):
-        M = numpy.matrix([
-            list(inwardNormals[ 0 ])+[-1],
-            list(inwardNormals[i+1])+[-1],
-            list(inwardNormals[i+2])+[-1],
-        ])
-        o = numpy.matrix([
-            [offsets[ 0 ]],
-            [offsets[i+1]],
-            [offsets[i+2]],
-        ])
-        x,y,r = numpy.linalg.solve(M,o)
+        if use_numpy:
+            M = numpy.matrix([
+                list(inwardNormals[ 0 ])+[-1],
+                list(inwardNormals[i+1])+[-1],
+                list(inwardNormals[i+2])+[-1],
+            ])
+            o = numpy.matrix([
+                [offsets[ 0 ]],
+                [offsets[i+1]],
+                [offsets[i+2]],
+            ])
+            #x,y,r = numpy.linalg.solve(M,o)
+            x,y,r = [float(x) for x in numpy.linalg.solve(M,o)]
+        else:
+            M = Mat([
+                list(inwardNormals[ 0 ])+[-1],
+                list(inwardNormals[i+1])+[-1],
+                list(inwardNormals[i+2])+[-1],
+            ])
+            o = Vec([
+                offsets[ 0 ],
+                offsets[i+1],
+                offsets[i+2],
+            ])
+            x,y,r = M.inverse() * o
         if False:
             # FUDGE
             r = abs(r)
         centers.append(Vec(x,y))
         radii.append(r)
-        if True:
+        if False:
             #do('x')
             #do('y')
             do('r')
@@ -191,14 +371,19 @@ def inCenter(vs):
 
     if n == 4:
         # Either way works, but neither way is robust when cocircular
-        weights = [
-            1./(inwardNormals[3].dot(centers[0]) - offsets[3] - radii[0]),
-            1./(inwardNormals[n-3].dot(centers[n-2-1])-offsets[n-3] - radii[n-2-1])
-        ]
-        weights = [
-            inwardNormals[1].dot(centers[1])-offsets[1] - radii[1],
-            inwardNormals[3].dot(centers[0])-offsets[3] - radii[0],
-        ]
+        if False:
+            weights = [
+                1./(inwardNormals[3].dot(centers[0]) - offsets[3] - radii[0]),
+                1./(inwardNormals[n-3].dot(centers[n-2-1])-offsets[n-3] - radii[n-2-1])
+            ]
+        else:
+            weights = [
+                inwardNormals[1].dot(centers[1])-offsets[1] - radii[1],
+                inwardNormals[3].dot(centers[0])-offsets[3] - radii[0],
+            ]
+            # fudge-- this shouldn't be needed, if I get a more robust formula to begin with
+            if weights[0] == 0. and weights[1] == 0.:
+                weights = [1.,1.]
 
     if n == 5:
         # I fear this doesn't really work
@@ -248,6 +433,10 @@ def inCenterAll(vs):
         for vsPermuted in vsPermuteds:
             answer = fun(vsPermuted)
             print "        "+funName+" returned "+`answer`
+
+    answer = inCenterSolve(vs)
+    print "        inCenterSolve returned "+`answer`
+
     return answer
 
 
@@ -275,5 +464,7 @@ if __name__ == '__main__':
     do('inCenterAll([[0,0],[1.1,0],[2.34,1],[2,5]])')
     do('inCenterAll([[-15,-2.5],[15,-25],[15,25],[-15,2.5]])')
     do('inCenterAll([[-15,-2.5],[15,-25],[15,25],[-15,2.5],[-16,0]])')
+    do('inCenterAll([[0,0],[50,0],         [20,22.5],[0,7.5]])')
     do('inCenterAll([[0,0],[40,0],[40,7.5],[20,22.5],[0,7.5]])')
-    do('inCenterAll([[0,0],[50,0],[20,22.5],[0,7.5]])')
+    #circumCenterSequence([[0,0],[50,0],[20,22.5],[0,7.5]])
+
