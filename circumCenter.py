@@ -224,46 +224,6 @@ def inCenterSolve(primal):
     n = len(primal)
     inCenterInitialGuess = sum(primal)/n # centroid of verts
 
-
-
-    if False:
-        inCenterGuess = inCenterInitialGuess
-
-
-        for i in xrange(50):
-            do('inCenterGuess')
-            dual = reciprocate(primal, inCenterGuess)
-            dualCircumCenter = circumCenter(dual)
-            #do('dualCircumCenter')
-            error = dualCircumCenter - inCenterGuess
-            #do('error.length()')
-            inCenterGuess -= 1/3. * error
-
-
-        answer = inCenterGuess
-
-        # Now do it all again, telling what fraction we'd need to get it right each time
-
-        inCenterGuess = sum(primal)/n # centroid of verts
-        for i in xrange(50):
-            do('inCenterGuess')
-            dual = reciprocate(primal, inCenterGuess)
-            dualCircumCenter = circumCenter(dual)
-            #do('dualCircumCenter')
-            error = dualCircumCenter - inCenterGuess
-            #do('error.length()')
-
-            # find frac such that answer = inCenterGuess - frac * error
-            if error.length2() != 0.:
-                frac = (inCenterGuess-answer).length() / error.length()
-                do('frac')
-            else:
-                print "        (done)"
-
-            inCenterGuess -= 1/3. * error
-
-
-
     # now try it via newton solve.
     # this seems to be MUCH better.
     def f(inCenterGuess):
@@ -271,7 +231,8 @@ def inCenterSolve(primal):
         dualCircumCenter = circumCenter(dual)
         error = dualCircumCenter - inCenterGuess
         return error
-    answer = newtonSolve(f,Vec(0,0),inCenterInitialGuess,1e-6)
+    eps = 1e-6
+    answer = newtonSolve(f,Vec(0,0),inCenterInitialGuess,eps)
 
 
     print "    out inCenterSolve"
