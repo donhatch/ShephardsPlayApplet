@@ -17,12 +17,12 @@ if use_numpy:
 def reciprocal(vs):
     dual_vs = []
     for i in xrange(len(vs)):
-        v0 = vs[i-1]
-        v1 = vs[1]
+        v0 = vs[-i-1] # more CW
+        v1 = vs[-i]   # more CCW
         e = v1-v0
         outwardNormal = Vec([e[1],-e[0]])
-        dual_v = v0.dot(outwardNormal)/outwardNormal.dot(outwardNormal)
-        dual.vs.append(dual_v)
+        dual_v = v0.dot(outwardNormal)/outwardNormal.dot(outwardNormal) * outwardNormal
+        dual_vs.append(dual_v)
     return dual_vs
 
 
@@ -210,13 +210,10 @@ def newtonSolve(f,yTarget,xInitialGuess,eps):
     return x
 
 
-# Try to compute an in-center as follows:
-#       guess the incenter
-#       dual = reciprocate(primal, inCenterGuess)
-#       dualCircumCenter = circumCenter(dual)
-#       adjust guess by some function of (dualCircumCenter - guess)
-#       lerp(guess,dualCircumCenter,-1/3.) seems to be a good next guess
-#       i.e. guess + 1/3.*(guess-dualCircumCenter)
+# Try to compute an in-center
+# as the point such that reciprocating
+# around that point gives something whose
+# circumcenter is that point.
 def inCenterSolve(primal):
     print "    in inCenterSolve"
     primal = [Vec(v) for v in primal]
@@ -227,10 +224,9 @@ def inCenterSolve(primal):
     # now try it via newton solve.
     # this seems to be MUCH better.
     def f(inCenterGuess):
-        dual = reciprocate(primal, inCenterGuess)
+        dual = reciprocal([v-inCenterGuess for v in primal])
         dualCircumCenter = circumCenter(dual)
-        error = dualCircumCenter - inCenterGuess
-        return error
+        return dualCircumCenter
     eps = 1e-6
     answer = newtonSolve(f,Vec(0,0),inCenterInitialGuess,eps)
 
@@ -426,6 +422,12 @@ if __name__ == '__main__':
     do('inCenterAll([[-15,-2.5],[15,-25],[15,25],[-15,2.5]])')
     do('inCenterAll([[-15,-2.5],[15,-25],[15,25],[-15,2.5],[-16,0]])')
     do('inCenterAll([[0,0],[50,0],         [20,22.5],[0,7.5]])')
-    do('inCenterAll([[0,0],[40,0],[40,7.5],[20,22.5],[0,7.5]])')
-    #circumCenterSequence([[0,0],[50,0],[20,22.5],[0,7.5]])
+    if False:
+        do('inCenterAll([[0,0],[40,0],[40,7.5],[20,22.5],[0,7.5]])')
+        do('inCenterAll([[0,0],[37.5,0],[42,6],[20,22.5],[0,7.5]])')
+        #circumCenterSequence([[0,0],[50,0],[20,22.5],[0,7.5]])
+        a = Vec(20,8.501010913691152)
+        b = Vec(20.761099158704887, 8.4349521148941093)
+        c = Vec(35.,5.)
+        do('(b-a).cross(c-a)')
 
