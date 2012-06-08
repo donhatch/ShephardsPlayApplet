@@ -21,13 +21,14 @@ def reciprocal(vs):
         v1 = vs[-i]   # more CCW
         e = v1-v0
         outwardNormal = Vec([e[1],-e[0]])
-        dual_v = v0.dot(outwardNormal)/outwardNormal.dot(outwardNormal) * outwardNormal
+        #dual_v = v0.dot(outwardNormal)/outwardNormal.dot(outwardNormal) * outwardNormal
+        dual_v = outwardNormal/outwardNormal.dot(v0)
         dual_vs.append(dual_v)
     return dual_vs
 
 
 # actually simplexCircumMomentAndParallelogramArea
-def simplexCircumMomentAndArea(vs):
+def simplexCircumMomentAndTwiceArea(vs):
     assert len(vs) == 3
     a = Vec(vs[0])
     b = Vec(vs[1])
@@ -97,19 +98,20 @@ def simplexCircumMomentAndArea(vs):
     return moment,area
 
 
-def circumMomentAndArea(vs):
-    #print "    in circumMomentAndArea"
-    totalMoment,totalArea = simplexCircumMomentAndArea([vs[0],vs[1],vs[2]])
+def circumMomentAndTwiceArea(vs):
+    #print "    in circumMomentAndTwiceArea"
+    #print "        vs = "+`vs`
+    totalMoment,totalArea = simplexCircumMomentAndTwiceArea([vs[0],vs[1],vs[2]])
     for i in xrange(len(vs)-3):
-        moment,area = simplexCircumMomentAndArea([vs[0],vs[2+i],vs[3+i]])
+        moment,area = simplexCircumMomentAndTwiceArea([vs[0],vs[2+i],vs[3+i]])
         totalMoment += moment
         totalArea += area
-    #print "    out circumMomentAndArea"
+    #print "    out circumMomentAndTwiceArea"
     return totalMoment,totalArea
 
 def circumCenter(vs):
     #print "    in circumCenter"
-    moment,area = circumMomentAndArea(vs)
+    moment,area = circumMomentAndTwiceArea(vs)
     answer = moment / area
     #print "    out circumCenter"
     return answer
@@ -190,7 +192,7 @@ def newtonSolve(f,yTarget,xInitialGuess,eps):
     dim = len(yTarget)
     assert dim == len(xInitialGuess)
     x = xInitialGuess
-    for i in xrange(10):
+    for i in xrange(20):
         #do('i')
         do('x')
         y = f(x)
@@ -248,6 +250,107 @@ def inCenter3(vs):
             + b * (beta/denominator)
             + c * (gamma/denominator))
     return answer
+
+# Try to figure out in-center
+# of special pentagon with closest-point-on-sides:
+#       0,1
+#       nx,ny    nx^2+ny^2==1, nx < 0
+#       nx,-ny
+#       0,-1
+#       x,0
+def inCenter5special(nx,ny,x):
+    print "    in inCenter5special"
+
+
+
+    # from calculations on paper (2012/6/8),
+    # given center = (c,0),
+    # right-hand dual moment of primal-c is:
+    #   (1/(x-c)^2 - 1) / 4
+    # and left-hand dual moment is:
+    #   a*(b+1)*((1-b)*(1+b)/(2*a) - a/2)
+    # where:
+    #   a = -nx/(-nx*c+1)
+    #   b = ny/(-nx*c+1)
+    # and we want c such that the sum of the two moments is zero.
+    # For starters, let's verify the moments.
+
+    assert abs(nx**2 + ny**2 - 1) < 1e-6
+
+    def computeDualCircumCenter(nx,ny,x,c):
+
+        # This seems to be right...
+        rightTwiceArea = 2./(x-c)
+        rightMoment = 1./(x-c)**2 - 1
+        rightCircumCenter = rightMoment / rightTwiceArea
+
+        a = -nx/(-nx*c+1) # all positive, since nx<0
+        b = ny/(-nx*c+1)
+
+
+        leftTwiceArea = 2*a*(b+1)
+        leftMoment = 2*a*(b+1)*((1-b)*(1+b)/(2.*a) - a/2.)
+        leftCircumCenter = leftMoment / leftTwiceArea
+
+        totalMoment = leftMoment + rightMoment
+        totalTwiceArea = leftTwiceArea+rightTwiceArea
+        circumCenter = totalMoment / totalTwiceArea
+
+        do('leftMoment')
+        do('leftTwiceArea')
+        do('leftCircumCenter')
+        print
+        do('rightMoment')
+        do('rightTwiceArea')
+        do('rightCircumCenter')
+
+        return circumCenter # scalar, for now
+
+    def computeDualCircumCenterAlt(nx,ny,x,c):
+        dualVerts0 = [
+            [0,1],
+            [nx,ny],    # remember nx is negative
+            [nx,-ny],   # remember nx is negative
+            [0,-1],
+            [1./x,0],
+        ]
+        dualVerts0 = [Vec(v) for v in dualVerts0]
+        do('dualVerts0')
+        verts = reciprocal(dualVerts0)
+        do('verts')
+        dualVerts = reciprocal([v-Vec(c,0) for v in verts])
+        do('dualVerts')
+        circumC = circumCenter(dualVerts)
+
+        leftCircumCenter = circumCenter(dualVerts[:4])
+        rightCircumCenter = circumCenter([dualVerts[3],dualVerts[4],dualVerts[0]])
+
+        leftCircumMoment,leftTwiceArea = circumMomentAndTwiceArea(dualVerts[:4])
+        rightCircumMoment,rightTwiceArea = circumMomentAndTwiceArea([dualVerts[3],dualVerts[4],dualVerts[0]])
+
+        do('leftCircumMoment')
+        do('leftTwiceArea')
+        do('leftCircumCenter')
+        print
+        do('rightCircumMoment')
+        do('rightTwiceArea')
+        do('rightCircumCenter')
+
+        return circumC
+
+    c = .9 # example
+    do('c')
+    do('computeDualCircumCenter   (nx,ny,x,c)')
+    print
+    do('computeDualCircumCenterAlt(nx,ny,x,c)')
+
+
+    print "    out inCenter5special"
+    return Vec(0,0)
+
+
+
+
 
 def inCenter4(vs):
     vs = [Vec(v) for v in vs]
@@ -359,6 +462,8 @@ def inCenter(vs):
                              * (inwardNormals[4+i].dot(centers[1+i]) - offsets[4+i] - radii[1+i]) ))
 
     weightsSum = sum(weights)
+    if weightsSum == 0.:
+        return centers[0] # hack
     if False:
         do('[float(weight) for weight in weights]')
         do('weightsSum')
@@ -405,29 +510,56 @@ if __name__ == '__main__':
         answer = eval(s, globals(), inspect.currentframe().f_back.f_locals)
         print '        '+s+' = '+`answer`
 
-    do('circumCenterAll([[1,0],[0,1],[-1,0]])')
-    do('circumCenterAll([[2,0],[1,1],[0,0]])')
-    do('circumCenterAll([[2,0],[1,1],[0,0],[1,-1]])')
-    do('circumCenterAll([[1.,2.],[5.6,9.2],[0.,0.]])')
-    do('circumCenterAll([[1.,2.],[5.6,9.2],[0.,0.],[3.8,9.1]])')
-    do('circumCenterAll([[0,0],[1,0],[2,2],[0,1]])')
-    do('inCenter3([[0,0],[20,0],[0,15]])')
-    do('inCenterAll([[0,0],[20,0],[0,15]])')
-    do('inCenterAll([[0,0],[1,0],[1,1],[0,1]])')
-    do('inCenterAll([[0,0],[10,0],[10,7.5],[0,15]])')
-    do('inCenterAll([[0,0],[1,0],[2,2],[0,1]])')
-    do('inCenterAll([[0,0],[2,0],[2,1],[0,1]])')
-    do('inCenterAll([[0,0],[1,0],[2,1],[2,2]])')
-    do('inCenterAll([[0,0],[1.1,0],[2.34,1],[2,5]])')
-    do('inCenterAll([[-15,-2.5],[15,-25],[15,25],[-15,2.5]])')
-    do('inCenterAll([[-15,-2.5],[15,-25],[15,25],[-15,2.5],[-16,0]])')
-    do('inCenterAll([[0,0],[50,0],         [20,22.5],[0,7.5]])')
     if False:
+        do('circumCenterAll([[1,0],[0,1],[-1,0]])')
+        do('circumCenterAll([[2,0],[1,1],[0,0]])')
+        do('circumCenterAll([[2,0],[1,1],[0,0],[1,-1]])')
+        do('circumCenterAll([[1.,2.],[5.6,9.2],[0.,0.]])')
+        do('circumCenterAll([[1.,2.],[5.6,9.2],[0.,0.],[3.8,9.1]])')
+        do('circumCenterAll([[0,0],[1,0],[2,2],[0,1]])')
+        do('inCenter3([[0,0],[20,0],[0,15]])')
+        do('inCenterAll([[0,0],[20,0],[0,15]])')
+        do('inCenterAll([[0,0],[1,0],[1,1],[0,1]])')
+        do('inCenterAll([[0,0],[10,0],[10,7.5],[0,15]])')
+        do('inCenterAll([[0,0],[1,0],[2,2],[0,1]])')
+        do('inCenterAll([[0,0],[2,0],[2,1],[0,1]])')
+        do('inCenterAll([[0,0],[1,0],[2,1],[2,2]])')
+        do('inCenterAll([[0,0],[1.1,0],[2.34,1],[2,5]])')
+        do('inCenterAll([[-15,-2.5],[15,-25],[15,25],[-15,2.5]])')
+        do('inCenterAll([[-15,-2.5],[15,-25],[15,25],[-15,2.5],[-16,0]])')
+        do('inCenterAll([[0,0],[50,0],         [20,22.5],[0,7.5]])')
         do('inCenterAll([[0,0],[40,0],[40,7.5],[20,22.5],[0,7.5]])')
         do('inCenterAll([[0,0],[37.5,0],[42,6],[20,22.5],[0,7.5]])')
+
+
+        if False:
+            # obtuse
+            for x in [5,6,7,8,9,10,100,1000,10000,1e5,1e6,1e7,1e8,1e9]:
+                do('inCenterAll([[-2.5,5],[-6.25,0],[-2.5,-5],['+str(x)+',-5],['+str(x)+',5]])')
+        if True:
+            # acute
+            for x in [5,6,7,8,9,10,100,1000,10000,1e5,1e6,1e7,1e8,1e9]:
+                do('inCenterAll([[-5/3.,5],[-25/3.,0],[-5/3.,-5],['+str(x)+',-5],['+str(x)+',5]])')
+        if False:
+            # right
+            for x in [5,6,7,8,9,10,100,1000,10000,1e5,1e6,1e7,1e8,1e9,1e10,1e11,1e12]:
+                do('inCenterAll([[-2.5,5],[-7,-1],[-5/3.,-5],['+str(x)+',-5],['+str(x)+',5]])')
+
+
+    if False:
         #circumCenterSequence([[0,0],[50,0],[20,22.5],[0,7.5]])
         a = Vec(20,8.501010913691152)
         b = Vec(20.761099158704887, 8.4349521148941093)
         c = Vec(35.,5.)
         do('(b-a).cross(c-a)')
 
+    vs = [[1,0],[0,1],[-1,0],[0,-1]]
+    vs = [Vec(v) for v in vs]
+    do('vs')
+    do('reciprocal(vs)')
+    do('reciprocal(reciprocal(vs))')
+
+
+    do('inCenter5special(-4/5.,3/5.,1)')
+    do('inCenter5special(-4/5.,3/5.,2)')
+    #do('inCenter5special(-3/5.,4/5.,1)')
