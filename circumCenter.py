@@ -277,6 +277,7 @@ def inCenter5special(nx,ny,x):
 
     assert abs(nx**2 + ny**2 - 1) < 1e-6
 
+    # First way that worked...
     def computeDualCircumCenter(nx,ny,x,c):
 
         # This seems to be right...
@@ -303,6 +304,23 @@ def inCenter5special(nx,ny,x):
         do('rightMoment')
         do('rightTwiceArea')
         do('rightCircumCenter')
+
+        return circumCenter # scalar, for now
+
+    # now simplify...
+    def computeDualCircumCenter(nx,ny,x,c):
+
+        # This seems to be right...
+        rightMoment = 1./(x-c)**2 - 1
+
+        a = -nx/(-nx*c+1) # all positive, since nx<0
+        b = ny/(-nx*c+1)
+
+        leftMoment = (b+1)*((1-b)*(1+b) - a*a)
+
+        totalMoment = rightMoment + leftMoment
+        totalTwiceArea =  2./(x-c) + 2*(-nx/(-nx*c+1))*(ny/(-nx*c+1)+1)
+        circumCenter = totalMoment / totalTwiceArea
 
         return circumCenter # scalar, for now
 
