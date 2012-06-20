@@ -205,10 +205,16 @@ def newtonSolve(f,yTarget,xInitialGuess,eps):
             jacobian.append((f(xx)-y)/eps)
         invJacobian = Mat(jacobian).inverse()
         #do('error')
+        #do('jacobian')
         #do('invJacobian')
         #do('x')
         #do('error * invJacobian')
-        x -= error * invJacobian
+        x1 = x - error * invJacobian
+        # hackier and hackier
+        if i < 10:
+            x += .25 * (x1-x)
+        else:
+            x = x1
     return x
 
 
@@ -217,7 +223,7 @@ def newtonSolve(f,yTarget,xInitialGuess,eps):
 # around that point gives something whose
 # circumcenter is that point.
 def inCenterSolve(primal):
-    print "    in inCenterSolve"
+    print "        in inCenterSolve"
     primal = [Vec(v) for v in primal]
 
     n = len(primal)
@@ -227,13 +233,21 @@ def inCenterSolve(primal):
     # this seems to be MUCH better.
     def f(inCenterGuess):
         dual = reciprocal([v-inCenterGuess for v in primal])
-        dualCircumCenter = circumCenter(dual)
-        return dualCircumCenter
+        if True:
+            # This works but is doing too much math.
+            # OH WAIT, sometimes it makes the solve converge to something small
+            # where the other didn't? bleah but it's not to something inside
+            dualCircumCenter = circumCenter(dual)
+            return dualCircumCenter
+        else:
+            dualCircumMoment,dualTwiceArea = circumMomentAndTwiceArea(dual)
+            return dualCircumMoment
+
     eps = 1e-6
     answer = newtonSolve(f,Vec(0,0),inCenterInitialGuess,eps)
 
 
-    print "    out inCenterSolve"
+    print "        out inCenterSolve"
     return answer
 
 
@@ -262,7 +276,6 @@ def inCenter5special(nx,ny,x):
     print "    in inCenter5special"
 
 
-
     # from calculations on paper (2012/6/8),
     # given center = (c,0),
     # right-hand dual moment of primal-c is:
@@ -278,7 +291,7 @@ def inCenter5special(nx,ny,x):
     assert abs(nx**2 + ny**2 - 1) < 1e-6
 
     # First way that worked...
-    def computeDualCircumCenter(nx,ny,x,c):
+    def computeDualCircumMoment(nx,ny,x,c):
 
         # This seems to be right...
         rightTwiceArea = 2./(x-c)
@@ -297,34 +310,29 @@ def inCenter5special(nx,ny,x):
         totalTwiceArea = leftTwiceArea+rightTwiceArea
         circumCenter = totalMoment / totalTwiceArea
 
-        do('leftMoment')
-        do('leftTwiceArea')
-        do('leftCircumCenter')
-        print
-        do('rightMoment')
-        do('rightTwiceArea')
-        do('rightCircumCenter')
+        if False:
+            do('leftMoment')
+            do('leftTwiceArea')
+            do('leftCircumCenter')
+            print
+            do('rightMoment')
+            do('rightTwiceArea')
+            do('rightCircumCenter')
 
-        return circumCenter # scalar, for now
+        return totalMoment # scalar, for now
 
     # now simplify...
-    def computeDualCircumCenter(nx,ny,x,c):
+    def computeDualCircumMoment(nx,ny,x,c):
 
         # This seems to be right...
         rightMoment = 1./(x-c)**2 - 1
 
-        a = -nx/(-nx*c+1) # all positive, since nx<0
-        b = ny/(-nx*c+1)
-
-        leftMoment = (b+1)*((1-b)*(1+b) - a*a)
-
+        leftMoment = (ny-nx*c+1)*((-ny-nx*c+1)*(ny-nx*c+1) - nx*nx) / (-nx*c+1)**3
         totalMoment = rightMoment + leftMoment
-        totalTwiceArea =  2./(x-c) + 2*(-nx/(-nx*c+1))*(ny/(-nx*c+1)+1)
-        circumCenter = totalMoment / totalTwiceArea
 
-        return circumCenter # scalar, for now
+        return totalMoment # scalar, for now
 
-    def computeDualCircumCenterAlt(nx,ny,x,c):
+    def computeDualCircumMomentAlt(nx,ny,x,c):
         dualVerts0 = [
             [0,1],
             [nx,ny],    # remember nx is negative
@@ -333,11 +341,11 @@ def inCenter5special(nx,ny,x):
             [1./x,0],
         ]
         dualVerts0 = [Vec(v) for v in dualVerts0]
-        do('dualVerts0')
+        #do('dualVerts0')
         verts = reciprocal(dualVerts0)
         do('verts')
         dualVerts = reciprocal([v-Vec(c,0) for v in verts])
-        do('dualVerts')
+        #do('dualVerts')
         circumC = circumCenter(dualVerts)
 
         leftCircumCenter = circumCenter(dualVerts[:4])
@@ -346,28 +354,141 @@ def inCenter5special(nx,ny,x):
         leftCircumMoment,leftTwiceArea = circumMomentAndTwiceArea(dualVerts[:4])
         rightCircumMoment,rightTwiceArea = circumMomentAndTwiceArea([dualVerts[3],dualVerts[4],dualVerts[0]])
 
-        do('leftCircumMoment')
-        do('leftTwiceArea')
-        do('leftCircumCenter')
-        print
-        do('rightCircumMoment')
-        do('rightTwiceArea')
-        do('rightCircumCenter')
+        if False:
+            do('leftCircumMoment')
+            do('leftTwiceArea')
+            do('leftCircumCenter')
+            print
+            do('rightCircumMoment')
+            do('rightTwiceArea')
+            do('rightCircumCenter')
 
-        return circumC
-
-    c = .9 # example
-    do('c')
-    do('computeDualCircumCenter   (nx,ny,x,c)')
-    print
-    do('computeDualCircumCenterAlt(nx,ny,x,c)')
+        return leftCircumMoment+rightCircumMoment
 
 
+    do('computeDualCircumMoment   (nx,ny,x,-1.3)')
+    do('computeDualCircumMoment   (nx,ny,x,-1.2)')
+    do('computeDualCircumMoment   (nx,ny,x,-1.1)')
+    do('computeDualCircumMoment   (nx,ny,x,-1.)')
+    do('computeDualCircumMoment   (nx,ny,x,-.9)')
+    do('computeDualCircumMoment   (nx,ny,x,-.8)')
+    do('computeDualCircumMoment   (nx,ny,x,-.7)')
+    do('computeDualCircumMoment   (nx,ny,x,-.6)')
+    do('computeDualCircumMoment   (nx,ny,x,-.5)')
+    do('computeDualCircumMoment   (nx,ny,x,-.4)')
+    do('computeDualCircumMoment   (nx,ny,x,-.3)')
+    do('computeDualCircumMoment   (nx,ny,x,-.2)')
+    do('computeDualCircumMoment   (nx,ny,x,-.1)')
+    do('computeDualCircumMoment   (nx,ny,x,0)')
+    do('computeDualCircumMoment   (nx,ny,x,.1)')
+    do('computeDualCircumMoment   (nx,ny,x,.2)')
+    do('computeDualCircumMoment   (nx,ny,x,.3)')
+    do('computeDualCircumMoment   (nx,ny,x,.4)')
+    do('computeDualCircumMoment   (nx,ny,x,.5)')
+    do('computeDualCircumMoment   (nx,ny,x,.6)')
+    do('computeDualCircumMoment   (nx,ny,x,.7)')
+    do('computeDualCircumMoment   (nx,ny,x,.8)')
+    do('computeDualCircumMoment   (nx,ny,x,.9)')
+    if x > 1.5:
+        do('computeDualCircumMoment   (nx,ny,x,1.)')
+        do('computeDualCircumMoment   (nx,ny,x,1.1)')
+        do('computeDualCircumMoment   (nx,ny,x,1.2)')
+        do('computeDualCircumMoment   (nx,ny,x,1.3)')
+        do('computeDualCircumMoment   (nx,ny,x,1.4)')
+        do('computeDualCircumMoment   (nx,ny,x,1.5)')
+        do('computeDualCircumMoment   (nx,ny,x,1.6)')
+        do('computeDualCircumMoment   (nx,ny,x,1.7)')
+        do('computeDualCircumMoment   (nx,ny,x,1.8)')
+        do('computeDualCircumMoment   (nx,ny,x,1.9)')
+        do('computeDualCircumMoment   (nx,ny,x,2.)')
+        do('computeDualCircumMoment   (nx,ny,x,3.)')
+        do('computeDualCircumMoment   (nx,ny,x,4.)')
+        do('computeDualCircumMoment   (nx,ny,x,5.)')
+        do('computeDualCircumMoment   (nx,ny,x,6.)')
+        do('computeDualCircumMoment   (nx,ny,x,7.)')
+        do('computeDualCircumMoment   (nx,ny,x,8.)')
+        do('computeDualCircumMoment   (nx,ny,x,9.)')
+    if x > 10.5:
+        do('computeDualCircumMoment   (nx,ny,x,10.)')
+        do('computeDualCircumMoment   (nx,ny,x,11.)')
+        do('computeDualCircumMoment   (nx,ny,x,12.)')
+        do('computeDualCircumMoment   (nx,ny,x,13.)')
+        do('computeDualCircumMoment   (nx,ny,x,14.)')
+        do('computeDualCircumMoment   (nx,ny,x,15.)')
+        do('computeDualCircumMoment   (nx,ny,x,16.)')
+        do('computeDualCircumMoment   (nx,ny,x,17.)')
+        do('computeDualCircumMoment   (nx,ny,x,18.)')
+        do('computeDualCircumMoment   (nx,ny,x,19.)')
+        do('computeDualCircumMoment   (nx,ny,x,20.)')
+        do('computeDualCircumMoment   (nx,ny,x,21.)')
+        do('computeDualCircumMoment   (nx,ny,x,22.)')
+        do('computeDualCircumMoment   (nx,ny,x,23.)')
+        do('computeDualCircumMoment   (nx,ny,x,24.)')
+        do('computeDualCircumMoment   (nx,ny,x,25.)')
+        do('computeDualCircumMoment   (nx,ny,x,26.)')
+        do('computeDualCircumMoment   (nx,ny,x,27.)')
+        do('computeDualCircumMoment   (nx,ny,x,28.)')
+        do('computeDualCircumMoment   (nx,ny,x,29.)')
+        do('computeDualCircumMoment   (nx,ny,x,30.)')
+        do('computeDualCircumMoment   (nx,ny,x,35.)')
+        do('computeDualCircumMoment   (nx,ny,x,40.)')
+        do('computeDualCircumMoment   (nx,ny,x,45.)')
+        do('computeDualCircumMoment   (nx,ny,x,50.)')
+        do('computeDualCircumMoment   (nx,ny,x,55.)')
+        do('computeDualCircumMoment   (nx,ny,x,60.)')
+        do('computeDualCircumMoment   (nx,ny,x,65.)')
+        do('computeDualCircumMoment   (nx,ny,x,70.)')
+        do('computeDualCircumMoment   (nx,ny,x,75.)')
+        do('computeDualCircumMoment   (nx,ny,x,80.)')
+        do('computeDualCircumMoment   (nx,ny,x,85.)')
+        do('computeDualCircumMoment   (nx,ny,x,90.)')
+        #do('computeDualCircumMomentAlt(nx,ny,x,90.)')
+        do('computeDualCircumMoment   (nx,ny,x,95.)')
+        do('computeDualCircumMoment   (nx,ny,x,97.)')
+        do('computeDualCircumMoment   (nx,ny,x,98.)')
+        do('computeDualCircumMoment   (nx,ny,x,99.)')
+        do('computeDualCircumMoment   (nx,ny,x,101.)')
+        do('computeDualCircumMoment   (nx,ny,x,110.)')
+        do('computeDualCircumMoment   (nx,ny,x,120.)')
+        do('computeDualCircumMoment   (nx,ny,x,130.)')
+        do('computeDualCircumMoment   (nx,ny,x,140.)')
+        do('computeDualCircumMoment   (nx,ny,x,150.)')
+        do('computeDualCircumMoment   (nx,ny,x,160.)')
+        do('computeDualCircumMoment   (nx,ny,x,170.)')
+        do('computeDualCircumMoment   (nx,ny,x,180.)')
+        do('computeDualCircumMoment   (nx,ny,x,190.)')
+        do('computeDualCircumMoment   (nx,ny,x,200.)')
+        do('computeDualCircumMoment   (nx,ny,x,300.)')
+        do('computeDualCircumMoment   (nx,ny,x,500.)')
+        do('computeDualCircumMoment   (nx,ny,x,1000.)')
+        do('computeDualCircumMoment   (nx,ny,x,10000.)')
+
+# ARGH! for x=100, this goes up and down... probably NOT a unique answer :-(
+
+
+    # find c such that computeDualCircumMoment(nx,ny,x,c) == 0
+    def f(inCenterGuess):
+        if True:
+            moment = computeDualCircumMoment(nx,ny,x,inCenterGuess[0])
+            #do('inCenterGuess[0]')
+            #do('moment')
+            return Vec([moment])
+        else:
+            moment = computeDualCircumMomentAlt(nx,ny,x,inCenterGuess[0])[0]
+            return Vec([moment])
+
+    #initialGuess = Vec([.1])
+    #initialGuess = Vec([3.55])
+    #initialGuess = Vec([0])
+    initialGuess = Vec([1.45])
+    if x > 10.5:
+        initialGuess = Vec([29.])
+
+    target = Vec([0.])
+    eps = 1e-2
+    c = newtonSolve(f, target, initialGuess, eps)
     print "    out inCenter5special"
-    return Vec(0,0)
-
-
-
+    return c
 
 
 def inCenter4(vs):
@@ -492,7 +613,8 @@ def inCenter(vs):
 
 # exercise inCenter in every way
 def inCenterAll(vs):
-    print
+    print "    in inCenterAll"
+    do('vs')
     funNames = []
     if len(vs) == 4:
         funNames += ["inCenter4"]
@@ -514,10 +636,140 @@ def inCenterAll(vs):
             answer = fun(vsPermuted)
             print "        "+funName+" returned "+`answer`
 
+    # Only do inCenterSolve for one permutation
     answer = inCenterSolve(vs)
     print "        inCenterSolve returned "+`answer`
 
+    answer = pseudoCentroid(vs)
+    print "        pseudoCentroid returned "+`answer`
+
+
+    print "    out inCenterAll"
     return answer
+
+# Point that centers euclidean average of verts
+# when centered in poincare disk
+def pseudoCentroid(vs):
+
+    #
+    # Initial guess
+    # is a generalization
+    # of the in-center of 3 points:
+    # Take a weighted average of the vertices,
+    # each vertex weighted by the variance
+    # of the other n-1 vertices,
+    # and offset from the plane
+    # by the weighted average of the standard deviations
+    # (I think this is roughly right).
+    #
+
+
+    vs = [Vec(v) for v in vs]
+    n = len(vs)
+    nDims = len(vs[0])
+
+    M = sum(vs)/n
+    S = [sum([(v[i]-M[i])**2 for v in vs]) for i in xrange(nDims)] # n times variance, in each dimension separately
+
+    # From http://XXX
+    # To compute the new S = n*newVariance
+    # given s = (n-1)*oldVariance and a new sample x:
+    #     S = s + (x-m)*(x-M)
+    # so,
+    #     s = S - (x-m)*(x-M)
+    # where m and M are the old and new means:
+    #   M = m + (x-m)/n
+    #     = (1-1/n)*m + (1/n)*x
+    # so,
+    #   m = (M-x/n)/((n-1)/n)
+    #     = (M*n-x)/(n-1)
+    # The simplest way to think about it
+    # is to do each dimension separately.
+    weights = []
+    for v in vs:
+        s = 0.
+        for i in xrange(nDims):
+            mi = (M[i]*n-v[i])/(n-1.)
+            si = S[i] - (v[i]-mi)*(v[i]-M[i])
+            s += si
+        weights.append(s/(n-1.))
+
+    weightsSum = sum(weights)
+
+    weightedAvg = sum([weight*v for weight,v in zip(weights,vs)]) / weightsSum
+    avgVariance = sum([weight*weight for weight in weights]) / weightsSum
+    avgStdDev = sqrt(avgVariance)
+
+    initialGuess = Vec(list(weightedAvg)+[avgStdDev]) # weightedAvg with avgStdDev appended
+    guess = initialGuess
+
+    # Refine the guess as follows:
+    #     - transform poincare half-space
+    #       to poincare ball, mapping guess to center
+    #     - take the centroid of the transformed verts
+    #     - map that back to poincare half-space
+    #     - that's the new guess
+
+    vs0 = [Vec(list(v)+[0]) for v in vs] # vs with 0 appended to each vertex
+    unit = Vec([0]*nDims+[1])
+
+    # argh, convergence is pretty slow... should we be using newton?
+    for iIter in xrange(200):
+        print "            guess = "+`guess`
+        reflectionCenter = Vec(guess); reflectionCenter[-1] *= -1.
+        reflectionRadius2 = reflectionCenter[-1]**2
+        reflectionRadius = sqrt(reflectionRadius2)
+        # (poincare disk radius is half that)
+        #
+        # The following inverts the reflection circle
+        # and scales it down to unit size at the origin:
+        #       v -> reflectionRadius * (v-reflectionCenter)/(v-reflectionCenter).length2()
+        # which means the positive half-plane
+        # will get mapped to a disk of radius 1/2 centered at 0,0,...,1/2.
+        # To turn that into a disk of radius 1 centered at 0,
+        # we must subtract 0,0,...,1/2 and multiply by 2
+        # (or multiply by 2 and subtract 0,...,0,1).
+
+        images = []
+        for v in vs0:
+            image = v - reflectionCenter
+            image = image/image.length2() * reflectionRadius
+            # image is now on circle of radius 1/2 centered at 0,0,...,1/2
+            image *= 2.
+            # image is now on circle of radius 1 centered at 0,0,...,1
+            image -= unit
+            # image is now on circle of radius 1 centered at origin
+            images.append(image)
+
+        if False:
+            shouldBeVs0 = []
+            for image in images:
+                shouldBeV0 = image + unit
+                shouldBeV0 *= .5
+                shouldBeV0 = shouldBeV0/shouldBeV0.length2() * reflectionRadius
+                shouldBeV0 += reflectionCenter
+                shouldBeVs0.append(shouldBeV0)
+
+            print "        vs0 = "+`vs0`
+            print "shouldBeVs0 = "+`shouldBeVs0`
+            do('images')
+            do('[image.length() for image in images]')
+
+        avg = sum(images)/n
+
+        # that's in klein disk--
+        # need poincare disk
+        if True:
+            avg /= (1+sqrt(1-avg.length2()))
+
+        guess = avg + unit
+        guess *= .5
+        guess = guess/guess.length2() * reflectionRadius
+        guess += reflectionCenter
+
+    print "            guess = "+`guess`
+
+    return guess
 
 
 # Little test program
@@ -526,7 +778,7 @@ if __name__ == '__main__':
     def do(s):
         import inspect
         answer = eval(s, globals(), inspect.currentframe().f_back.f_locals)
-        print '        '+s+' = '+`answer`
+        print '            '+s+' = '+`answer`
 
     if False:
         do('circumCenterAll([[1,0],[0,1],[-1,0]])')
@@ -545,11 +797,15 @@ if __name__ == '__main__':
         do('inCenterAll([[0,0],[1.1,0],[2.34,1],[2,5]])')
         do('inCenterAll([[-15,-2.5],[15,-25],[15,25],[-15,2.5]])')
         do('inCenterAll([[-15,-2.5],[15,-25],[15,25],[-15,2.5],[-16,0]])')
+    if False:
+        do('inCenterAll([[1,0],[0,1],[-1,0]])')
+    if True:
         do('inCenterAll([[0,0],[50,0],         [20,22.5],[0,7.5]])')
+
+
+    if False:
         do('inCenterAll([[0,0],[40,0],[40,7.5],[20,22.5],[0,7.5]])')
         do('inCenterAll([[0,0],[37.5,0],[42,6],[20,22.5],[0,7.5]])')
-
-
         if False:
             # obtuse
             for x in [5,6,7,8,9,10,100,1000,10000,1e5,1e6,1e7,1e8,1e9]:
@@ -571,13 +827,16 @@ if __name__ == '__main__':
         c = Vec(35.,5.)
         do('(b-a).cross(c-a)')
 
-    vs = [[1,0],[0,1],[-1,0],[0,-1]]
-    vs = [Vec(v) for v in vs]
-    do('vs')
-    do('reciprocal(vs)')
-    do('reciprocal(reciprocal(vs))')
+    if False:
+        #for x in [1,10,1e2,1e3,1e4,1e5,1e6]:
+        for x in [1,10,100]:
+            do('inCenterAll([[-.5,1],[-1.25,0],[-.5,-1],['+str(x)+',-1],['+str(x)+',1]])')
+            do('inCenter5special(-4/5.,3/5.,'+str(x)+')')
 
+        #do('inCenter5special(-4/5.,3/5.,2)')
+        #do('inCenter5special(-3/5.,4/5.,1)')
 
-    do('inCenter5special(-4/5.,3/5.,1)')
-    do('inCenter5special(-4/5.,3/5.,2)')
-    #do('inCenter5special(-3/5.,4/5.,1)')
+    if False:
+        do('circumCenterAll([[0,0],[2,0],[2,1],[1,2],[0,2]])')
+        do('circumCenterAll([[0,0],[2,0],[1,2],[2,1],[0,2]])')
+
