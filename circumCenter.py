@@ -188,11 +188,11 @@ def circumCenterSequence(vs):
 # Find x such that f(x) == y
 # by newton's method,
 # with derivative computed via finite diffences with given eps
-def newtonSolve(f,yTarget,xInitialGuess,eps):
+def newtonSolve(f,yTarget,xInitialGuess,nIterations,eps):
     dim = len(yTarget)
     assert dim == len(xInitialGuess)
     x = xInitialGuess
-    for i in xrange(20):
+    for i in xrange(nIterations):
         #do('i')
         do('x')
         y = f(x)
@@ -211,7 +211,7 @@ def newtonSolve(f,yTarget,xInitialGuess,eps):
         #do('error * invJacobian')
         x1 = x - error * invJacobian
         # hackier and hackier
-        if i < 10:
+        if True and 2*i < nIterations:
             x += .25 * (x1-x)
         else:
             x = x1
@@ -243,8 +243,9 @@ def inCenterSolve(primal):
             dualCircumMoment,dualTwiceArea = circumMomentAndTwiceArea(dual)
             return dualCircumMoment
 
+    nIterations = 20
     eps = 1e-6
-    answer = newtonSolve(f,Vec(0,0),inCenterInitialGuess,eps)
+    answer = newtonSolve(f,Vec(0,0),inCenterInitialGuess,nIterations,eps)
 
 
     print "        out inCenterSolve"
@@ -485,8 +486,9 @@ def inCenter5special(nx,ny,x):
         initialGuess = Vec([29.])
 
     target = Vec([0.])
+    nIterations = 20
     eps = 1e-2
-    c = newtonSolve(f, target, initialGuess, eps)
+    c = newtonSolve(f, target, initialGuess, nIterations, eps)
     print "    out inCenter5special"
     return c
 
@@ -616,9 +618,10 @@ def inCenterAll(vs):
     print "    in inCenterAll"
     do('vs')
     funNames = []
-    if len(vs) == 4:
-        funNames += ["inCenter4"]
-    funNames += ["inCenter"]
+    if len(vs[0]) == 2:
+        if len(vs) == 4:
+            funNames += ["inCenter4"]
+        funNames += ["inCenter"]
 
     vsPermuteds = []
     if True:
@@ -636,10 +639,12 @@ def inCenterAll(vs):
             answer = fun(vsPermuted)
             print "        "+funName+" returned "+`answer`
 
-    # Only do inCenterSolve for one permutation
-    answer = inCenterSolve(vs)
-    print "        inCenterSolve returned "+`answer`
+    if len(vs[0]) == 2:
+        # Only do inCenterSolve for one permutation
+        answer = inCenterSolve(vs)
+        print "        inCenterSolve returned "+`answer`
 
+    # Only do pseudoCenterSolve for one permutation
     answer = pseudoCentroid(vs)
     print "        pseudoCentroid returned "+`answer`
 
@@ -647,8 +652,11 @@ def inCenterAll(vs):
     print "    out inCenterAll"
     return answer
 
-# Point that centers euclidean average of verts
-# when centered in poincare disk
+# vs are n-dimensional verts on the plane-at-infinity
+# in the n+1-dimensional poincare half-space model.
+# Compute the point in the n+1-dimensional poincare half-space model
+# that, when centered in the n+1-dimensional poincare disk model,
+# centers the euclidean average of the verts.
 def pseudoCentroid(vs):
 
     #
@@ -671,6 +679,8 @@ def pseudoCentroid(vs):
     M = sum(vs)/n
     S = [sum([(v[i]-M[i])**2 for v in vs]) for i in xrange(nDims)] # n times variance, in each dimension separately
 
+    # We want the variance of each subset
+    # of n-1 points of vs.
     # From http://XXX
     # To compute the new S = n*newVariance
     # given s = (n-1)*oldVariance and a new sample x:
@@ -684,7 +694,9 @@ def pseudoCentroid(vs):
     #   m = (M-x/n)/((n-1)/n)
     #     = (M*n-x)/(n-1)
     # The simplest way to think about it
-    # is to do each dimension separately.
+    # is to do each dimension separately;
+    # then the full variance is the sum
+    # of the variances in each dimension.
     weights = []
     for v in vs:
         s = 0.
@@ -694,82 +706,68 @@ def pseudoCentroid(vs):
             s += si
         weights.append(s/(n-1.))
 
+    do('weights')
     weightsSum = sum(weights)
 
     weightedAvg = sum([weight*v for weight,v in zip(weights,vs)]) / weightsSum
-    avgVariance = sum([weight*weight for weight in weights]) / weightsSum
-    avgStdDev = sqrt(avgVariance)
+    do('weightedAvg')
+    weightedAvgVariance = sum([weight*weight for weight in weights]) / weightsSum
+    do('weightedAvgVariance')
+    weightedAvgStdDev = sqrt(weightedAvgVariance)
+    do('weightedAvgStdDev')
+    weightedAvgStdDev = .863968
+    do('weightedAvgStdDev')
 
-    initialGuess = Vec(list(weightedAvg)+[avgStdDev]) # weightedAvg with avgStdDev appended
-    guess = initialGuess
+    initialGuess = Vec(list(weightedAvg)+[weightedAvgStdDev]) # weightedAvg with weightedAvgStdDev appended
+    do('initialGuess')
 
-    # Refine the guess as follows:
-    #     - transform poincare half-space
-    #       to poincare ball, mapping guess to center
-    #     - take the centroid of the transformed verts
-    #     - map that back to poincare half-space
-    #     - that's the new guess
-
+    zero = Vec([0]*(nDims+1))
+    half = Vec([0]*nDims+[.5])
     vs0 = [Vec(list(v)+[0]) for v in vs] # vs with 0 appended to each vertex
-    unit = Vec([0]*nDims+[1])
 
-    # argh, convergence is pretty slow... should we be using newton?
-    for iIter in xrange(200):
-        print "            guess = "+`guess`
-        reflectionCenter = Vec(guess); reflectionCenter[-1] *= -1.
-        reflectionRadius2 = reflectionCenter[-1]**2
-        reflectionRadius = sqrt(reflectionRadius2)
-        # (poincare disk radius is half that)
+    # For the solve, solve for log(height) rather than height.
+    doItInLogSpace = True
+    logInitialGuess = Vec(initialGuess[:-1] + [log(initialGuess[-1])])
+    do('logInitialGuess')
+    if not doItInLogSpace:
+        logInitialGuess = initialGuess
+
+    def f(logGuess):
+        guess = logGuess[:-1] + [exp(logGuess[-1])]
+        if not doItInLogSpace:
+            guess = logGuess
+
+        reflectionCenter = Vec(guess[:-1] + [-guess[-1]])
+        reflectionRadius = guess[-1]
+        assert reflectionRadius > 0 # guaranteed since it's the exp of something... if we were given it directly, then newton might overshoot, which would be a disaster
+        # (image poincare disk radius is half that)
         #
         # The following inverts the reflection circle
         # and scales it down to unit size at the origin:
         #       v -> reflectionRadius * (v-reflectionCenter)/(v-reflectionCenter).length2()
-        # which means the positive half-plane
+        # which means the poincare half-plane
         # will get mapped to a disk of radius 1/2 centered at 0,0,...,1/2.
-        # To turn that into a disk of radius 1 centered at 0,
-        # we must subtract 0,0,...,1/2 and multiply by 2
-        # (or multiply by 2 and subtract 0,...,0,1).
+        # To turn that into a disk centered at 0,
+        # we then subtract 0,0,...,1/2.
 
-        images = []
+        imagesSum = Vec(zero)
         for v in vs0:
             image = v - reflectionCenter
             image = image/image.length2() * reflectionRadius
             # image is now on circle of radius 1/2 centered at 0,0,...,1/2
-            image *= 2.
-            # image is now on circle of radius 1 centered at 0,0,...,1
-            image -= unit
-            # image is now on circle of radius 1 centered at origin
-            images.append(image)
+            image -= half
+            # image is now on circle of radius 1/2 centered at origin
+            imagesSum += image
+        return imagesSum
 
-        if False:
-            shouldBeVs0 = []
-            for image in images:
-                shouldBeV0 = image + unit
-                shouldBeV0 *= .5
-                shouldBeV0 = shouldBeV0/shouldBeV0.length2() * reflectionRadius
-                shouldBeV0 += reflectionCenter
-                shouldBeVs0.append(shouldBeV0)
+    nIterations = 20
+    eps = 1e-6
+    logAnswer = newtonSolve(f, zero, logInitialGuess, nIterations, eps)
+    answer = logAnswer[:-1] + [exp(logAnswer[-1])]
+    if not doItInLogSpace:
+        answer = logAnswer
 
-            print "        vs0 = "+`vs0`
-            print "shouldBeVs0 = "+`shouldBeVs0`
-            do('images')
-            do('[image.length() for image in images]')
-
-        avg = sum(images)/n
-
-        # that's in klein disk--
-        # need poincare disk
-        if True:
-            avg /= (1+sqrt(1-avg.length2()))
-
-        guess = avg + unit
-        guess *= .5
-        guess = guess/guess.length2() * reflectionRadius
-        guess += reflectionCenter
-
-    print "            guess = "+`guess`
-
-    return guess
+    return answer
 
 
 # Little test program
@@ -796,10 +794,17 @@ if __name__ == '__main__':
         do('inCenterAll([[0,0],[1,0],[2,1],[2,2]])')
         do('inCenterAll([[0,0],[1.1,0],[2.34,1],[2,5]])')
         do('inCenterAll([[-15,-2.5],[15,-25],[15,25],[-15,2.5]])')
-        do('inCenterAll([[-15,-2.5],[15,-25],[15,25],[-15,2.5],[-16,0]])')
+    if True:
+        #do('inCenterAll([[-15,-2.5],[15,-25],[15,25],[-15,2.5],[-16,0]])')
+        do('inCenterAll([[-20],[0],[1]])')
+        #do('inCenterAll([[-1],[1],[1.25],[1.5]])')
+        #do('inCenterAll([[-1.5],[1.5],[1.5],[-1.5],[-1.5]])')
+        #do('inCenterAll([[-1.5],[1.5],[1.5],[-1.5],[-1.6]])')
+        #do('inCenterAll([[-15],[15],[15],[-15],[-16]])')
+        #do('inCenterAll([[-2.5],[-25],[25],[2.5],[0]])')
     if False:
         do('inCenterAll([[1,0],[0,1],[-1,0]])')
-    if True:
+    if False:
         do('inCenterAll([[0,0],[50,0],         [20,22.5],[0,7.5]])')
 
 
