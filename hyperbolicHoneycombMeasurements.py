@@ -182,30 +182,14 @@ def measure(schlafli, i0,i1):
             #   cos A = tanh b / tanh c
             #   sinh a / sin A = sinh c / 1
             # => sinh a = sinh c * sqrt(1 - (tanh b / tanh c)^2)
-            # (should try to simplify)
+            # with either: b=r01, c=r02
+            #          or: b=r23, c=r13
+            # But, it simplifies to the simplest of all
+            # (don't ask me how, I used wolframalpha
+            # on a horrendous expression after
+            # breaking it up into bite sized pieces):
 
-            cosh2_b,cosh_b,b = measure(schlafli, 0,1)
-            cosh2_c,cosh_c,c = measure(schlafli, 0,2)
-            sinh_a = sinh(c) * sqrt(1 - (tanh(b)/tanh(c))**2)
-            do('  sinh_a')
-
-            cosh2_b,cosh_b,b = measure(schlafli, 2,3)
-            cosh2_c,cosh_c,c = measure(schlafli, 1,3)
-            sinh_a = sinh(c) * sqrt(1 - (tanh(b)/tanh(c))**2)
-            do('  sinh_a')
-
-            # Trying to simplify the former...
-
-            sinh_r12 = (sqrt( ( (cos(pi/p)*sin(pi/r))**2/(1 - (cos(pi/q)**2 + cos(pi/r)**2)) - 1 )
-                            * (1 - (1 - ((1 - (cos(pi/q)**2 + cos(pi/r)**2))/(cos(pi/p)*sin(pi/r))**2) )
-                                  *(1 + sin(pi/p)**2/((cos(pi/p)*sin(pi/r))**2/(1 - (cos(pi/q)**2 + cos(pi/r)**2))-1) )
-                              )
-                            )
-                      / sin(pi/p) )
-            do('sinh_r12')
-
-            cosh_r12 = sqrt(1+sinh_r12**2)
-            coshValue = cosh_r12
+            coshValue = cos(pi/q) / (sin(pi/p) * sin(pi/r))
 
         else:
             assert False # illegal
