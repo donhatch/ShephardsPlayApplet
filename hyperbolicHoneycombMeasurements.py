@@ -187,27 +187,22 @@ def measure(schlafli, i0,i1):
             cosh2_b,cosh_b,b = measure(schlafli, 0,1)
             cosh2_c,cosh_c,c = measure(schlafli, 0,2)
             sinh_a = sinh(c) * sqrt(1 - (tanh(b)/tanh(c))**2)
-            do('sinh_a')
+            do('  sinh_a')
 
             cosh2_b,cosh_b,b = measure(schlafli, 2,3)
             cosh2_c,cosh_c,c = measure(schlafli, 1,3)
             sinh_a = sinh(c) * sqrt(1 - (tanh(b)/tanh(c))**2)
-            do('sinh_a')
+            do('  sinh_a')
 
             # Trying to simplify the former...
 
-            r01 = acosh(cos(pi/p)*sin(pi/r)/sin_pi_over_h(q,r))
 
-            cosh2_r01 = (cos(pi/p)*sin(pi/r)/sin_pi_over_h(q,r))**2
+            sinh_r12 = sqrt((cos(pi/p)*sin(pi/r)/sin_pi_over_h(q,r))**2-1)/sin(pi/p) * sqrt(1 - (1-(sin_pi_over_h(q,r)/(cos(pi/p)*sin(pi/r)))**2)*(1+sin(pi/p)**2/((cos(pi/p)*sin(pi/r)/sin_pi_over_h(q,r))**2-1)))
+            do('sinh_r12')
 
-            sinh_r02 = sqrt(cosh2_r01-1)/sin(pi/p)
-            tanh_r02 = 1/sqrt(1+1/sinh_r02**2)
-            r02 = asinh(sinh_r02)
+            cosh_r12 = sqrt(1+sinh_r12**2)
+            coshValue = cosh_r12
 
-            sinh_a = sinh_r02 * sqrt(1 - (tanh(r01)/tanh_r02)**2)
-            do('sinh_a')
-
-            coshValue = sqrt(1+sinh_a**2)
         else:
             assert False # illegal
     elif len(schlafli) == 4:
