@@ -196,8 +196,12 @@ def measure(schlafli, i0,i1):
 
             # Trying to simplify the former...
 
-
-            sinh_r12 = sqrt((cos(pi/p)*sin(pi/r)/sin_pi_over_h(q,r))**2-1)/sin(pi/p) * sqrt(1 - (1-(sin_pi_over_h(q,r)/(cos(pi/p)*sin(pi/r)))**2)*(1+sin(pi/p)**2/((cos(pi/p)*sin(pi/r)/sin_pi_over_h(q,r))**2-1)))
+            sinh_r12 = (sqrt( ( (cos(pi/p)*sin(pi/r))**2/(1 - (cos(pi/q)**2 + cos(pi/r)**2)) - 1 )
+                            * (1 - (1 - ((1 - (cos(pi/q)**2 + cos(pi/r)**2))/(cos(pi/p)*sin(pi/r))**2) )
+                                  *(1 + sin(pi/p)**2/((cos(pi/p)*sin(pi/r))**2/(1 - (cos(pi/q)**2 + cos(pi/r)**2))-1) )
+                              )
+                            )
+                      / sin(pi/p) )
             do('sinh_r12')
 
             cosh_r12 = sqrt(1+sinh_r12**2)
