@@ -112,12 +112,12 @@ from cmath import pi, sqrt, cos,sin,tan, cosh,sinh,acosh,asinh,tanh
 # length of edge of characteristic simplex.
 # actually returns its cosh^2, its cosh and its value.
 # If i0,i1 is:
-#       0,1 -> vertex to edge center      (i.e. half edge length, i.e. dual cell in-radius)
-#       0,2 -> vertex to face center      (i.e. dual cell mid-radius)
-#       0,3 -> vertex to cell center      (i.e. cell circum-radius, i.e. dual cell circum-radius)
-#       1,2 -> edge center to face center
-#       1,3 -> edge center to cell center (i.e. cell mid-radius)
-#       2,3 -> face center to cell center (i.e. cell in-radius, i.e. dual half edge length)
+#       0,1 -> vertex to edge center      (i.e. half edge length,   i.e. dual cell in-radius if 3d)
+#       0,2 -> vertex to face center      (i.e. face circum-radius, i.e. dual cell mid-radius if 3d)
+#       1,2 -> edge center to face center (i.e. face in-radius,     i.e. dual face in-radius if 3d)
+#       0,3 -> vertex to cell center      (i.e. cell circum-radius, i.e. dual cell circum-radius if 3d)
+#       1,3 -> edge center to cell center (i.e. cell mid-radius,    i.e. dual face circum-radius if 3d)
+#       2,3 -> face center to cell center (i.e. cell in-radius,     i.e. dual half edge length if 3d)
 def measure(schlafli, i0,i1):
 
     if i0 == i1:
@@ -172,6 +172,17 @@ def measure(schlafli, i0,i1):
             sinh_r01 = sqrt(cosh2_r01-1)
             sinhValue = sinh_r01/sin(pi/p)
             coshValue = sqrt(1+sinhValue**2)
+            #do('coshValue')
+
+            # hmm, this doesn't seem to be simplifying much
+            sinh2Value = ((cos(pi/p)*sin(pi/r))**2/(1 - (cos(pi/q)**2 + cos(pi/r)**2))-1)/sin(pi/p)**2
+            cosh2Value = 1+sinh2Value
+            coshValue = sqrt(cosh2Value)
+            #do('coshValue')
+            # oh wait, wolframalpha says sinh2Value is equal to cot^2(pi/p)cos^2(pi/q)/(sin^2(pi/q)-cos^2(pi/r))
+            # maybe get h back out of the equation and it wil turn somewhat nice
+            # TODO: try to simplify some more
+
         elif (i0,i1) == (1,3):
             # cell mid-radius
             return measure([r,q,p], 0,2)
