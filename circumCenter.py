@@ -222,6 +222,7 @@ def newtonSolve(f,yTarget,xInitialGuess,nIterations,eps):
 # as the point such that reciprocating
 # around that point gives something whose
 # circumcenter is that point.
+# XXX I think this turns out to be a bogus concept
 def inCenterSolve(primal):
     print "        in inCenterSolve"
     primal = [Vec(v) for v in primal]
@@ -695,7 +696,7 @@ def pseudoCentroid(vs):
     #     = (M*n-x)/(n-1)
     # The simplest way to think about it
     # is to do each dimension separately;
-    # then the full variance is the sum
+    # the full variance is the sum
     # of the variances in each dimension.
     weights = []
     for v in vs:
@@ -709,16 +710,14 @@ def pseudoCentroid(vs):
     do('weights')
     weightsSum = sum(weights)
 
+    height = sqrt(sum([weights[j]*weights[i]*(vs[i]-vs[j]).length2() for i in xrange(n) for j in xrange(i)])) / weightsSum
+
+
     weightedAvg = sum([weight*v for weight,v in zip(weights,vs)]) / weightsSum
     do('weightedAvg')
-    weightedAvgVariance = sum([weight*weight for weight in weights]) / weightsSum
-    do('weightedAvgVariance')
-    weightedAvgStdDev = sqrt(weightedAvgVariance)
-    do('weightedAvgStdDev')
-    weightedAvgStdDev = .863968
-    do('weightedAvgStdDev')
 
-    initialGuess = Vec(list(weightedAvg)+[weightedAvgStdDev]) # weightedAvg with weightedAvgStdDev appended
+    initialGuess = Vec(list(weightedAvg)+[height]) # weightedAvg with height appended
+
     do('initialGuess')
 
     zero = Vec([0]*(nDims+1))
@@ -778,7 +777,7 @@ if __name__ == '__main__':
         answer = eval(s, globals(), inspect.currentframe().f_back.f_locals)
         print '            '+s+' = '+`answer`
 
-    if False:
+    if True:
         do('circumCenterAll([[1,0],[0,1],[-1,0]])')
         do('circumCenterAll([[2,0],[1,1],[0,0]])')
         do('circumCenterAll([[2,0],[1,1],[0,0],[1,-1]])')
@@ -802,13 +801,13 @@ if __name__ == '__main__':
         #do('inCenterAll([[-1.5],[1.5],[1.5],[-1.5],[-1.6]])')
         #do('inCenterAll([[-15],[15],[15],[-15],[-16]])')
         #do('inCenterAll([[-2.5],[-25],[25],[2.5],[0]])')
-    if False:
+    if True:
         do('inCenterAll([[1,0],[0,1],[-1,0]])')
-    if False:
+    if True:
         do('inCenterAll([[0,0],[50,0],         [20,22.5],[0,7.5]])')
 
 
-    if False:
+    if True:
         do('inCenterAll([[0,0],[40,0],[40,7.5],[20,22.5],[0,7.5]])')
         do('inCenterAll([[0,0],[37.5,0],[42,6],[20,22.5],[0,7.5]])')
         if False:
