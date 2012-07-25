@@ -1,5 +1,8 @@
 #!/usr/bin/python
 
+# TODO: brezenham
+# TODO:  ./pqr.py 5 3 4 100  -- what are those dots?
+
 import sys
 from math import *
 from Vec import Vec
@@ -19,12 +22,34 @@ def h2k(h):
 
 # Fudge numbers near nice numbers
 def fudgeNice(x):
-    for sign in [-1,1]:
-        for absNice in [0.,.5,1.,sqrt(.5),sqrt(3.)/2,sqrt(3.)/3]: # TODO: more?
+    for absNice in [
+        0.,
+        1/6.,
+        1/3.,
+        1/2.,
+        2./3.,
+        5/6.,
+        1.,
+        sqrt(1/6.),
+        sqrt(2.)/2.,
+        sqrt(2.)*2/3.,
+        sqrt(2.)/3.,
+        sqrt(3.)/2.,
+        sqrt(3.)/3.,
+        sqrt(3.)/6.,
+        sqrt(2./3.),
+        sqrt(5.)/5.,
+        sqrt(5.)*2/5.,
+        sqrt(5.)*3/10.,
+    ]:
+        for sign in [-1,1]:
             nice = sign * absNice
-            if x != nice and (x-nice)**2 + 1. == 1.:
-                #print >>sys.stderr, "    FUDGING "+`mat[i][j]`+" to "+`nice`
+            if (x-nice)**2 + 1. == 1.:
+                if x != nice:
+                    #print >>sys.stderr, "    FUDGING "+`mat[i][j]`+" to "+`nice`
+                    pass
                 return nice
+    #print "NOT FUDGING: "+`x`+" = sqrt("+`x*x`+")"
     return x
 def fudgeNiceMat(mat):
     return Mat([[fudgeNice(x) for x in row] for row in mat])
@@ -82,19 +107,6 @@ def computeRotations(q,r):
           * xToAxis)
     qGen = fudgeNiceMat(qGen)
 
-    do('fudgeNiceMat(Mat([[0,c,s],[0,-s,c],[0,0,1]]))')
-    do('xToAxis')
-    do('axisToX')
-
-    do('r01')
-    do('pi/4')
-    do('r02')
-    do('r12')
-    do('r02+r12')
-    do('pi/2')
-    do('sin(r12)')
-    do('sqrt(1/3.)')
-
     do('qGen')
 
     # O(n^2) which is fine
@@ -118,8 +130,11 @@ def computeRotations(q,r):
     do('len(answer)')
     return answer
 
-def computeIsometries(p,q,r):
+def computeIsometries(p,q,r, maxIsometries):
     rotations = computeRotations(q,r)
+    if False:
+        for i in xrange(len(rotations)):
+            do('rotations['+`i`+']')
     rotations = [HyperbolicIsometry.HyperbolicIsometry(mat) for mat in rotations]
 
     # compute edge lengths of fundamental tet,
@@ -128,6 +143,13 @@ def computeIsometries(p,q,r):
     cosh2r01,coshr01,r01 = hyperbolicHoneycombMeasurements.measure([p,q,r], 0,1)
     cosh2r02,coshr02,r02 = hyperbolicHoneycombMeasurements.measure([p,q,r], 0,2)
     cosh2r12,coshr12,r12 = hyperbolicHoneycombMeasurements.measure([p,q,r], 1,2)
+
+    assert abs(r01.imag) < 1e-12
+    assert abs(r02.imag) < 1e-12
+    assert abs(r12.imag) < 1e-12
+    r01 = r01.real
+    r02 = r02.real
+    r12 = r12.real
 
     # compute verts of fundamental simplex in poincare ball
     # (excluding v3 which may be infinite or ultrainfinite)
@@ -146,21 +168,37 @@ def computeIsometries(p,q,r):
    .compose(HyperbolicIsometry.HyperbolicIsometry([[c,s,0],[-s,c,0],[0,0,1]])) # rotate by 2*pi/r about z axis (x towards y)
    .compose(HyperbolicIsometry.HyperbolicIsometry(None,v2))) # translate origin to v2
 
+    def isometryToKey(isometry):
+        # add pi to make it unlikely the number will be problematic,
+        # then print to 5 decimal places
+        key = ' '.join(['%.5f'%(x+pi) for x in sum([list(row) for row in isometry.R],isometry.t[:])])
+        #do('key')
+        return key
+
     answer = []
-    if len(answer) == maxIsometries: return answer
+    isometryToIndex = {}
+
+    if len(answer) == maxIsometries: return answer,len(rotations)
     for rotation in rotations:
+        key = isometryToKey(rotation)
+        assert key not in isometryToIndex
+        isometryToIndex[key] = len(answer)
         answer.append(rotation)
-        if len(answer) == maxIsometries: return answer
+        if len(answer) == maxIsometries: return answer,len(rotations)
     lo = 0
     hi = len(answer)
     while True:
         for isometry in answer[lo:hi]: # for each isometry in the previous wave
             for rotation in rotations:
-                newIsometry = answer * pGen * rotation
-                sawItAlready = False # XXX FIX THIS
-                if not sawItAlready:
+                newIsometry = isometry.compose(pGen).compose(rotation)
+                key = isometryToKey(newIsometry)
+                if key not in isometryToIndex:
+                    isometryToIndex[key] = len(answer)
                     answer.append(newIsometry)
-                    if len(answer) == maxIsometries: return answer
+                    if len(answer) == maxIsometries: return answer,len(rotations)
+                else:
+                    #print >>sys.stderr, "    DUP"
+                    pass
         lo = hi
         hi = len(answer)
     return answer,len(rotations)
@@ -177,10 +215,70 @@ if __name__ == '__main__':
         answer = eval(s, globals(), inspect.currentframe().f_back.f_locals)
         print >>sys.stderr, '            '+s+' = '+`answer`
 
-    if len(sys.argv) != 4:
-        print >>sys.stderr, "usage: "+sys.argv[0]+" p q r"
+    if len(sys.argv) not in [4,5]:
+        print >>sys.stderr, "usage: "+sys.argv[0]+" p q r [maxIsometries]"
         sys.exit(1)
-    p,q,r = [int(arg) for arg in sys.argv[1:]]
-    isometries,nRotations = computeIsometries(p,q,r)
+    p,q,r = [int(arg) for arg in sys.argv[1:4]]
+    maxIsometries = 100
+    if len(sys.argv) == 5:
+        maxIsometries = int(sys.argv[4])
+    isometries,nRotations = computeIsometries(p,q,r, maxIsometries)
     print >>sys.stderr, ''+`nRotations`+' rotations'
     print >>sys.stderr, ''+`len(isometries)`+' isometries'
+
+    nx = ny = 257
+    image = [[[0,0,0] for ix in xrange(nx)] for iy in xrange(ny)]
+
+    # TODO: brezenham
+    def drawSegment(image, x0,y0, x1,y1, color):
+        ny = len(image)
+        nx = len(image[0])
+        n = int(nx * max(abs(x0-x1),y0-y1)) * 10 # 10 per pixel roughly
+        if n == 0:
+            n = 1
+        for i in xrange(n+1):
+            x = lerp(x0,x1,float(i)/float(n))
+            y = lerp(y0,y1,float(i)/float(n))
+            tx = (x+1.)*.5
+            ty = (y+1.)*.5
+            ix = int(round(tx*(nx-1)))
+            iy = int(round(ty*(ny-1)))
+            image[iy][ix] = color
+
+    print >>sys.stderr, "drawing..."
+
+
+    cosh2r01,coshr01,r01 = hyperbolicHoneycombMeasurements.measure([p,q,r], 0,1)
+    assert abs(r01.imag) < 1e-12
+    r01 = r01.real
+    v0 = Vec([0,0,0])
+    v1 = Vec([h2p(r01),0,0])
+    v2 = Vec([h2p(2*r01),0,0])
+    white = [255,255,255]
+
+    for isometry in isometries:
+        if True:
+            w0 = isometry.apply(v0)
+            w1 = isometry.apply(v1)
+            w2 = isometry.apply(v2)
+        else:
+            w0 = isometry.t # = isometry.apply(v0)
+            w1 = v1[0] * isometry.R[0] + isometry.t # = isometry.apply(v1)
+            w2 = v2[0] * isometry.R[0] + isometry.t # = isometry.apply(v2)
+        drawSegment(image, w0[0],w0[1], w1[0],w1[1], white)
+        drawSegment(image, w1[0],w1[1], w2[0],w2[1], white)
+
+    print >>sys.stderr, "printing..."
+
+
+    # dump image in ppm format
+    print "P3"
+    print "# "+`p`+`q`+`r`+".ppm"
+    print ''+`nx`+' '+`ny`
+    print '255'
+    for iy in xrange(ny):
+        row = image[ny-1-iy]
+        for ix in xrange(nx):
+            pixel = row[ix]
+            print ' ' + ' '.join(`x` for x in pixel),
+        print

@@ -28,6 +28,8 @@ CLASSES = \
         MyGraphics3D.class \
         Misc.class \
         ShephardsPlayApplet.class \
+        GenOff.class \
+        PoincareDiskIsometry.class \
         ${NULL}
 JAR_DEPENDS_ON = ${CLASSES}      macros.h Makefile javacpp javarenumber
 JAR_CONTAINS = *.class *.prejava macros.h Makefile javacpp javarenumber

@@ -413,29 +413,6 @@ def reflect2(z,p):
     return z
 
 
-# This only works if a,b,c are unit vectors.
-# Actually it doesn't work :-(
-def centroidOfUnits(a,b,c):
-    if type(a) == complex:
-        return v2c(c2v(a),c2v(b),c2v(c))
-
-    kleinCentroid = (a+b+c)/3.
-    poincareCentroid = kleinCentroid / (1 + sqrt(1-kleinCentroid.length2()))
-    return answer
-
-# magnitude of cross product of two complex numbers,
-def cross(a,b):
-    #return a.real*b.imag - a.imag*b.real
-    return (a.conjugate()*b).imag + 1
-def twiceTriArea(a,b,c):
-    return cross(b-a,c-a)
-def computeBarycentrics(p,a,b,c):
-    denom = twiceTriArea(a,b,c)
-    bary_a = twiceTriArea(p,b,c) / denom
-    bary_b = twiceTriArea(a,p,c) / denom
-    bary_c = twiceTriArea(a,b,p) / denom
-    return bary_a,bary_b,bary_c
-
 def areaSquared(verts):
     edgeVecs = [vert-verts[0] for vert in verts[1:]]
     M = mxmt(edgeVecs, edgeVecs)
@@ -451,6 +428,11 @@ def idealSimplexCenter(verts):
     verts = [vert.normalized() for vert in verts]
     do('verts')
 
+    # actually we can get this way more directly,
+    # as (inverses, maybe, of) the lengths of the columns
+    # of the inverse of the edge vec matrix...
+    # but it breaks down when not invertible.  really need adjugate matrix or something?
+    # do we know how to calculate adjugate in general?
     facetAreasSquared = [areaSquared([verts[j] for j in xrange(len(verts)) if j != i]) for i in xrange(len(verts))]
     do('facetAreasSquared')
     denominator = sum(facetAreasSquared)
@@ -662,11 +644,6 @@ def idealTriangleCenterDumb(a,b,c):
     do('poincare_center')
     klein_center = htwice(poincare_center)
     do('klein_center')
-
-    barya,baryb,baryc = computeBarycentrics(klein_center,a,b,c)
-    do('barya')
-    do('baryb')
-    do('baryc')
 
     # Sanity check:
     # if we transform a,b,c by minus the poincare center,
