@@ -37,7 +37,10 @@ class Vec(list):
         if isinstance(rhs,float):
             return Vec([x*rhs for x in self])
         else:
-            # how to make this happen automatically??
+            # Make Mat*Vec work.
+            # TODO: Is there a way to make this happen
+            # from within the Mat class,
+            # without Vec having to know about it??
             return rhs.__rmul__(self)
     def __rmul__(self,lhs):
         return Vec([lhs*x for x in self])
@@ -45,16 +48,18 @@ class Vec(list):
         return Vec([x/rhs for x in self])
     def __add__(self, rhs):
         return Vec([a+b for a,b in zip(self,rhs)]) # throws if differing sizes
-    # need to override +=, otherwise we get list's
+    def __sub__(self, rhs):
+        return Vec([a-b for a,b in zip(self,rhs)]) # throws if differing sizes
+
+    # need to override += and *=,
+    # otherwise we get list's which are wrong.
+    # (don't need to override -= or /=)
     def __iadd__(self, rhs):
         self = self + rhs
         return self
-    def __sub__(self, rhs):
-        return Vec([a-b for a,b in zip(self,rhs)]) # throws if differing sizes
-    # need to override -=, otherwise we get list's
-    def __isub__(self, rhs):
-        self = self - rhs
-        return self
+    def __imul__(self, rhs):
+        self = self + rhs
+
     def __neg__(self):
         return Vec([-x for x in self])
     def __radd__(self, lhs):
@@ -76,6 +81,8 @@ class Vec(list):
             return self[0]*rhs[1] - self[1]*rhs[0]
         else:
             assert False
+    def outer(self,rhs):
+        return [x*rhs for x in self]
     def dot(self,rhs):
         return sum([a*b for a,b in zip(self,rhs)]) # throws if differing sizes
     def length2(self):
@@ -85,7 +92,7 @@ class Vec(list):
     def normalized(self):
         length = self.length()
         assert length != 0.
-        return self * 1./length
+        return self / length
 
 class Mat(list):
 
