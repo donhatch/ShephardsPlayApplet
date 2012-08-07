@@ -15,6 +15,7 @@
 # and methods:
 #       cross
 #       dot
+#       outer
 #       length2
 #       length
 #       normalized
