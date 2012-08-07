@@ -1,5 +1,9 @@
 #!/usr/bin/python
 
+#
+# Spit out an image of the surface of {3,3,7}
+#
+
 import sys
 from math import *
 from Vec import Vec
