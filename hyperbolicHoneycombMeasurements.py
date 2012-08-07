@@ -106,7 +106,7 @@ Don
 import sys
 import os
 
-from cmath import pi, sqrt, cos,sin,tan, cosh,sinh,acosh,asinh,tanh
+from cmath import pi, sqrt, cos,sin,tan, asin, cosh,sinh,acosh,asinh,tanh
 
 
 # length of edge of characteristic simplex.
@@ -182,6 +182,21 @@ def measure(schlafli, i0,i1):
             # oh wait, wolframalpha says sinh2Value is equal to cot^2(pi/p)cos^2(pi/q)/(sin^2(pi/q)-cos^2(pi/r))
             # maybe get h back out of the equation and it wil turn somewhat nice
             # TODO: try to simplify some more
+
+            h = pi/asin(sin_pi_over_h(q,r))
+            sinhValue = sqrt((cos(pi/p)*sin(pi/r)/sin(pi/h))**2-1)/sin(pi/p)
+            coshValue = sqrt(1+sinhValue**2)
+            coshValue = sqrt(1+((cos(pi/p)*sin(pi/r)/sin(pi/h))**2-1)/sin(pi/p)**2)
+            #do('coshValue')
+
+            # huh? this is wacked, it's not equal to what I thought above
+            #sinh2Value = sin(pi/p)**2*cos(pi/q)**2/sin_pi_over_h(q,r)**2/cos(pi/p)**2
+            sinh2Value = cos(pi/p)**2/sin(pi/p)**2 * cos(pi/q)**2 / (sin(pi/q)**2 - cos(pi/r)**2)
+            cosh2Value = 1+sinh2Value
+            coshValue = sqrt(cosh2Value)
+            #do('coshValue')
+
+
 
         elif (i0,i1) == (1,3):
             # cell mid-radius
