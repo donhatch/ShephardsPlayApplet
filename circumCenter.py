@@ -1,5 +1,11 @@
 #!/usr/bin/env python
 
+#
+# The main thing of interest in here is "pseudocenter"
+# which is the point that centers the euclidean centroid
+# of a set of points on the boundary of the poincare disk.
+#
+
 from math import *
 from Vec import Vec
 from Vec import Mat
@@ -618,32 +624,35 @@ def inCenter(vs):
 def inCenterAll(vs):
     print "    in inCenterAll"
     do('vs')
-    funNames = []
-    if len(vs[0]) == 2:
-        if len(vs) == 4:
-            funNames += ["inCenter4"]
-        funNames += ["inCenter"]
 
-    vsPermuteds = []
-    if True:
-        for i in xrange(len(vs)):
-            vsPermuteds.append(vs[i:]+vs[:i])
-            vsPermuteds.append(list(reversed(vs[i:]+vs[:i])))
-    else:
-        # just examine two cases
-        vsPermuteds.append(vs)
-        vsPermuteds.append([vs[1],vs[0]]+list(reversed(vs[2:])))
 
-    for funName in funNames:
-        fun = eval(funName)
-        for vsPermuted in vsPermuteds:
-            answer = fun(vsPermuted)
-            print "        "+funName+" returned "+`answer`
+    if False: # don't care so much about generalized inCenter any more, I think I concluded it's a bogus concept
+        funNames = []
+        if len(vs[0]) == 2:
+            if len(vs) == 4:
+                funNames += ["inCenter4"]
+            funNames += ["inCenter"]
 
-    if len(vs[0]) == 2:
-        # Only do inCenterSolve for one permutation
-        answer = inCenterSolve(vs)
-        print "        inCenterSolve returned "+`answer`
+        vsPermuteds = []
+        if True:
+            for i in xrange(len(vs)):
+                vsPermuteds.append(vs[i:]+vs[:i])
+                vsPermuteds.append(list(reversed(vs[i:]+vs[:i])))
+        else:
+            # just examine two cases
+            vsPermuteds.append(vs)
+            vsPermuteds.append([vs[1],vs[0]]+list(reversed(vs[2:])))
+
+        for funName in funNames:
+            fun = eval(funName)
+            for vsPermuted in vsPermuteds:
+                answer = fun(vsPermuted)
+                print "        "+funName+" returned "+`answer`
+
+        if len(vs[0]) == 2:
+            # Only do inCenterSolve for one permutation
+            answer = inCenterSolve(vs)
+            print "        inCenterSolve returned "+`answer`
 
     # Only do pseudoCenterSolve for one permutation
     answer = pseudoCentroid(vs)
@@ -660,6 +669,7 @@ def inCenterAll(vs):
 # centers the euclidean average of the verts.
 def pseudoCentroid(vs):
 
+    print "        in pseudoCentroid"
     #
     # Initial guess
     # is a generalization
@@ -670,6 +680,7 @@ def pseudoCentroid(vs):
     # and offset from the plane
     # by the weighted average of the standard deviations
     # (I think this is roughly right).
+    # This should immediately give the right answer for a triangle, anyway.
     #
 
 
@@ -726,6 +737,7 @@ def pseudoCentroid(vs):
 
     # For the solve, solve for log(height) rather than height.
     doItInLogSpace = True
+    #doItInLogSpace = False
     logInitialGuess = Vec(initialGuess[:-1] + [log(initialGuess[-1])])
     do('logInitialGuess')
     if not doItInLogSpace:
@@ -766,6 +778,7 @@ def pseudoCentroid(vs):
     if not doItInLogSpace:
         answer = logAnswer
 
+    print "        out pseudoCentroid"
     return answer
 
 
@@ -777,7 +790,7 @@ if __name__ == '__main__':
         answer = eval(s, globals(), inspect.currentframe().f_back.f_locals)
         print '            '+s+' = '+`answer`
 
-    if True:
+    if False:
         do('circumCenterAll([[1,0],[0,1],[-1,0]])')
         do('circumCenterAll([[2,0],[1,1],[0,0]])')
         do('circumCenterAll([[2,0],[1,1],[0,0],[1,-1]])')
@@ -803,11 +816,11 @@ if __name__ == '__main__':
         #do('inCenterAll([[-2.5],[-25],[25],[2.5],[0]])')
     if True:
         do('inCenterAll([[1,0],[0,1],[-1,0]])')
-    if True:
+    if False:
         do('inCenterAll([[0,0],[50,0],         [20,22.5],[0,7.5]])')
 
 
-    if True:
+    if False:
         do('inCenterAll([[0,0],[40,0],[40,7.5],[20,22.5],[0,7.5]])')
         do('inCenterAll([[0,0],[37.5,0],[42,6],[20,22.5],[0,7.5]])')
         if False:
@@ -843,4 +856,8 @@ if __name__ == '__main__':
     if False:
         do('circumCenterAll([[0,0],[2,0],[2,1],[1,2],[0,2]])')
         do('circumCenterAll([[0,0],[2,0],[1,2],[2,1],[0,2]])')
+
+    if True:
+        do('inCenterAll([[-1],[0],[2]])')
+        do('inCenterAll([[-1.,.3,4],[.4,.6,.7],[.22,.743,.37]])')
 
