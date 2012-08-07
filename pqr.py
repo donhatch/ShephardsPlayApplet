@@ -1,5 +1,10 @@
 #!/usr/bin/python
 
+#
+# Spit out an image of {p,q,r}
+#
+
+
 # TODO: brezenham
 # TODO:  ./pqr.py 5 3 4 100  -- what are those dots?
 
