@@ -146,7 +146,9 @@ class Mat(list):
         return Mat(zip(*self))
     # adjoint/adjugate
     def adj(self):
-        if len(self) == 1:
+        if len(self) == 0:
+            return Mat([])
+        elif len(self) == 1:
             return Mat([[1.]])
         elif len(self) == 2:
             return Mat([
@@ -191,7 +193,19 @@ class Mat(list):
             ]).transposed()
 
         else:
-            assert False
+            # Bogus! shouldn't be computing adjoint as inv times determinant!
+            # Is there a direct way using LU decomposition or something?
+            import numpy
+            import numpy.linalg
+            M = numpy.matrix(self)
+            #print "M = "+`M`
+            invM = numpy.linalg.inv(M)
+            #print "invM = "+`invM`
+            detM = numpy.linalg.det(M)
+            #print "detM = "+`detM`
+            adjM = invM * detM
+            return Mat(adjM.tolist())
+
     # determinant
     def det(self):
         if len(self) == 1:
@@ -199,14 +213,15 @@ class Mat(list):
         elif len(self) == 2:
             return self[0][0]*self[1][1] - self[0][1]*self[1][0];
         elif len(self) == 3:
-            # from vec.h
-            return (self[0][0]* (self[1][1]*self[2][2] + self[1][2]*-self[2][1])
-                  + self[0][1]*-(self[1][0]*self[2][2] + self[1][2]*-self[2][0])
-                  + self[0][2]* (self[1][0]*self[2][1] + self[1][1]*-self[2][0]))
+            return self[0].cross(self[1]).dot(self[2])
         elif len(self) == 4:
+            # from vec.h
             return (((((self)[0])[0]* (((self)[1])[1]* (((self)[2])[2]* (((self)[3])[3]) + ((self)[2])[3]*-(((self)[3])[2])) + ((self)[1])[2]*-(((self)[2])[1]* (((self)[3])[3]) + ((self)[2])[3]*-(((self)[3])[1])) + ((self)[1])[3]* (((self)[2])[1]* (((self)[3])[2]) + ((self)[2])[2]*-(((self)[3])[1]))) + ((self)[0])[1]*-(((self)[1])[0]* (((self)[2])[2]* (((self)[3])[3]) + ((self)[2])[3]*-(((self)[3])[2])) + ((self)[1])[2]*-(((self)[2])[0]* (((self)[3])[3]) + ((self)[2])[3]*-(((self)[3])[0])) + ((self)[1])[3]* (((self)[2])[0]* (((self)[3])[2]) + ((self)[2])[2]*-(((self)[3])[0]))) + ((self)[0])[2]* (((self)[1])[0]* (((self)[2])[1]* (((self)[3])[3]) + ((self)[2])[3]*-(((self)[3])[1])) + ((self)[1])[1]*-(((self)[2])[0]* (((self)[3])[3]) + ((self)[2])[3]*-(((self)[3])[0])) + ((self)[1])[3]* (((self)[2])[0]* (((self)[3])[1]) + ((self)[2])[1]*-(((self)[3])[0]))) + ((self)[0])[3]*-(((self)[1])[0]* (((self)[2])[1]* (((self)[3])[2]) + ((self)[2])[2]*-(((self)[3])[1])) + ((self)[1])[1]*-(((self)[2])[0]* (((self)[3])[2]) + ((self)[2])[2]*-(((self)[3])[0])) + ((self)[1])[2]* (((self)[2])[0]* (((self)[3])[1]) + ((self)[2])[1]*-(((self)[3])[0]))))))
         else:
-            assert False
+            import numpy
+            import numpy.linalg
+            M = numpy.matrix(self)
+            return numpy.linalg.det(M)
     # inverse
     def inverse(self):
         return self.adj() / self.det()
