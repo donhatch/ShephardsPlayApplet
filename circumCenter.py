@@ -259,6 +259,7 @@ def inCenterSolve(primal):
     return answer
 
 
+# Euclidean in-center of 3 points
 def inCenter3(vs):
     assert len(vs) == 3
     a = Vec(vs[0])
@@ -272,6 +273,69 @@ def inCenter3(vs):
             + b * (beta/denominator)
             + c * (gamma/denominator))
     return answer
+
+# Euclidean in-center of 4 points in 2d, I think.
+# How did I get this?  Some web site?
+# No, from Barycentric Calculus p. 330 maybe?
+# No wait, maybe it's the analytic solution I figured out?  weird.
+def inCenter4(vs):
+    vs = [Vec(v) for v in vs]
+    n = len(vs)
+    assert n == 4
+    inwardNormals = [(vs[(i+1)%n]-vs[i]).perpDot().normalized() for i in xrange(n)]
+    offsets = [inwardNormals[i].dot(vs[i]) for i in xrange(n)]
+    if use_numpy:
+        M = numpy.matrix([
+            list(inwardNormals[0])+[1,0],
+            list(inwardNormals[1])+[0,1],
+            list(inwardNormals[2])+[1,0],
+            list(inwardNormals[3])+[0,1],
+        ])
+        xyrr = numpy.linalg.solve(M,offsets)
+    else:
+        M = Mat([
+            list(inwardNormals[0])+[1,0],
+            list(inwardNormals[1])+[0,1],
+            list(inwardNormals[2])+[1,0],
+            list(inwardNormals[3])+[0,1],
+        ])
+        xyrr = M.inverse() * Vec(offsets)
+    x,y,r,R = xyrr
+    return Vec(x,y)
+
+# Try euclidean simplex in-center.
+# I think the barycentric weights
+# are just the content of the respective opposite sides.
+def simplexInCenter(vs):
+    print "        in simplexInCenter"
+    n = len(vs)
+    nDims = len(vs[0])
+
+    # 5 points in 2 dims is hopeless
+    if n >= nDims+3:
+        print "            hopeless!"
+        print "        out simplexInCenter"
+        return None
+
+    weights = []
+    for i in xrange(n):
+        oppositeFacet = Mat([vs[j] for j in xrange(n) if j != i])
+        #do('oppositeFacet')
+        M = Mat([v-oppositeFacet[0] for v in oppositeFacet[1:]])
+        #do('M')
+        M2 = M * M.transposed()
+        #do('M2')
+        det = M2.det()
+        #do('det')
+        oppositeFacetContent = sqrt(det)
+        weights.append(oppositeFacetContent)
+    weights = Vec(weights)
+    weights /= sum(weights)
+    answer = Vec(weights) * Mat(vs)
+    do('answer')
+    print "        out simplexInCenter"
+    return answer
+
 
 # Try to figure out in-center
 # of special pentagon with closest-point-on-sides:
@@ -500,31 +564,6 @@ def inCenter5special(nx,ny,x):
     return c
 
 
-def inCenter4(vs):
-    vs = [Vec(v) for v in vs]
-    n = len(vs)
-    assert n == 4
-    inwardNormals = [(vs[(i+1)%n]-vs[i]).perpDot().normalized() for i in xrange(n)]
-    offsets = [inwardNormals[i].dot(vs[i]) for i in xrange(n)]
-    if use_numpy:
-        M = numpy.matrix([
-            list(inwardNormals[0])+[1,0],
-            list(inwardNormals[1])+[0,1],
-            list(inwardNormals[2])+[1,0],
-            list(inwardNormals[3])+[0,1],
-        ])
-        xyrr = numpy.linalg.solve(M,offsets)
-    else:
-        M = Mat([
-            list(inwardNormals[0])+[1,0],
-            list(inwardNormals[1])+[0,1],
-            list(inwardNormals[2])+[1,0],
-            list(inwardNormals[3])+[0,1],
-        ])
-        xyrr = M.inverse() * Vec(offsets)
-    x,y,r,R = xyrr
-    return Vec(x,y)
-
 def inCenter(vs):
     if False:
         do('vs')
@@ -626,29 +665,31 @@ def inCenterAll(vs):
     do('vs')
 
 
+    funNames = []
+    funNames.append('simplexInCenter')
     if False: # don't care so much about generalized inCenter any more, I think I concluded it's a bogus concept
-        funNames = []
         if len(vs[0]) == 2:
             if len(vs) == 4:
                 funNames += ["inCenter4"]
             funNames += ["inCenter"]
 
-        vsPermuteds = []
-        if True:
-            for i in xrange(len(vs)):
-                vsPermuteds.append(vs[i:]+vs[:i])
-                vsPermuteds.append(list(reversed(vs[i:]+vs[:i])))
-        else:
-            # just examine two cases
-            vsPermuteds.append(vs)
-            vsPermuteds.append([vs[1],vs[0]]+list(reversed(vs[2:])))
+    vsPermuteds = []
+    if True:
+        for i in xrange(len(vs)):
+            vsPermuteds.append(vs[i:]+vs[:i])
+            vsPermuteds.append(list(reversed(vs[i:]+vs[:i])))
+    else:
+        # just examine two cases
+        vsPermuteds.append(vs)
+        vsPermuteds.append([vs[1],vs[0]]+list(reversed(vs[2:])))
 
-        for funName in funNames:
-            fun = eval(funName)
-            for vsPermuted in vsPermuteds:
-                answer = fun(vsPermuted)
-                print "        "+funName+" returned "+`answer`
+    for funName in funNames:
+        fun = eval(funName)
+        for vsPermuted in vsPermuteds:
+            answer = fun(vsPermuted)
+            print "        "+funName+" returned "+`answer`
 
+    if False:
         if len(vs[0]) == 2:
             # Only do inCenterSolve for one permutation
             answer = inCenterSolve(vs)
@@ -718,14 +759,23 @@ def pseudoCentroid(vs):
             s += si
         weights.append(s/(n-1.))
 
+    weights = Vec(weights)
     do('weights')
-    weightsSum = sum(weights)
+    weights /= sum(weights)
+    do('weights')
 
-    height = sqrt(sum([weights[j]*weights[i]*(vs[i]-vs[j]).length2() for i in xrange(n) for j in xrange(i)])) / weightsSum
 
 
-    weightedAvg = sum([weight*v for weight,v in zip(weights,vs)]) / weightsSum
+    weightedAvg = sum([weight*v for weight,v in zip(weights,vs)])
     do('weightedAvg')
+
+
+    # This came from mathematica...
+    # I asked it what the limit was, for 2 then 3 then 4 points,
+    # in 1->2 dimensions.
+    height = sqrt(sum([weight*(v-weightedAvg).length2() for weight,v in zip(weights,vs)]))
+    do('height')
+
 
     initialGuess = Vec(list(weightedAvg)+[height]) # weightedAvg with height appended
 
@@ -859,5 +909,24 @@ if __name__ == '__main__':
 
     if True:
         do('inCenterAll([[-1],[0],[2]])')
+        do('inCenterAll([[-1],[0],[3]])')
+        do('inCenterAll([[-1,.1],[0,.57],[3,.51]])')
+        do('inCenterAll([[-1,.1,3],[0,.57,2],[3,.51,1.5]])')
+        do('inCenterAll([[-1,.1,3,3],[0,.57,2,2.3],[3,.51,1.5,1.3456]])')
+    if False:
+        do('simplexInCenter([[-1],[0],[2]])')
+        do('simplexInCenter([[-1],[1],[3]])')
+    if True:
+        do('simplexInCenter([[0,0,0],[1,0,0],[0,1,0],[0,0,1]])')
         do('inCenterAll([[-1.,.3,4],[.4,.6,.7],[.22,.743,.37]])')
+    if False:
+        do('simplexInCenter([[-1.,.3],[.4,.6],[.22,.743],[.66,.2]])')
+
+        do('simplexInCenter([[-1.,.3,1e-6],[.4,.6,2e-6],[.22,.743,1.5e-6],[.66,.2,1.23e-6]])')
+        do('simplexInCenter([[-1.,.3,2e-6],[.4,.6,1e-6],[.22,.743,1.1e-6],[.66,.2,1.67e-6]])')
+        #do('simplexInCenter([[-1.,.3],[.4,.6],[.22,.743],[.66,.2],[.123,.934]])')
+        do('simplexInCenter([[-1.,.3,1e-6],[.4,.6,2e-6],[.22,.743,1.5e-6],[.66,.2,1.23e-6],[.123,.934,2.23e-6]])')
+        do('simplexInCenter([[-1.,.3,2e-6],[.4,.6,1e-6],[.22,.743,1.1e-6],[.66,.2,1.67e-6],[.123,.934,2.29e-6]])')
+
+
 
