@@ -734,7 +734,7 @@ def pseudoCentroid(vs):
 
     # We want the variance of each subset
     # of n-1 points of vs.
-    # From http://XXX
+    # From http://en.wikipedia.org/wiki/Algorithms_for_calculating_variance
     # To compute the new S = n*newVariance
     # given s = (n-1)*oldVariance and a new sample x:
     #     S = s + (x-m)*(x-M)
