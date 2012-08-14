@@ -614,29 +614,63 @@ public class ShephardsPlayApplet
                             }
                         });
                         add(new java.awt.Label(""), stretchxy);
-                        add(new java.awt.Checkbox("Delaunayize", doContinuouslyDelaunayize.get()) {
-                            public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                            {
-                                addItemListener(new java.awt.event.ItemListener() {
-                                    public void itemStateChanged(java.awt.event.ItemEvent e)
-                                    {
-                                        UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
-                                        doContinuouslyDelaunayize.set(getState());
-                                        System.out.println("doContinuouslyDelaunayize -> "+doContinuouslyDelaunayize.get());
-                                        if (doContinuouslyDelaunayize.get()) delaunayize();
-                                        UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
-                                        undoTreeSquirrel.Do(new UndoItem(before, after));
-                                        theCanvas.repaint();
-                                    }
-                                });
-                                doContinuouslyDelaunayize.addListener(doContinuouslyDelaunayizeListener = new Listenable.Listener() {
-                                    public void valueChanged()
-                                    {
-                                        setState(doContinuouslyDelaunayize.get()); // of the checkbox
-                                    }
-                                });
-                            }
-                        });
+                        add(new Col() {{
+                            add(new java.awt.Checkbox("Delaunayize", doContinuouslyDelaunayize.get()) {
+                                public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                                {
+                                    addItemListener(new java.awt.event.ItemListener() {
+                                        public void itemStateChanged(java.awt.event.ItemEvent e)
+                                        {
+                                            UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                            doContinuouslyDelaunayize.set(getState());
+                                            System.out.println("doContinuouslyDelaunayize -> "+doContinuouslyDelaunayize.get());
+                                            if (doContinuouslyDelaunayize.get()) delaunayize();
+                                            UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                            undoTreeSquirrel.Do(new UndoItem(before, after));
+                                            theCanvas.repaint();
+                                        }
+                                    });
+                                    doContinuouslyDelaunayize.addListener(doContinuouslyDelaunayizeListener = new Listenable.Listener() {
+                                        public void valueChanged()
+                                        {
+                                            setState(doContinuouslyDelaunayize.get()); // of the checkbox
+                                            // XXX wait a minute, isn't this where we should delaunayize, rather than above?
+                                        }
+                                    });
+                                }
+                            });
+                            add(new java.awt.Checkbox("Wrap around sphere", wrapAroundSphereFlag.get()) {
+                                public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                                {
+                                    addItemListener(new java.awt.event.ItemListener() {
+                                        public void itemStateChanged(java.awt.event.ItemEvent e)
+                                        {
+                                            UndoItem.State before = new UndoItem.State(mesh, wrapAroundSphereFlag.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                            wrapAroundSphereFlag.set(getState());
+                                            System.out.println("wrapAroundSphereFlag -> "+wrapAroundSphereFlag.get());
+                                            UndoItem.State after = new UndoItem.State(mesh, wrapAroundSphereFlag.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                            undoTreeSquirrel.Do(new UndoItem(before, after));
+                                            theCanvas.repaint();
+                                        }
+                                    });
+                                    wrapAroundSphereFlag.addListener(wrapAroundSphereFlagListener = new Listenable.Listener() {
+                                        public void valueChanged()
+                                        {
+                                            setState(wrapAroundSphereFlag.get()); // of the checkbox
+                                            // XXX this isn't really the right place for the following; should do the following regardless of whether there's a checkbox for it
+                                            if (wrapAroundSphereFlag.get())
+                                            {
+                                                wrapAroundSphere();
+                                            }
+                                            else
+                                            {
+                                                unwrapAroundSphere();
+                                            }
+                                        }
+                                    });
+                                }
+                            });
+                        }});
                         add(new java.awt.Label(""), stretchxy);
                         add(new Col() {{
                             add(new java.awt.Checkbox("Net", showNet.get()) {
@@ -1833,6 +1867,72 @@ public class ShephardsPlayApplet
             theCanvas.repaint();
         } // frame
 
+        private void wrapAroundSphere()
+        {
+            System.out.println("    in wrapAroundSphere");
+            // flatten from parabola to sphere
+
+            FORIDOWN(iVert, mesh.verts.size())
+            {
+                Mesh.Vertex vert = mesh.getVert(iVert);
+                double x = vert.x;
+                double y = vert.y;
+                double z = vert.h; // not h actual
+
+                // Apply a mobius transformation
+                // that wraps the xy plane
+                // around a sphere of radius 1
+                // centered at (0,0,-1).
+                // First (x,y,z) -> (x,y,-z)
+                // then (x,y,z) -> reciprocate w.r.t. sphere of radius 2
+                // centered at (0,0,-2).
+
+                z = -z;
+                double sphereRadius = .25;
+                double reciprocationRadius = 2*sphereRadius;
+                z -= -reciprocationRadius;
+                double dist2 = SQR(x) + SQR(y) + SQR(z);
+                double multiplier = SQR(reciprocationRadius)/dist2;
+                x *= multiplier;
+                y *= multiplier;
+                z *= multiplier;
+                z += -reciprocationRadius;
+                vert.x = x;
+                vert.y = y;
+                vert.setHActual(z);
+            }
+            dirtyDualMesh();
+            if (doContinuouslyDelaunayize.get()) delaunayize();
+            System.out.println("    out wrapAroundSphere");
+        } // wrapAroundSphere
+        private void unwrapAroundSphere()
+        {
+            System.out.println("    in unwrapAroundSphere");
+            FORIDOWN(iVert, mesh.verts.size())
+            {
+                Mesh.Vertex vert = mesh.getVert(iVert);
+                double x = vert.x;
+                double y = vert.y;
+                double z = vert.hActual();
+                double sphereRadius = .25;
+                double reciprocationRadius = 2*sphereRadius;
+                z -= -reciprocationRadius;
+                double dist2 = SQR(x) + SQR(y) + SQR(z);
+                double multiplier = SQR(reciprocationRadius)/dist2;
+                x *= multiplier;
+                y *= multiplier;
+                z *= multiplier;
+                z += -reciprocationRadius;
+                z = -z;
+                vert.x = x;
+                vert.y = y;
+                vert.h = z; // not hActual
+
+            }
+            dirtyDualMesh();
+            if (doContinuouslyDelaunayize.get()) delaunayize();
+            System.out.println("    out unwrapAroundSphere");
+        } // unwrapAroundSphere
 
         public void changeMeshSymmetry(int oldRotationalSymmetry, boolean oldLeftRightSymmetry,
                                        int newRotationalSymmetry, boolean newLeftRightSymmetry)
@@ -4218,6 +4318,7 @@ public class ShephardsPlayApplet
                 }
 
 
+                final boolean wrapAroundSphereFlagValue = wrapAroundSphereFlag.get();
                 double minSize = (double)MIN(size.width, size.height);
                 MyGraphics3D mg = new MyGraphics3D(g, size,
                                         -size.width/minSize,size.width/minSize,
@@ -9123,6 +9224,10 @@ OFF
                 {
                     return this.h - .5 * (SQR(this.x) + SQR(this.y));
                 }
+                public void setHActual(double hActual)
+                {
+                    this.h = hActual + .5 * (SQR(this.x) + SQR(this.y));
+                }
             } // public class Vertex
             public class Edge
             {
@@ -12618,6 +12723,7 @@ OFF
 
         // XXX is there an easier way to associate that stuff with a certain object? maybe be able to just pass this object to addListener, and make it automatically remove the listener when I go away?
         private Listenable.Listener doContinuouslyDelaunayizeListener = null;
+        private Listenable.Listener wrapAroundSphereFlagListener = null;
         private Listenable.Listener doOptimizeListener = null;
         private Listenable.Listener optimizationTypeIndexListener = null;
         private Listenable.Listener showMagListener = null;
@@ -12757,7 +12863,7 @@ OFF
             double localScaleMat[][] = {
                 {1,0,0,0},
                 {0,1,0,0},
-                {0,0,localScaleZ,0},
+                {0,0,wrapAroundSphereFlag.get()?1.:localScaleZ,0},
                 {0,0,0,1},
             };
             double rotMat[][] = getRotMat();
