@@ -1799,7 +1799,7 @@ public class ShephardsPlayApplet
                 }
 
                 // dual directions are now totally messed up... fix them
-                fixDualDirections(mesh, dualMesh);
+                fixDualDirections(mesh, dualMesh, wrapAroundSphereFlag.get());
             }
 
             UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
@@ -1867,6 +1867,7 @@ public class ShephardsPlayApplet
             theCanvas.repaint();
         } // frame
 
+        static final double wrapSphereRadius = .75;
         private void wrapAroundSphere()
         {
             System.out.println("    in wrapAroundSphere");
@@ -1877,7 +1878,7 @@ public class ShephardsPlayApplet
                 Mesh.Vertex vert = mesh.getVert(iVert);
                 double x = vert.x;
                 double y = vert.y;
-                double z = vert.h; // not h actual
+                double z = vert.h; // not hActual()
 
                 // Apply a mobius transformation
                 // that wraps the xy plane
@@ -1888,15 +1889,17 @@ public class ShephardsPlayApplet
                 // centered at (0,0,-2).
 
                 z = -z;
-                double sphereRadius = .25;
-                double reciprocationRadius = 2*sphereRadius;
+                double reciprocationRadius = 2*wrapSphereRadius;
                 z -= -reciprocationRadius;
                 double dist2 = SQR(x) + SQR(y) + SQR(z);
                 double multiplier = SQR(reciprocationRadius)/dist2;
                 x *= multiplier;
                 y *= multiplier;
                 z *= multiplier;
-                z += -reciprocationRadius;
+                if (true)
+                    z += -reciprocationRadius*.5; // center the sphere
+                else
+                    z += -reciprocationRadius; // make the sphere tangent to the origin
                 vert.x = x;
                 vert.y = y;
                 vert.setHActual(z);
@@ -1914,9 +1917,11 @@ public class ShephardsPlayApplet
                 double x = vert.x;
                 double y = vert.y;
                 double z = vert.hActual();
-                double sphereRadius = .25;
-                double reciprocationRadius = 2*sphereRadius;
-                z -= -reciprocationRadius;
+                double reciprocationRadius = 2*wrapSphereRadius;
+                if (true)
+                    z -= -reciprocationRadius*.5; // center the sphere
+                else
+                    z -= -reciprocationRadius; // make the sphere tangent to the origin
                 double dist2 = SQR(x) + SQR(y) + SQR(z);
                 double multiplier = SQR(reciprocationRadius)/dist2;
                 x *= multiplier;
@@ -1927,7 +1932,6 @@ public class ShephardsPlayApplet
                 vert.x = x;
                 vert.y = y;
                 vert.h = z; // not hActual
-
             }
             dirtyDualMesh();
             if (doContinuouslyDelaunayize.get()) delaunayize();
@@ -3647,8 +3651,9 @@ public class ShephardsPlayApplet
                             }
 
                         mesh = makeDualMesh(mesh,
-                                            true,  // includeNonArity3 (so we get full mesh)
-                                            true); // includeInsideOut
+                                            true, // includeNonArity3 (so we get full mesh)
+                                            true, // includeInsideOut
+                                            wrapAroundSphereFlag.get());
 
                         // this seems to make it a bit better, though I don't really understand.
                         if (heightsWereAllZero)
@@ -6557,7 +6562,8 @@ public class ShephardsPlayApplet
                                 SolveForDualPoint(v0[0],v0[1],v0[2],
                                                   v1[0],v1[1],v1[2],
                                                   v2[0],v2[1],v2[2],
-                                                  sampleResultVerts[iSample]);
+                                                  sampleResultVerts[iSample],
+                                                  false); // wrapAroundSphereFlag
                             }
                             double toDesired[] = VecMath.vmv(2, desiredDualVerts[iDualVert], sampleResultVerts[0]);
                             double toSample1[] = VecMath.vmv(2, sampleResultVerts[1], sampleResultVerts[0]);
@@ -6569,7 +6575,8 @@ public class ShephardsPlayApplet
                             SolveForDualPoint(v0[0],v0[1],v0[2],
                                               v1[0],v1[1],v1[2],
                                               v2[0],v2[1],v2[2],
-                                              finalResultVert);
+                                              finalResultVert,
+                                              false); // wrapAroundSphereFlag
                             //PRINTVEC(desiredDualVerts[iDualVert]);
                             //PRINTVEC(finalResultVert);
                             assert(Math.abs(desiredDualVerts[iDualVert][1]-finalResultVert[1]) <= 1e-6);
@@ -6588,7 +6595,8 @@ public class ShephardsPlayApplet
                                 SolveForDualPoint(v0[0],v0[1],v0[2],
                                                   v1[0],v1[1],v1[2],
                                                   v2[0],v2[1],v2[2],
-                                                  sampleResultVerts[iSample]);
+                                                  sampleResultVerts[iSample],
+                                                  false); // wrapAroundSphereFlag
                             }
                             double toDesired[] = VecMath.vmv(2, desiredDualVerts[iDualVert], sampleResultVerts[0]);
                             double toSample1[] = VecMath.vmv(2, sampleResultVerts[1], sampleResultVerts[0]);
@@ -6600,7 +6608,8 @@ public class ShephardsPlayApplet
                             SolveForDualPoint(v0[0],v0[1],v0[2],
                                               v1[0],v1[1],v1[2],
                                               v2[0],v2[1],v2[2],
-                                              finalResultVert);
+                                              finalResultVert,
+                                              false); // wrapAroundSphereFlag
                             PRINTVEC(desiredDualVerts[iDualVert]);
                             PRINTVEC(finalResultVert);
                             //assert(VecMath.dist(desiredDualVerts[iDualVert], finalResultVert) <= 1e-6);
@@ -6792,7 +6801,8 @@ public class ShephardsPlayApplet
                             SolveForDualPoint(v0[0],v0[1],v0[2],
                                               v1[0],v1[1],v1[2],
                                               v2[0],v2[1],v2[2],
-                                              sampleResultVerts[iSample]);
+                                              sampleResultVerts[iSample],
+                                              false); // wrapAroundSphereFlag
                         }
                         double toDesired[] = VecMath.vmv(2, desiredDualVerts[iDualVert], sampleResultVerts[0]);
                         double toSample1[] = VecMath.vmv(2, sampleResultVerts[1], sampleResultVerts[0]);
@@ -6804,7 +6814,8 @@ public class ShephardsPlayApplet
                         SolveForDualPoint(v0[0],v0[1],v0[2],
                                           v1[0],v1[1],v1[2],
                                           v2[0],v2[1],v2[2],
-                                          finalResultVert);
+                                          finalResultVert,
+                                          false); // wrapAroundSphereFlag
                         //PRINTVEC(desiredDualVerts[iDualVert]);
                         //PRINTVEC(finalResultVert);
                         assert(Math.abs(desiredDualVerts[iDualVert][1]-finalResultVert[1]) <= 1e-6);
@@ -6823,7 +6834,8 @@ public class ShephardsPlayApplet
                             SolveForDualPoint(v0[0],v0[1],v0[2],
                                               v1[0],v1[1],v1[2],
                                               v2[0],v2[1],v2[2],
-                                              sampleResultVerts[iSample]);
+                                              sampleResultVerts[iSample],
+                                              false);
                         }
                         double toDesired[] = VecMath.vmv(2, desiredDualVerts[iDualVert], sampleResultVerts[0]);
                         double toSample1[] = VecMath.vmv(2, sampleResultVerts[1], sampleResultVerts[0]);
@@ -6835,7 +6847,8 @@ public class ShephardsPlayApplet
                         SolveForDualPoint(v0[0],v0[1],v0[2],
                                           v1[0],v1[1],v1[2],
                                           v2[0],v2[1],v2[2],
-                                          finalResultVert);
+                                          finalResultVert,
+                                          false);
                         PRINTVEC(desiredDualVerts[iDualVert]);
                         PRINTVEC(finalResultVert);
                         //assert(VecMath.dist(desiredDualVerts[iDualVert], finalResultVert) <= 1e-6);
@@ -6903,6 +6916,7 @@ public class ShephardsPlayApplet
                     // do regular square grid, verts of {4,4}
                     int nX = 9;
                     int nY = 9;
+                    nX = nY = 25;
                     double verts[][] = new double[nX*nY][3]; // zeros initially, heights stay zero
                     int iVert = 0;
                     FORI (iY, nY)
@@ -7226,7 +7240,8 @@ OFF
                     considerEdgeLengths,
                     nPasses,
                     maxCallsPerPass,
-                    initialDelta);
+                    initialDelta,
+                    false); // wrapAroundSphereFlagValue
                 double optimizationPathVerts[][][] = (double[][][])optimizationPathVertsAndGoodnesses[0];
                 double optimizationPathGoodnesses[] = (double[])optimizationPathVertsAndGoodnesses[1];
                                                                         
@@ -7611,7 +7626,8 @@ OFF
 
                 private static void vertsToDualMomentsAndAreas(double primalCoords[/*nVerts*/][/*3*/],
                                                                int tris[/*nDualVerts*/][/*3*/],
-                                                               double dualMomentsAndAreas[/*nDualVerts*/][/*3*/])
+                                                               double dualMomentsAndAreas[/*nDualVerts*/][/*3*/],
+                                                               boolean wrapAroundSphereFlagValue)
                 {
                     FORI (iDualVert, dualMomentsAndAreas.length)
                     {
@@ -7622,7 +7638,8 @@ OFF
                         SolveForDualMomentAndArea(A[0],A[1],A[2],
                                                   B[0],B[1],B[2],
                                                   C[0],C[1],C[2],
-                                                  dualMomentsAndAreas[iDualVert]);
+                                                  dualMomentsAndAreas[iDualVert],
+                                                  wrapAroundSphereFlagValue);
                     }
                 }
 
@@ -7768,14 +7785,16 @@ OFF
                     final boolean considerEdgeLengths, // XXX we don't handle this correctly-- we hard-code ignoring the 1-edgelength thing. need to figure out why, I thought that was necessary to prevent edge lengths from growing without bound???
                     final int nPasses,
                     final int maxCallsPerPass,
-                    final double initialDelta)
+                    final double initialDelta,
+                    final boolean wrapAroundSphereFlagValue)
                 {
                     assert(fromsAndTosTris.length        == toLeftOfEdgeEndIndices.length);
                     assert(mustBeFarthestExit.length == toLeftOfEdgeEndIndices.length);
 
                     final Mesh dual = makeDualMesh(primal,
-                                                   false,  // includeNonArity3
-                                                   false); // includeInsideOut
+                                                   false, // includeNonArity3
+                                                   false, // includeInsideOut
+                                                   wrapAroundSphereFlagValue);
                     final int nVerts = primal.verts.size();
                     final int nDualVerts = dual.verts.size();
                     final int nEdges = primal.edges.size();
@@ -7843,7 +7862,7 @@ OFF
                     final double scratchDualVerts[][] = new double[nDualVerts][2]; // x,y
 
                     getMeshVertCoords(primal, scratchVerts);
-                    vertsToDualMomentsAndAreas(scratchVerts, tris, scratchDualMomentsAndAreas);
+                    vertsToDualMomentsAndAreas(scratchVerts, tris, scratchDualMomentsAndAreas, wrapAroundSphereFlagValue);
 
 
                     double initialGuessParams[] = vertsToParams(scratchVerts);
@@ -7873,7 +7892,7 @@ OFF
                             System.out.println("    in apply()");
                             System.out.println("        iPass="+iPassFinal[0]+"/"+nPasses);
                             paramsToVerts(primal, params, scratchVerts);
-                            vertsToDualMomentsAndAreas(scratchVerts, tris, scratchDualMomentsAndAreas);
+                            vertsToDualMomentsAndAreas(scratchVerts, tris, scratchDualMomentsAndAreas, wrapAroundSphereFlagValue);
                             momentsAndAreasToCoords(scratchDualMomentsAndAreas, scratchDualVerts);
 
 
@@ -8335,7 +8354,8 @@ OFF
                         SolveForDualPoint(x0,y0,h0,
                                           x1,y1,h1,
                                           x2,y2,h2,
-                                          leftDualVerts[iDualVert]);
+                                          leftDualVerts[iDualVert],
+                                          false); // wrapAroundSphereFlag
                     }
                     return leftDualVerts;
                 } // vertsToDualVertsInNetless8
@@ -8852,7 +8872,8 @@ OFF
                     SolveForDualPoint(v0.x, v0.y, v0.h,
                                       v1.x, v1.y, v1.h,
                                       v2.x, v2.y, v2.h,
-                                      triCenter);
+                                      triCenter,
+                                      false); // wrapAroundSphereFlag
                     return .5*twiceTriArea;
                 } // getTriCenterAndArea
 
@@ -8899,9 +8920,6 @@ OFF
                                  totalCenter, prevTriCenter,
                                  prevTriArea / (totalArea + prevTriArea));
                     totalArea += prevTriArea;
-
-                    //PRINT(totalArea);
-                    //PRINTVEC(totalCenter);
 
                     // gag, duplicate work, whatever
                     double nextTriCenter[] = new double[3]; // SolveForDualPoint needs 3
@@ -10080,7 +10098,8 @@ OFF
                             SolveForDualPoint(v0.x,v0.y,h0,
                                               v1.x,v1.y,h1,
                                               v2.x,v2.y,h2,
-                                              sampleResultVerts[iSample][iDualVert]); // dimension 2-- last coord is simply ignored
+                                              sampleResultVerts[iSample][iDualVert], // dimension 2-- last coord is simply ignored
+                                              false); // wrapAroundSphereFlag
                         }
                     }
                     //PRINTMAT(sampleHeights);
@@ -10468,7 +10487,8 @@ OFF
                             SolveForDualPoint(v0.x,v0.y,h0,
                                               v1.x,v1.y,h1,
                                               v2.x,v2.y,h2,
-                                              scratchDualVert);
+                                              scratchDualVert,
+                                              false); // wrapAroundSphereFlag
                             VecMath.vpv(2, avgDual, avgDual, scratchDualVert); // only 2 of 3
                         }
                         VecMath.vxs(avgDual, avgDual, 1./nDualVerts);
@@ -10783,8 +10803,10 @@ OFF
         //
         public static Mesh makeDualMesh(Mesh primal,
                                         boolean includeNonArity3,
-                                        boolean includeInsideOut)
+                                        boolean includeInsideOut,
+                                        boolean wrapAroundSphereFlagValue)
         {
+            System.out.println("    in makeDualMesh(wrapAroundSphereFlagValue="+wrapAroundSphereFlagValue+")");
             Mesh dual = new Mesh();
             int nEdges = primal.edges.size();
             FORI (iEdge, nEdges)
@@ -10842,6 +10864,7 @@ OFF
                 // of the circumcenters of the triangles.
                 // (the answer is the same regardless of triangulation...
                 // at least for the x,y part.  not sure what this does to the h part.)
+                // XXX TODO: don't we already do this in some version of SolveForDualPoint or SolveForDualMomentAndArea or something?
                 //
                 double totalMomentAndArea[] = new double[4]; // zero initially
 
@@ -10858,7 +10881,8 @@ OFF
                     SolveForDualMomentAndArea(v0.x, v0.y, v0.h,
                                               v1.x, v1.y, v1.h,
                                               v2.x, v2.y, v2.h,
-                                              triMomentAndArea);
+                                              triMomentAndArea,
+                                              wrapAroundSphereFlagValue);
                     accumulateMomentAndArea(totalMomentAndArea, triMomentAndArea);
 
                     dualVertArity++;
@@ -10871,7 +10895,7 @@ OFF
                 {
                     totalCenter[0] = totalMomentAndArea[0] / twiceTotalArea;
                     totalCenter[1] = totalMomentAndArea[1] / twiceTotalArea;
-                    totalCenter[2] = totalMomentAndArea[2] / SQR(twiceTotalArea);
+                    totalCenter[2] = totalMomentAndArea[2] / (wrapAroundSphereFlagValue ? twiceTotalArea : SQR(twiceTotalArea));
                 }
 
                 if (false)
@@ -10888,7 +10912,7 @@ OFF
                         coords[i][2] = v.h - .5 * (SQR(v.x)+SQR(v.y));
                         primalEdge = primalEdge.next();
                     }
-                    SolveForDualPointActual(coords, totalCenter);
+                    SolveForDualPointActual(coords, totalCenter, wrapAroundSphereFlagValue);
                     totalCenter[2] += .5 * (SQR(totalCenter[0]) + SQR(totalCenter[1]));
                 }
 
@@ -10944,13 +10968,14 @@ OFF
             //
             // Give each dual edge a direction.
             //
-            fixDualDirections(primal, dual);
+            fixDualDirections(primal, dual, wrapAroundSphereFlagValue);
+            System.out.println("    out makeDualMesh(wrapAroundSphereFlagValue="+wrapAroundSphereFlagValue+")");
             return dual;
         } // makeDualMesh()
 
         // called at end of makeDualMesh,
         // and also after rescaling or tweaking
-        public static void fixDualDirections(Mesh primal, Mesh dual)
+        public static void fixDualDirections(Mesh primal, Mesh dual, boolean wrapAroundSphereFlagValue)
         {
             int nEdges = dual.edges.size();
             FORI (iEdge, nEdges)
@@ -10995,8 +11020,8 @@ OFF
                     Mesh.Edge primalEdge = primal.getEdge(iEdge);
                     Mesh.Vertex v0 = primalEdge.initialVertex();
                     Mesh.Vertex v1 = primalEdge.finalVertex();
-                    double n0[] = {v0.x, v0.y, 1};
-                    double n1[] = {v1.x, v1.y, 1};
+                    double n0[] = {v0.x, v0.y, wrapAroundSphereFlagValue ? v0.hActual() : 1};
+                    double n1[] = {v1.x, v1.y, wrapAroundSphereFlagValue ? v1.hActual() : 1};
                     dualEdge.direction = VecMath.normalize(VecMath.vxv3(n0,n1));
                 }
 
@@ -11009,7 +11034,7 @@ OFF
         public static class Net
         {
             // note that our mesh,dualMesh is the reverse of the applet's
-            // (since we want a net of the dual mesh).
+            // (since we want a net of the applet's dual mesh).
             public Net(Mesh mesh, Mesh dualMesh)
             {
                 int nEdges = mesh.edges.size();
@@ -12050,7 +12075,8 @@ OFF
         private static void SolveForDualPointActual(double x0, double y0, double h0,
                                               double x1, double y1, double h1,
                                               double x2, double y2, double h2,
-                                              double result[])
+                                              double result[],
+                                              boolean wrapAroundSphereFlagValue)
         {
             double M[][] = {
                 {x0,y0,1},
@@ -12072,13 +12098,16 @@ OFF
         private static void SolveForDualPoint(double x0, double y0, double h0,
                                               double x1, double y1, double h1,
                                               double x2, double y2, double h2,
-                                              double result[])
+                                              double result[],
+                                              boolean wrapAroundSphereFlagValue)
         {
+            // paraboloid
             SolveForDualPointActual(x0, y0, h0 - .5 * (SQR(x0) + SQR(y0)),
                                     x1, y1, h1 - .5 * (SQR(x1) + SQR(y1)),
                                     x2, y2, h2 - .5 * (SQR(x2) + SQR(y2)),
-                                    result);
-            if (result.length == 3)
+                                    result,
+                                    wrapAroundSphereFlagValue);
+            if (result.length == 3 && !wrapAroundSphereFlagValue)
             {
                 result[2] += .5 * (SQR(result[0]) + SQR(result[1]));
 
@@ -12089,7 +12118,8 @@ OFF
                     SolveForDualMomentAndArea(x0,y0,h0,
                                               x1,y1,h1,
                                               x2,y2,h2,
-                                              dualMomentAndArea);
+                                              dualMomentAndArea,
+                                              wrapAroundSphereFlagValue);
                     double A = dualMomentAndArea[3];
                     PRINT(A);
                     double shouldBeResult[] = {
@@ -12109,13 +12139,67 @@ OFF
         // Optimized robust version of SolveForDualPoint.
         // Moments can be used in robust center-of-mass calculations
         // even if individual weights are tiny (or zero).
-        // Works in local virtual coord space of x0,y0,h0.
+        // Works in local *virtual* coord space of x0,y0,h0.
         private static void SolveForDualMomentAndArea(double x0, double y0, double h0,
                                                       double x1, double y1, double h1,
                                                       double x2, double y2, double h2,
-                                                      double result[]) // x*A, y*A, A, or
+                                                      double result[], // x*A, y*A, A, or
                                                                        // x*A, y*A, h*A^2, A
+                                                      boolean wrapAroundSphereFlagValue)
         {
+            if (wrapAroundSphereFlagValue)
+            {
+                // XXX TODO: definitely not robust at this point! need to cancel the divide-by-A with the multiply-by-A
+                //System.out.println("            in SolveForDualMomentAndArea(wrap=true)");
+                // reciprocate with respect to the wrap sphere,
+                // which has radius wrapSphereRadius
+                // and is centered at (0,0,-wrapSphereRadius).
+
+                //double sphereCenterZ = -wrapSphereRadius; // origin at surface
+                double sphereCenterZ = 0.; // origin at center
+
+                // convert to actual (from somewhat nonsensical virtual, for wrapped case)
+                double z0 = h0 -= .5 * (SQR(x0) + SQR(y0));
+                double z1 = h1 -= .5 * (SQR(x1) + SQR(y1));
+                double z2 = h2 -= .5 * (SQR(x2) + SQR(y2));
+
+                z0 -= sphereCenterZ;
+                z1 -= sphereCenterZ;
+                z2 -= sphereCenterZ;
+
+                double e01[] = new double[] {x1-x0,y1-y0,z1-z0};
+                double e02[] = new double[] {x2-x0,y2-y0,z2-z0};
+                VecMath.vxv3(result, e01, e02);
+                // result is now the normal, some length
+                //double A = VecMath.norm(3, result); // XXX TODO: doesn't exist in VecMath yet
+                double A = Math.sqrt(VecMath.dot(3, result, result));
+                VecMath.vxs(3, result, result, 1./A);
+                // result is now unit normal
+                double offset = x0*result[0] + y0*result[1] + z0*result[2]; // result dot v0
+
+                double reciprocationMultiplier = SQR(wrapSphereRadius)/offset;
+                VecMath.vxs(3, result, result, reciprocationMultiplier);
+                result[2] += sphereCenterZ;
+
+                // convert from actual to somewhat nonsensical virtual, for wrapped case
+                result[2] += .5 * (SQR(result[0])+SQR(result[1]));
+
+
+                if (result.length == 3)
+                    result[2] = A;
+                else
+                {
+                    result[0] *= A;
+                    result[1] *= A;
+                    result[2] *= A;
+                    result[3] = A;
+                }
+
+                //System.out.println("            out SolveForDualMomentAndArea(wrap=true)");
+                return;
+            }
+
+
             // convert from global virtual coord space to local virtual coord space...
             double X1 = x1 - x0;
             double Y1 = y1 - y0;
@@ -12168,10 +12252,12 @@ OFF
 
 
 
-        // Experimenting with when it's more than a triangle... invmxv will do a least-squares solve,
+        // Experimenting with when it's more than a triangle...
+        // invmxv will do a least-squares solve,
         // which will be what we want in the case the input is coplanar
         private static void SolveForDualPointActual(double coords[][/*3*/],
-                                              double result[])
+                                                    double result[],
+                                                    boolean wrapAroundSphereFlagValue)
         {
             double M[][] = new double[coords.length][3];
             double b[] = new double[coords.length];
@@ -12700,7 +12786,8 @@ OFF
             {
                 _dualMesh = makeDualMesh(mesh,
                                          false,  // includeNonArity3
-                                         doShowInsideOutDualVerts); // includeInsideOut
+                                         doShowInsideOutDualVerts, // includeInsideOut
+                                         wrapAroundSphereFlag.get());
                 _meshOfDualMesh = mesh;
                 theNet = null;
             }
@@ -13020,6 +13107,7 @@ OFF
         frame.move(200, 20);
         frame.resize(200,200);
         frame.resize(1001, 701);
+        frame.resize(1001, 600);
         frame.show();
 
         //Misc.printPlatonicSolidVertexCurvatures();
