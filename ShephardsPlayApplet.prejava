@@ -4,6 +4,14 @@ that will let me play with triangulations with heights,
 and produce the dual diagrams with heights.
 
 BUGS:
+  Wrap-sphere related:
+    - backface culling is flakey (or, need a coherent scheme, not keying on show-inside-out)
+    - backface culling sometimes slightly wrong
+    - nonzero heights not wrapped right yet
+    - doesn't interact correctly with undo/redo or save/restore
+    - can't drag stuff or add new points yet
+
+  Misc:
     - picking net edges is wrong, need to do it in screen space
     - ctrl-d to swap primal with dual never seems to produce anything good any more
     - dragging edges doesn't work when not ortho yet
@@ -1868,10 +1876,11 @@ public class ShephardsPlayApplet
         } // frame
 
         static final double wrapSphereRadius = .75;
+        // wrap from parabola to sphere
         private void wrapAroundSphere()
         {
             System.out.println("    in wrapAroundSphere");
-            // flatten from parabola to sphere
+            double scratch[] = new double[3];
 
             FORIDOWN(iVert, mesh.verts.size())
             {
@@ -1880,26 +1889,11 @@ public class ShephardsPlayApplet
                 double y = vert.y;
                 double z = vert.h; // not hActual()
 
-                // Apply a mobius transformation
-                // that wraps the xy plane
-                // around a sphere of radius 1
-                // centered at (0,0,-1).
-                // First (x,y,z) -> (x,y,-z)
-                // then (x,y,z) -> reciprocate w.r.t. sphere of radius 2
-                // centered at (0,0,-2).
+                wrapVertAroundSphere(x, y, z, scratch);
+                x = scratch[0];
+                y = scratch[1];
+                z = scratch[2];
 
-                z = -z;
-                double reciprocationRadius = 2*wrapSphereRadius;
-                z -= -reciprocationRadius;
-                double dist2 = SQR(x) + SQR(y) + SQR(z);
-                double multiplier = SQR(reciprocationRadius)/dist2;
-                x *= multiplier;
-                y *= multiplier;
-                z *= multiplier;
-                if (true)
-                    z += -reciprocationRadius*.5; // center the sphere
-                else
-                    z += -reciprocationRadius; // make the sphere tangent to the origin
                 vert.x = x;
                 vert.y = y;
                 vert.setHActual(z);
@@ -1908,27 +1902,23 @@ public class ShephardsPlayApplet
             if (doContinuouslyDelaunayize.get()) delaunayize();
             System.out.println("    out wrapAroundSphere");
         } // wrapAroundSphere
+        // unwrap from sphere to parabola
         private void unwrapAroundSphere()
         {
             System.out.println("    in unwrapAroundSphere");
+            double scratch[] = new double[3];
             FORIDOWN(iVert, mesh.verts.size())
             {
                 Mesh.Vertex vert = mesh.getVert(iVert);
                 double x = vert.x;
                 double y = vert.y;
                 double z = vert.hActual();
-                double reciprocationRadius = 2*wrapSphereRadius;
-                if (true)
-                    z -= -reciprocationRadius*.5; // center the sphere
-                else
-                    z -= -reciprocationRadius; // make the sphere tangent to the origin
-                double dist2 = SQR(x) + SQR(y) + SQR(z);
-                double multiplier = SQR(reciprocationRadius)/dist2;
-                x *= multiplier;
-                y *= multiplier;
-                z *= multiplier;
-                z += -reciprocationRadius;
-                z = -z;
+
+                unwrapVertAroundSphere(x,y,z, scratch);
+                x = scratch[0];
+                y = scratch[1];
+                z = scratch[2];
+
                 vert.x = x;
                 vert.y = y;
                 vert.h = z; // not hActual
@@ -1937,6 +1927,55 @@ public class ShephardsPlayApplet
             if (doContinuouslyDelaunayize.get()) delaunayize();
             System.out.println("    out unwrapAroundSphere");
         } // unwrapAroundSphere
+
+        // input is virtual, output is actual
+        private void wrapVertAroundSphere(double x, double y, double z, double result[])
+        {
+            // Apply a mobius transformation
+            // that wraps the xy plane
+            // around a sphere of radius 1
+            // centered at (0,0,-1).
+            // First (x,y,z) -> (x,y,-z)
+            // then (x,y,z) -> reciprocate w.r.t. sphere of radius 2
+            // centered at (0,0,-2).
+
+            z = -z;
+            double reciprocationRadius = 2*wrapSphereRadius;
+            z -= -reciprocationRadius;
+            double dist2 = SQR(x) + SQR(y) + SQR(z);
+            double multiplier = SQR(reciprocationRadius)/dist2;
+            x *= multiplier;
+            y *= multiplier;
+            z *= multiplier;
+            if (true)
+                z += -reciprocationRadius*.5; // center the sphere
+            else
+                z += -reciprocationRadius; // make the sphere tangent to the origin
+
+            result[0] = x;
+            result[1] = y;
+            result[2] = z;
+        } // wrapVertAroundSphere
+        // input is actual, output is virtual
+        private void unwrapVertAroundSphere(double x, double y, double z, double result[])
+        {
+            double reciprocationRadius = 2*wrapSphereRadius;
+            if (true)
+                z -= -reciprocationRadius*.5; // center the sphere
+            else
+                z -= -reciprocationRadius; // make the sphere tangent to the origin
+            double dist2 = SQR(x) + SQR(y) + SQR(z);
+            double multiplier = SQR(reciprocationRadius)/dist2;
+            x *= multiplier;
+            y *= multiplier;
+            z *= multiplier;
+            z += -reciprocationRadius;
+            z = -z;
+
+            result[0] = x;
+            result[1] = y;
+            result[2] = z;
+        } // unwrapVertAroundSphere
 
         public void changeMeshSymmetry(int oldRotationalSymmetry, boolean oldLeftRightSymmetry,
                                        int newRotationalSymmetry, boolean newLeftRightSymmetry)
@@ -4591,8 +4630,8 @@ public class ShephardsPlayApplet
                 int dualVertFacings[] = new int[nDualVerts+1];
                 double eyeInLocalSpace[] = VecMath.mxv(getRotMat(), eye); // multiply on wrong side, i.e. apply transpose i.e. inverse
                 eyeInLocalSpace[2] /= MAX(localScaleZ, 1e-6);
-                getFacings(eyeInLocalSpace, mesh, dualMesh, faceFacings, edgeFacings, vertFacings);
-                getFacings(eyeInLocalSpace, dualMesh, mesh, dualFaceFacings, dualEdgeFacings, dualVertFacings);
+                getFacings(eyeInLocalSpace, mesh, dualMesh, faceFacings, edgeFacings, vertFacings, wrapAroundSphereFlag.get());
+                getFacings(eyeInLocalSpace, dualMesh, mesh, dualFaceFacings, dualEdgeFacings, dualVertFacings, wrapAroundSphereFlag.get());
                 //PRINTARRAY(faceFacings);
                 //PRINTARRAY(dualFaceFacings);
 
@@ -6160,7 +6199,8 @@ public class ShephardsPlayApplet
                                            Mesh mesh, Mesh dualMesh,
                                            int faceFacings[],
                                            int edgeFacings[],
-                                           int vertFacings[])
+                                           int vertFacings[],
+                                           boolean wrapAroundSphereFlagValue)
             {
                 VecMath.fillvec(faceFacings, FACING_UNKNOWN);
                 VecMath.fillvec(edgeFacings, FACING_UNKNOWN);
@@ -6175,7 +6215,7 @@ public class ShephardsPlayApplet
                 FORI (iFace, nDualVerts)
                 {
                     Mesh.Vertex dualVert = dualMesh.getVert(iFace);
-                    double facePlaneNormal[] = {dualVert.x, dualVert.y, 1}; // not unit length
+                    double facePlaneNormal[] = {dualVert.x, dualVert.y, wrapAroundSphereFlagValue ? dualVert.hActual() : 1}; // not unit length
                     double facePlaneOffset = -dualVert.hActual(); // magic!  I don't know why, but this is the correct value
                     double frontness = VecMath.dot(facePlaneNormal, eyeInLocalSpace)
                                      - facePlaneOffset;
@@ -6916,7 +6956,7 @@ public class ShephardsPlayApplet
                     // do regular square grid, verts of {4,4}
                     int nX = 9;
                     int nY = 9;
-                    nX = nY = 25;
+                    //nX = nY = 25;
                     double verts[][] = new double[nX*nY][3]; // zeros initially, heights stay zero
                     int iVert = 0;
                     FORI (iY, nY)
