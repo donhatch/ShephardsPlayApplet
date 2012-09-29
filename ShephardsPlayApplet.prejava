@@ -7,7 +7,6 @@ BUGS:
   Wrap-sphere related:
     - backface culling is flakey (or, need a coherent scheme, not keying on show-inside-out)
     - backface culling sometimes slightly wrong-- using wrong criterion?
-    - nonzero heights not wrapped right yet
     - doesn't interact correctly with undo/redo or save/restore
     - can't drag stuff or add new points yet
 
@@ -668,11 +667,11 @@ public class ShephardsPlayApplet
                                             // XXX this isn't really the right place for the following; should do the following regardless of whether there's a checkbox for it
                                             if (wrapAroundSphereFlag.get())
                                             {
-                                                wrapAroundSphere();
+                                                wrapAroundSphere(wrapSphereRadius);
                                             }
                                             else
                                             {
-                                                unwrapAroundSphere();
+                                                unwrapAroundSphere(wrapSphereRadius);
                                             }
                                         }
                                     });
@@ -1877,9 +1876,12 @@ public class ShephardsPlayApplet
             theCanvas.repaint();
         } // frame
 
+        static final boolean centerSphere = true;
+        //static final double wrapSphereRadius = 1.;
         static final double wrapSphereRadius = .75;
+
         // wrap from parabola to sphere
-        private void wrapAroundSphere()
+        private void wrapAroundSphere(double wrapSphereRadius)
         {
             System.out.println("    in wrapAroundSphere");
 
@@ -1889,29 +1891,41 @@ public class ShephardsPlayApplet
             FORIDOWN(iVert, mesh.verts.size())
             {
                 Mesh.Vertex vert = mesh.getVert(iVert);
-                double x = vert.x;
-                double y = vert.y;
-                double z = vert.h; // not hActual()
+                double px = vert.x;
+                double py = vert.y;
+                double pz = vert.h; // not hActual, yet
 
-                wrapVertAroundSphere(x, y, z, vertCoords, scratch);
-                x = vertCoords[0];
-                y = vertCoords[1];
-                z = vertCoords[2];
+                px /= Math.sqrt(wrapSphereRadius);
+                py /= Math.sqrt(wrapSphereRadius);
+                pz /= wrapSphereRadius;
+                pz -= .5 * (SQR(px) + SQR(py));
 
-                // XXX not sure this should go here
-                // sphere is tangent to origin... make it centered at origin.
-                z += wrapSphereRadius;
+                double denom = 1 - pz*.5;
 
-                vert.x = x;
-                vert.y = y;
-                vert.setHActual(z);
+                double sx = px/denom;
+                double sy = py/denom;
+                double sz = pz/denom;
+
+                sx *= wrapSphereRadius;
+                sy *= wrapSphereRadius;
+                sz *= wrapSphereRadius;
+
+                if (centerSphere)
+                {
+                    // sphere is tangent to origin... make it centered at origin
+                    sz += wrapSphereRadius;
+                }
+
+                vert.x = sx;
+                vert.y = sy;
+                vert.setHActual(sz);
             }
             dirtyDualMesh();
             if (doContinuouslyDelaunayize.get()) delaunayize();
             System.out.println("    out wrapAroundSphere");
         } // wrapAroundSphere
         // unwrap from sphere to parabola
-        private void unwrapAroundSphere()
+        private void unwrapAroundSphere(double wrapSphereRadius)
         {
             System.out.println("    in unwrapAroundSphere");
 
@@ -1921,276 +1935,39 @@ public class ShephardsPlayApplet
             FORIDOWN(iVert, mesh.verts.size())
             {
                 Mesh.Vertex vert = mesh.getVert(iVert);
-                double x = vert.x;
-                double y = vert.y;
-                double z = vert.hActual();
+                double sx = vert.x;
+                double sy = vert.y;
+                double sz = vert.hActual();
 
-                // XXX not sure this should go here
-                // sphere is centered at origin... make it tangent to origin.
-                z -= wrapSphereRadius;
+                if (centerSphere)
+                {
+                    // sphere is centered at origin... make it tangent to origin.
+                    sz -= wrapSphereRadius;
+                }
+                sx /= wrapSphereRadius;
+                sy /= wrapSphereRadius;
+                sz /= wrapSphereRadius;
 
-                unwrapVertAroundSphere(x,y,z, vertCoords, scratch);
-                x = vertCoords[0];
-                y = vertCoords[1];
-                z = vertCoords[2];
+                double denom = 1 + sz*.5;
 
-                vert.x = x;
-                vert.y = y;
-                vert.h = z; // not hActual
+                double px = sx/denom;
+                double py = sy/denom;
+                double pz = sz/denom;
+
+                pz += .5 * (SQR(px) + SQR(py));
+                px *= Math.sqrt(wrapSphereRadius);
+                py *= Math.sqrt(wrapSphereRadius);
+                pz *= wrapSphereRadius;
+
+                vert.x = px;
+                vert.y = py;
+                vert.h = pz;
             }
             dirtyDualMesh();
             if (doContinuouslyDelaunayize.get()) delaunayize();
             System.out.println("    out unwrapAroundSphere");
         } // unwrapAroundSphere
 
-        // input is virtual, output is actual
-        private void wrapVertAroundSphere(double x, double y, double z, double result[], double scratch[][][])
-        {
-            // XXX TODO: it would be good to store the information of whether each vertex has zero height, since wrapping and unwrapping changes numeric height from zero to slighly nonzero roundoff error.
-            if (z != 0.)
-            {
-                assert(scratch != null);
-
-                // nonzero height--
-                // use a set of support points at zero height.
-
-                PRINT(z);
-                //if (z > .25) // assumes paraboloid is z = -.5*(x^2+y^2)
-                if (z > .0001)
-                {
-                    OUT("    SIMPLE WRAP");
-                    PRINT(x);
-                    PRINT(y);
-                    PRINT(z);
-                    // Express the point
-                    // as the apex of a cone
-                    // holding the sphere.
-                    // We just need to transform 3 support points
-                    // on the horizon.
-                    double r = Math.sqrt(z);
-
-                    double supportPoint0[] = scratch[0][0];
-                    double supportPoint1[] = scratch[0][1];
-                    double supportPoint2[] = scratch[0][2];
-                    wrapVertAroundSphere(x+r, y, 0., supportPoint0, null);
-                    wrapVertAroundSphere(x, y+r, 0., supportPoint1, null);
-                    wrapVertAroundSphere(x-r, y, 0., supportPoint2, null);
-                    PRINTVEC(supportPoint0);
-                    PRINTVEC(supportPoint1);
-                    PRINTVEC(supportPoint2);
-                    PRINT(VecMath.dist(supportPoint0, supportPoint2)/2);
-                    double e01[] = scratch[1][0];
-                    double e02[] = scratch[1][1];
-                    double normal[] = scratch[1][2];
-                    VecMath.vmv(3, e01, supportPoint1, supportPoint0);
-                    VecMath.vmv(3, e02, supportPoint2, supportPoint0);
-                    VecMath.vxv3(normal, e01, e02);
-
-                    // normal is not necessarily unit length
-                    double offset = VecMath.dot(3, normal, supportPoint0);
-                    offset += normal[2] * wrapSphereRadius; // account for fact that supportPoint0 is on sphere moved from origin by 0,0,-wrapSphereRadius
-                    VecMath.vxs(result, normal, SQR(wrapSphereRadius)/offset);
-                    result[2] -= wrapSphereRadius; // back to sphere moved from origin by 0,0,-wrapSphereRadius
-
-                    return;
-                }
-                else
-                {
-                    OUT("    HAIRY WRAP");
-                    // Express the point
-                    // as the intersection of three (actually four) planes,
-                    // with normals:
-                    //     1, 0, 1
-                    //     0, 1, 1
-                    //    -1, 0, 1
-                    //     0,-1, 1
-                    // and choose 3 (actually 4) support points on each of the 3 (actually 4) planes.
-                    // Actually those aren't the normals unless x=y=0, but whatever.
-
-                    // let x0,x1 be the two solutions x to the equation:
-                    //       z-x = -.5*x^2
-                    //     .5*x^2 - x + z = 0
-                    //     x^2 - 2*x + 2*z = 0
-                    //     x^2 - 2*x + 1 = 1-2*z
-                    //     (x-1)^2 = 1-2*z
-                    //     x-1 = +-sqrt(1-2*z)
-                    //     x = 1 +- sqrt(1-2*z)
-                    double r = Math.sqrt(1-2*z);
-                    double x0 = 1 - r;
-                    double x1 = 1 + r;
-                    wrapVertAroundSphere(x+1+r, y, 0., scratch[0][0], null);
-                    wrapVertAroundSphere(x+1, y+r, 0., scratch[0][1], null);
-                    wrapVertAroundSphere(x+1-r, y, 0., scratch[0][2], null);
-
-                    wrapVertAroundSphere(x+r, y+1, 0., scratch[1][0], null);
-                    wrapVertAroundSphere(x, y+1+r, 0., scratch[1][1], null);
-                    wrapVertAroundSphere(x-r, y+1, 0., scratch[1][2], null);
-
-                    wrapVertAroundSphere(x-1+r, y, 0., scratch[2][0], null);
-                    wrapVertAroundSphere(x-1, y+r, 0., scratch[2][1], null);
-                    wrapVertAroundSphere(x-1-r, y, 0., scratch[2][2], null);
-
-                    wrapVertAroundSphere(x+r, y-1, 0., scratch[3][0], null);
-                    wrapVertAroundSphere(x, y-1+r, 0., scratch[3][1], null);
-                    wrapVertAroundSphere(x-r, y-1, 0., scratch[3][2], null);
-
-                    double normals[][] = scratch[4];
-                    double offsets[] = scratch[0][0];
-                    FORI (i, 4)
-                    {
-                        VecMath.vmv(3, scratch[i][1], scratch[i][1], scratch[i][0]);
-                        VecMath.vmv(3, scratch[i][2], scratch[i][2], scratch[i][0]);
-                        VecMath.vxv3(normals[i], scratch[i][1], scratch[i][2]);
-                        offsets[i] = VecMath.dot(3, normals[i], scratch[i][0]); // note, offsets[0] = scratch[0][0][0] gets set just as we don't need scratch[0][0] any more
-                    }
-                    // now we want the point whose dot product with normals[i] is offsets[i]
-                    // i.e. solve:
-                    //      normals[0]   x     offsets[0]
-                    //      normals[1] * y  =  offsets[1]
-                    //      normals[2]   z     offsets[2]
-                    VecMath.invmxv(result, normals, offsets);
-                    return;
-                }
-            }
-
-
-            // Apply a mobius transformation
-            // that wraps the xy plane
-            // around a sphere of radius 1
-            // centered at (0,0,-1).
-            // First (x,y,z) -> (x,y,-z)
-            // then (x,y,z) -> reciprocate w.r.t. sphere of radius 2
-            // centered at (0,0,-2).
-
-            z = -z;
-            double reciprocationRadius = 2*wrapSphereRadius;
-            z -= -reciprocationRadius;
-            double dist2 = SQR(x) + SQR(y) + SQR(z);
-            double multiplier = SQR(reciprocationRadius)/dist2;
-            x *= multiplier;
-            y *= multiplier;
-            z *= multiplier;
-
-            z += -reciprocationRadius; // make the sphere tangent to the origin
-
-            result[0] = x;
-            result[1] = y;
-            result[2] = z;
-        } // wrapVertAroundSphere
-
-        // input is actual, output is virtual
-        private void unwrapVertAroundSphere(double x, double y, double z, double result[], double scratch[][][])
-        {
-            double h = Math.sqrt(SQR(x) + SQR(y) + SQR(z + wrapSphereRadius))/wrapSphereRadius - 1.; // height above unit sphere
-            if (h != 0. && scratch != null) // in this case we can be in a recursive call in which h != 0 (due to roundoff error) so we must check for scratch!=null too.  it's unfortunate that sometimes we recurse unnecessarily even though z is logically zero.
-            {
-                // scale so sphere is unit, for now... will scale back when appropriate
-                x /= wrapSphereRadius;
-                y /= wrapSphereRadius;
-                z /= wrapSphereRadius;
-
-                z += 1.; // center the sphere
-                // 3 orthogonal planes method works even when slightly outside the sphere,
-                // as long as h < sqrt(3)-1 ... and cone method is not robust until
-                // well outside sphere...
-                // so we'll set the threshold at half that
-                //if (h > (Math.sqrt(3.)-1.)*.5)
-                if (h > .0001)
-                {
-                    OUT("    SIMPLE UNWRAP");
-                    // cone method.
-                    // what's the radius of the horizon circle?
-                    // (i.e. sine of angle at sphere center)
-                    //     s = sqrt(1 - 1/(1+h)^2)
-                    //       = sqrt(((1+h)^2-1)/(1+h)^2)
-                    //       = sqrt((1+h)^2-1)/(1+h)
-                    //       = sqrt(2*h+h^2)/(1+h)
-                    //       = sqrt(h*(2+h))/(1+h)
-                    double s = Math.sqrt(h*(2.+h)) / (1.+h);
-                    PRINT(s);
-                    PRINT(s*wrapSphereRadius);
-                    double c = 1./(1.+h);
-
-                    double basis[][] = scratch[3];
-                    basis[0][0] = x;
-                    basis[0][1] = y;
-                    basis[0][2] = z;
-                    VecMath.extendAndOrthogonalize(1, 3, basis, basis);
-                    PRINT(VecMath.norm(basis[0]));
-                    PRINT(VecMath.norm(basis[1]));
-                    PRINT(VecMath.norm(basis[2]));
-
-                    double threeSupportPoints[][] = scratch[0];
-                    VecMath.sxvpsxv(threeSupportPoints[0], c, basis[0], s, basis[1]);
-                    VecMath.sxvpsxv(threeSupportPoints[1], c, basis[0], s, basis[2]);
-                    VecMath.sxvpsxv(threeSupportPoints[2], c, basis[0],-s, basis[1]);
-                    PRINT(VecMath.norm(threeSupportPoints[0]));
-                    PRINT(VecMath.norm(threeSupportPoints[1]));
-                    PRINT(VecMath.norm(threeSupportPoints[2]));
-                    FORI (i, 3)
-                    {
-                        threeSupportPoints[i][2] -= 1.;
-                        VecMath.vxs(threeSupportPoints[i], threeSupportPoints[i], wrapSphereRadius);
-                    }
-                    PRINTVEC(threeSupportPoints[0]);
-                    PRINTVEC(threeSupportPoints[1]);
-                    PRINTVEC(threeSupportPoints[2]);
-                    PRINT(VecMath.dist(threeSupportPoints[0], threeSupportPoints[2])/2);
-                    FORI (i, 3)
-                        unwrapVertAroundSphere(threeSupportPoints[i][0],
-                                               threeSupportPoints[i][1],
-                                               threeSupportPoints[i][2],
-                                               threeSupportPoints[i], null);
-                    PRINTVEC(threeSupportPoints[0]);
-                    PRINTVEC(threeSupportPoints[1]);
-                    PRINTVEC(threeSupportPoints[2]);
-                    // All right, now we have 3 support points on the plane.
-                    // Their z coords should be zero (but might be slightly nonzero
-                    // due to roundoff error).
-                    // x,y will be their circumcenter in the plane...
-                    // SolveForDualPoint should give us that.
-                    SolveForDualPoint(threeSupportPoints[0][0], threeSupportPoints[0][1], threeSupportPoints[0][2],
-                                      threeSupportPoints[1][0], threeSupportPoints[1][1], threeSupportPoints[1][2],
-                                      threeSupportPoints[2][0], threeSupportPoints[2][1], threeSupportPoints[2][2],
-                                      result,
-                                      false); // wrapAroundSphereFlagValue
-                    PRINTVEC(result);
-                    double r2 = VecMath.distsqrd(2, result, threeSupportPoints[0]);
-                    // z coord will be the circumradius in the plane.
-                    result[2] = r2;
-                    PRINTVEC(result);
-
-                    return;
-                }
-                else
-                {
-                    OUT("    HAIRY UNWRAP");
-                    // 3 orthogonal planes method
-
-                    // for now...
-                    unwrapVertAroundSphere(x*wrapSphereRadius,
-                                           y*wrapSphereRadius,
-                                           (z-1.)*wrapSphereRadius,
-                                           result,
-                                           null);
-                    return;
-                }
-            }
-
-            double reciprocationRadius = 2*wrapSphereRadius;
-            z -= -reciprocationRadius; // sphere was tangent to origin, make other side tangent
-            double dist2 = SQR(x) + SQR(y) + SQR(z);
-            double multiplier = SQR(reciprocationRadius)/dist2;
-            x *= multiplier;
-            y *= multiplier;
-            z *= multiplier;
-            z += -reciprocationRadius;
-            z = -z;
-
-            result[0] = x;
-            result[1] = y;
-            result[2] = z;
-        } // unwrapVertAroundSphere
 
         public void changeMeshSymmetry(int oldRotationalSymmetry, boolean oldLeftRightSymmetry,
                                        int newRotationalSymmetry, boolean newLeftRightSymmetry)
@@ -7171,9 +6948,9 @@ public class ShephardsPlayApplet
                     // do regular square grid, verts of {4,4}
                     int nX = 9;
                     int nY = 9;
-                    //nX = nY = 25;
+                    nX = nY = 25;
                     //nX = nY = 5;
-                    nX = nY = 3;
+                    //nX = nY = 3;
                     double verts[][] = new double[nX*nY][3]; // zeros initially, heights stay zero
                     int iVert = 0;
                     FORI (iY, nY)
@@ -9472,7 +9249,7 @@ OFF
 
             public class Vertex
             {
-                public double x, y, h; // x, y, "height" above the paraboloid
+                public double x, y, h; // x, y, "height" above the paraboloid z = - (x^2+y^2)/2 (has curvature 1 at origin)
                 public double weight = 1.; // optional, if this is a computed dual vertex, this should be the original triangle area
                 public double momentAndArea[/*4*/] = null; // optional... similar to weight. x*A,y*A,h*A^2,A where A is twice tri area
                 public int arity = 0; // number of edges having this vertex as initial vertex
@@ -12412,17 +12189,18 @@ OFF
                 // which has radius wrapSphereRadius
                 // and is centered at (0,0,-wrapSphereRadius).
 
-                //double sphereCenterZ = -wrapSphereRadius; // origin at surface
-                double sphereCenterZ = 0.; // origin at center
 
                 // convert to actual (from somewhat nonsensical virtual, for wrapped case)
                 double z0 = h0 -= .5 * (SQR(x0) + SQR(y0));
                 double z1 = h1 -= .5 * (SQR(x1) + SQR(y1));
                 double z2 = h2 -= .5 * (SQR(x2) + SQR(y2));
 
-                z0 -= sphereCenterZ;
-                z1 -= sphereCenterZ;
-                z2 -= sphereCenterZ;
+                if (!centerSphere)
+                {
+                    z0 += wrapSphereRadius;
+                    z1 += wrapSphereRadius;
+                    z2 += wrapSphereRadius;
+                }
 
                 double e01[] = new double[] {x1-x0,y1-y0,z1-z0};
                 double e02[] = new double[] {x2-x0,y2-y0,z2-z0};
@@ -12436,7 +12214,10 @@ OFF
 
                 double reciprocationMultiplier = SQR(wrapSphereRadius)/offset;
                 VecMath.vxs(3, result, result, reciprocationMultiplier);
-                result[2] += sphereCenterZ;
+                if (!centerSphere)
+                {
+                    result[2] -= wrapSphereRadius;
+                }
 
                 // convert from actual to somewhat nonsensical virtual, for wrapped case
                 result[2] += .5 * (SQR(result[0])+SQR(result[1]));
