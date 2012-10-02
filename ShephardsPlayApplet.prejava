@@ -5,6 +5,7 @@ and produce the dual diagrams with heights.
 
 BUGS:
   Wrap-sphere related:
+    - curvature slider not really friendly
     - backface culling is flakey (or, need a coherent scheme, not keying on show-inside-out)
     - backface culling sometimes slightly wrong-- using wrong criterion?
     - doesn't interact correctly with undo/redo or save/restore
@@ -241,6 +242,71 @@ public class ShephardsPlayApplet
     //
         public ShephardsPlayApplet()
         {
+            final java.awt.Button clearButton = new java.awt.Button("Clear") {
+                public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+            {
+                addActionListener(new java.awt.event.ActionListener() {
+                    public void actionPerformed(java.awt.event.ActionEvent e)
+                    {
+                        // XXX dup code
+                        UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                        synchronized(showNet) // since another thread checks it once in a while
+                        {
+                            showNet.set(false); // so user won't get confused when clicking doesn't make verts appear
+                        }
+                        mesh = new Mesh();
+                        selectedTris = new int[][] {};
+                        selectedDualVertIndices = new int[] {};
+                        resetLocalToWorld();
+                        if (doContinuouslyDelaunayize.get()) delaunayize();
+                        dirtyDualMesh(); // before snapping after state, so theNet will be cleared XXX aren't there a zillion places we're neglecting to take this into account?
+
+                        UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                        undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                        theCanvas.repaint();
+                    }
+                });
+            }};
+            final java.awt.Button loadButton = new java.awt.Button("Load DUMP.off") {
+                public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+            {
+                addActionListener(new java.awt.event.ActionListener() {
+                    public void actionPerformed(java.awt.event.ActionEvent e)
+                    {
+                        UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+
+                        load("DUMP.off");
+
+                        UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                        undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                        theCanvas.repaint();
+                    }
+                });
+            }};
+            final java.awt.Button saveButton = new java.awt.Button("Save DUMP.off") {
+                public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+            {
+                addActionListener(new java.awt.event.ActionListener() {
+                    public void actionPerformed(java.awt.event.ActionEvent e)
+                    {
+                        save("DUMP.off");
+                    }
+                });
+            }};
+            final java.awt.Button saveDualButton = new java.awt.Button("Save DUALVERTS.txt") {
+                public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+            {
+                addActionListener(new java.awt.event.ActionListener() {
+                    public void actionPerformed(java.awt.event.ActionEvent e)
+                    {
+                        dualSave("DUALVERTS.txt");
+                    }
+                });
+            }};
+
+
             final java.awt.Button cannedThingButtons[] = {
                 new java.awt.Button("Hexes Spiral") {
                     public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
@@ -479,97 +545,37 @@ public class ShephardsPlayApplet
 
             setLayout(new ColLayout());
 
-            add(theCanvas = new TheCanvas() {
-                },
-                stretchxy
-            );
+            add(new Row() {{
+                add(new Col() {{
+                    add(new java.awt.Label(""), stretchxy);
+                    // right-justify clearButton-- is there an easier way?
+                    add(new Row() {{
+                        add(new java.awt.Label(""), stretchx);
+                        add(clearButton);
+                    }}, stretchx);
+                    add(loadButton, stretchx);
+                    add(saveButton, stretchx);
+                    add(saveDualButton, stretchx);
+                }}, stretchy);
+                add(theCanvas = new TheCanvas() {
+                    },
+                    stretchxy
+                );
+                add(new Col() {{
+                    add(new java.awt.Label(""), stretchxy);
+                    FORI (i, cannedThingButtons.length)
+                        add(cannedThingButtons[i], stretchx);
+                }}, stretchy);
+            }}, stretchxy);
 
             add(new Row() {{
-                add(new java.awt.Label("Curvature:"));
-                add(new TextFieldForFloat(wrapSphereCurvature));
-                add(new SliderForFloat(wrapSphereCurvature), stretchx);
+                add(new java.awt.Label("Radius:"));
+                add(new TextFieldForFloat(wrapSphereSymbolicRadius));
+                add(new SliderForFloat(wrapSphereSymbolicRadius), stretchx);
             }}, stretchx);
-            add(new Row() {{ // first row of buttons
-
-                add(new java.awt.Button("Clear") {
-                    public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                {
-                    addActionListener(new java.awt.event.ActionListener() {
-                        public void actionPerformed(java.awt.event.ActionEvent e)
-                        {
-                            // XXX dup code
-                            UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
-                            synchronized(showNet) // since another thread checks it once in a while
-                            {
-                                showNet.set(false); // so user won't get confused when clicking doesn't make verts appear
-                            }
-                            mesh = new Mesh();
-                            selectedTris = new int[][] {};
-                            selectedDualVertIndices = new int[] {};
-                            resetLocalToWorld();
-                            if (doContinuouslyDelaunayize.get()) delaunayize();
-                            dirtyDualMesh(); // before snapping after state, so theNet will be cleared XXX aren't there a zillion places we're neglecting to take this into account?
-
-                            UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
-                            undoTreeSquirrel.Do(new UndoItem(before, after));
-
-                            theCanvas.repaint();
-                        }
-                    });
-                }});
-
-                add(new java.awt.Label("    "), stretchx);
-
-                FORI (i, cannedThingButtons.length)
-                    add(cannedThingButtons[i]);
-
-            }}, stretchx); // first row of buttons
 
             add(new Row() {{ // second row: col, table, col
                 add(new Col() {{
-                    add(new Row() {{
-                        add(new java.awt.Button("Load DUMP.off") {
-                            public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                        {
-                            addActionListener(new java.awt.event.ActionListener() {
-                                public void actionPerformed(java.awt.event.ActionEvent e)
-                                {
-                                    UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
-
-                                    load("DUMP.off");
-
-                                    UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
-                                    undoTreeSquirrel.Do(new UndoItem(before, after));
-
-                                    theCanvas.repaint();
-                                }
-                            });
-                        }});
-
-                        add(new java.awt.Button("Save DUMP.off") {
-                            public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                        {
-                            addActionListener(new java.awt.event.ActionListener() {
-                                public void actionPerformed(java.awt.event.ActionEvent e)
-                                {
-                                    save("DUMP.off");
-                                }
-                            });
-                        }});
-
-                        add(new java.awt.Button("Save DUALVERTS.txt") {
-                            public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                        {
-                            addActionListener(new java.awt.event.ActionListener() {
-                                public void actionPerformed(java.awt.event.ActionEvent e)
-                                {
-                                    dualSave("DUALVERTS.txt");
-                                }
-                            });
-                        }});
-
-                        add(new java.awt.Label(""), stretchx);
-                    }}, stretchxy);
                     add(new Row() {{
                         add(new java.awt.Checkbox("Optimize", doOptimize.get()) {
                             public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
@@ -1405,11 +1411,24 @@ public class ShephardsPlayApplet
 
             //randomlyColorize(this);
 
+            wrapSphereSymbolicRadius.addListener(wrapSphereSymbolicRadiusListener = new Listenable.Listener() {
+                public void valueChanged()
+                {
+                    //System.out.println("in wrapSphereSymbolicRadius valueChanged");
+                    // the widgets control this, not wrapSphereCurvature directly
+                    double value = wrapSphereSymbolicRadius.get();
+                    if (value <= 1.)
+                        wrapSphereCurvature.set(1./value);
+                    else
+                        wrapSphereCurvature.set(2.-value);
+                    //System.out.println("out wrapSphereSymbolicRadius valueChanged");
+                }
+            });
             wrapSphereCurvature.addListener(wrapSphereCurvatureListener = new Listenable.Listener() {
                 double previousValue = wrapSphereCurvature.get();
                 public void valueChanged()
                 {
-                    //System.out.println("in wrapSphereCurvature valueChanged");
+                    //System.out.println("    in wrapSphereCurvature valueChanged");
                     double currentValue = wrapSphereCurvature.get();
                     if (wrapAroundSphereFlag.get())
                     {
@@ -1421,7 +1440,7 @@ public class ShephardsPlayApplet
                         }
                     }
                     previousValue = currentValue;
-                    //System.out.println("out wrapSphereCurvature valueChanged");
+                    //System.out.println("    out wrapSphereCurvature valueChanged");
                 }
             });
         } // ShephardsPlayApplet ctor
@@ -1922,9 +1941,10 @@ public class ShephardsPlayApplet
                 double py = vert.y;
                 double pz = vert.h; // not hActual, yet
 
-                px /= Math.sqrt(wrapSphereRadius);
-                py /= Math.sqrt(wrapSphereRadius);
-                pz /= wrapSphereRadius;
+                px /= wrapSphereRadius;
+                py /= wrapSphereRadius;
+                pz /= SQR(wrapSphereRadius);
+
                 pz -= .5 * (SQR(px) + SQR(py));
 
                 double denom = 1 - pz*.5;
@@ -1984,9 +2004,9 @@ public class ShephardsPlayApplet
                 double pz = sz/denom;
 
                 pz += .5 * (SQR(px) + SQR(py));
-                px *= Math.sqrt(wrapSphereRadius);
-                py *= Math.sqrt(wrapSphereRadius);
-                pz *= wrapSphereRadius;
+                px *= wrapSphereRadius;
+                py *= wrapSphereRadius;
+                pz *= SQR(wrapSphereRadius);
 
                 vert.x = px;
                 vert.y = py;
@@ -12917,6 +12937,7 @@ OFF
         private Listenable.Listener doContinuouslyDelaunayizeListener = null;
         private Listenable.Listener wrapAroundSphereFlagListener = null;
         private Listenable.Listener wrapSphereCurvatureListener = null;
+        private Listenable.Listener wrapSphereSymbolicRadiusListener = null;
         private Listenable.Listener doOptimizeListener = null;
         private Listenable.Listener optimizationTypeIndexListener = null;
         private Listenable.Listener showMagListener = null;
@@ -13017,6 +13038,7 @@ OFF
 
         private Listenable.Boolean wrapAroundSphereFlag = new Listenable.Boolean(false);
         private Listenable.Double wrapSphereCurvature = new Listenable.Double(.001,2., 1.);
+        private Listenable.Double wrapSphereSymbolicRadius = new Listenable.Double(.001,1.999, 1.);
 
         private boolean draggingRotation = false;
         private double localScaleZ;
