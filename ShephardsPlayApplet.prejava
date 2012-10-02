@@ -9,6 +9,7 @@ BUGS:
     - backface culling sometimes slightly wrong-- using wrong criterion?
     - doesn't interact correctly with undo/redo or save/restore
     - can't drag stuff or add new points yet
+    - I think facings are screwed or something
 
   Misc:
     - can't seem to get a cube by creating octa verts with show-inside-out--
@@ -257,6 +258,11 @@ public class ShephardsPlayApplet
                 stretchxy
             );
 
+            add(new Row() {{
+                add(new java.awt.Label("Curvature:"));
+                add(new TextFieldForFloat(wrapSphereCurvature));
+                add(new SliderForFloat(wrapSphereCurvature), stretchx);
+            }}, stretchx);
             add(new Row() {{ // first row of buttons
 
                 add(new java.awt.Button("Clear") {
@@ -669,11 +675,11 @@ public class ShephardsPlayApplet
                                             // XXX this isn't really the right place for the following; should do the following regardless of whether there's a checkbox for it
                                             if (wrapAroundSphereFlag.get())
                                             {
-                                                wrapAroundSphere(wrapSphereRadius);
+                                                wrapAroundSphere(wrapSphereCurvature.get());
                                             }
                                             else
                                             {
-                                                unwrapAroundSphere(wrapSphereRadius);
+                                                unwrapAroundSphere(wrapSphereCurvature.get());
                                             }
                                         }
                                     });
@@ -1399,6 +1405,26 @@ public class ShephardsPlayApplet
             }}, stretchx); // second row: col, table, col
 
             //randomlyColorize(this);
+
+            wrapSphereCurvature.addListener(wrapSphereCurvatureListener = new Listenable.Listener() {
+                double previousValue = wrapSphereCurvature.get();
+                public void valueChanged()
+                {
+                    System.out.println("in wrapSphereCurvature valueChanged");
+                    double currentValue = wrapSphereCurvature.get();
+                    if (wrapAroundSphereFlag.get())
+                    {
+                        if (currentValue != previousValue)
+                        {
+                            unwrapAroundSphere(previousValue);
+                            wrapAroundSphere(currentValue);
+                            theCanvas.repaint();
+                        }
+                    }
+                    previousValue = currentValue;
+                    System.out.println("out wrapSphereCurvature valueChanged");
+                }
+            });
         } // ShephardsPlayApplet ctor
 
         private static void help()
@@ -1810,7 +1836,7 @@ public class ShephardsPlayApplet
                 }
 
                 // dual directions are now totally messed up... fix them
-                fixDualDirections(mesh, dualMesh, wrapAroundSphereFlag.get());
+                fixDualDirections(mesh, dualMesh, wrapAroundSphereFlag.get(), wrapSphereCurvature.get());
             }
 
             UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
@@ -1879,13 +1905,13 @@ public class ShephardsPlayApplet
         } // frame
 
         static final boolean centerSphere = true;
-        //static final double wrapSphereRadius = 1.;
-        static final double wrapSphereRadius = .75;
 
         // wrap from parabola to sphere
-        private void wrapAroundSphere(double wrapSphereRadius)
+        private void wrapAroundSphere(double wrapSphereCurvature)
         {
             System.out.println("    in wrapAroundSphere");
+
+            double wrapSphereRadius = 1./wrapSphereCurvature;
 
             double vertCoords[] = new double[3];
             double scratch[][][] = new double[5][4][4];
@@ -1927,9 +1953,11 @@ public class ShephardsPlayApplet
             System.out.println("    out wrapAroundSphere");
         } // wrapAroundSphere
         // unwrap from sphere to parabola
-        private void unwrapAroundSphere(double wrapSphereRadius)
+        private void unwrapAroundSphere(double wrapSphereCurvature)
         {
             System.out.println("    in unwrapAroundSphere");
+
+            double wrapSphereRadius = 1./wrapSphereCurvature;
 
             double vertCoords[] = new double[3];
             double scratch[][][] = new double[5][4][4];
@@ -3686,7 +3714,8 @@ public class ShephardsPlayApplet
                         mesh = makeDualMesh(mesh,
                                             true, // includeNonArity3 (so we get full mesh)
                                             true, // includeInsideOut
-                                            wrapAroundSphereFlag.get());
+                                            wrapAroundSphereFlag.get(),
+                                            wrapSphereCurvature.get());
 
                         // this seems to make it a bit better, though I don't really understand.
                         if (heightsWereAllZero)
@@ -4624,8 +4653,8 @@ public class ShephardsPlayApplet
                 int dualVertFacings[] = new int[nDualVerts+1];
                 double eyeInLocalSpace[] = VecMath.mxv(getRotMat(), eye); // multiply on wrong side, i.e. apply transpose i.e. inverse
                 eyeInLocalSpace[2] /= MAX(localScaleZ, 1e-6);
-                getFacings(eyeInLocalSpace, mesh, dualMesh, faceFacings, edgeFacings, vertFacings, wrapAroundSphereFlag.get());
-                getFacings(eyeInLocalSpace, dualMesh, mesh, dualFaceFacings, dualEdgeFacings, dualVertFacings, wrapAroundSphereFlag.get());
+                getFacings(eyeInLocalSpace, mesh, dualMesh, faceFacings, edgeFacings, vertFacings, wrapAroundSphereFlag.get(), wrapSphereCurvature.get());
+                getFacings(eyeInLocalSpace, dualMesh, mesh, dualFaceFacings, dualEdgeFacings, dualVertFacings, wrapAroundSphereFlag.get(), wrapSphereCurvature.get());
                 //PRINTARRAY(faceFacings);
                 //PRINTARRAY(dualFaceFacings);
 
@@ -6194,7 +6223,8 @@ public class ShephardsPlayApplet
                                            int faceFacings[],
                                            int edgeFacings[],
                                            int vertFacings[],
-                                           boolean wrapAroundSphereFlagValue)
+                                           boolean wrapAroundSphereFlagValue,
+                                           double wrapSphereCurvatureValue)
             {
                 VecMath.fillvec(faceFacings, FACING_UNKNOWN);
                 VecMath.fillvec(edgeFacings, FACING_UNKNOWN);
@@ -6597,7 +6627,8 @@ public class ShephardsPlayApplet
                                                   v1[0],v1[1],v1[2],
                                                   v2[0],v2[1],v2[2],
                                                   sampleResultVerts[iSample],
-                                                  false); // wrapAroundSphereFlag
+                                                  false, // wrapAroundSphereFlag
+                                                  0.); // wrapSphereCurvature
                             }
                             double toDesired[] = VecMath.vmv(2, desiredDualVerts[iDualVert], sampleResultVerts[0]);
                             double toSample1[] = VecMath.vmv(2, sampleResultVerts[1], sampleResultVerts[0]);
@@ -6610,7 +6641,8 @@ public class ShephardsPlayApplet
                                               v1[0],v1[1],v1[2],
                                               v2[0],v2[1],v2[2],
                                               finalResultVert,
-                                              false); // wrapAroundSphereFlag
+                                              false, // wrapAroundSphereFlag
+                                              0.); // wrapSphereCurvature
                             //PRINTVEC(desiredDualVerts[iDualVert]);
                             //PRINTVEC(finalResultVert);
                             assert(Math.abs(desiredDualVerts[iDualVert][1]-finalResultVert[1]) <= 1e-6);
@@ -6630,7 +6662,8 @@ public class ShephardsPlayApplet
                                                   v1[0],v1[1],v1[2],
                                                   v2[0],v2[1],v2[2],
                                                   sampleResultVerts[iSample],
-                                                  false); // wrapAroundSphereFlag
+                                                  false, // wrapAroundSphereFlag
+                                                  0.); // wrapSphereCurvature
                             }
                             double toDesired[] = VecMath.vmv(2, desiredDualVerts[iDualVert], sampleResultVerts[0]);
                             double toSample1[] = VecMath.vmv(2, sampleResultVerts[1], sampleResultVerts[0]);
@@ -6643,7 +6676,8 @@ public class ShephardsPlayApplet
                                               v1[0],v1[1],v1[2],
                                               v2[0],v2[1],v2[2],
                                               finalResultVert,
-                                              false); // wrapAroundSphereFlag
+                                              false, // wrapAroundSphereFlag
+                                              0.); // wrapSphereCurvature
                             PRINTVEC(desiredDualVerts[iDualVert]);
                             PRINTVEC(finalResultVert);
                             //assert(VecMath.dist(desiredDualVerts[iDualVert], finalResultVert) <= 1e-6);
@@ -6836,7 +6870,8 @@ public class ShephardsPlayApplet
                                               v1[0],v1[1],v1[2],
                                               v2[0],v2[1],v2[2],
                                               sampleResultVerts[iSample],
-                                              false); // wrapAroundSphereFlag
+                                              false, // wrapAroundSphereFlag
+                                              0.); // wrapSphereCurvature
                         }
                         double toDesired[] = VecMath.vmv(2, desiredDualVerts[iDualVert], sampleResultVerts[0]);
                         double toSample1[] = VecMath.vmv(2, sampleResultVerts[1], sampleResultVerts[0]);
@@ -6849,7 +6884,8 @@ public class ShephardsPlayApplet
                                           v1[0],v1[1],v1[2],
                                           v2[0],v2[1],v2[2],
                                           finalResultVert,
-                                          false); // wrapAroundSphereFlag
+                                          false, // wrapAroundSphereFlag
+                                          0.); // wrapSphereCurvature
                         //PRINTVEC(desiredDualVerts[iDualVert]);
                         //PRINTVEC(finalResultVert);
                         assert(Math.abs(desiredDualVerts[iDualVert][1]-finalResultVert[1]) <= 1e-6);
@@ -6869,7 +6905,8 @@ public class ShephardsPlayApplet
                                               v1[0],v1[1],v1[2],
                                               v2[0],v2[1],v2[2],
                                               sampleResultVerts[iSample],
-                                              false);
+                                              false,
+                                              0.);
                         }
                         double toDesired[] = VecMath.vmv(2, desiredDualVerts[iDualVert], sampleResultVerts[0]);
                         double toSample1[] = VecMath.vmv(2, sampleResultVerts[1], sampleResultVerts[0]);
@@ -6882,7 +6919,8 @@ public class ShephardsPlayApplet
                                           v1[0],v1[1],v1[2],
                                           v2[0],v2[1],v2[2],
                                           finalResultVert,
-                                          false);
+                                          false,
+                                          0.);
                         PRINTVEC(desiredDualVerts[iDualVert]);
                         PRINTVEC(finalResultVert);
                         //assert(VecMath.dist(desiredDualVerts[iDualVert], finalResultVert) <= 1e-6);
@@ -7277,7 +7315,8 @@ OFF
                     nPasses,
                     maxCallsPerPass,
                     initialDelta,
-                    false); // wrapAroundSphereFlagValue
+                    false, // wrapAroundSphereFlagValue
+                    0.); // wrapSphereCurvature
                 double optimizationPathVerts[][][] = (double[][][])optimizationPathVertsAndGoodnesses[0];
                 double optimizationPathGoodnesses[] = (double[])optimizationPathVertsAndGoodnesses[1];
                                                                         
@@ -7663,7 +7702,8 @@ OFF
                 private static void vertsToDualMomentsAndAreas(double primalCoords[/*nVerts*/][/*3*/],
                                                                int tris[/*nDualVerts*/][/*3*/],
                                                                double dualMomentsAndAreas[/*nDualVerts*/][/*3*/],
-                                                               boolean wrapAroundSphereFlagValue)
+                                                               boolean wrapAroundSphereFlagValue,
+                                                               double wrapSphereCurvatureValue)
                 {
                     FORI (iDualVert, dualMomentsAndAreas.length)
                     {
@@ -7675,7 +7715,8 @@ OFF
                                                   B[0],B[1],B[2],
                                                   C[0],C[1],C[2],
                                                   dualMomentsAndAreas[iDualVert],
-                                                  wrapAroundSphereFlagValue);
+                                                  wrapAroundSphereFlagValue,
+                                                  wrapSphereCurvatureValue);
                     }
                 }
 
@@ -7822,7 +7863,8 @@ OFF
                     final int nPasses,
                     final int maxCallsPerPass,
                     final double initialDelta,
-                    final boolean wrapAroundSphereFlagValue)
+                    final boolean wrapAroundSphereFlagValue,
+                    final double wrapSphereCurvatureValue)
                 {
                     assert(fromsAndTosTris.length        == toLeftOfEdgeEndIndices.length);
                     assert(mustBeFarthestExit.length == toLeftOfEdgeEndIndices.length);
@@ -7830,7 +7872,8 @@ OFF
                     final Mesh dual = makeDualMesh(primal,
                                                    false, // includeNonArity3
                                                    false, // includeInsideOut
-                                                   wrapAroundSphereFlagValue);
+                                                   wrapAroundSphereFlagValue,
+                                                   wrapSphereCurvatureValue);
                     final int nVerts = primal.verts.size();
                     final int nDualVerts = dual.verts.size();
                     final int nEdges = primal.edges.size();
@@ -7898,7 +7941,7 @@ OFF
                     final double scratchDualVerts[][] = new double[nDualVerts][2]; // x,y
 
                     getMeshVertCoords(primal, scratchVerts);
-                    vertsToDualMomentsAndAreas(scratchVerts, tris, scratchDualMomentsAndAreas, wrapAroundSphereFlagValue);
+                    vertsToDualMomentsAndAreas(scratchVerts, tris, scratchDualMomentsAndAreas, wrapAroundSphereFlagValue, wrapSphereCurvatureValue);
 
 
                     double initialGuessParams[] = vertsToParams(scratchVerts);
@@ -7928,7 +7971,7 @@ OFF
                             System.out.println("    in apply()");
                             System.out.println("        iPass="+iPassFinal[0]+"/"+nPasses);
                             paramsToVerts(primal, params, scratchVerts);
-                            vertsToDualMomentsAndAreas(scratchVerts, tris, scratchDualMomentsAndAreas, wrapAroundSphereFlagValue);
+                            vertsToDualMomentsAndAreas(scratchVerts, tris, scratchDualMomentsAndAreas, wrapAroundSphereFlagValue, wrapSphereCurvatureValue);
                             momentsAndAreasToCoords(scratchDualMomentsAndAreas, scratchDualVerts);
 
 
@@ -8391,7 +8434,8 @@ OFF
                                           x1,y1,h1,
                                           x2,y2,h2,
                                           leftDualVerts[iDualVert],
-                                          false); // wrapAroundSphereFlag
+                                          false, // wrapAroundSphereFlag
+                                          0.); // wrapSphereCurvature
                     }
                     return leftDualVerts;
                 } // vertsToDualVertsInNetless8
@@ -8909,7 +8953,8 @@ OFF
                                       v1.x, v1.y, v1.h,
                                       v2.x, v2.y, v2.h,
                                       triCenter,
-                                      false); // wrapAroundSphereFlag
+                                      false, // wrapAroundSphereFlag
+                                      0.); // wrapSphereCurvature
                     return .5*twiceTriArea;
                 } // getTriCenterAndArea
 
@@ -10135,7 +10180,8 @@ OFF
                                               v1.x,v1.y,h1,
                                               v2.x,v2.y,h2,
                                               sampleResultVerts[iSample][iDualVert], // dimension 2-- last coord is simply ignored
-                                              false); // wrapAroundSphereFlag
+                                              false, // wrapAroundSphereFlagValue
+                                              0.); // wrapCurvatureValue
                         }
                     }
                     //PRINTMAT(sampleHeights);
@@ -10524,7 +10570,8 @@ OFF
                                               v1.x,v1.y,h1,
                                               v2.x,v2.y,h2,
                                               scratchDualVert,
-                                              false); // wrapAroundSphereFlag
+                                              false, // wrapAroundSphereFlag
+                                              0.); // wrapSphereCurvature
                             VecMath.vpv(2, avgDual, avgDual, scratchDualVert); // only 2 of 3
                         }
                         VecMath.vxs(avgDual, avgDual, 1./nDualVerts);
@@ -10840,7 +10887,8 @@ OFF
         public static Mesh makeDualMesh(Mesh primal,
                                         boolean includeNonArity3,
                                         boolean includeInsideOut,
-                                        boolean wrapAroundSphereFlagValue)
+                                        boolean wrapAroundSphereFlagValue,
+                                        double wrapSphereCurvatureValue)
         {
             System.out.println("    in makeDualMesh(wrapAroundSphereFlagValue="+wrapAroundSphereFlagValue+")");
             Mesh dual = new Mesh();
@@ -10918,7 +10966,8 @@ OFF
                                               v1.x, v1.y, v1.h,
                                               v2.x, v2.y, v2.h,
                                               triMomentAndArea,
-                                              wrapAroundSphereFlagValue);
+                                              wrapAroundSphereFlagValue,
+                                              wrapSphereCurvatureValue);
                     accumulateMomentAndArea(totalMomentAndArea, triMomentAndArea);
 
                     dualVertArity++;
@@ -10948,7 +10997,7 @@ OFF
                         coords[i][2] = v.h - .5 * (SQR(v.x)+SQR(v.y));
                         primalEdge = primalEdge.next();
                     }
-                    SolveForDualPointActual(coords, totalCenter, wrapAroundSphereFlagValue);
+                    SolveForDualPointActual(coords, totalCenter, wrapAroundSphereFlagValue, wrapSphereCurvatureValue);
                     totalCenter[2] += .5 * (SQR(totalCenter[0]) + SQR(totalCenter[1]));
                 }
 
@@ -11004,14 +11053,14 @@ OFF
             //
             // Give each dual edge a direction.
             //
-            fixDualDirections(primal, dual, wrapAroundSphereFlagValue);
+            fixDualDirections(primal, dual, wrapAroundSphereFlagValue, wrapSphereCurvatureValue);
             System.out.println("    out makeDualMesh(wrapAroundSphereFlagValue="+wrapAroundSphereFlagValue+")");
             return dual;
         } // makeDualMesh()
 
         // called at end of makeDualMesh,
         // and also after rescaling or tweaking
-        public static void fixDualDirections(Mesh primal, Mesh dual, boolean wrapAroundSphereFlagValue)
+        public static void fixDualDirections(Mesh primal, Mesh dual, boolean wrapAroundSphereFlagValue, double wrapSphereCurvatureValue)
         {
             int nEdges = dual.edges.size();
             FORI (iEdge, nEdges)
@@ -12112,7 +12161,8 @@ OFF
                                               double x1, double y1, double h1,
                                               double x2, double y2, double h2,
                                               double result[],
-                                              boolean wrapAroundSphereFlagValue)
+                                              boolean wrapAroundSphereFlagValue,
+                                              double wrapSphereCurvatureValue)
         {
             double M[][] = {
                 {x0,y0,1},
@@ -12135,14 +12185,16 @@ OFF
                                               double x1, double y1, double h1,
                                               double x2, double y2, double h2,
                                               double result[],
-                                              boolean wrapAroundSphereFlagValue)
+                                              boolean wrapAroundSphereFlagValue,
+                                              double wrapSphereCurvatureValue)
         {
             // paraboloid
             SolveForDualPointActual(x0, y0, h0 - .5 * (SQR(x0) + SQR(y0)),
                                     x1, y1, h1 - .5 * (SQR(x1) + SQR(y1)),
                                     x2, y2, h2 - .5 * (SQR(x2) + SQR(y2)),
                                     result,
-                                    wrapAroundSphereFlagValue);
+                                    wrapAroundSphereFlagValue,
+                                    wrapSphereCurvatureValue);
             if (result.length == 3 && !wrapAroundSphereFlagValue)
             {
                 result[2] += .5 * (SQR(result[0]) + SQR(result[1]));
@@ -12155,7 +12207,8 @@ OFF
                                               x1,y1,h1,
                                               x2,y2,h2,
                                               dualMomentAndArea,
-                                              wrapAroundSphereFlagValue);
+                                              wrapAroundSphereFlagValue,
+                                              wrapSphereCurvatureValue);
                     double A = dualMomentAndArea[3];
                     PRINT(A);
                     double shouldBeResult[] = {
@@ -12181,15 +12234,18 @@ OFF
                                                       double x2, double y2, double h2,
                                                       double result[], // x*A, y*A, A, or
                                                                        // x*A, y*A, h*A^2, A
-                                                      boolean wrapAroundSphereFlagValue)
+                                                      boolean wrapAroundSphereFlagValue,
+                                                      double wrapSphereCurvatureValue)
         {
             if (wrapAroundSphereFlagValue)
             {
                 // XXX TODO: definitely not robust at this point! need to cancel the divide-by-A with the multiply-by-A
-                //System.out.println("            in SolveForDualMomentAndArea(wrap=true)");
+                //System.out.println("            in SolveForDualMomentAndArea(wrap=true, curvature="+wrapSphereCurvatureValue+")");
                 // reciprocate with respect to the wrap sphere,
                 // which has radius wrapSphereRadius
                 // and is centered at (0,0,-wrapSphereRadius).
+
+                double wrapSphereRadius = 1./wrapSphereCurvatureValue;
 
 
                 // convert to actual (from somewhat nonsensical virtual, for wrapped case)
@@ -12206,6 +12262,7 @@ OFF
 
                 double e01[] = new double[] {x1-x0,y1-y0,z1-z0};
                 double e02[] = new double[] {x2-x0,y2-y0,z2-z0};
+
                 VecMath.vxv3(result, e01, e02);
                 // result is now the normal, some length
                 //double A = VecMath.norm(3, result); // XXX TODO: doesn't exist in VecMath yet
@@ -12297,7 +12354,8 @@ OFF
         // which will be what we want in the case the input is coplanar
         private static void SolveForDualPointActual(double coords[][/*3*/],
                                                     double result[],
-                                                    boolean wrapAroundSphereFlagValue)
+                                                    boolean wrapAroundSphereFlagValue,
+                                                    double wrapSphereCurvatureValue)
         {
             double M[][] = new double[coords.length][3];
             double b[] = new double[coords.length];
@@ -12827,7 +12885,8 @@ OFF
                 _dualMesh = makeDualMesh(mesh,
                                          false,  // includeNonArity3
                                          doShowInsideOutDualVerts, // includeInsideOut
-                                         wrapAroundSphereFlag.get());
+                                         wrapAroundSphereFlag.get(),
+                                         wrapSphereCurvature.get());
                 _meshOfDualMesh = mesh;
                 theNet = null;
             }
@@ -12851,6 +12910,7 @@ OFF
         // XXX is there an easier way to associate that stuff with a certain object? maybe be able to just pass this object to addListener, and make it automatically remove the listener when I go away?
         private Listenable.Listener doContinuouslyDelaunayizeListener = null;
         private Listenable.Listener wrapAroundSphereFlagListener = null;
+        private Listenable.Listener wrapSphereCurvatureListener = null;
         private Listenable.Listener doOptimizeListener = null;
         private Listenable.Listener optimizationTypeIndexListener = null;
         private Listenable.Listener showMagListener = null;
@@ -12950,6 +13010,7 @@ OFF
         private int rotationalSymmetry = 1;
 
         private Listenable.Boolean wrapAroundSphereFlag = new Listenable.Boolean(false);
+        private Listenable.Double wrapSphereCurvature = new Listenable.Double(0.,2., 1.);
 
         private boolean draggingRotation = false;
         private double localScaleZ;
@@ -13066,6 +13127,147 @@ OFF
         private boolean button3IsDown = false;
         private boolean controlIsDown = false;
         private UndoItem.State stateWhenPressed = null;
+
+
+
+
+    // Stolen from MC4DControlPanel.java
+    public static class TextFieldForFloat extends java.awt.TextField
+    {
+        private Listenable.Listener listener; // need to keep a strong ref to it for as long as I'm alive
+
+        private void updateText(Listenable.Number f)
+        {
+            if (f instanceof Listenable.Float)
+                setText(""+((Listenable.Float)f).get());
+            else
+                setText(""+(float)((Listenable.Double)f).get()); // XXX ARGH! we lose precision with this (float) cast, but if we don't do it, we can get, for example, 37.092999999999996 which looks lame.  should figure out another way to prevent that.
+        }
+
+        public TextFieldForFloat(final Listenable.Number f)
+        {
+            super("99.99"); // give it enough space for 99.999 (on my computer, always seems to give an extra space, which we don't need)
+            updateText(f);
+            f.addListener(listener = new Listenable.Listener() {
+                public void valueChanged()
+                {
+                    updateText(f);
+                }
+            });
+            addActionListener(new java.awt.event.ActionListener() {
+                public void actionPerformed(java.awt.event.ActionEvent e)
+                {
+                    try
+                    {
+                        f.setDouble(Double.valueOf(getText()).doubleValue());
+                    }
+                    catch (java.lang.NumberFormatException nfe)
+                    {
+                        // maybe should print an error message or something
+                        updateText(f);
+                    }
+                }
+            });
+        }
+        public java.awt.Dimension getPreferredSize()
+        {
+            // default seems taller than necessary
+            // on my computer... and in recent VMs it's even worse
+            // (changed from 29 to 31).
+            // Fudge it a bit...
+            // XXX not sure this will look good on all systems... if it doesn't, we can just remove it
+            // XXX hmm, actually makes things mess up when growing and shrinking, that's weird
+            java.awt.Dimension preferredSize = super.getPreferredSize();
+            //System.out.println("textfield.super.preferredSize() = "+preferredSize);
+            if (true)
+                preferredSize.height -= 2;
+            return preferredSize;
+        }
+        // weird, the following is called during horizontal shrinking
+        // but not during horizontal expanding... if we don't do this too
+        // then it looks wrong when shrinking.  what a hack...
+        public java.awt.Dimension getMinimumSize()
+        {
+            java.awt.Dimension minimumSize = super.getMinimumSize();
+            //System.out.println("textfield.super.minimumSize() = "+minimumSize);
+            if (true)
+                minimumSize.height -= 2;
+            return minimumSize;
+        }
+    } // TextFieldForFloat
+
+    // Stolen from MC4DControlPanel.java
+    public static class SliderForFloat extends java.awt.Scrollbar
+    {
+        private Listenable.Listener listener; // need to keep a strong ref to it for as long as I'm alive
+
+        private void updateThumb(Listenable.Number f)
+        {
+            double value = f.getDouble();
+            double defaultValue = f.defaultDouble();
+            double frac = (value-f.minDouble())/(f.maxDouble()-f.minDouble());
+            setValue((int)(getMinimum() + ((getMaximum()-getVisibleAmount())-getMinimum())*frac));
+        }
+
+        public SliderForFloat(final Listenable.Number f)
+        {
+            super(java.awt.Scrollbar.HORIZONTAL);
+
+            // 3 significant digits seems reasonable...
+            int min = (int)Math.round(f.minDouble()*1000);
+            int max = (int)Math.round(f.maxDouble()*1000);
+            int vis = (int)Math.round(.1*(max-min));
+            setValues(0,   // value (we'll set it right later)
+                      vis,
+                      min,
+                      max+vis);
+            setUnitIncrement(1);   // .001 units
+            setBlockIncrement(10); // .01 units
+
+            f.addListener(listener = new Listenable.Listener() {
+                public void valueChanged()
+                {
+                    updateThumb(f);
+                }
+            });
+            addAdjustmentListener(new java.awt.event.AdjustmentListener() {
+                public void adjustmentValueChanged(java.awt.event.AdjustmentEvent e)
+                {
+                    if (false)
+                    {
+                        System.out.println("==================");
+                        System.out.println("    min = "+getMinimum());
+                        System.out.println("    max = "+getMaximum());
+                        System.out.println("    visible = "+getVisibleAmount());
+                        System.out.println("    max-vis-min = "+(getMaximum()-getVisibleAmount()-getMinimum()));
+                        System.out.println("    e.getValue() = "+e.getValue());
+                        System.out.println("    getValue() = "+getValue());
+                        System.out.println("    getUnitIncrement() = "+getUnitIncrement());
+                        System.out.println("    getBlockIncrement() = "+getBlockIncrement());
+                        System.out.println("    getSize() = "+getSize());
+                        System.out.println("    getPreferredSize() = "+getPreferredSize());
+                    }
+                    // Doing the following in double precision makes a difference;
+                    // if we do it in float, we get ugly values in the textfield
+                    double frac = (double)(e.getValue()-getMinimum())
+                                / (double)((getMaximum()-getVisibleAmount())-getMinimum());
+                    f.setDouble(f.minDouble() + frac*(f.maxDouble()-f.minDouble()));
+                    // will trigger valueChanged()
+                    // which will call updateThumb()
+                }
+            });
+            updateThumb(f);
+        }
+        public java.awt.Dimension getPreferredSize()
+        {
+            // default seems to be 50x18 on my computer...
+            // give it more horizontal space than that
+            java.awt.Dimension preferredSize = super.getPreferredSize();
+            //System.out.println("scrollbar.super.preferredSize() = "+preferredSize);
+            preferredSize.width = 200;
+            return preferredSize;
+        }
+    } // SliderForFloat
 
 
     //
