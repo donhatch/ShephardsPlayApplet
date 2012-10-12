@@ -243,6 +243,11 @@ public class ShephardsPlayApplet
     //
         public ShephardsPlayApplet()
         {
+            // used as "fill" argument to add()
+            final java.awt.GridBagConstraints stretchx = new java.awt.GridBagConstraints(){{fill=HORIZONTAL;weightx=1.;}};
+            final java.awt.GridBagConstraints stretchy = new java.awt.GridBagConstraints(){{fill=VERTICAL;weighty=1.;}};
+            final java.awt.GridBagConstraints stretchxy = new java.awt.GridBagConstraints(){{fill=BOTH;weightx=weighty=1.;}};
+
             final java.awt.Button clearButton = new java.awt.Button("Clear") {
                 public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
             {
@@ -308,7 +313,7 @@ public class ShephardsPlayApplet
             }};
 
 
-            final java.awt.Button cannedThingButtons[] = {
+            final java.awt.Component cannedThingButtons[] = {
                 new java.awt.Button("Hexes Spiral") {
                     public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
                 {
@@ -530,6 +535,49 @@ public class ShephardsPlayApplet
                         }
                     });
                 }},
+                new Row() {{
+                    add(new java.awt.Button("Grid") {
+                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                    {
+                        addActionListener(new java.awt.event.ActionListener() {
+                            public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+
+                                // XXX TODO: should not require Enter in the textfield, since hitting Grid is intentional.  in fact, hitting Enter could make the grid
+                                doUniformGridThing(gridN.get());
+
+                                if (doContinuouslyDelaunayize.get()) delaunayize();
+                                UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                theCanvas.repaint();
+                            }
+                        });
+                    }}, stretchx);
+                    add(new TextFieldForFloat(gridN));
+                }},
+                new Row() {{
+                    add(new java.awt.Button("Blue Noise") {
+                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                    {
+                        addActionListener(new java.awt.event.ActionListener() {
+                            public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+
+                                doBlueNoiseThing(blueNoiseN.get());
+
+                                if (doContinuouslyDelaunayize.get()) delaunayize();
+                                UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                theCanvas.repaint();
+                            }
+                        });
+                    }}, stretchx);
+                    add(new TextFieldForFloat(blueNoiseN));
+                }},
             };
 
             final java.awt.Component theLabel = new java.awt.Label("Wrap radius:") {{setEnabled(false);}};
@@ -544,10 +592,6 @@ public class ShephardsPlayApplet
             asciiToColor['B'] = new java.awt.Color(64,64,255); // slightly light blue
             asciiToColor['b'] = new java.awt.Color(224,224,255); // very light blue
 
-            // used as "fill" argument to add()
-            final java.awt.GridBagConstraints stretchx = new java.awt.GridBagConstraints(){{fill=HORIZONTAL;weightx=1.;}};
-            final java.awt.GridBagConstraints stretchy = new java.awt.GridBagConstraints(){{fill=VERTICAL;weighty=1.;}};
-            final java.awt.GridBagConstraints stretchxy = new java.awt.GridBagConstraints(){{fill=BOTH;weightx=weighty=1.;}};
 
             setLayout(new ColLayout());
 
@@ -2010,7 +2054,7 @@ public class ShephardsPlayApplet
             //doCannedThingFarthestLagoonExitKiller();
             doCannedThingFarthestLagoonExitKillerAltB();
             //doCannedThingFarthestLagoonExitKillerOptimized();
-            //doBlueNoiseThing();
+            //doBlueNoiseThing(blueNoiseN.get());
             load("DUMP.off");
 
             if (eventVerbose >= 1) System.out.println("out init");
@@ -3803,7 +3847,7 @@ public class ShephardsPlayApplet
                     {
                         UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
 
-                        doBlueNoiseThing();
+                        doBlueNoiseThing(blueNoiseN.get());
 
                         if (doContinuouslyDelaunayize.get()) delaunayize();
                         UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
@@ -3815,7 +3859,7 @@ public class ShephardsPlayApplet
                     {
                         UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
 
-                        doUniformGridThing();
+                        doUniformGridThing(gridN.get());
 
                         if (doContinuouslyDelaunayize.get()) delaunayize();
                         UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
@@ -6314,8 +6358,8 @@ public class ShephardsPlayApplet
                 int hull[/*nFacets*/][/*d=3*/] = hullStuff[0];
                 long t1millis = System.currentTimeMillis();
                 double calcSeconds = (t1millis-t0millis)*1e-3;
-                boolean doCheckFlag = false; // hard coded
-                if (doCheckFlag)
+                boolean sanityCheckFlag = false; // hard coded
+                if (sanityCheckFlag)
                 {
                     System.out.print("    convex hull calc+check took "+calcSeconds+" + ");
                     System.out.flush();
@@ -6856,15 +6900,19 @@ public class ShephardsPlayApplet
                 }
             } // doCannedThingAlgorithm5Killer
 
-            private void doBlueNoiseThing()
+            private void doBlueNoiseThing(int n)
             {
                 double stubbornness = 100;
                 //double overlappingDiskRadiusX = .02;
                 //double overlappingDiskRadiusY = .02;
-                double overlappingDiskRadiusX = .05;
-                double overlappingDiskRadiusY = .05;
+                //double overlappingDiskRadiusX = .05;
+                //double overlappingDiskRadiusY = .05;
                 //double overlappingDiskRadiusX = .2;
                 //double overlappingDiskRadiusY = .2;
+                // heuristic to get same number of points as nxn square grid
+                double magic = 1.6165;
+                double overlappingDiskRadiusX = magic/n;
+                double overlappingDiskRadiusY = magic/n;
                 double verts[][] = generateBlueNoiseOnUnitSquare(stubbornness,
                                                                  overlappingDiskRadiusX,
                                                                  overlappingDiskRadiusY);
@@ -6874,13 +6922,16 @@ public class ShephardsPlayApplet
                 mesh = new Mesh(verts, new int[][]{});
             } // doBlueNoiseThing
 
-            private void doUniformGridThing()
+            private void doUniformGridThing(int nX)
             {
-                if (rotationalSymmetry % 3 == 0)
+                if (nX <= 0)
+                    mesh = new Mesh(new double[0][3], new int[][]{});
+                else if (nX == 1)
+                    mesh = new Mesh(new double[][] {{0.,0.,0.}}, new int[][]{});
+                else if (rotationalSymmetry % 3 == 0)
                 {
                     // do regular tri grid, verts of {3,6}
                     double r = 1.;
-                    int nX = 5; // how many verts along one side of hexagonal grid
                     int nRots = 6;
                     int nVerts = nX*(nX-1)/2 * nRots + 1;
                     double verts[][] = new double[nVerts][3]; // zeros initially, heights stay zero
@@ -6907,11 +6958,7 @@ public class ShephardsPlayApplet
                 else
                 {
                     // do regular square grid, verts of {4,4}
-                    int nX = 9;
-                    int nY = 9;
-                    nX = nY = 25;
-                    //nX = nY = 5;
-                    //nX = nY = 3;
+                    int nY = nX;
                     double verts[][] = new double[nX*nY][3]; // zeros initially, heights stay zero
                     int iVert = 0;
                     FORI (iY, nY)
@@ -12935,6 +12982,8 @@ OFF
         private Listenable.Boolean wrapAroundSphereFlag = new Listenable.Boolean(false);
         private Listenable.Double wrapSphereCurvature = new Listenable.Double(.001,2., 1.);
         private Listenable.Double wrapSphereSymbolicRadius = new Listenable.Double(.001,1.999, 1.);
+        private Listenable.Int gridN = new Listenable.Int(0,1000,25);
+        private Listenable.Int blueNoiseN = new Listenable.Int(0,1000,25);
 
         private boolean draggingRotation = false;
         private double localScaleZ;
@@ -13062,7 +13111,9 @@ OFF
 
         private void updateText(Listenable.Number f)
         {
-            if (f instanceof Listenable.Float)
+            if (f instanceof Listenable.Int)
+                setText(""+((Listenable.Int)f).get());
+            else if (f instanceof Listenable.Float)
                 setText(""+((Listenable.Float)f).get());
             else
                 setText(""+(float)((Listenable.Double)f).get()); // XXX ARGH! we lose precision with this (float) cast, but if we don't do it, we can get, for example, 37.092999999999996 which looks lame.  should figure out another way to prevent that.
@@ -13070,7 +13121,8 @@ OFF
 
         public TextFieldForFloat(final Listenable.Number f)
         {
-            super("99.99"); // give it enough space for 99.999 (on my computer, always seems to give an extra space, which we don't need)
+            super(f instanceof Listenable.Int ? ""+((Listenable.Int)f).max() // XXX not quite right, min may be longer string than max
+                   : "99.99"); // give it enough space for 99.999 (on my computer, always seems to give an extra space, which we don't need)
             updateText(f);
             f.addListener(listener = new Listenable.Listener() {
                 public void valueChanged()
@@ -13119,6 +13171,7 @@ OFF
             return minimumSize;
         }
     } // TextFieldForFloat
+
 
     // Stolen from MC4DControlPanel.java
     public static class SliderForFloat extends java.awt.Scrollbar
@@ -13200,6 +13253,7 @@ OFF
     public static void main(final String args[])
     {
         System.out.println("in main");
+        System.out.println("    java "+System.getProperty("java.version"));
 
         if (false)
         {
