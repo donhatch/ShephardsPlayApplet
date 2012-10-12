@@ -4,6 +4,14 @@ that will let me play with triangulations with heights,
 and produce the dual diagrams with heights.
 
 BUGS:
+  Gui-related:
+    - need to put stuff in event thread? not sure
+    - it flickers!!
+        http://stackoverflow.com/questions/4324221/how-can-a-swing-jwindow-be-resized-without-flickering
+        http://mindprod.com/jgloss/flicker.html
+    - arrow keys don't scroll help window
+    - I hear Swing double-buffers by default so I don't need to
+
   Wrap-sphere related:
     - can't drag stuff or add new points yet
     - curvature slider not really friendly
@@ -1538,6 +1546,37 @@ public class ShephardsPlayApplet
             }
         } // help
 
+        private static String niceClassName(Class classs)
+        {
+            String text = classs.getName();
+
+            if (text.indexOf("java.lang.") == 0)
+                text = text.substring(10);
+            if (text.indexOf("java.awt.") == 0)
+                text = text.substring(9);
+            if (text.indexOf("javax.swing.J") == 0)
+                text = text.substring(12);
+
+            //if (text.indexOf('$') != -1)
+            if (classs.getSuperclass() != null)
+                text += " > " + niceClassName(classs.getSuperclass());
+            return text;
+        }
+        private static void dumpComponentHierarchy(java.awt.Component component, int depth)
+        {
+            FORI (i, depth)
+                System.out.print(" ");
+
+            System.out.println(niceClassName(component.getClass()));
+
+            if (component instanceof java.awt.Container)
+            {
+                java.awt.Container C = (java.awt.Container)component;
+                int n = C.getComponentCount();
+                for (int i = 0; i < n; ++i)
+                    dumpComponentHierarchy(C.getComponent(i), depth+1);
+            }
+        }
         private static void randomlyColorize(java.awt.Component c)
         {
             c.setBackground(new java.awt.Color((float)Math.random(),
@@ -2241,6 +2280,10 @@ public class ShephardsPlayApplet
         {
             TheCanvas()
             {
+                this.setOpaque(true); // XXX don't know what this means, experimenting for flicker. default seems to be true. setting it to false causes flicker all the time.
+                this.setDoubleBuffered(true); // XXX don't know what this means, experimenting for flicker. doesn't seem to have any effect.
+
+
                 // Specify an "event listener" object
                 // to respond to events.
                 // (>= Java 1.1 event model).
@@ -4069,12 +4112,6 @@ public class ShephardsPlayApplet
                 return true;
             }
 
-            // override to not clear...
-            public void update(java.awt.Graphics g)
-            {
-                paint(g);
-            }
-
                 // common code used twice
                 private void drawLabels(MyGraphics3D mg,
                                         Mesh mesh,
@@ -4419,6 +4456,7 @@ public class ShephardsPlayApplet
                                     doAntiAliasing);
                     }
                 } // drawFlattenedNet
+
 
 
             // PAINT/DISPLAY/DRAW
@@ -13398,6 +13436,9 @@ OFF
 
 
         final JFrame frame = new JFrame("Shephards Play Applet");
+
+
+        // XXX maybe can just use defaultCloseOperation other than HIDE_ON_CLOSE
         frame.addWindowListener(new java.awt.event.WindowAdapter() {
             public void windowClosing(java.awt.event.WindowEvent we) {
                 System.out.println("ciao!");
@@ -13407,7 +13448,9 @@ OFF
         });
 
         final ShephardsPlayApplet applet = new ShephardsPlayApplet();
-        frame.add(applet);
+        frame.add(applet); // XXX is this right? should it be the content pane? empirically, doesn't seem to make any difference
+
+        //dumpComponentHierarchy(frame, 0);
 
         // the following seems to be necessary, or getParameter() will crash, at least in 1.4.  Want to send params from command line anyway.
         applet.setStub(new java.applet.AppletStub() {
