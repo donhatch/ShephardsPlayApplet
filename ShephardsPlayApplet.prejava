@@ -179,7 +179,7 @@ import javax.swing.JMenuItem;
 import javax.swing.JComboBox;
 import javax.swing.JCheckBox;
 
-// XXX TODO: Choice -> JComboBox, Checkbox -> JCheckBox
+// XXX TODO: Choice -> JComboBox, not working yet
 
 
 public class ShephardsPlayApplet
@@ -900,56 +900,40 @@ public class ShephardsPlayApplet
                                 }
                             });
                         }});
-                        // XXX TODO: something funky about the JComboBox-- it says "netMethod->whatever" 4 times!  need to figure that out.  for now, use both the choice and the jcombobox
-                        add(new JCol() {{
-                            add(new java.awt.Choice() {
-    #if 0 // doing this makes the Choice inoperable! (javac 1.3, runtime 1.6)
-                                //public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-    #endif
-                                private Listenable.Listener netMethodListener = null; // XXX huh? why don't we do this for everything?  I'm confused
+                        add(new JComboBox(netMethodNames) {{
+                            setSelectedIndex(netMethod.get());
+                            addItemListener(new java.awt.event.ItemListener() {
+                                public void itemStateChanged(java.awt.event.ItemEvent e)
                                 {
-                                    FORI (i, netMethodNames.length)
-                                        insert(netMethodNames[i], i);
-                                    select(netMethod.get());
-                                    addItemListener(new java.awt.event.ItemListener() {
-                                        public void itemStateChanged(java.awt.event.ItemEvent e)
-                                        {
-                                            netMethod.set(getSelectedIndex());
-                                            System.out.println("netMethod -> "+netMethodNames[netMethod.get()]);
-                                            theNet = null;
-                                            theCanvas.repaint();
-                                        }
-                                    });
-                                    netMethod.addListener(netMethodListener = new Listenable.Listener() {
-                                        public void valueChanged()
-                                        {
-                                            select(netMethod.get());
-                                        }
-                                    });
+                                    // evidently this gets called twice??
+                                    // no idea why (java.awt.Choice doesn't behave like that)
+                                    // (well it had a different bug,
+                                    // namely it called the callback on mouse up
+                                    // even if the user selected what was already selected).
+                                    // so check whether the new value is really new,
+                                    // and if not, don't do anything.
+                                    // (not that the extra stuff was expensive...
+                                    // but I was noticing the "netMethod -> whatever"
+                                    // was coming out 4 times
+                                    int newValue = getSelectedIndex();
+                                    if (getSelectedIndex() != netMethod.get())
+                                    {
+                                        netMethod.set(newValue);
+                                        System.out.println("netMethod -> "+netMethodNames[netMethod.get()]);
+                                        theNet = null;
+                                        theCanvas.repaint();
+                                    }
                                 }
                             });
-                            add(new JComboBox(netMethodNames) {
-    #if 0 // doing this makes the Choice inoperable! (javac 1.3, runtime 1.6)
-
-                                //public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-    #endif
+                            netMethod.addListener(netMethodListener = new Listenable.Listener() {
+                                public void valueChanged()
                                 {
-                                    setSelectedIndex(netMethod.get());
-                                    addItemListener(new java.awt.event.ItemListener() {
-                                        public void itemStateChanged(java.awt.event.ItemEvent e)
-                                        {
-                                            netMethod.set(getSelectedIndex());
-                                            System.out.println("netMethod -> "+netMethodNames[netMethod.get()]);
-                                            theNet = null;
-                                            theCanvas.repaint();
-                                        }
-                                    });
-                                    netMethod.addListener(netMethodListener = new Listenable.Listener() {
-                                        public void valueChanged()
-                                        {
-                                            setSelectedIndex(netMethod.get());
-                                        }
-                                    });
+                                    int newValue = netMethod.get();
+                                    // setSelectedIndex does callbacks
+                                    // even if the value isn't new,
+                                    // so don't call it unless the value is new
+                                    if (newValue != getSelectedIndex())
+                                        setSelectedIndex(newValue);
                                 }
                             });
                         }});
