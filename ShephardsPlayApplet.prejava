@@ -5,8 +5,6 @@ and produce the dual diagrams with heights.
 
 BUGS:
   Gui-related:
-    - JComboBoxes are causing excess calls to callbacks.
-      get rid of old Choices when I get this resolved
     - I hear Swing double-buffers by default so I don't need to
     - need to put stuff in event thread? not sure
     - arrow keys don't scroll help window
@@ -178,8 +176,6 @@ import javax.swing.JMenu;
 import javax.swing.JMenuItem;
 import javax.swing.JComboBox;
 import javax.swing.JCheckBox;
-
-// XXX TODO: Choice -> JComboBox, not working yet
 
 
 public class ShephardsPlayApplet
@@ -665,6 +661,7 @@ public class ShephardsPlayApplet
                                         if (doContinuouslyDelaunayize.get()) delaunayize();
                                         UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
                                         undoTreeSquirrel.Do(new UndoItem(before, after));
+                                        dirtyDualMesh(); // XXX why is this necessary here, and not, for example, for Delaunayize? I'm confused
                                         theCanvas.repaint();
                                     }
                                 });
@@ -676,21 +673,24 @@ public class ShephardsPlayApplet
                                 });
                             }
                         });
-                        add(new java.awt.Choice() {
-#if 0 // doing this makes the Choice inoperable! (javac 1.3, runtime 1.6)
-                            //public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-#endif
-                            {
-                                FORI (i, optimizationTypeNames.length)
-                                    insert(optimizationTypeNames[availableOptimizationTypes[i]], i);
-                                select(optimizationTypeIndex.get());
-                                addItemListener(new java.awt.event.ItemListener() {
-                                    public void itemStateChanged(java.awt.event.ItemEvent e)
+
+                        add(new JComboBox() {{
+
+
+                            FORI (i, optimizationTypeNames.length)
+                                addItem(optimizationTypeNames[availableOptimizationTypes[i]]);
+
+                            setSelectedIndex(optimizationTypeIndex.get());
+                            addItemListener(new java.awt.event.ItemListener() {
+                                public void itemStateChanged(java.awt.event.ItemEvent e)
+                                {
+                                    int newValue = getSelectedIndex();
+                                    if (newValue != optimizationTypeIndex.get())
                                     {
                                         UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
 
 
-                                        optimizationTypeIndex.set(getSelectedIndex());
+                                        optimizationTypeIndex.set(newValue);
                                         optimizationType = availableOptimizationTypes[optimizationTypeIndex.get()];
                                         System.out.println("optimizationType -> "+optimizationTypeNames[optimizationType]);
 
@@ -698,17 +698,21 @@ public class ShephardsPlayApplet
                                         if (doContinuouslyDelaunayize.get()) delaunayize();
                                         UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
                                         undoTreeSquirrel.Do(new UndoItem(before, after));
+                                        dirtyDualMesh(); // XXX why is this necessary here, and not, for example, for Delaunayize? I'm confused
                                         theCanvas.repaint();
+                                        System.out.println("calling repaint!");
                                     }
-                                });
-                                optimizationTypeIndex.addListener(optimizationTypeIndexListener = new Listenable.Listener() {
-                                    public void valueChanged()
-                                    {
-                                        select(optimizationTypeIndex.get());
-                                    }
-                                });
-                            }
-                        });
+                                }
+                            });
+                            optimizationTypeIndex.addListener(optimizationTypeIndexListener = new Listenable.Listener() {
+                                public void valueChanged()
+                                {
+                                    int newValue = optimizationTypeIndex.get();
+                                    if (newValue != getSelectedIndex())
+                                        setSelectedIndex(newValue);
+                                }
+                            });
+                        }});
                         add(new JLabel(""), stretchxy);
                         add(new JCol() {{
                             add(new JCheckBox("Delaunayize", doContinuouslyDelaunayize.get()) {
@@ -13451,7 +13455,7 @@ OFF
         final ShephardsPlayApplet applet = new ShephardsPlayApplet();
         frame.add(applet); // XXX is this right? should it be the content pane? empirically, doesn't seem to make any difference
 
-        dumpComponentHierarchy(frame, 0, 0, 1);
+        //dumpComponentHierarchy(frame, 0, 0, 1);
 
         // the following seems to be necessary, or getParameter() will crash, at least in 1.4.  Want to send params from command line anyway.
         applet.setStub(new java.applet.AppletStub() {
