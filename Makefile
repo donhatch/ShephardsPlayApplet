@@ -50,11 +50,12 @@ JAR_DEPENDS_ON = ${CLASSES}      macros.h Makefile javacpp javarenumber
 JAR_CONTAINS = *.class *.prejava macros.h Makefile javacpp javarenumber
 
 # If we want to be able to run it as java -jar ShephardsPlayApplet.jar, then need to do this:
-#JAR_CONTAINS += com
+JAR_CONTAINS += com
 
-.PHONY: all default
+.PHONY: all default jar
 default: Makefile ${JAR_DEPENDS_ON}
-all: ${JARFILE}
+jar: ${JARFILE}
+all: jar
 
 ${JARFILE}: Makefile META-INF/MANIFEST.MF ${JAR_DEPENDS_ON}
         # XXX argh, exits with status 0 even if missing something
