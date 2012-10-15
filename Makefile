@@ -1,3 +1,6 @@
+
+# Uncomment one of the following pairs.
+
 #JAVAROOT=/usr/java/jdk1.5.0
 #JAVAC=${JAVAROOT}/bin/javac
 
@@ -35,15 +38,16 @@ CLASSES = \
 JAR_DEPENDS_ON = ${CLASSES}      macros.h Makefile javacpp javarenumber
 JAR_CONTAINS = *.class *.prejava macros.h Makefile javacpp javarenumber
 
-# XXX ARGH! why doesn't it work using -classpath .:./donhatchsw.jar ???
-# XXX doing this instead for now, making com a symlink
-# XXX to a dir that contains all the donhatchsw class files
+# XXX ARGH! why doesn't it work using -classpath .:./donhatchsw.jar on cygwin ???
+# XXX doing this instead for now, making com a symlink to (or copy of)
+# XXX a dir that contains all the donhatchsw class files
 JAR_CONTAINS += com
 
 .PHONY: all
 all: ${JARFILE}
 
 ${JARFILE}: Makefile META-INF/MANIFEST.MF ${CLASSES}
+        # XXX argh, doesn't fail if something missing
 	${JAVAROOT}/bin/jar -cfm ${JARFILE} META-INF/MANIFEST.MF ${JAR_CONTAINS}
 
 CPPFLAGS += -Wall -Werror
@@ -56,9 +60,12 @@ CPPFLAGS += -Wall -Werror
 .prejava.class:
         # The following is the way to do it on linux I think
 	#javacpp ${CPPFLAGS} ${JAVAC} -classpath ".:./donhatchsw.jar" $*.prejava
-        # Need to do the following instead on cygwin... ?
-        # (gets further if I change the ':' to ';', but still doesn't run)
-	javacpp ${CPPFLAGS} ${JAVAC} $*.prejava
+
+        # Needs to be semicolon on cygwin.
+        # This gets farther but but it still doesn't run :-(
+        # (unless I put contents in my jar)
+        #     Exception in thread "main" java.lang.NoClassDefFoundError: com/donhatchsw/util/Listenable$Number
+	javacpp ${CPPFLAGS} ${JAVAC} -classpath ".;./donhatchsw.jar" $*.prejava
 
 	javarenumber -v 0 $*.class
 	# too slow... only do this in the production version
