@@ -23,6 +23,17 @@ JAVAROOT=c:/jdk1.3.1_20
 #JAVAROOT="c:/Program Files (x86)/Java/jdk1.6.0_17"
 
 
+uname := $(shell uname -o)
+#dummy := $(warning uname = $(uname))
+ifeq ($(uname),Cygwin)
+    # on cygwin, apparently it's this
+    CLASSPATHSEP = ;
+else
+    # on linux, it's this
+    CLASSPATHSEP = :
+endif
+
+
 
 JARFILE = ShephardsPlayApplet.jar
 CLASSES = \
@@ -38,16 +49,15 @@ CLASSES = \
 JAR_DEPENDS_ON = ${CLASSES}      macros.h Makefile javacpp javarenumber
 JAR_CONTAINS = *.class *.prejava macros.h Makefile javacpp javarenumber
 
-# XXX ARGH! why doesn't it work using -classpath .:./donhatchsw.jar on cygwin ???
-# XXX doing this instead for now, making com a symlink to (or copy of)
-# XXX a dir that contains all the donhatchsw class files
-JAR_CONTAINS += com
+# If we want to be able to run it as java -jar ShephardsPlayApplet.jar, then need to do this:
+#JAR_CONTAINS += com
 
-.PHONY: all
+.PHONY: all default
+default: Makefile ${JAR_DEPENDS_ON}
 all: ${JARFILE}
 
-${JARFILE}: Makefile META-INF/MANIFEST.MF ${CLASSES}
-        # XXX argh, doesn't fail if something missing
+${JARFILE}: Makefile META-INF/MANIFEST.MF ${JAR_DEPENDS_ON}
+        # XXX argh, exits with status 0 even if missing something
 	${JAVAROOT}/bin/jar -cfm ${JARFILE} META-INF/MANIFEST.MF ${JAR_CONTAINS}
 
 CPPFLAGS += -Wall -Werror
@@ -58,20 +68,15 @@ CPPFLAGS += -Wall -Werror
 
 .SUFFIXES: .prejava .java .class
 .prejava.class:
-        # The following is the way to do it on linux I think
-	#javacpp ${CPPFLAGS} ${JAVAC} -classpath ".:./donhatchsw.jar" $*.prejava
+	javacpp ${CPPFLAGS} ${JAVAC} -classpath ".$(CLASSPATHSEP)./donhatchsw.jar" $*.prejava
 
-        # Needs to be semicolon on cygwin.
-        # This gets farther but but it still doesn't run :-(
-        # (unless I put contents in my jar)
-        #     Exception in thread "main" java.lang.NoClassDefFoundError: com/donhatchsw/util/Listenable$Number
-	javacpp ${CPPFLAGS} ${JAVAC} -classpath ".;./donhatchsw.jar" $*.prejava
-
+ifneq ($(uname),Cygwin)
 	javarenumber -v 0 $*.class
-	# too slow... only do this in the production version
-	# on second thought, try it, for now...
-	# on third hand, it bombs with Couldn't open GraphicsAntiAliasingSetter$*.class because that one has no subclasses... argh.
-	#@javarenumber -v -1 $*'$$'*.class
+        # too slow... only do this in the production version
+        # on second thought, try it, for now...
+        # on third hand, it bombs with Couldn't open GraphicsAntiAliasingSetter$*.class because that one has no subclasses... argh.
+        #@javarenumber -v -1 $*'$$'*.class
+endif
 
 # Separate renumber target since renumbering all the subclass files
 # on every recompile is slow :-(.  Usually I run "make renumber"
