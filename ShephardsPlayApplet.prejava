@@ -21,6 +21,9 @@ BUGS:
       at infinity and go only halfway there, or something. I don't completely understand yet.
     - use homogeneous coords of some sort, so it doesn't blow up due to singularities
       when converting in either direction?
+      Could just always store sphere coords, but the problem is
+      we'd lose precise info about the heights, especially when heights are zero
+      or exactly equal
 
   Misc:
     - can't seem to get a cube by creating octa verts with show-inside-out--
@@ -2527,7 +2530,7 @@ public class ShephardsPlayApplet
                                     double unsnappedCoords[] = {beingDraggedVert.x, beingDraggedVert.y};
                                     double snappedCoords[] = {(double)Math.round(beingDraggedVert.x/gridSnapQuantum)*gridSnapQuantum,
                                                               (double)Math.round(beingDraggedVert.y/gridSnapQuantum)*gridSnapQuantum};
-                                    double group[][][] = computeSymmetryGroup(rotationalSymmetry, leftRightSymmetry);
+                                    double group[][][] = computeSymmetryGroup2d(rotationalSymmetry, leftRightSymmetry);
                                     int nVerts = mesh.verts.size();
                                     FORI (iGroup, group.length)
                                     {
@@ -2566,7 +2569,7 @@ public class ShephardsPlayApplet
                                     {
                                         int p = 3;
                                         int q = rotationalSymmetry;
-                                        double gens[][][] = computeSymmetryGroupGenerators(p, q, leftRightSymmetry);
+                                        double gens[][][] = computeSymmetryGroupGenerators3d(p, q, leftRightSymmetry);
                                         vertsToAdd = generateVertices(vertsToAdd,
                                                                       gens);
                                     }
@@ -2587,7 +2590,7 @@ public class ShephardsPlayApplet
 
                                             int p = 3;
                                             int q = rotationalSymmetry;
-                                            double gens[][][] = computeSymmetryGroupGenerators(p, q, leftRightSymmetry);
+                                            double gens[][][] = computeSymmetryGroupGenerators3d(p, q, leftRightSymmetry);
                                             vertsToAdd = generateVertices(vertsToAdd,
                                                                           gens);
 
@@ -2599,22 +2602,9 @@ public class ShephardsPlayApplet
                                         }
                                         else
                                         {
-                                            double xformGenerators[][][] = {};
-                                            if (leftRightSymmetry)
-                                                xformGenerators = (double[][][])Arrays.append(xformGenerators, new double[][] {{-1,0},{0,1}});
-                                            if (rotationalSymmetry > 1)
-                                            {
-                                                double c = cosPiTimes(2,rotationalSymmetry); // cos(2*pi/rotationalSymmetry)
-                                                double s = sinPiTimes(2,rotationalSymmetry); // sin(2*pi/rotationalSymmetry)
-
-                                                xformGenerators = (double[][][])Arrays.append(xformGenerators, new double[][] {
-                                                    { c,s},
-                                                    {-s,c},
-                                                });
-                                            }
-                                            PRINTARRAY(xformGenerators);
+                                            double gens[][][] = computeSymmetryGroupGenerators2d(rotationalSymmetry, leftRightSymmetry);
                                             vertsToAdd = generateVertices(vertsToAdd,
-                                                                          xformGenerators);
+                                                                          gens);
                                         }
                                     }
                                 }
@@ -2845,7 +2835,7 @@ public class ShephardsPlayApplet
                             {
                                 Mesh.Vertex beingDraggedVert = mesh.getVert(beingDraggedVertIndex);
                                 double v[] = {beingDraggedVert.x, beingDraggedVert.y};
-                                double group[][][] = computeSymmetryGroup(rotationalSymmetry, leftRightSymmetry);
+                                double group[][][] = computeSymmetryGroup2d(rotationalSymmetry, leftRightSymmetry);
                                 Mesh.Vertex vertsToDelete[] = findAllVertsThatAreImages(mesh, v, group, 1e-6);
                                 FORI (iVertToDelete, vertsToDelete.length)
                                     mesh.deleteVertex(vertsToDelete[iVertToDelete]);
@@ -3136,7 +3126,7 @@ public class ShephardsPlayApplet
                             {
                                 // Drag all points of kaleidoscope
 
-                                double group[][][] = computeSymmetryGroup(rotationalSymmetry, leftRightSymmetry);
+                                double group[][][] = computeSymmetryGroup2d(rotationalSymmetry, leftRightSymmetry);
                                 //PRINTARRAY(group);
 
                                 double v[] = {beingDraggedVert.x,
@@ -3290,7 +3280,7 @@ public class ShephardsPlayApplet
                         {
                             Mesh.Vertex vertI = mesh.getVert(iVert);
                             double v[] = {vertI.x, vertI.y};
-                            double group[][][] = computeSymmetryGroup(rotationalSymmetry, leftRightSymmetry);
+                            double group[][][] = computeSymmetryGroup2d(rotationalSymmetry, leftRightSymmetry);
                             Mesh.Vertex vertsToMove[] = findAllVertsThatAreImages(mesh, v, group, 1e-6);
 
                             FORI (iVertToMove, vertsToMove.length)
@@ -3330,7 +3320,7 @@ public class ShephardsPlayApplet
                         {
                             Mesh.Vertex vertI = mesh.getVert(iVert);
                             double v[] = {vertI.x, vertI.y};
-                            double group[][][] = computeSymmetryGroup(rotationalSymmetry, leftRightSymmetry);
+                            double group[][][] = computeSymmetryGroup2d(rotationalSymmetry, leftRightSymmetry);
                             Mesh.Vertex vertsToMove[] = findAllVertsThatAreImages(mesh, v, group, 1e-6);
 
                             FORI (iVertToMove, vertsToMove.length)
@@ -3448,7 +3438,7 @@ public class ShephardsPlayApplet
                                     (double)Math.round(beingDraggedVertUnsnappedXY[1]/gridSnapQuantum)*gridSnapQuantum,
                                 };
 
-                                double group[][][] = computeSymmetryGroup(rotationalSymmetry, leftRightSymmetry);
+                                double group[][][] = computeSymmetryGroup2d(rotationalSymmetry, leftRightSymmetry);
                                 int nVerts = mesh.verts.size();
                                 FORI (iGroup, group.length)
                                 {
@@ -3507,7 +3497,7 @@ public class ShephardsPlayApplet
                                 // only difference between ctrl-newly-down and ctrl-newly-up...
                                 double newCoords[] = beingDraggedVertUnsnappedXY;
 
-                                double group[][][] = computeSymmetryGroup(rotationalSymmetry, leftRightSymmetry);
+                                double group[][][] = computeSymmetryGroup2d(rotationalSymmetry, leftRightSymmetry);
                                 int nVerts = mesh.verts.size();
                                 FORI (iGroup, group.length)
                                 {
@@ -12813,7 +12803,26 @@ OFF
         }
 
         // 2d symmetry groups that hold origin fixed
-        private static double[][/*2*/][/*2*/] computeSymmetryGroup(int rotationalSymmetry, boolean leftRightSymmetry)
+        private static double[][/*2*/][/*2*/] computeSymmetryGroupGenerators2d(int rotationalSymmetry, boolean leftRightSymmetry)
+        {
+            double gens[][][] = new double[leftRightSymmetry ? 2 : 1][][];
+
+            double c = cosPiTimes(2,rotationalSymmetry); // cos(2*pi/rotationalSymmetry)
+            double s = sinPiTimes(2,rotationalSymmetry); // sin(2*pi/rotationalSymmetry)
+            gens[0] = new double[][] {
+                { c,s},
+                {-s,c},
+            };
+
+            if (leftRightSymmetry)
+                gens[1] = new double[][]{{-1,0},{0,1}};
+
+            return gens;
+        } // computeSymmetryGroupGenerators2d
+
+        // 2d symmetry groups that hold origin fixed
+        // NOTE: could just generate from previous function, but this seems more well-behaved maybe?  think about whether I can tweak things so the result is exactly the same, or what. maybe add to the generators all powers of generators?
+        private static double[][/*2*/][/*2*/] computeSymmetryGroup2d(int rotationalSymmetry, boolean leftRightSymmetry)
         {
             double group[][][] = new double[rotationalSymmetry * (leftRightSymmetry ? 2 : 1)][][];
             {
@@ -12840,11 +12849,11 @@ OFF
                 }
             }
             return group;
-        } // computeSymmetryGroup
+        } // computeSymmetryGroup2d
 
 
         // 3d symmetry groups that hold origin fixed
-        private static double[][/*3*/][/*3*/] computeSymmetryGroupGenerators(int p, int q, boolean leftRightSymmetry)
+        private static double[][/*3*/][/*3*/] computeSymmetryGroupGenerators3d(int p, int q, boolean leftRightSymmetry)
         {
             double gens[][][] = new double[0][3][3];
             if (p > 1)
@@ -12889,12 +12898,12 @@ OFF
             if (gens.length == 0)
                 gens = (double[][][])Arrays.append(gens, VecMath.identitymat(3));
             return gens;
-        } // computeSymmetryGroupGenerators
+        } // computeSymmetryGroupGenerators3d
 
         // 3d symmetry groups that hold origin fixed
-        private static double[][/*3*/][/*3*/] computeSymmetryGroup(int p, int q, boolean leftRightSymmetry)
+        private static double[][/*3*/][/*3*/] computeSymmetryGroup3d(int p, int q, boolean leftRightSymmetry)
         {
-            double gens[][][] = computeSymmetryGroupGenerators(p, q, leftRightSymmetry);
+            double gens[][][] = computeSymmetryGroupGenerators3d(p, q, leftRightSymmetry);
             int nWithoutReflections = (MIN(p,q) == 1 ? MAX(p,q) :
                                        MIN(p,q) == 2 ? 2*MAX(p,q) :
                                        MIN(p,q)==3 && MAX(p,q)==3 ? 12 :
@@ -12921,7 +12930,7 @@ OFF
             }
             assert(n == group.length);
             return group;
-        } // computeSymmetryGroup
+        } // computeSymmetryGroup3d
 
         private static Mesh.Vertex[] findAllVertsThatAreImages(Mesh mesh, double v[/*2*/], double group[][/*2*/][/*2*/], double eps)
         {
@@ -13641,7 +13650,7 @@ OFF
 
         if (false)
         {
-            // test computeSymmetryGroup
+            // test computeSymmetryGroup3d
             int pqs[][] = {
 
                 {1,1},
@@ -13675,13 +13684,13 @@ OFF
                     int p = pqs[i][0];
                     int q = pqs[i][1];
                     {
-                        System.out.println("    testing computeSymmetryGroup(p="+p+", q="+q+", leftRightSymmetry="+leftRightSymmetry+"");
-                        computeSymmetryGroup(p, q, leftRightSymmetry);
+                        System.out.println("    testing computeSymmetryGroup3d(p="+p+", q="+q+", leftRightSymmetry="+leftRightSymmetry+"");
+                        computeSymmetryGroup3d(p, q, leftRightSymmetry);
                     }
                 }
             }
             return;
-        } // test computeSymmetryGroup
+        } // test computeSymmetryGroup3d
 
         final JFrame frame = new JFrame("Shephards Play Applet");
 
