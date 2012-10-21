@@ -9,6 +9,7 @@
 
 #JAVAROOT=/usr/java/j2sdk1.4.2
 #JAVAC=jikes +P -source 1.4 -classpath ${JAVAROOT}/jre/lib/rt.jar
+        # ARGH, doesn't work any more, conflicts with -classpath now used in individual rule
 
 #JAVAROOT=/opt/blackdown-jdk-1.4.2.03
 #JAVAC=${JAVAROOT}/bin/javac
@@ -42,6 +43,7 @@ CLASSES = \
         MyGraphics3D.class \
         Misc.class \
         ShephardsPlayApplet.class \
+        Surface.class \
         GenOff.class \
         PoincareDiskIsometry.class \
         PoincareHalfSpaceIdealCenter.class \
@@ -69,8 +71,7 @@ CPPFLAGS += -Wall -Werror
 
 .SUFFIXES: .prejava .java .class
 .prejava.class:
-	javacpp ${CPPFLAGS} ${JAVAC} -classpath ".$(CLASSPATHSEP)./donhatchsw.jar" $*.prejava
-
+	javacpp ${CPPFLAGS} ${JAVAC} -deprecation -classpath ".$(CLASSPATHSEP)./donhatchsw.jar" $*.prejava
 ifneq ($(uname),Cygwin)
 	javarenumber -v 0 $*.class
         # too slow... only do this in the production version
