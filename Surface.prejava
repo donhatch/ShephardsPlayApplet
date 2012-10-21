@@ -1,0 +1,363 @@
+/*
+Okay, maybe I need a interface
+to encapsulate the constraint surface,
+which might be a sphere or paraboloid.
+*/
+
+#include "macros.h"
+
+import com.donhatchsw.util.VecMath;
+import com.donhatchsw.util.MyMath;
+
+public interface Surface
+{
+    // Return the offset of the point p from the surface.
+    // This can mean different things to different surfaces;
+    // for example, a Sphere might define it to be the offset normal to
+    // the surface, but a Paraboloid might define it to be the offset
+    // in the +z direction.
+    // In any case, the answer should be suitable
+    // for passing to rayIntersect, to generate other points
+    // at the same offset.
+    //
+    public double offset(double p[/*3*/]);
+
+    // find the point on the ray p + t*v that intersects the surface.
+    // if it misses, reflect v across the horizon and try again,
+    // but choose the point on the far side of the surface.
+    public double[] rayIntersect(double offset, double p[/*3*/], double v[/*3*/]);
+
+
+
+    // z = zScale * (x^2 + y^2)
+    public class Paraboloid implements Surface
+    {
+        public Paraboloid(double zScale)
+        {
+            this.zScale = zScale;
+        }
+
+        // required by Surface interface
+        public double offset(double p[/*3*/])
+        {
+            return p[2] - zScale * (p[0]*p[0] + p[1]*p[1]);
+        }
+
+        // required by Surface interface
+        public double[] rayIntersect(double offset, double p[/*3*/], double v[/*3*/])
+        {
+            double px = p[0];
+            double py = p[1];
+            double pz = p[2];
+
+            boolean ignoreFront = false; // XXX TODO: I think this needs to be an input param-- it would be true if dragging a point that was initially on the far surface
+            boolean force = false;
+
+            while (true)
+            {
+                double vx = v[0];
+                double vy = v[1];
+                double vz = v[2];
+                {
+                    // want t such that p+t*v is on the offset paraboloid, i.e.
+                    //     pz+t*vz = zScale * ((px+t*vx)^2 + (py+t*vy)^2) + offset
+                    //             = zScale * (px^2 + 2*t*px*vx + t^2*vx^2 + py^2 + 2*t*py*vy + t^2*vy^2) + offset
+                    //             = zScale * ((px^2+py^2) + 2*t*(px*vx + py*vy) + t^2*(vx^2 + vy^2)) + offset
+                    //     zScale*(vx^2+vy^2)*t^2 + (2*zScale*(px*vx+py*vy)-vz)*t + (zScale*(px^2+py^2)-pz+offset) == 0
+                    // This is a quadratic equation:
+                    double A = zScale * (vx*vx + vy*vy);
+                    double B = 2 * zScale * (px*vx + py*vy) - vz;
+                    double C = zScale * (px*px + py*py) - pz + offset; // note, could be computed outside loop since it doesn't depend on v
+
+                    // COMMON CODE START
+                    // numerical recipes in c, p. 184
+                    double discr = B*B - 4*A*C;
+                    if (discr < 0. && force)
+                    {
+                        System.out.println("HEY! Paraboloid.rayIntersect fudged discr "+discr+" to zero");
+                        discr = 0.;
+                    }
+                    if (discr >= 0.)
+                    {
+                        double q = -.5 * (B + (B < 0 ? -1 : 1) * Math.sqrt(discr));
+                        double tThis = q/A;
+                        double tThat = C/q;
+                        double t0 = MIN(tThis, tThat);
+                        double t1 = MAX(tThis, tThat);
+                        if (t0 >= 0. && !ignoreFront)
+                            return VecMath.vpsxv(p, t0, v);
+                        else if (t1 >= 0. || force)
+                            return VecMath.vpsxv(p, t1, v);
+                        // otherwise fall through to reflecting through horizon and trying again
+                    }
+                    // COMMON CODE END
+                }
+
+                // The horizon curve, projected onto the xy plane,
+                // is, magically, a circle of radius sqrt(-(z-zScale*(x^2+y^2)-offset)/zScale)
+                // centered at the eye.
+                double horizonRadius = Math.sqrt(-(pz-zScale*(px*px+py*py)-offset)/zScale);
+                double vLenXY = MyMath.hypot(vx,vy);
+                double horizonPoint[] = new double[] {
+                    px + vx*(horizonRadius/vLenXY),
+                    py + vy*(horizonRadius/vLenXY),
+                    0. // will be filled in in a moment
+                };
+                horizonPoint[2] = this.zScale*(SQR(horizonPoint[0])+SQR(horizonPoint[1])) + offset;
+                double pToHorizonPoint[] = VecMath.vmv(horizonPoint, p);
+
+                // now reflect v across pToHorizonPoint
+                double vReflected[] = VecMath.sxvpsxv(-1., v,
+                                                      2.*VecMath.dot(pToHorizonPoint,v)/VecMath.normsqrd(pToHorizonPoint), pToHorizonPoint);
+                // tail recurse.  this can happen several times, but eventually v will point into the sphere.
+                System.out.println("reflecting");
+
+#ifdef NOTYET // this is the code for a sphere, need to figure out something similar for paraboloid
+                // However, if we are looking right at the horizon,
+                // it may happen that we keep missing due to roundoff error.
+                // To prevent this, if it's clear we haven't jumped over to the other side of the sphere
+                // (which would be a legitimate reason for reflecting yet again after this),
+                // set the "force" flag to force success on the next iteration.
+                // To be precise, we set the "force" flag
+                // iff the angle between (h-p) and vReflected
+                // is <= the angle between (h-p) and (c-p).
+                // I.e. iff (h-p) dot vReflected >= (h-p) dot (c-p).
+                if (VecMath.dot(pToHorizonPoint, vReflected)
+                 >= -VecMath.dot(pToHorizonPoint, P))
+                {
+                    System.out.println("    forcing");
+                    force = true;
+                }
+#else // for now
+                if (VecMath.distsqrd(v, vReflected) <= SQR(1e-3)*VecMath.normsqrd(v))
+                {
+                    System.out.println("    forcing");
+                    force = true;
+                }
+#endif // for now
+
+                ignoreFront = !ignoreFront;
+                v = vReflected;
+            }
+        } // rayIntersect
+
+        private double zScale;
+    } // class Paraboloid
+
+    // ||p - center|| == radius
+    public class Sphere implements Surface
+    {
+        public Sphere(double center[/*3*/], double radius)
+        {
+            this.center = center;
+            this.radius = radius;
+        } // ctor
+
+        // required by Surface interface
+        public double offset(double p[/*3*/])
+        {
+            return VecMath.dist(this.center, p) - this.radius;
+        }
+
+        // required by Surface interface
+        public double[] rayIntersect(double offset, double p[/*3*/], double v[/*3*/])
+        {
+            double r = this.radius + offset;
+            double r2 = r*r;
+            double P2 = VecMath.distsqrd(this.center, p);
+            double pToHorizon2 = P2 - r2; // distance squared between p (the eye) and horizon
+
+            boolean ignoreFront = false;
+            boolean force = false;
+
+            while (true)
+            {
+                {
+                    // let P = p-c.
+                    // want t such that ||P + t*v|| == r
+                    // i.e. (P dot P) + t^2 (v dot v) + 2*t*(P dot v) == r^2
+                    // This is a quadratic equation with:
+                    //      A = v dot v
+                    //      B = 2 (P dot v)
+                    //      C = (P dot P) - r^2 (happens to be pToHorizon)
+                    double A = VecMath.dot(v, v);
+                    double B = 2 * (VecMath.dot(p,v) - VecMath.dot(this.center,v)); // 2*((p-c) dot v)
+                    double C = pToHorizon2;
+
+                    // COMMON CODE START
+                    // numerical recipes in c, p. 184
+                    double discr = B*B - 4*A*C;
+                    if (discr < 0. && force)
+                    {
+                        System.out.println("HEY! Sphere.rayIntersect fudged discr "+discr+" to zero");
+                        discr = 0.;
+                    }
+                    if (discr >= 0.)
+                    {
+                        double q = -.5 * (B + (B < 0 ? -1 : 1) * Math.sqrt(discr));
+                        double tThis = q/A;
+                        double tThat = C/q;
+                        double t0 = MIN(tThis, tThat);
+                        double t1 = MAX(tThis, tThat);
+                        if (t0 >= 0. && !ignoreFront)
+                            return VecMath.vpsxv(p, t0, v);
+                        else if (t1 >= 0. || force)
+                            return VecMath.vpsxv(p, t1, v);
+                        // otherwise fall through to reflecting through horizon and trying again
+                    }
+                    // COMMON CODE END
+                }
+
+                double centerToHorizonChordMidpoint2 = r2*r2/P2;
+                double horizonChordHalfLength2 = r2 - centerToHorizonChordMidpoint2;
+                if (horizonChordHalfLength2 <= 0.)
+                {
+                    // if equal to zero, p is right on the surface.
+                    // if less than zero, that means we're inside the sphere,
+                    // which means we shouldn't have gotten this far but we did
+                    // due to roundoff error, so we still consider p
+                    // to be right on the surface.
+                    return p;
+                }
+                double horizonChordHalfLength = Math.sqrt(horizonChordHalfLength2);
+                double P[] = VecMath.vmv(p, this.center);
+                // note, up to this point we haven't used v
+
+                double horizonChordDir[] = VecMath.vpsxv(v, -VecMath.dot(P, v)/P2, P); // v orthogonalized against P
+                VecMath.normalize(horizonChordDir);
+
+                double pToHorizonPoint[] = VecMath.sxvpsxv(r2/P2-1, P, // p to horizon chord midpoint
+                                                           horizonChordHalfLength, horizonChordDir); // horizon chord midpoint to horizon point
+                // now reflect v across pToHorizonPoint
+                double vReflected[] = VecMath.sxvpsxv(-1., v,
+                                                      2.*VecMath.dot(pToHorizonPoint,v)/VecMath.normsqrd(pToHorizonPoint), pToHorizonPoint);
+                // tail recurse.  this can happen several times, but eventually v will point into the sphere.
+                System.out.println("reflecting");
+
+                // However, if we are looking right at the horizon,
+                // it may happen that we keep missing due to roundoff error.
+                // To prevent this, if it's clear we haven't jumped over to the other side of the sphere
+                // (which would be a legitimate reason for reflecting yet again after this),
+                // set the "force" flag to force success on the next iteration.
+                // To be precise, we set the "force" flag
+                // iff the angle between (h-p) and vReflected
+                // is <= the angle between (h-p) and (c-p).
+                // I.e. iff (h-p) dot vReflected >= (h-p) dot (c-p).
+                if (VecMath.dot(pToHorizonPoint, vReflected)
+                 >= -VecMath.dot(pToHorizonPoint, P))
+                {
+                    System.out.println("    forcing");
+                    force = true;
+                }
+
+                ignoreFront = !ignoreFront;
+                v = vReflected;
+            }
+        } // rayIntersect
+
+        private double center[];
+        private double radius;
+    } // class Sphere
+
+    public class Box implements Surface
+    {
+        public Box(double xRadius, double yRadius, double zRadius)
+        {
+            this.r = new double[] {xRadius, yRadius, zRadius};
+        }
+
+        // required by Surface interface
+        public double offset(double p[/*3*/])
+        {
+            assert(false); // XXX IMPLEMENT ME
+            return 0.;
+        }
+
+        // required by Surface interface
+        public double[] rayIntersect(double offset, double p[/*3*/], double v[/*3*/])
+        {
+            assert(false); // XXX IMPLEMENT ME
+            return null;
+        }
+
+        private double r[/*3*/];
+    } // class Box
+
+
+    //
+    // Given a Surface,
+    // this class returns another Surface
+    // representing the original surface
+    // transformed in the given way.
+    // The transform must be a rigid xform
+    // with optional uniform scale.
+    //
+    public class XformedSurface
+    {
+        public XformedSurface(Surface originalSurface,
+                              double s,     // scale
+                              double r[][], // rotation/reflection
+                              double t[])   // translation
+        {
+            this.originalSurface = originalSurface;
+            this.s = s;
+            this.r = r;
+            this.t = t;
+
+            assert(r.length == 3);
+            assert(r[0].length == 3);
+            assert(VecMath.equals(VecMath.mxm(r, VecMath.transpose(r)), VecMath.identitymat(3), 1e-6));
+            assert(t.length == 3);
+
+            this.M = new double[][] {
+                {s*r[0][0], s*r[0][1], s*r[0][2]},
+                {s*r[1][0], s*r[1][1], s*r[1][2]},
+                {s*r[2][0], s*r[2][1], s*r[2][2]},
+                {t[0],      t[1],      t[2],    },
+            };
+            this.invM = VecMath.invertmat(this.M);
+            assert(this.invM.length == 4);
+            assert(this.invM[0].length == 3);
+        } // ctor
+
+        // required by Surface interface
+        public double offset(double p[/*3*/])
+        {
+            // xform vert from world space into original surface's space
+            double originalP[] = VecMath.vxm(p, invM);
+
+            // compute offset in original
+            double originalOffset = this.originalSurface.offset(originalP);
+
+            // offset is the original offset, scaled back into world space.
+            double offset = this.s * originalOffset;
+
+            return offset;
+        } // computeNormalAndOffset
+
+        // required by Surface interface
+        public double[/*3*/] rayIntersect(double offset,
+                                          double p[/*3*/],
+                                          double v[/*3*/])
+        {
+            double invS = 1./s;
+            double originalOffset = offset * invS;
+            double originalP[] = VecMath.vxm(p, invM);
+            double originalV[] = VecMath.mxv(r, v); // apply inverse of r
+            VecMath.vxs(originalV, originalV, invS); // and inverse of s
+            double originalAnswer[] = this.originalSurface.rayIntersect(originalOffset,
+                                                                        originalP,
+                                                                        originalV);
+            return VecMath.vxm(originalAnswer, this.M);
+        } // rayIntersect
+
+        private Surface originalSurface;
+        private double s;
+        private double r[/*3*/][/*3*/];
+        private double t[/*3*/];
+        private double M[/*4*/][/*4*/];    // s r t
+        private double invM[/*4*/][/*4*/]; // inverse of M
+    } // class XformedSurface
+
+} // class Surface
+

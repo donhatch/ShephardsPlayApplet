@@ -1,0 +1,347 @@
+/*
+ * From http://www.acm.org/sigchi/chi95/Electronic/documnts/papers/jl_bdy.htm#appendix:
+ * Any isometry of the Poincare disk
+ * can be expressed as a complex function of z of the form
+ *      (T*z + P)/(1 + conj(P)*T*z)
+ * where T and P are complex numbers, |P| < 1 and |T| = 1.
+ * This indicates a rotation by T around the origin followed
+ * by moving the origin to P (and -P to the origin).
+ * NOTE the paper was missing the T in the denominator!
+ *
+ * This class is a generalization of that to any number of dimensions.
+ */
+#include "macros.h"
+import com.donhatchsw.util.VecMath;
+import com.donhatchsw.util.NewtonSolver;
+import com.donhatchsw.util.MyMath;
+public class PoincareDiskIsometry
+{
+    private double[][] r; // row-oriented rotation (and optional reflection) matrix
+    private double[] p;   // translation vector, ||p||<1 (take -p to 0, 0 to p)
+    private double[] scratch; // XXX TODO: not thread safe!
+    public PoincareDiskIsometry(double r[][], double p[])
+    {
+        this.p = VecMath.copyvec(p);
+        this.r = VecMath.copymat(r);
+        this.scratch = new double[p.length];
+    }
+    public PoincareDiskIsometry(double p[])
+    {
+        this.p = VecMath.copyvec(p);
+        this.r = VecMath.identitymat(p.length);
+        this.scratch = new double[p.length];
+    }
+    public PoincareDiskIsometry(PoincareDiskIsometry from)
+    {
+        this(from.r, from.p);
+    }
+    public void apply(double[] result, double[] z)
+    {
+        // Apply rotation part, into scratch buffer (in case result==z)
+        VecMath.vxm(scratch, z, r);
+
+        poincareTranslate(result, scratch, p, 1.);
+
+    }
+    public void applyInverse(double[] result, double[] z)
+    {
+        // apply translate part into scratch buffer (in case result==z)
+        poincareTranslate(scratch, z, p, -1.);
+
+        // Apply inverse (i.e. transpose) of rotation part, from scratch buffer back into result
+        VecMath.mxv(scratch, r, z);
+
+    }
+
+    public static PoincareDiskIsometry compose(PoincareDiskIsometry f0,
+                                               PoincareDiskIsometry f1)
+    {
+        double p[] = f1.apply(f0.p); // = f1(f0(0))
+        double r[][] = VecMath.identitymat(p.length);
+        FORI (i, p.length)
+            poincareTranslate(r[i], f1.apply(f0.apply(r[i])), p, -1.); // r[i] = Isometry(I,p)^-1(f1(f0(I[i])))
+        return new PoincareDiskIsometry(r, p);
+    }
+    public static PoincareDiskIsometry inverse(PoincareDiskIsometry f0)
+    {
+        double p[] = VecMath.mxv(f0.r, f0.p);
+        VecMath.vxs(p, p, -1.);               // p = f0^-1(0)
+        double r[][] = VecMath.identitymat(p.length);
+        FORI (i, p.length)
+            poincareTranslate(r[i], f0.applyInverse(r[i]), p, -1.); // r[i] = Isometry(I,p)^-1(f0^-1(I[i]))
+        return new PoincareDiskIsometry(r, p);
+    }
+
+    public double[] apply(double[] z)
+    {
+        double result[] = new double[z.length];
+        apply(result, z);
+        return result;
+    }
+    public double[] applyInverse(double[] z)
+    {
+        double result[] = new double[z.length];
+        applyInverse(result, z);
+        return result;
+    }
+
+    // translate z by isometry that takes 0 to p*sign and -p*sign to 0.
+    // sign is typically -1 or 1, but can be anything.
+    public static void poincareTranslate(double[] result,
+                                         double[] z,
+                                         double[] p,
+                                         double sign)
+    {
+        // worked out on paper...
+
+        double pp = VecMath.dot(p,p) * (sign*sign);
+        double zp = VecMath.dot(z,p) * sign;
+        double zz = VecMath.dot(z,z);
+        double denominator = 1 + 2*zp + zz*pp;
+        double pCoeff = (1 + 2*zp + zz) / denominator;
+        double zCoeff = (1 - pp) / denominator;
+        VecMath.sxvpsxv(result, pCoeff * sign, p,
+                                zCoeff, z);
+    }
+
+
+
+    // The remainder arguably shouldn't be here
+
+    // I think this is how to do it I think, from the book
+    static public void computePoincareCentroid(double[] result, double[][] z)
+    {
+        if (false)
+        {
+            // don't know what I was thinking here
+            VecMath.average(result, z);
+            if (false)
+            {
+                // convert from klein disk to poincare disk
+                VecMath.vxs(result, result, 1/(1+Math.sqrt(1-VecMath.normsqrd(result))));
+            }
+            else if (true)
+            {
+                System.out.println("MAGIC!");
+                // do it in a way that works if one of the verts
+                // is at 1,0 and the other two are conjugates of each other...
+                // worked out in mathematica.
+                double e = VecMath.norm(result);
+                //double p = (1 + e - Math.sqrt(1+(2-3*e)*e)) / (2*e);
+                double p_over_e = 2/(1 + e + Math.sqrt( 1+(2-3*e)*e ) );
+
+                VecMath.vxs(result, result, p_over_e);
+
+                // Bleah! this works if the triangle
+                // is symmetric about the origin,
+                // but not otherwise!!
+                // BLEAH!
+            }
+        }
+
+        // This actually computes the in-center of an ideal triangle.
+        // So it's not really right for more than 3 points, and/or non-ideal points.
+        int nVerts = z.length;
+        int nDims = z[0].length;
+
+        double coeffs[] = new double[z.length];
+        double facetEdgeVecs[][] = new double[nVerts-2][nDims];
+        FORI (iFacet, z.length)
+        {
+            FORI (iFacetEdge, nVerts-2)
+                VecMath.vmv(facetEdgeVecs[iFacetEdge], z[(iFacet+2+iFacetEdge)%nVerts], z[(iFacet+1)%nVerts]);
+            double content = VecMath.orthotopeContent(facetEdgeVecs);
+            coeffs[iFacet] = SQR(content);
+        }
+        double denominator = VecMath.sum(coeffs);
+        VecMath.vxs(coeffs, coeffs, 1./denominator);
+        VecMath.vxm(result, coeffs, z);
+        // convert from klein disk to poincare disk
+        VecMath.vxs(result, result, 1/(1+Math.sqrt(1-VecMath.normsqrd(result))));
+    }
+    public static double[] computePoincareCentroid(double[][] z)
+    {
+        double[] result = new double[z[0].length];
+        computePoincareCentroid(result, z);
+        return result;
+    }
+
+    static public void computeCentroidOfXformedPoints(double[] result, double[][] z, double[] p)
+    {
+        VecMath.zerovec(result);
+        double scratch[] = new double[p.length];
+        FORI (i, z.length)
+        {
+            poincareTranslate(scratch, z[i], p, 1.);
+            VecMath.vpv(result, result, scratch);
+        }
+        VecMath.sxv(result, 1./z.length, result);
+    }
+    public static double[] computeCentroidOfXformedPoints(double[][] z, double[] p)
+    {
+        double[] result = new double[p.length];
+        computeCentroidOfXformedPoints(result, z, p);
+        return result;
+    }
+    public static void find_p_that_centers_points(double result[], final double[][] z)
+    {
+        NewtonSolver.Fun fun = new NewtonSolver.Fun() {
+            public double[] f(double x[])
+            {
+                boolean debug = false;
+                if (debug) System.out.println("    in f");
+                if (debug) PRINTVEC(x);
+                // So that we don't have to deal with boundaries,
+                // take x to be a point in euclidean space R^n,
+                // which we map to p in the poincare disk.
+
+                double p[] = VecMath.copyvec(x);
+                {
+                    double hnorm = VecMath.norm(p); // desired hyperbolic norm
+                    if (hnorm != 0.)
+                    {
+                        double enorm = MyMath.tanh(.5*hnorm); // euclidean distance of p from origin
+                        VecMath.sxv(p, enorm/hnorm, p);
+                    }
+                }
+                if (debug) PRINTVEC(p);
+
+                double result[] = new double[x.length];
+                computeCentroidOfXformedPoints(result, z, p);
+
+                {
+                    double enorm = VecMath.norm(p);
+                    if (enorm != 0.)
+                    {
+                        double hnorm = 2*MyMath.atanh(enorm);
+                        VecMath.sxv(result, hnorm/enorm, result);
+                    }
+                }
+
+
+                if (debug) PRINTVEC(result);
+                if (debug) System.out.println("    out f");
+                return result;
+            }
+        };
+        int n = z[0].length;
+        double zero[] = new double[n];
+
+        double initialGuess[] = computePoincareCentroid(z);
+        System.out.println("poincare centroid:");
+        PRINTVEC(initialGuess);
+        VecMath.vxs(initialGuess, initialGuess, -1.); // we want *minus* the centroid
+        System.out.println("translation that we think will center the points:");
+        PRINTVEC(initialGuess);
+
+        PRINTVEC(computeCentroidOfXformedPoints(z, initialGuess));
+
+        {
+            // expand disk to whole plane
+            double enorm = VecMath.norm(initialGuess);
+            if (enorm != 0.)
+            {
+                double hnorm = 2*MyMath.atanh(enorm);
+                VecMath.sxv(initialGuess, hnorm/enorm, initialGuess);
+            }
+        }
+        System.out.println("expanded out to whole plane:");
+        PRINTVEC(initialGuess);
+        PRINTVEC(fun.f(initialGuess));
+
+        FORI (max, 15)
+        {
+            // initial guess...
+            VecMath.copyvec(result, initialGuess);
+
+
+            // TODO: for 3 points (or any number?) that should give the exact
+            // right answer, but it doesn't!  why?
+
+
+
+            NewtonSolver.solve(result,
+                               zero,
+                               fun,
+                               max);
+            {
+                // contract whole plane to disk
+                double hnorm = VecMath.norm(result);
+                if (hnorm != 0.)
+                {
+                    double enorm = MyMath.tanh(.5*hnorm);
+                    VecMath.sxv(result, enorm/hnorm, result);
+                }
+            }
+            PRINT(max);
+            PRINTVEC(result);
+        }
+    }
+
+    // little test program
+    public static void main(String args[])
+    {
+        // hmm, doesn't behave well if all points on one side of origin... need to think about it
+#if 0
+        double z[][] = {
+            {1,0},
+            {-2,1},
+            {-1,-1},
+            {2,3},
+        };
+#endif
+#if 0
+        double z[][] = {
+            {1,0,0},
+            {-2,1,0},
+            {-1,-1,0},
+            {2,3,0},
+        };
+#endif
+#if 0
+        double z[][] = {
+            {1,-1},
+            {1,0},
+            {1,1},
+        };
+#endif
+#if 0
+        double z[][] = {
+            {1,-1,0},
+            {1,0,0},
+            {1,1,0},
+        };
+#endif
+#if 0
+        double z[][] = {
+            {0,-1,0},
+            {1,0,0},
+            {0,1,0},
+        };
+#endif
+#if 0
+        double z[][] = {
+            {-1,0,0},
+            {0,1,0},
+            {1,0,0},
+        };
+#endif
+#if 1
+        double z[][] = {
+            {.1223,.932},
+            {.6314,.1439},
+            {.9265,.3589},
+        };
+#endif
+        int n = z[0].length;
+        FORI (i, z.length)
+            VecMath.normalize(z[i], z[i]);
+        double p[] = new double[n];
+        find_p_that_centers_points(p, z);
+        PRINTVEC(p);
+        double centroid[] = new double[n];
+        computeCentroidOfXformedPoints(centroid, z, p);
+        PRINTVEC(centroid);
+        PRINT(VecMath.vxv2(new double[]{-0.839892149034344,-0.2720038263550194}, new double[]{0.5285837423314417,0.4085613432275015}));
+    } // main
+}
