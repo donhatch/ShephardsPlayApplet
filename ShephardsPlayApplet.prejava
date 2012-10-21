@@ -11,8 +11,8 @@ BUGS:
     - arrow keys don't scroll help window
 
   Wrap-sphere related:
-    - can't drag stuff or add new points yet
-    - curvature slider not really friendly
+    - dragging on sphere surface not reflecting through horizon quite right yet
+    - it's not dragging images in kaleidescope
     - backface culling is flakey (or, need a coherent scheme, not keying on show-inside-out)
     - backface culling sometimes slightly wrong-- using wrong criterion?
     - doesn't interact correctly with undo/redo or save/restore
@@ -24,6 +24,11 @@ BUGS:
       Could just always store sphere coords, but the problem is
       we'd lose precise info about the heights, especially when heights are zero
       or exactly equal
+    - straighten out behavior when dragging stuff on back face
+        - when dragging existing back point, send back flag to Surface.rayIntersect
+        - when creating new point, if not on surface offset=0, don't reflect, create point off the surface.  maybe. (or maybe it's fine the say it is?) (or just create point on horizon?)
+    - draw horizon of surface and of ground plane?
+
 
   Misc:
     - should ConvexHull use fuzzy equality testing in more places, to avoid twinkling on grid? (hmm, maybe twinkling on grid is actually useful in a way?)
@@ -2405,7 +2410,7 @@ public class ShephardsPlayApplet
                 double thisP[] = new double[2];
                 mostRecentGraphics.pick(e.getX()+.5, e.getY()+.5, thisP);
                 double projectedThisP[] = new double[3];
-                pickPointOnParaboloid(thisP, 0., projectedThisP);
+                pickPointOnSurface(thisP, 0., projectedThisP);
 
 
                 boolean snapToGrid = e.isControlDown();
@@ -2883,7 +2888,7 @@ public class ShephardsPlayApplet
                 double thisP[] = new double[2];
                 mostRecentGraphics.pick(e.getX()+.5, e.getY()+.5, thisP);
                 double projectedThisP[] = new double[3];
-                pickPointOnParaboloid(thisP, 0., projectedThisP);
+                pickPointOnSurface(thisP, 0., projectedThisP);
                 boolean snapToGrid = e.isControlDown();
                 double snappedProjectedThisP[] = !snapToGrid ? projectedThisP : new double[] {
                     (double)Math.round(projectedThisP[0]/gridSnapQuantum)*gridSnapQuantum,
@@ -3068,7 +3073,7 @@ public class ShephardsPlayApplet
                         if (snapToGrid)
                         {
                             double projectedThisP[] = new double[3];
-                            pickPointOnParaboloid(thisP, 0., projectedThisP);
+                            pickPointOnSurface(thisP, 0., projectedThisP);
                             double snappedProjectedThisP[] = !snapToGrid ? projectedThisP : new double[] {
                                 (double)Math.round(projectedThisP[0]/gridSnapQuantum)*gridSnapQuantum,
                                 (double)Math.round(projectedThisP[1]/gridSnapQuantum)*gridSnapQuantum,
@@ -3091,9 +3096,9 @@ public class ShephardsPlayApplet
                         {
                             // XXX not really right... see similar comment on mouse down
                             double projectedThisP[] = new double[3];
-                            pickPointOnParaboloid(thisP, 0., projectedThisP);
+                            pickPointOnSurface(thisP, 0., projectedThisP);
                             double projectedPrevP[] = new double[3];
-                            pickPointOnParaboloid(prevP, 0., projectedPrevP);
+                            pickPointOnSurface(prevP, 0., projectedPrevP);
 
                             beingDraggedNetEdgeDelta[0] += projectedThisP[0]-projectedPrevP[0]; // no snap to grid for this
                             beingDraggedNetEdgeDelta[1] += projectedThisP[1]-projectedPrevP[1]; // no snap to grid for this
@@ -3124,9 +3129,9 @@ public class ShephardsPlayApplet
                             Mesh.Vertex beingDraggedVert = mesh.getVert(beingDraggedVertIndex);
 
                             double projectedThisP[] = new double[3];
-                            pickPointOnParaboloid(thisP, beingDraggedVert.h, projectedThisP);
+                            pickPointOnSurface(thisP, beingDraggedVert.h, projectedThisP);
                             double projectedPrevP[] = new double[3];
-                            pickPointOnParaboloid(prevP, beingDraggedVert.h, projectedPrevP);
+                            pickPointOnSurface(prevP, beingDraggedVert.h, projectedPrevP);
 
                             beingDraggedVertUnsnappedXY[0] += projectedThisP[0] - projectedPrevP[0];
                             beingDraggedVertUnsnappedXY[1] += projectedThisP[1] - projectedPrevP[1];
@@ -6222,7 +6227,7 @@ public class ShephardsPlayApplet
                     mg.setColor(java.awt.Color.white);
                     Mesh.Vertex v0 = mesh.getVert(beingDraggedVertIndex);
                     double projectedPrevP[] = new double[3];
-                    pickPointOnParaboloid(prevP, v0.h, projectedPrevP);
+                    pickPointOnSurface(prevP, v0.h, projectedPrevP);
                     //mg.drawLine(v0.x, v0.y,
                                 //prevP[0], prevP[1], doAntiAliasing);
                     mg.drawLine(v0.x, v0.y, v0.hActual(),
@@ -13426,36 +13431,54 @@ OFF
         //  localScaleZ
         //  getRotMat()
         //  eye
-        void pickPointOnParaboloid(double thisP[], double paraboloidLevel, double resultPointOnParaboloid[])
+        //  wrap
+        void pickPointOnSurface(double thisP[], double offset, double resultPointOnSurface[])
         {
-            double pointOnParaboloid[];
-            if (localScaleZ == 0)
+            double eyeInLocalSpace[] = VecMath.mxv(getRotMat(), eye); // multiply on wrong side, i.e. apply transpose i.e. inverse
+            if (!wrapAroundSphereFlag.get())
+                eyeInLocalSpace[2] /= MAX(localScaleZ, 1e-6);
+            double towardsPointInLocalSpace[] = VecMath.mxv(getRotMat(), new double[]{thisP[0],thisP[1],0.});
+
+            // gag, that returned a 4d vector
+            eyeInLocalSpace = (double[])Arrays.subarray(eyeInLocalSpace, 0, 3);
+            towardsPointInLocalSpace = (double[])Arrays.subarray(towardsPointInLocalSpace, 0, 3);
+
+            if (wrapAroundSphereFlag.get())
             {
-                resultPointOnParaboloid[0] = thisP[0];
-                resultPointOnParaboloid[1] = thisP[1];
-                resultPointOnParaboloid[2] = -.5*(SQR(thisP[0])+SQR(thisP[1]));
+                double wrapSphereRadius = 1./wrapSphereCurvature.get();
+                double wrapSphereCenter[] = {0., 0., -wrapSphereRadius};
+                Surface surface = new Surface.Sphere(wrapSphereCenter, wrapSphereRadius);
+                VecMath.copyvec(resultPointOnSurface,
+                                surface.rayIntersect(offset,
+                                                     eyeInLocalSpace,
+                                                     VecMath.vmv(towardsPointInLocalSpace, eyeInLocalSpace)));
             }
             else
             {
-                double eyeInLocalSpace[] = VecMath.mxv(getRotMat(), eye); // multiply on wrong side, i.e. apply transpose i.e. inverse
-                eyeInLocalSpace[2] /= MAX(localScaleZ, 1e-6);
-                double towardsPointInLocalSpace[] = VecMath.mxv(getRotMat(), new double[]{thisP[0],thisP[1],0.});
+                if (localScaleZ == 0)
+                {
+                    resultPointOnSurface[0] = thisP[0];
+                    resultPointOnSurface[1] = thisP[1];
+                    resultPointOnSurface[2] = -.5*(SQR(thisP[0])+SQR(thisP[1]));
+                }
+                else
+                {
 
-                // gag, that returned a 4d vector
-                eyeInLocalSpace = (double[])Arrays.subarray(eyeInLocalSpace, 0, 3);
-                towardsPointInLocalSpace = (double[])Arrays.subarray(towardsPointInLocalSpace, 0, 3);
 
+                    eyeInLocalSpace[2] /= localScaleZ;
+                    towardsPointInLocalSpace[2] /= localScaleZ;
 
-                eyeInLocalSpace[2] /= localScaleZ;
-                towardsPointInLocalSpace[2] /= localScaleZ;
+                    eyeInLocalSpace[2] -= offset;
+                    towardsPointInLocalSpace[2] -= offset;
 
-                eyeInLocalSpace[2] -= paraboloidLevel;
-                towardsPointInLocalSpace[2] -= paraboloidLevel;
-
-                Surface surface = new Surface.Paraboloid(-.5);
-                VecMath.copyvec(resultPointOnParaboloid, surface.rayIntersect(paraboloidLevel, eyeInLocalSpace, VecMath.vmv(towardsPointInLocalSpace, eyeInLocalSpace)));
+                    Surface surface = new Surface.Paraboloid(-.5);
+                    VecMath.copyvec(resultPointOnSurface,
+                                    surface.rayIntersect(offset,
+                                                         eyeInLocalSpace,
+                                                         VecMath.vmv(towardsPointInLocalSpace, eyeInLocalSpace)));
+                }
             }
-        } // pickPointOnParaboloid
+        } // pickPointOnSurface
 
 
     //
