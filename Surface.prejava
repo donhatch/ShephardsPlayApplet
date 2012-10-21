@@ -46,6 +46,9 @@ public interface Surface
         // required by Surface interface
         public double[] rayIntersect(double offset, double p[/*3*/], double v[/*3*/])
         {
+            System.out.println("in Paraboloid.rayIntersect");
+            PRINTVEC(p);
+            PRINTVEC(v);
             double px = p[0];
             double py = p[1];
             double pz = p[2];
@@ -55,9 +58,18 @@ public interface Surface
 
             while (true)
             {
+                System.out.println("        top of loop");
                 double vx = v[0];
                 double vy = v[1];
                 double vz = v[2];
+
+                if (vx == 0. && vy == 0.)
+                {
+                    // solving quadratic would blow up...
+                    // just return the point on the offset surface at the same x,y az p.
+                    return new double[] {px, py, zScale*(SQR(px)+SQR(py)) + offset};
+                }
+
                 {
                     // want t such that p+t*v is on the offset paraboloid, i.e.
                     //     pz+t*vz = zScale * ((px+t*vx)^2 + (py+t*vy)^2) + offset
@@ -85,9 +97,15 @@ public interface Surface
                         double t0 = MIN(tThis, tThat);
                         double t1 = MAX(tThis, tThat);
                         if (t0 >= 0. && !ignoreFront)
+                        {
+                            System.out.println("out Paraboloid.rayIntersect (front)");
                             return VecMath.vpsxv(p, t0, v);
+                        }
                         else if (t1 >= 0. || force)
+                        {
+                            System.out.println("out Paraboloid.rayIntersect (back)");
                             return VecMath.vpsxv(p, t1, v);
+                        }
                         // otherwise fall through to reflecting through horizon and trying again
                     }
                     // COMMON CODE END
@@ -96,7 +114,9 @@ public interface Surface
                 // The horizon curve, projected onto the xy plane,
                 // is, magically, a circle of radius sqrt(-(z-zScale*(x^2+y^2)-offset)/zScale)
                 // centered at the eye.
-                double horizonRadius = Math.sqrt(-(pz-zScale*(px*px+py*py)-offset)/zScale);
+                double horizonRadius2 = -(pz-zScale*(px*px+py*py)-offset)/zScale;
+                assert(GEQ(horizonRadius2, 0., 1e-3)); // if we were inside sphere, the above would have succeeded
+                double horizonRadius = Math.sqrt(MAX(horizonRadius2,0.));
                 double vLenXY = MyMath.hypot(vx,vy);
                 double horizonPoint[] = new double[] {
                     px + vx*(horizonRadius/vLenXY),
@@ -110,7 +130,7 @@ public interface Surface
                 double vReflected[] = VecMath.sxvpsxv(-1., v,
                                                       2.*VecMath.dot(pToHorizonPoint,v)/VecMath.normsqrd(pToHorizonPoint), pToHorizonPoint);
                 // tail recurse.  this can happen several times, but eventually v will point into the sphere.
-                System.out.println("reflecting");
+                //System.out.println("reflecting");
 
 #ifdef NOTYET // this is the code for a sphere, need to figure out something similar for paraboloid
                 // However, if we are looking right at the horizon,
@@ -162,6 +182,13 @@ public interface Surface
         // required by Surface interface
         public double[] rayIntersect(double offset, double p[/*3*/], double v[/*3*/])
         {
+            System.out.println("    in Sphere.rayIntersect");
+            PRINTVEC(this.center);
+            PRINT(this.radius);
+            PRINT(this.radius + offset);
+            PRINT(offset);
+            PRINTVEC(p);
+            PRINTVEC(v);
             double r = this.radius + offset;
             double r2 = r*r;
             double P2 = VecMath.distsqrd(this.center, p);
@@ -172,6 +199,7 @@ public interface Surface
 
             while (true)
             {
+                System.out.println("        top of loop");
                 {
                     // let P = p-c.
                     // want t such that ||P + t*v|| == r
@@ -200,16 +228,25 @@ public interface Surface
                         double t0 = MIN(tThis, tThat);
                         double t1 = MAX(tThis, tThat);
                         if (t0 >= 0. && !ignoreFront)
+                        {
+                            System.out.println("    out Sphere.rayIntersect (front)");
                             return VecMath.vpsxv(p, t0, v);
+                        }
                         else if (t1 >= 0. || force)
+                        {
+                            System.out.println("    out Sphere.rayIntersect (back)");
                             return VecMath.vpsxv(p, t1, v);
+                        }
                         // otherwise fall through to reflecting through horizon and trying again
                     }
                     // COMMON CODE END
                 }
 
                 double centerToHorizonChordMidpoint2 = r2*r2/P2;
+                PRINT(centerToHorizonChordMidpoint2);
+                PRINT(Math.sqrt(centerToHorizonChordMidpoint2));
                 double horizonChordHalfLength2 = r2 - centerToHorizonChordMidpoint2;
+                PRINT(horizonChordHalfLength2);
                 if (horizonChordHalfLength2 <= 0.)
                 {
                     // if equal to zero, p is right on the surface.
@@ -217,22 +254,32 @@ public interface Surface
                     // which means we shouldn't have gotten this far but we did
                     // due to roundoff error, so we still consider p
                     // to be right on the surface.
+                    assert(horizonChordHalfLength2 >= -SQR(1e-3));
                     return p;
                 }
                 double horizonChordHalfLength = Math.sqrt(horizonChordHalfLength2);
+                PRINT(horizonChordHalfLength);
                 double P[] = VecMath.vmv(p, this.center);
                 // note, up to this point we haven't used v
 
                 double horizonChordDir[] = VecMath.vpsxv(v, -VecMath.dot(P, v)/P2, P); // v orthogonalized against P
-                VecMath.normalize(horizonChordDir);
+                VecMath.normalize(horizonChordDir, horizonChordDir);
+                PRINTVEC(horizonChordDir);
 
+                PRINT(r2/P2-1);
+                PRINT((r2/P2-1)*Math.sqrt(P2));
+                PRINTVEC(VecMath.vpsxv(p, r2/P2-1, P));
                 double pToHorizonPoint[] = VecMath.sxvpsxv(r2/P2-1, P, // p to horizon chord midpoint
                                                            horizonChordHalfLength, horizonChordDir); // horizon chord midpoint to horizon point
+                PRINTVEC(pToHorizonPoint);
                 // now reflect v across pToHorizonPoint
                 double vReflected[] = VecMath.sxvpsxv(-1., v,
                                                       2.*VecMath.dot(pToHorizonPoint,v)/VecMath.normsqrd(pToHorizonPoint), pToHorizonPoint);
+                PRINTVEC(vReflected);
+                PRINT(VecMath.norm(v));
+                PRINT(VecMath.norm(vReflected));
                 // tail recurse.  this can happen several times, but eventually v will point into the sphere.
-                System.out.println("reflecting");
+                //System.out.println("reflecting");
 
                 // However, if we are looking right at the horizon,
                 // it may happen that we keep missing due to roundoff error.
@@ -301,8 +348,8 @@ public interface Surface
         {
             this.originalSurface = originalSurface;
             this.s = s;
-            this.r = r;
-            this.t = t;
+            this.r = r!=null ? r : VecMath.identitymat(3);
+            this.t = t!=null ? t : new double[3]; // zeros
 
             assert(r.length == 3);
             assert(r[0].length == 3);
