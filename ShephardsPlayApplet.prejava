@@ -26,6 +26,7 @@ BUGS:
       or exactly equal
 
   Misc:
+    - should ConvexHull use fuzzy equality testing in more places, to avoid twinkling on grid? (hmm, maybe twinkling on grid is actually useful in a way?)
     - can't seem to get a cube by creating octa verts with show-inside-out--
           not sure what it's thinking
     - picking net edges is wrong, need to do it in screen space
@@ -2583,10 +2584,14 @@ public class ShephardsPlayApplet
                                         {
                                             double wrapSphereRadius = 1./wrapSphereCurvature.get();
                                             FORI (i, vertsToAdd.length)
+                                            {
                                                 vertsToAdd[i] = wrapVertAroundSphere(vertsToAdd[i][0],
                                                                                      vertsToAdd[i][1],
                                                                                      0.,
                                                                                      wrapSphereRadius);
+                                                if (!centerSphere)
+                                                    vertsToAdd[i][2] += wrapSphereRadius;
+                                            }
 
                                             int p = 3;
                                             int q = rotationalSymmetry;
@@ -2595,10 +2600,14 @@ public class ShephardsPlayApplet
                                                                           gens);
 
                                             FORI (i, vertsToAdd.length)
+                                            {
+                                                if (!centerSphere)
+                                                    vertsToAdd[i][2] -= wrapSphereRadius;
                                                 vertsToAdd[i] = (double[])Arrays.subarray(unwrapVertAroundSphere(vertsToAdd[i][0],
                                                                                                                  vertsToAdd[i][1],
                                                                                                                  vertsToAdd[i][2],
                                                                                                                  wrapSphereRadius), 0, 2);
+                                            }
                                         }
                                         else
                                         {
@@ -3113,6 +3122,7 @@ public class ShephardsPlayApplet
                         else if (beingDraggedVertIndex != -1)
                         {
                             Mesh.Vertex beingDraggedVert = mesh.getVert(beingDraggedVertIndex);
+
                             double projectedThisP[] = new double[3];
                             pickPointOnParaboloid(thisP, beingDraggedVert.h, projectedThisP);
                             double projectedPrevP[] = new double[3];
@@ -3120,13 +3130,15 @@ public class ShephardsPlayApplet
 
                             beingDraggedVertUnsnappedXY[0] += projectedThisP[0] - projectedPrevP[0];
                             beingDraggedVertUnsnappedXY[1] += projectedThisP[1] - projectedPrevP[1];
+                            // height doesn't change
 
                             if (rotationalSymmetry > 1
                              || leftRightSymmetry)
                             {
                                 // Drag all points of kaleidoscope
-
-                                double group[][][] = computeSymmetryGroup2d(rotationalSymmetry, leftRightSymmetry);
+                                double wrapSphereRadius = 1./wrapSphereCurvature.get();
+                                double group[][][] = polyhedralSymmetryFlag ? computeSymmetryGroup3d(3, rotationalSymmetry, leftRightSymmetry)
+                                                                            : computeSymmetryGroup2d(rotationalSymmetry, leftRightSymmetry);
                                 //PRINTARRAY(group);
 
                                 double v[] = {beingDraggedVert.x,
@@ -3151,6 +3163,15 @@ public class ShephardsPlayApplet
                                 {
                                     newVertPositions[i][0] = mesh.getVert(i).x;
                                     newVertPositions[i][1] = mesh.getVert(i).y;
+                                    if (polyhedralSymmetryFlag)
+                                    {
+                                        newVertPositions[i] = wrapVertAroundSphere(newVertPositions[i][0],
+                                                                                   newVertPositions[i][1],
+                                                                                   0.,
+                                                                                   wrapSphereRadius);
+                                        if (!centerSphere)
+                                            newVertPositions[i][2] += wrapSphereRadius;
+                                    }
                                 }
 
                                 // Whenever we can find a reflected image vertex in a mirror,
@@ -3159,7 +3180,7 @@ public class ShephardsPlayApplet
                                 // that means the mirror passes through it;
                                 // this will end up constraining it to the mirror
                                 // (and moving it twice as far along the mirror as otherwise, which is fine).
-                                // XXX should just move the reflection to the new reflection, I think, to prevent drift? hmm, but then we'd lose the nice locked-to-mirror behavior
+                                // XXX should just move the reflection to the new reflection by same xform, I think, to prevent drift? hmm, but then we'd lose the nice locked-to-mirror behavior
                                 FORI (iGroup, group.length)
                                 {
                                     double image[] = VecMath.vxm(v,group[iGroup]);
@@ -3180,6 +3201,15 @@ public class ShephardsPlayApplet
                                 }
                                 FORI (i, newVertPositions.length)
                                 {
+                                    if (polyhedralSymmetryFlag)
+                                    {
+                                        if (!centerSphere)
+                                            newVertPositions[i][2] -= wrapSphereRadius;
+                                        newVertPositions[i] = (double[])Arrays.subarray(unwrapVertAroundSphere(newVertPositions[i][0],
+                                                                                                         newVertPositions[i][1],
+                                                                                                         newVertPositions[i][2],
+                                                                                                         wrapSphereRadius), 0, 2);
+                                    }
                                     mesh.getVert(i).x = newVertPositions[i][0];
                                     mesh.getVert(i).y = newVertPositions[i][1];
                                 }
@@ -12708,43 +12738,6 @@ OFF
             return VecMath.distsqrd(v, vprojectedOntoV1);
         }
 
-        // return t such that p + t*v is on the paraboloid x,y,-.5*(x^2+y^2)
-        // i.e. such that:
-        //      pz + t*vz = -.5 * ((px + t*vx)^2 + (py + t*vy)^2)
-        //                = -.5 * (px^2 + 2*t*px*vx + t^2*vx^2 + py^2 + 2*t*py*vy + t^2*vy^2)
-        //                = -.5 * ((px^2+py^2) + 2*t*(px*vx+py*vy) + t^2*(vx^2+vy^2))
-        //    ((px^2+py^2) + 2*t*(px*vx+py*vy) + t^2*(vx^2+vy^2)) + 2*pz + 2*t*vz == 0
-        //    (vx^2+vy^2)*t^2 + 2*(px*vx+py*vy + vz)*t + (px^2+py^2 + 2*pz) == 0
-
-        private static double rayIntersectParaboloid(double p[], double v[])
-        {
-            double a = SQR(v[0])+SQR(v[1]);
-            double b = 2*(p[0]*v[0] + p[1]*v[1] + v[2]);
-            double c = SQR(p[0]) + SQR(p[1]) + 2*p[2];
-            // numerical recipes in c, p. 184
-            double discr = b*b - 4*a*c;
-            double q = -.5 * (b + (b < 0 ? -1 : 1) * Math.sqrt(ABS(discr)));
-            double tThis = q/a;
-            double tThat = c/q;
-            double t0 = MIN(tThis, tThat);
-            double t1 = MAX(tThis, tThat);
-            if (discr < 0.)
-            {
-                // return the max of the two.
-                // if we're lucky, this will be something like
-                // a sensible mirror reflection of... well it's hard to explain.
-                return t1;
-            }
-            else
-            {
-                if (t0 >= 0.)
-                    return t0;
-                else
-                    return t1;
-            }
-        } // rayIntersectParaboloid
-
-
         // XXX unused... but should it be in VecMath or something?
         private static double[][] axisAngleRotationMatrix(double axis[], double radians)
         {
@@ -13129,7 +13122,7 @@ OFF
                 // cos(pi*n/d) = sin(pi/2 - pi*n/d)
                 //             = sin(pi * (1/2 - n/d))
                 //             = sin(pi * (d/(2*d) - 2*n/(2*d)))
-                //             = sin(pi * (d-2*n)/(2*d)
+                //             = sin(pi * (d-2*n)/(2*d))
                 return sinSquaredPiTimes(d-2*n, 2*d);
             }
 
@@ -13447,17 +13440,20 @@ OFF
                 double eyeInLocalSpace[] = VecMath.mxv(getRotMat(), eye); // multiply on wrong side, i.e. apply transpose i.e. inverse
                 eyeInLocalSpace[2] /= MAX(localScaleZ, 1e-6);
                 double towardsPointInLocalSpace[] = VecMath.mxv(getRotMat(), new double[]{thisP[0],thisP[1],0.});
+
+                // gag, that returned a 4d vector
+                eyeInLocalSpace = (double[])Arrays.subarray(eyeInLocalSpace, 0, 3);
+                towardsPointInLocalSpace = (double[])Arrays.subarray(towardsPointInLocalSpace, 0, 3);
+
+
                 eyeInLocalSpace[2] /= localScaleZ;
                 towardsPointInLocalSpace[2] /= localScaleZ;
 
                 eyeInLocalSpace[2] -= paraboloidLevel;
                 towardsPointInLocalSpace[2] -= paraboloidLevel;
 
-                double t = rayIntersectParaboloid(
-                                eyeInLocalSpace,
-                                VecMath.vmv(towardsPointInLocalSpace, eyeInLocalSpace));
-                VecMath.lerp(3, resultPointOnParaboloid, eyeInLocalSpace, towardsPointInLocalSpace, t);
-                resultPointOnParaboloid[2] += paraboloidLevel;
+                Surface surface = new Surface.Paraboloid(-.5);
+                VecMath.copyvec(resultPointOnParaboloid, surface.rayIntersect(paraboloidLevel, eyeInLocalSpace, VecMath.vmv(towardsPointInLocalSpace, eyeInLocalSpace)));
             }
         } // pickPointOnParaboloid
 
@@ -13730,7 +13726,7 @@ OFF
         frame.setSize(1001, 701);
         frame.setSize(1001, 600);
         frame.setSize(600, 550);
-        frame.show();
+        frame.setVisible(true);
 
         // why can't we get here in any toolkit ever?
         System.out.println("out main");
