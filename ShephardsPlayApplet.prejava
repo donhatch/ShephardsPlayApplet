@@ -11,7 +11,10 @@ BUGS:
     - arrow keys don't scroll help window
 
   Wrap-sphere related:
+    - it prints offset, which is dreadfully wrong. especially with non-1 sphere radius.
     - dragging on sphere surface not reflecting through horizon quite right yet
+
+    - for Surface, most import thing is that offset is right-- should adjust final result to make it right
     - it's not dragging images in kaleidescope
     - backface culling is flakey (or, need a coherent scheme, not keying on show-inside-out)
     - backface culling sometimes slightly wrong-- using wrong criterion?
@@ -787,10 +790,15 @@ public class ShephardsPlayApplet
                                     wrapAroundSphereFlag.addListener(wrapAroundSphereFlagListener = new Listenable.Listener() {
                                         public void valueChanged()
                                         {
+                                            // XXX this should go in one listener
                                             setSelected(wrapAroundSphereFlag.get()); // of the checkbox
+
+                                            // XXX the rest should go in a separate listener
+
                                             // XXX this isn't really the right place for the following; should do the following regardless of whether there's a checkbox for it
                                             if (wrapAroundSphereFlag.get())
                                             {
+                                                theSurface = theSphereSurface;
                                                 wrapAroundSphere(wrapSphereCurvature.get());
                                                 theLabel.setEnabled(true);
                                                 theTextField.setEnabled(true);
@@ -798,6 +806,7 @@ public class ShephardsPlayApplet
                                             }
                                             else
                                             {
+                                                theSurface = theParaboloidSurface;
                                                 unwrapAroundSphere(wrapSphereCurvature.get());
                                                 theLabel.setEnabled(false);
                                                 theTextField.setEnabled(false);
@@ -1511,20 +1520,24 @@ public class ShephardsPlayApplet
                 }
             });
             wrapSphereCurvature.addListener(wrapSphereCurvatureListener = new Listenable.Listener() {
-                double previousValue = wrapSphereCurvature.get();
+                double previousValue = wrapSphereCurvature.get(); // track value of the Listenable
                 public void valueChanged()
                 {
                     //System.out.println("    in wrapSphereCurvature valueChanged");
                     double currentValue = wrapSphereCurvature.get();
+                    assert(currentValue != previousValue); // Listenable wouldn't notify us otherwise
+
+                    theSphereSurface.radius = 1./currentValue;
+                    if (!centerSphere)
+                        theSphereSurface.center[2] = -theSphereSurface.radius;
+
                     if (wrapAroundSphereFlag.get())
                     {
-                        if (currentValue != previousValue)
-                        {
-                            unwrapAroundSphere(previousValue);
-                            wrapAroundSphere(currentValue);
-                            theCanvas.repaint();
-                        }
+                        unwrapAroundSphere(previousValue);
+                        wrapAroundSphere(currentValue);
+                        theCanvas.repaint();
                     }
+
                     previousValue = currentValue;
                     //System.out.println("    out wrapSphereCurvature valueChanged");
                 }
@@ -3129,9 +3142,9 @@ public class ShephardsPlayApplet
                             Mesh.Vertex beingDraggedVert = mesh.getVert(beingDraggedVertIndex);
 
                             double projectedThisP[] = new double[3];
-                            pickPointOnSurface(thisP, beingDraggedVert.h, projectedThisP);
+                            pickPointOnSurface(thisP, vertOffset(beingDraggedVert, wrapAroundSphereFlag.get()), projectedThisP);
                             double projectedPrevP[] = new double[3];
-                            pickPointOnSurface(prevP, beingDraggedVert.h, projectedPrevP);
+                            pickPointOnSurface(prevP, vertOffset(beingDraggedVert, wrapAroundSphereFlag.get()), projectedPrevP);
 
                             beingDraggedVertUnsnappedXY[0] += projectedThisP[0] - projectedPrevP[0];
                             beingDraggedVertUnsnappedXY[1] += projectedThisP[1] - projectedPrevP[1];
@@ -6227,7 +6240,7 @@ public class ShephardsPlayApplet
                     mg.setColor(java.awt.Color.white);
                     Mesh.Vertex v0 = mesh.getVert(beingDraggedVertIndex);
                     double projectedPrevP[] = new double[3];
-                    pickPointOnSurface(prevP, v0.h, projectedPrevP);
+                    pickPointOnSurface(prevP, vertOffset(v0, wrapAroundSphereFlag.get()), projectedPrevP);
                     //mg.drawLine(v0.x, v0.y,
                                 //prevP[0], prevP[1], doAntiAliasing);
                     mg.drawLine(v0.x, v0.y, v0.hActual(),
@@ -11394,6 +11407,22 @@ OFF
             }
         } // fixDualDirections
 
+        // XXX move this somewhere else
+        double vertOffset(Mesh.Vertex vert, boolean wrapAroundSphereFlagValue)
+        {
+            if (wrapAroundSphereFlag.get())
+            {
+                double p[] = {vert.x, vert.y, vert.hActual()};
+                return theSurface.offset(p);
+            }
+            else
+            {
+                // Mathematically this is theSurface.offset(p),
+                // but we want to do it more directly
+                // so that when it's exactly zero we'll get exactly zero.
+                return vert.h;
+            }
+        } // vertOffset
 
         public static class Net
         {
@@ -13375,6 +13404,11 @@ OFF
         private Listenable.Int gridN = new Listenable.Int(0,1000,10);
         private Listenable.Int blueNoiseN = new Listenable.Int(0,1000,10);
 
+        private Surface.Sphere theSphereSurface = new Surface.Sphere(new double[]{0,0,centerSphere ? 0. : -1./wrapSphereCurvature.get()}, 1./wrapSphereCurvature.get());
+        private Surface.Paraboloid theParaboloidSurface = new Surface.Paraboloid(-.5);
+        private Surface theSurface = (wrapAroundSphereFlag.get() ? (Surface)theSphereSurface
+                                                                 : (Surface)theParaboloidSurface);
+
         private boolean draggingRotation = false;
         private double localScaleZ;
         private double twirl; // x->y
@@ -13749,6 +13783,7 @@ OFF
         frame.setSize(1001, 701);
         frame.setSize(1001, 600);
         frame.setSize(600, 550);
+        frame.setSize(600, 400);
         frame.setVisible(true);
 
         // why can't we get here in any toolkit ever?
