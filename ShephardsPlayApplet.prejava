@@ -2112,6 +2112,9 @@ public class ShephardsPlayApplet
             answer[2] = sz;
 
             // sz is actual
+
+            System.out.println("at end of wrapVertAroundSphere, dist from center = "+Math.sqrt(SQR(sx)+SQR(sy)+SQR(sz+wrapSphereRadius)));
+
         } // wrapVertAroundSphere
 
         // wrap from parabola to sphere
@@ -3142,111 +3145,146 @@ public class ShephardsPlayApplet
                         else if (beingDraggedVertIndex != -1)
                         {
                             Mesh.Vertex beingDraggedVert = mesh.getVert(beingDraggedVertIndex);
+                            double offset = vertOffset(beingDraggedVert, wrapAroundSphereFlag.get());
 
-                            double projectedThisP[] = new double[3];
-                            pickPointOnSurface(thisP, vertOffset(beingDraggedVert, wrapAroundSphereFlag.get()), projectedThisP);
-                            double projectedPrevP[] = new double[3];
-                            pickPointOnSurface(prevP, vertOffset(beingDraggedVert, wrapAroundSphereFlag.get()), projectedPrevP);
+                            /*
+                                All right, how should this look?
+                                    1. Find closest vert, in pixels, to the mouse cursor (already found, if dragging)
+                                    2. determine its surface offset and whether it's front-facing or back-facing
+                                    3. project it to screen space
+                                    4. apply delta to it in screen space
+                                    5. project screen point to offset surface at same height as before to get new position,
+                                       with same facing (or opposite facing if ray misses surface)
+                                    6. if paraboloid, snap x,y part to grid but retain same offset (height above paraboloid)
+                                    7. for any symmetry images, do same thing to them
 
-                            beingDraggedVertUnsnappedXY[0] += projectedThisP[0] - projectedPrevP[0];
-                            beingDraggedVertUnsnappedXY[1] += projectedThisP[1] - projectedPrevP[1];
-                            // height doesn't change
+                            */
+                            double beingDraggedVertXY[] = new double[2];
+                            mostRecentGraphics.xform(beingDraggedVert.x,
+                                                     beingDraggedVert.y,
+                                                     beingDraggedVert.hActual(),
+                                                     beingDraggedVertXY);
+                            beingDraggedVertXY[0] += thisP[0] - prevP[0];
+                            beingDraggedVertXY[1] += thisP[1] - prevP[1];
 
-                            if (rotationalSymmetry > 1
-                             || leftRightSymmetry)
+                            double beingDraggedVertNewCoords[] = new double[3];
+                            pickPointOnSurface(beingDraggedVertXY, offset, beingDraggedVertNewCoords);
+                            beingDraggedVert.x = beingDraggedVertNewCoords[0];
+                            beingDraggedVert.y = beingDraggedVertNewCoords[1];
+                            // if on paraboloid, h doesn't change. if on sphere, have to adjust.
+                            if (wrapAroundSphereFlag.get())
+                                beingDraggedVert.setHActual(beingDraggedVertNewCoords[2]);
+
+
+
+                            if (false)
                             {
-                                // Drag all points of kaleidoscope
-                                double wrapSphereRadius = 1./wrapSphereCurvature.get();
-                                double group[][][] = polyhedralSymmetryFlag ? computeSymmetryGroup3d(3, rotationalSymmetry, leftRightSymmetry)
-                                                                            : computeSymmetryGroup2d(rotationalSymmetry, leftRightSymmetry);
-                                //PRINTARRAY(group);
+                                double projectedThisP[] = new double[3];
+                                pickPointOnSurface(thisP, offset, projectedThisP);
+                                double projectedPrevP[] = new double[3];
+                                pickPointOnSurface(prevP, offset, projectedPrevP);
 
-                                double v[] = {beingDraggedVert.x,
-                                              beingDraggedVert.y};
-                                double dv[];
-                                if (snapToGrid)
+                                beingDraggedVertUnsnappedXY[0] += projectedThisP[0] - projectedPrevP[0];
+                                beingDraggedVertUnsnappedXY[1] += projectedThisP[1] - projectedPrevP[1];
+
+                                // height doesn't change if on paraboloid.
+                                // but if on sphere, we have to adust it.  ARGH!
+
+                                if (rotationalSymmetry > 1
+                                 || leftRightSymmetry)
                                 {
-                                    double beingDraggedVertSnappedXY[] = {
-                                        (double)Math.round(beingDraggedVertUnsnappedXY[0]/gridSnapQuantum)*gridSnapQuantum,
-                                        (double)Math.round(beingDraggedVertUnsnappedXY[1]/gridSnapQuantum)*gridSnapQuantum,
-                                    };
-                                    dv = VecMath.vmv(2, beingDraggedVertSnappedXY, v);
+                                    // Drag all points of kaleidoscope
+                                    double wrapSphereRadius = 1./wrapSphereCurvature.get();
+                                    double group[][][] = polyhedralSymmetryFlag ? computeSymmetryGroup3d(3, rotationalSymmetry, leftRightSymmetry)
+                                                                                : computeSymmetryGroup2d(rotationalSymmetry, leftRightSymmetry);
+                                    //PRINTARRAY(group);
+
+                                    double v[] = {beingDraggedVert.x,
+                                                  beingDraggedVert.y};
+                                    double dv[];
+                                    if (snapToGrid)
+                                    {
+                                        double beingDraggedVertSnappedXY[] = {
+                                            (double)Math.round(beingDraggedVertUnsnappedXY[0]/gridSnapQuantum)*gridSnapQuantum,
+                                            (double)Math.round(beingDraggedVertUnsnappedXY[1]/gridSnapQuantum)*gridSnapQuantum,
+                                        };
+                                        dv = VecMath.vmv(2, beingDraggedVertSnappedXY, v);
+                                    }
+                                    else
+                                    {
+                                        dv = VecMath.vmv(2, beingDraggedVertUnsnappedXY, v);
+                                    }
+
+                                    int nVerts = mesh.verts.size();
+                                    double newVertPositions[][] = new double[nVerts][2];
+                                    FORI (i, newVertPositions.length)
+                                    {
+                                        newVertPositions[i][0] = mesh.getVert(i).x;
+                                        newVertPositions[i][1] = mesh.getVert(i).y;
+                                        if (polyhedralSymmetryFlag)
+                                        {
+                                            newVertPositions[i] = wrapVertAroundSphere(newVertPositions[i][0],
+                                                                                       newVertPositions[i][1],
+                                                                                       0.,
+                                                                                       wrapSphereRadius);
+                                            if (!centerSphere)
+                                                newVertPositions[i][2] += wrapSphereRadius;
+                                        }
+                                    }
+
+                                    // Whenever we can find a reflected image vertex in a mirror,
+                                    // apply the reflected dv to the reflected image vertex.
+                                    // In particular, if the vertex is its own image,
+                                    // that means the mirror passes through it;
+                                    // this will end up constraining it to the mirror
+                                    // (and moving it twice as far along the mirror as otherwise, which is fine).
+                                    // XXX should just move the reflection to the new reflection by same xform, I think, to prevent drift? hmm, but then we'd lose the nice locked-to-mirror behavior
+                                    FORI (iGroup, group.length)
+                                    {
+                                        double image[] = VecMath.vxm(v,group[iGroup]);
+
+                                        FORI (iImage, nVerts)
+                                        {
+                                            Mesh.Vertex imageVert = mesh.getVert(iImage);
+                                            if (EQ(image[0], imageVert.x, 1e-6)
+                                             && EQ(image[1], imageVert.y, 1e-6))
+                                            {
+                                                // TODO: snap imageVertPosition to image, to prevent drift away from symmetry?
+                                                double imageTweak[] = VecMath.vxm(dv, group[iGroup]);
+                                                VecMath.vpv(newVertPositions[iImage],
+                                                            newVertPositions[iImage],
+                                                            imageTweak);
+                                            }
+                                        }
+                                    }
+                                    FORI (i, newVertPositions.length)
+                                    {
+                                        if (polyhedralSymmetryFlag)
+                                        {
+                                            if (!centerSphere)
+                                                newVertPositions[i][2] -= wrapSphereRadius;
+                                            newVertPositions[i] = (double[])Arrays.subarray(unwrapVertAroundSphere(newVertPositions[i][0],
+                                                                                                             newVertPositions[i][1],
+                                                                                                             newVertPositions[i][2],
+                                                                                                             wrapSphereRadius), 0, 2);
+                                        }
+                                        mesh.getVert(i).x = newVertPositions[i][0];
+                                        mesh.getVert(i).y = newVertPositions[i][1];
+                                    }
                                 }
                                 else
                                 {
-                                    dv = VecMath.vmv(2, beingDraggedVertUnsnappedXY, v);
-                                }
+                                    // Drag just the selected vert
+                                    beingDraggedVert.x = beingDraggedVertUnsnappedXY[0];
+                                    beingDraggedVert.y = beingDraggedVertUnsnappedXY[1];
 
-                                int nVerts = mesh.verts.size();
-                                double newVertPositions[][] = new double[nVerts][2];
-                                FORI (i, newVertPositions.length)
-                                {
-                                    newVertPositions[i][0] = mesh.getVert(i).x;
-                                    newVertPositions[i][1] = mesh.getVert(i).y;
-                                    if (polyhedralSymmetryFlag)
+                                    if (snapToGrid)
                                     {
-                                        newVertPositions[i] = wrapVertAroundSphere(newVertPositions[i][0],
-                                                                                   newVertPositions[i][1],
-                                                                                   0.,
-                                                                                   wrapSphereRadius);
-                                        if (!centerSphere)
-                                            newVertPositions[i][2] += wrapSphereRadius;
+                                        beingDraggedVert.x = (double)Math.round(beingDraggedVert.x/gridSnapQuantum)*gridSnapQuantum;
+                                        beingDraggedVert.y = (double)Math.round(beingDraggedVert.y/gridSnapQuantum)*gridSnapQuantum;
                                     }
                                 }
-
-                                // Whenever we can find a reflected image vertex in a mirror,
-                                // apply the reflected dv to the reflected image vertex.
-                                // In particular, if the vertex is its own image,
-                                // that means the mirror passes through it;
-                                // this will end up constraining it to the mirror
-                                // (and moving it twice as far along the mirror as otherwise, which is fine).
-                                // XXX should just move the reflection to the new reflection by same xform, I think, to prevent drift? hmm, but then we'd lose the nice locked-to-mirror behavior
-                                FORI (iGroup, group.length)
-                                {
-                                    double image[] = VecMath.vxm(v,group[iGroup]);
-
-                                    FORI (iImage, nVerts)
-                                    {
-                                        Mesh.Vertex imageVert = mesh.getVert(iImage);
-                                        if (EQ(image[0], imageVert.x, 1e-6)
-                                         && EQ(image[1], imageVert.y, 1e-6))
-                                        {
-                                            // TODO: snap imageVertPosition to image, to prevent drift away from symmetry?
-                                            double imageTweak[] = VecMath.vxm(dv, group[iGroup]);
-                                            VecMath.vpv(newVertPositions[iImage],
-                                                        newVertPositions[iImage],
-                                                        imageTweak);
-                                        }
-                                    }
-                                }
-                                FORI (i, newVertPositions.length)
-                                {
-                                    if (polyhedralSymmetryFlag)
-                                    {
-                                        if (!centerSphere)
-                                            newVertPositions[i][2] -= wrapSphereRadius;
-                                        newVertPositions[i] = (double[])Arrays.subarray(unwrapVertAroundSphere(newVertPositions[i][0],
-                                                                                                         newVertPositions[i][1],
-                                                                                                         newVertPositions[i][2],
-                                                                                                         wrapSphereRadius), 0, 2);
-                                    }
-                                    mesh.getVert(i).x = newVertPositions[i][0];
-                                    mesh.getVert(i).y = newVertPositions[i][1];
-                                }
-                            }
-                            else
-                            {
-                                // Drag just the selected vert
-                                beingDraggedVert.x = beingDraggedVertUnsnappedXY[0];
-                                beingDraggedVert.y = beingDraggedVertUnsnappedXY[1];
-
-                                if (snapToGrid)
-                                {
-                                    beingDraggedVert.x = (double)Math.round(beingDraggedVert.x/gridSnapQuantum)*gridSnapQuantum;
-                                    beingDraggedVert.y = (double)Math.round(beingDraggedVert.y/gridSnapQuantum)*gridSnapQuantum;
-                                    // and leave its h alone
-                                }
-                            }
+                            } // if false
 
                             if (doContinuouslyDelaunayize.get()) delaunayize();
                             if (nonEventVerbose >= 1)
@@ -11437,6 +11475,7 @@ OFF
             if (wrapAroundSphereFlag.get())
             {
                 double p[] = {vert.x, vert.y, vert.hActual()};
+                assert(EQ(theSurface.offset(p), 0., 1e-5)); // XXX get rid of this when debugged
                 return theSurface.offset(p);
             }
             else
@@ -13506,10 +13545,14 @@ OFF
                 double wrapSphereRadius = 1./wrapSphereCurvature.get();
                 double wrapSphereCenter[] = {0., 0., -wrapSphereRadius};
                 Surface surface = new Surface.Sphere(wrapSphereCenter, wrapSphereRadius);
-                VecMath.copyvec(resultPointOnSurface,
-                                surface.rayIntersect(offset,
-                                                     eyeInLocalSpace,
-                                                     VecMath.vmv(towardsPointInLocalSpace, eyeInLocalSpace)));
+                double scratch[][] = new double[2][4];
+                int nAnswers = surface.rayIntersect(scratch,
+                                                    offset,
+                                                    eyeInLocalSpace,
+                                                    VecMath.vmv(towardsPointInLocalSpace, eyeInLocalSpace),
+                                                    Surface.MISS_REFLECT);
+                assert(nAnswers == 2);
+                VecMath.copyvec(resultPointOnSurface, scratch[0]);
             }
             else
             {
@@ -13530,10 +13573,14 @@ OFF
                     towardsPointInLocalSpace[2] -= offset;
 
                     Surface surface = new Surface.Paraboloid(-.5);
-                    VecMath.copyvec(resultPointOnSurface,
-                                    surface.rayIntersect(offset,
-                                                         eyeInLocalSpace,
-                                                         VecMath.vmv(towardsPointInLocalSpace, eyeInLocalSpace)));
+                    double scratch[][] = new double[2][4];
+                    int nAnswers = surface.rayIntersect(scratch,
+                                                        offset,
+                                                        eyeInLocalSpace,
+                                                        VecMath.vmv(towardsPointInLocalSpace, eyeInLocalSpace),
+                                                        Surface.MISS_REFLECT);
+                    assert(nAnswers == 2);
+                    VecMath.copyvec(resultPointOnSurface, scratch[0]);
                 }
             }
         } // pickPointOnSurface
@@ -13807,7 +13854,6 @@ OFF
         frame.setSize(1001, 701);
         frame.setSize(1001, 600);
         frame.setSize(600, 550);
-        frame.setSize(600, 400);
         frame.setVisible(true);
 
         // why can't we get here in any toolkit ever?
