@@ -35,6 +35,9 @@ BUGS:
 
 
   Misc:
+    - can we make ConvexHull incremental? might be useful when just dragging a single point.
+      hmm, tricky, since interior points can become non-interior.  is there a nice data structure
+      that includes them? or, maybe there are not too many, so just add them all explicitly and it might still be a win
     - should ConvexHull use fuzzy equality testing in more places, to avoid twinkling on grid? (hmm, maybe twinkling on grid is actually useful in a way?)
     - can't seem to get a cube by creating octa verts with show-inside-out--
           not sure what it's thinking
@@ -11244,7 +11247,7 @@ OFF
                                         boolean wrapAroundSphereFlagValue,
                                         double wrapSphereCurvatureValue)
         {
-            System.out.println("    in makeDualMesh(wrapAroundSphereFlagValue="+wrapAroundSphereFlagValue+")");
+            //System.out.println("    in makeDualMesh(wrapAroundSphereFlagValue="+wrapAroundSphereFlagValue+")");
             Mesh dual = new Mesh();
             int nEdges = primal.edges.size();
             FORI (iEdge, nEdges)
@@ -11408,7 +11411,7 @@ OFF
             // Give each dual edge a direction.
             //
             fixDualDirections(primal, dual, wrapAroundSphereFlagValue, wrapSphereCurvatureValue);
-            System.out.println("    out makeDualMesh(wrapAroundSphereFlagValue="+wrapAroundSphereFlagValue+")");
+            //System.out.println("    out makeDualMesh(wrapAroundSphereFlagValue="+wrapAroundSphereFlagValue+")");
             return dual;
         } // makeDualMesh()
 
@@ -11483,6 +11486,8 @@ OFF
                 // Mathematically this is theSurface.offset(p),
                 // but we want to do it more directly
                 // so that when it's exactly zero we'll get exactly zero.
+                double p[] = {vert.x, vert.y, vert.hActual()};
+                assert(EQ(theSurface.offset(p), 0., 1e-5)); // XXX get rid of this when debugged
                 return vert.h;
             }
         } // vertOffset
@@ -13529,7 +13534,7 @@ OFF
         //  getRotMat()
         //  eye
         //  wrap
-        void pickPointOnSurface(double thisP[], double offset, double resultPointOnSurface[])
+        void pickPointOnSurface(double thisP[], double offset, double resultPointOnSurface[]) // XXX TODO: need preference for which side
         {
             double eyeInLocalSpace[] = VecMath.mxv(getRotMat(), eye); // multiply on wrong side, i.e. apply transpose i.e. inverse
             if (!wrapAroundSphereFlag.get())
@@ -13540,49 +13545,31 @@ OFF
             eyeInLocalSpace = (double[])Arrays.subarray(eyeInLocalSpace, 0, 3);
             towardsPointInLocalSpace = (double[])Arrays.subarray(towardsPointInLocalSpace, 0, 3);
 
-            if (wrapAroundSphereFlag.get())
-            {
-                double wrapSphereRadius = 1./wrapSphereCurvature.get();
-                double wrapSphereCenter[] = {0., 0., -wrapSphereRadius};
-                Surface surface = new Surface.Sphere(wrapSphereCenter, wrapSphereRadius);
-                double scratch[][] = new double[2][4];
-                int nAnswers = surface.rayIntersect(scratch,
-                                                    offset,
-                                                    eyeInLocalSpace,
-                                                    VecMath.vmv(towardsPointInLocalSpace, eyeInLocalSpace),
-                                                    Surface.MISS_REFLECT);
-                assert(nAnswers == 2);
-                VecMath.copyvec(resultPointOnSurface, scratch[0]);
-            }
-            else
+            if (!wrapAroundSphereFlag.get())
             {
                 if (localScaleZ == 0)
                 {
                     resultPointOnSurface[0] = thisP[0];
                     resultPointOnSurface[1] = thisP[1];
                     resultPointOnSurface[2] = -.5*(SQR(thisP[0])+SQR(thisP[1]));
+                    return;
                 }
-                else
-                {
+                eyeInLocalSpace[2] /= localScaleZ;
+                towardsPointInLocalSpace[2] /= localScaleZ;
 
-
-                    eyeInLocalSpace[2] /= localScaleZ;
-                    towardsPointInLocalSpace[2] /= localScaleZ;
-
-                    eyeInLocalSpace[2] -= offset;
-                    towardsPointInLocalSpace[2] -= offset;
-
-                    Surface surface = new Surface.Paraboloid(-.5);
-                    double scratch[][] = new double[2][4];
-                    int nAnswers = surface.rayIntersect(scratch,
-                                                        offset,
-                                                        eyeInLocalSpace,
-                                                        VecMath.vmv(towardsPointInLocalSpace, eyeInLocalSpace),
-                                                        Surface.MISS_REFLECT);
-                    assert(nAnswers == 2);
-                    VecMath.copyvec(resultPointOnSurface, scratch[0]);
-                }
+                eyeInLocalSpace[2] -= offset;
+                towardsPointInLocalSpace[2] -= offset;
+                // for paraboloid with parameter -.5, always
             }
+
+            double scratch[][] = new double[2][4];
+            int nAnswers = theSurface.rayIntersect(scratch,
+                                                   offset,
+                                                   eyeInLocalSpace,
+                                                   VecMath.vmv(towardsPointInLocalSpace, eyeInLocalSpace),
+                                                   Surface.MISS_REFLECT);
+            assert(nAnswers >= 1); // 1 if inside, 2 if outside
+            VecMath.vxs(3, resultPointOnSurface, scratch[0], 1./scratch[0][3]); // TODO: what if infinite?
         } // pickPointOnSurface
 
 
