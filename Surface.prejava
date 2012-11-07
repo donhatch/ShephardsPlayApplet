@@ -297,12 +297,20 @@ public abstract class Surface
         // required by Surface interface
         public void closestHorizonDir(double answer[], double offset, double p[/*3*/], double v[/*3*/])
         {
+            System.out.println("        in Surface.Paraboloid.closestHorizonDir");
             if (this.zScale == 0.)
             {
-                // project v onto xy plane, that's it
-                answer[0] = v[0];
-                answer[1] = v[1];
-                answer[2] = 0.;
+                // project v onto xy plane, that's it.
+                // could just zero out z component,
+                // but then we risk getting zero,
+                // so use robust normalization instead.
+
+                double basis[][] = new double[2][3];
+                basis[0][2] = 1.; // z axis
+                VecMath.copyvec(basis[1], v);
+                VecMath.extendAndOrthogonalize(2, 2, basis, basis);
+                VecMath.copyvec(answer, basis[1]);
+                System.out.println("        out Surface.Paraboloid.closestHorizonDir (zScale=0)");
                 return;
             }
 
@@ -319,14 +327,42 @@ public abstract class Surface
             double horizonRadius2 = -(pz-zScale*(px*px+py*py)-offset)/zScale;
             assert(GEQ(horizonRadius2, 0., 1e-3)); // if we were inside sphere, the above would have succeeded
             double horizonRadius = Math.sqrt(MAX(horizonRadius2,0.));
-            double vLenXY = MyMath.hypot(vx,vy);
+            double vLenXY = MyMath.hypot(vx,vy); // length of v projected to xy plane
+            // XXX TODO: not robust if v is vertical!
             double horizonPoint[] = new double[] {
                 px + vx*(horizonRadius/vLenXY),
                 py + vy*(horizonRadius/vLenXY),
                 0. // will be filled in in a moment
             };
             horizonPoint[2] = this.zScale*(SQR(horizonPoint[0])+SQR(horizonPoint[1])) + offset;
-            VecMath.vmv(answer, horizonPoint, p);
+
+            if (false)
+            {
+                // TODO: the following is wrong wrong wrong. we don't get the right answer by just orthogonalizing v against the normal.
+
+                // At this point we could just return horizonPoint-p,
+                // but that's not robust if p is very close to surface.
+                // so instead, we return v orthogonalized against the normal
+                // at horizonPoint.
+                //
+                // Surface normal (not necessarily unit length)
+                // of the paraboloid at x,y,(x^2+y^2)*zScale
+                // is -2*zScale*x,-2*zScale*y,1.
+                //
+                double basis[][] = new double[2][3];
+                basis[0][0] = -2*this.zScale*horizonPoint[0];
+                basis[0][1] = -2*this.zScale*horizonPoint[1];
+                basis[0][1] = 1.;
+                VecMath.copyvec(basis[1], v);
+                VecMath.extendAndOrthogonalize(2, 2, basis, basis);
+                VecMath.copyvec(answer, basis[1]);
+            }
+            else
+            {
+                // do it simple non-robust way for now
+                VecMath.vmv(answer, horizonPoint, p);
+            }
+            System.out.println("        out Surface.Paraboloid.closestHorizonDir (normal)");
         } // closestHorizonDir
 
         public int lineIntersect(double answer_t[/*2*/],
