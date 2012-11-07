@@ -71,9 +71,19 @@ public abstract class Surface
     */
 
     public final static int MISS_FAIL = 0;
-    public final static int MISS_FORCE = 0; // use this when it's a known hit or graze, to prevent missing due to roundoff error.
-    public final static int MISS_CLAMP = 0;
-    public final static int MISS_REFLECT = 0;
+    public final static int MISS_FORCE = 1; // use this when it's a known hit or graze, to prevent missing due to roundoff error.
+    public final static int MISS_CLAMP = 2;
+    public final static int MISS_REFLECT = 3;
+
+    public String missStrategyToString(int missStrategy)
+    {
+        if (missStrategy == MISS_FAIL) return "MISS_FAIL";
+        if (missStrategy == MISS_FORCE) return "MISS_FORCE";
+        if (missStrategy == MISS_CLAMP) return "MISS_CLAMP";
+        if (missStrategy == MISS_REFLECT) return "MISS_REFLECT";
+        assert(false);
+        return null;
+    }
 
     // find the points on the line p + t*v that intersects the surface,
     // in order by increasing t.
@@ -111,8 +121,12 @@ public abstract class Surface
                             double v[/*3*/],
                             int missStrategy)
     {
+        System.out.println("    in Surface.rayIntersect");
+        System.out.println("        missStrategy = "+missStrategyToString(missStrategy));
+
         // when REFLECT, we keep track of change in v, requiring it decrease each time
         double tooBigDist2 = Double.POSITIVE_INFINITY;
+        int nReflections = 0;
 
         while (true)
         {
@@ -143,7 +157,19 @@ public abstract class Surface
                 subNormalize(answer[i]);
             }
             if (nValidAnswers != 0)
+            {
+                if (nValidAnswers == 2)
+                {
+                    if (nReflections % 2 == 1)
+                    {
+                        double temp;
+                        FORI (i, 4)
+                            SWAP(answer[0][i], answer[1][i], temp);
+                    }
+                }
+                System.out.println("    out Surface.rayIntersect (returning nValidAnswers="+nValidAnswers+")");
                 return nValidAnswers;
+            }
             else
             {
                 //
@@ -151,7 +177,10 @@ public abstract class Surface
                 // what to do?
                 //
                 if (missStrategy == MISS_FAIL)
+                {
+                    System.out.println("    out Surface.rayIntersect (FAIL!)");
                     return 0;
+                }
                 else if (missStrategy == MISS_FORCE)
                 {
                     assert(false); // can't happen
@@ -174,11 +203,17 @@ public abstract class Surface
                         if (thisDist2 >= tooBigDist2) // didn't decrease; force the next one
                             missStrategy = MISS_FORCE;
                         tooBigDist2 = thisDist2;
+                        System.out.println("        missed! reflecting");
                     }
                     else // CLAMP
+                    {
                         missStrategy = MISS_FORCE;
+                        System.out.println("        missed! forcing");
+                    }
 
                     v = vAdjusted;
+
+                    nReflections++;
 
                     // and tail recurse.
                 }
@@ -334,7 +369,7 @@ public abstract class Surface
             // This is a quadratic equation:
             double A = zScale * (vx*vx + vy*vy);
             double B = 2 * zScale * (px*vx + py*vy) - vz;
-            double C = zScale * (px*px + py*py) - pz + offset; // note, could be computed outside loop since it doesn't depend on v
+            double C = zScale * (px*px + py*py) - pz + offset; // note, could be computed outside loop since it doesn't depend on v... but that's awkward now that we're inside a required virtual function
             return solveQuadratic(answer_t, A, B, C, missStrategy);
 
         } // lineIntersect
@@ -404,17 +439,23 @@ public abstract class Surface
         // required by Surface interface
         public void closestHorizonDir(double answer[], double offset, double p[/*3*/], double v[/*3*/])
         {
+            System.out.println("        in Surface.Sphere.closestHorizonDir");
             double r = this.radius + offset;
             double r2 = r*r;
             double P2 = VecMath.distsqrd(this.center, p);
             double centerToHorizonChordMidpoint2 = r2*r2/P2;
-            PRINT(centerToHorizonChordMidpoint2);
-            PRINT(Math.sqrt(centerToHorizonChordMidpoint2));
+            double centerToHorizonChordMidpoint = Math.sqrt(centerToHorizonChordMidpoint2);
+            //PRINT(centerToHorizonChordMidpoint2);
+            //PRINT(Math.sqrt(centerToHorizonChordMidpoint2));
             double horizonChordHalfLength2 = r2 - centerToHorizonChordMidpoint2;
-            PRINT(horizonChordHalfLength2);
-            double P[] = VecMath.vmv(p, this.center);
-            // note, up to this point we haven't used v
-            double horizonChordDir[] = VecMath.vpsxv(v, -VecMath.dot(P, v)/P2, P); // v orthogonalized against P
+
+            // orthogonalize v against p-center to get horizon chord dir
+            double basis[][] = new double[2][3];
+            VecMath.vmv(basis[0], p, this.center);
+            VecMath.copyvec(basis[1], v);
+            VecMath.extendAndOrthogonalize(2, 2, basis, basis);
+            // basis[1] is now horizon chord dir
+
             if (horizonChordHalfLength2 <= 0.)
             {
                 // if equal to zero, p is right on the surface.
@@ -423,22 +464,21 @@ public abstract class Surface
                 // due to roundoff error, so we still consider p
                 // to be right on the surface.
                 assert(horizonChordHalfLength2 >= -SQR(1e-3));
-                VecMath.copyvec(answer, horizonChordDir);
+                VecMath.copyvec(answer, basis[1]); // horizon chord dir
+                System.out.println("        out Surface.Sphere.closestHorizonDir (FUDGED!)");
                 return;
             }
-            // XXX TODO: the following isn't robust if very close to surface, I don't think
             double horizonChordHalfLength = Math.sqrt(horizonChordHalfLength2);
-            PRINT(horizonChordHalfLength);
 
-            VecMath.normalize(horizonChordDir, horizonChordDir);
-            PRINTVEC(horizonChordDir);
-
-            PRINT(r2/P2-1);
-            PRINT((r2/P2-1)*Math.sqrt(P2));
-            PRINTVEC(VecMath.vpsxv(p, r2/P2-1, P));
-            VecMath.sxvpsxv(answer,
-                            r2/P2-1, P, // p to horizon chord midpoint
-                            horizonChordHalfLength, horizonChordDir); // horizon chord midpoint to horizon point
+            // answer is v orthogonalized against centerToHorizonPoint
+            VecMath.sxvpsxv(basis[0],
+                            centerToHorizonChordMidpoint, basis[0],
+                            horizonChordHalfLength, basis[1]);
+            // basis[0] is now centerToHorizonPoint
+            VecMath.copyvec(basis[1], v);
+            VecMath.extendAndOrthogonalize(2, 2, basis, basis);
+            VecMath.copyvec(answer, basis[1]);
+            System.out.println("        out Surface.Sphere.closestHorizonDir (normal)");
         } // closestHorizonDir
 
         public int lineIntersect(double answer_t[/*2*/],
@@ -461,7 +501,7 @@ public abstract class Surface
             //      C = (P dot P) - r^2 (happens to be pToHorizon2)
             double A = VecMath.dot(v, v);
             double B = 2 * (VecMath.dot(p,v) - VecMath.dot(this.center,v)); // 2*((p-c) dot v)
-            double C = pToHorizon2;
+            double C = pToHorizon2; // note, doesn't depend on v
 
             return solveQuadratic(answer_t, A, B, C, missStrategy);
 
