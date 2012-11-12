@@ -2513,7 +2513,7 @@ public class ShephardsPlayApplet
                 double thisP[] = new double[2];
                 mostRecentGraphics.pick(e.getX()+.5, e.getY()+.5, thisP);
                 double projectedThisP[] = new double[3];
-                pickPointOnSurface(thisP, 0., projectedThisP);
+                pickPointOnSurface(thisP, 0., projectedThisP, false);
 
 
                 boolean snapToGrid = e.isControlDown();
@@ -2559,6 +2559,15 @@ public class ShephardsPlayApplet
                         //
                         beingDraggedVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1], mostRecentGraphics);
                         Mesh.Vertex vert = mesh.getVert(beingDraggedVertIndex);
+
+                        // figure out whether it's on the front or back of its offset surface.
+                        // this is a bit of a hack.
+                        {
+                            double scratch[] = {vert.Xnaive(), vert.Ynaive(), vert.Znaive()};
+                            mousePressWasBackFacing = pickedPointIsBackFacingOnSurface(scratch);
+                            PRINT(mousePressWasBackFacing);
+                        }
+
                         beingDraggedVertUnsnappedXY = new double[]{vert.Xnaive(), vert.Ynaive()}; // XXX not sure this is right at this point
                         rubberBandingNewEdge = true;
                     }
@@ -2631,6 +2640,13 @@ public class ShephardsPlayApplet
                                 beingDraggedVertIndex = closestVertIndex;
                                 System.out.println("Dragging vertex "+beingDraggedVertIndex);
                                 Mesh.Vertex beingDraggedVert = mesh.getVert(beingDraggedVertIndex);
+                                // figure out whether it's on the front or back of its offset surface.
+                                // this is a bit of a hack.
+                                {
+                                    double scratch[] = {beingDraggedVert.Xnaive(), beingDraggedVert.Ynaive(), beingDraggedVert.Znaive()};
+                                    mousePressWasBackFacing = pickedPointIsBackFacingOnSurface(scratch);
+                                    PRINT(mousePressWasBackFacing);
+                                }
                                 beingDraggedVertUnsnappedXY = new double[]{beingDraggedVert.Xnaive(), beingDraggedVert.Ynaive()};
 
 
@@ -2993,7 +3009,7 @@ public class ShephardsPlayApplet
                 double thisP[] = new double[2];
                 mostRecentGraphics.pick(e.getX()+.5, e.getY()+.5, thisP);
                 double projectedThisP[] = new double[3];
-                pickPointOnSurface(thisP, 0., projectedThisP);
+                pickPointOnSurface(thisP, 0., projectedThisP, mousePressWasBackFacing);
                 boolean snapToGrid = e.isControlDown();
                 double snappedProjectedThisP[] = !snapToGrid ? projectedThisP : new double[] {
                     (double)Math.round(projectedThisP[0]/gridSnapQuantum)*gridSnapQuantum,
@@ -3179,7 +3195,7 @@ public class ShephardsPlayApplet
                         if (snapToGrid)
                         {
                             double projectedThisP[] = new double[3];
-                            pickPointOnSurface(thisP, 0., projectedThisP);
+                            pickPointOnSurface(thisP, 0., projectedThisP, mousePressWasBackFacing);
                             double snappedProjectedThisP[] = !snapToGrid ? projectedThisP : new double[] {
                                 (double)Math.round(projectedThisP[0]/gridSnapQuantum)*gridSnapQuantum,
                                 (double)Math.round(projectedThisP[1]/gridSnapQuantum)*gridSnapQuantum,
@@ -3202,9 +3218,9 @@ public class ShephardsPlayApplet
                         {
                             // XXX not really right... see similar comment on mouse down
                             double projectedThisP[] = new double[3];
-                            pickPointOnSurface(thisP, 0., projectedThisP);
+                            pickPointOnSurface(thisP, 0., projectedThisP, mousePressWasBackFacing);
                             double projectedPrevP[] = new double[3];
-                            pickPointOnSurface(prevP, 0., projectedPrevP);
+                            pickPointOnSurface(prevP, 0., projectedPrevP, mousePressWasBackFacing);
 
                             beingDraggedNetEdgeDelta[0] += projectedThisP[0]-projectedPrevP[0]; // no snap to grid for this
                             beingDraggedNetEdgeDelta[1] += projectedThisP[1]-projectedPrevP[1]; // no snap to grid for this
@@ -3258,7 +3274,7 @@ public class ShephardsPlayApplet
                             beingDraggedVertXY[1] += thisP[1] - prevP[1];
 
                             double beingDraggedVertNewCoords[] = new double[3];
-                            pickPointOnSurface(beingDraggedVertXY, offset, beingDraggedVertNewCoords);
+                            pickPointOnSurface(beingDraggedVertXY, offset, beingDraggedVertNewCoords, mousePressWasBackFacing);
                             beingDraggedVert.setXYnaive(beingDraggedVertNewCoords[0],
                                                    beingDraggedVertNewCoords[1]);
                             // if on paraboloid, h doesn't change. if on sphere, have to adjust.
@@ -3270,9 +3286,9 @@ public class ShephardsPlayApplet
                             if (false)
                             {
                                 double projectedThisP[] = new double[3];
-                                pickPointOnSurface(thisP, offset, projectedThisP);
+                                pickPointOnSurface(thisP, offset, projectedThisP, mousePressWasBackFacing);
                                 double projectedPrevP[] = new double[3];
-                                pickPointOnSurface(prevP, offset, projectedPrevP);
+                                pickPointOnSurface(prevP, offset, projectedPrevP, mousePressWasBackFacing);
 
                                 beingDraggedVertUnsnappedXY[0] += projectedThisP[0] - projectedPrevP[0];
                                 beingDraggedVertUnsnappedXY[1] += projectedThisP[1] - projectedPrevP[1];
@@ -6392,7 +6408,7 @@ public class ShephardsPlayApplet
                     mg.setColor(java.awt.Color.white);
                     Mesh.Vertex v0 = mesh.getVert(beingDraggedVertIndex);
                     double projectedPrevP[] = new double[3];
-                    pickPointOnSurface(prevP, vertOffset(v0, wrapAroundSphereFlag.get()), projectedPrevP);
+                    pickPointOnSurface(prevP, vertOffset(v0, wrapAroundSphereFlag.get()), projectedPrevP, mousePressWasBackFacing);
                     //mg.drawLine(v0.Xnaive(), v0.Ynaive(),
                                 //prevP[0], prevP[1], doAntiAliasing);
                     mg.drawLine(v0.Xnaive(), v0.Ynaive(), v0.Znaive(),
@@ -13639,6 +13655,7 @@ OFF
         private int beingDraggedNetEdgeIndex = -1;
         private double[] beingDraggedNetEdgeDelta = null;
         private boolean rubberBandingNewEdge = false;
+        private boolean mousePressWasBackFacing = false;
         private int[][] selectedTris = {};
         private int[] selectedDualVertIndices = {};
         private Mesh meshOfSelectedTris = mesh; // possibly ill-advised attempt to invalidate selectedTris and selectedDualVertIndices automatically so people can just reset mesh without having to remember
@@ -13817,11 +13834,11 @@ OFF
         //  getRotMat()
         //  eye
         //  wrap
-        void pickPointOnSurface(double thisP[], double offset, double resultPointOnSurface[]) // XXX TODO: need preference for which side
+        private void pickPointOnSurface(double thisP[], double offset, double resultPointOnSurface[], boolean preferBackFacing)
         {
             double eyeInLocalSpace[] = VecMath.mxv(getRotMat(), eye); // multiply on wrong side, i.e. apply transpose i.e. inverse
             if (!wrapAroundSphereFlag.get())
-                eyeInLocalSpace[2] /= MAX(localScaleZ, 1e-6);
+                eyeInLocalSpace[2] /= MAX(localScaleZ, 1e-6); // XXX aren't we doing this below too?
             double towardsPointInLocalSpace[] = VecMath.mxv(getRotMat(), new double[]{thisP[0],thisP[1],0.});
 
             // gag, that returned a 4d vector
@@ -13838,7 +13855,7 @@ OFF
                     return;
                 }
                 eyeInLocalSpace[2] /= localScaleZ;
-                towardsPointInLocalSpace[2] /= localScaleZ;
+                towardsPointInLocalSpace[2] /= localScaleZ; // XXX didn't we do this above too?
 
                 eyeInLocalSpace[2] -= offset;
                 towardsPointInLocalSpace[2] -= offset;
@@ -13852,8 +13869,57 @@ OFF
                                                    VecMath.vmv(towardsPointInLocalSpace, eyeInLocalSpace),
                                                    Surface.MISS_REFLECT);
             assert(nAnswers >= 1); // 1 if inside, 2 if outside
-            VecMath.vxs(3, resultPointOnSurface, scratch[0], 1./scratch[0][3]); // TODO: what if infinite?
+            double whichScratch[] = scratch[preferBackFacing ? (nAnswers-1) : 0];
+            VecMath.vxs(3, resultPointOnSurface, whichScratch, 1./whichScratch[3]); // TODO: what if infinite?
         } // pickPointOnSurface
+
+        private boolean pickedPointIsBackFacingOnSurface(double pointOnSurface[])
+        {
+            double eyeInLocalSpace[] = VecMath.mxv(getRotMat(), eye); // multiply on wrong side, i.e. apply transpose i.e. inverse
+            if (!wrapAroundSphereFlag.get())
+                eyeInLocalSpace[2] /= MAX(localScaleZ, 1e-6);
+            // gag, that returned a 4d vector
+            eyeInLocalSpace = (double[])Arrays.subarray(eyeInLocalSpace, 0, 3);
+            double towardsPointInLocalSpace[] = VecMath.copyvec(pointOnSurface);
+
+            double offset = theSurface.offset(pointOnSurface);
+
+            if (!wrapAroundSphereFlag.get())
+            {
+                if (localScaleZ == 0)
+                {
+                    return eyeInLocalSpace[2] < 0;
+                }
+                eyeInLocalSpace[2] /= localScaleZ;
+                towardsPointInLocalSpace[2] /= localScaleZ;
+
+                eyeInLocalSpace[2] -= offset;                   // XXX is this right?
+                towardsPointInLocalSpace[2] -= offset;                  // XXX is this right?
+                // for paraboloid with parameter -.5, always
+            }
+
+            double scratch[][] = new double[2][4];
+            int nAnswers = theSurface.rayIntersect(scratch,
+                                                   offset,
+                                                   eyeInLocalSpace,
+                                                   VecMath.vmv(towardsPointInLocalSpace, eyeInLocalSpace),
+                                                   Surface.MISS_FORCE);
+
+            assert(nAnswers >= 1); // 1 if inside, 2 if outside
+            FORI (iAnswer, nAnswers)
+                VecMath.vxs(3, scratch[iAnswer], scratch[iAnswer], 1./scratch[iAnswer][3]); // TODO: what if infinite?
+
+            if (nAnswers == 1)
+                return false; // not really clear, but doesn't matter I don't think
+
+
+            // which answer? the one closest to the query point (and it should be at it exactly, in fact, modulo roundoff error)
+            assert(nAnswers == 2);
+
+            double d0 = VecMath.distsqrd(3, towardsPointInLocalSpace, scratch[0]);
+            double d1 = VecMath.distsqrd(3, towardsPointInLocalSpace, scratch[1]);
+            return d1<d0;
+        } // pickedPointIsBackFacingOnSurface
 
 
     //
