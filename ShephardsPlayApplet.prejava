@@ -1691,9 +1691,9 @@ public class ShephardsPlayApplet
                     if (dualVert.arity == 3
                      && (doShowInsideOutDualVerts
                       || dualVert.weight >= 0))
-                        writer.println("        {" + dualVert.Xtriage()
-                                   + ", " + dualVert.Ytriage()
-                                   + ", " + dualVert.Htriage()
+                        writer.println("        {" + dualVert.Xnaive()
+                                   + ", " + dualVert.Ynaive()
+                                   + ", " + dualVert.Hnaive()
                                    + "},");
                     else
                         writer.println("null");
@@ -1744,7 +1744,7 @@ public class ShephardsPlayApplet
                 FORI (iVert, mesh.verts.size())
                 {
                     Mesh.Vertex vert = mesh.getVert(iVert);
-                    writer.println("" + vert.Xtriage() + " " + vert.Ytriage() + " " + vert.Htriage());
+                    writer.println("" + vert.Xnaive() + " " + vert.Ynaive() + " " + vert.Hnaive());
                 }
 
                 // If we're going to output net cuts,
@@ -1953,9 +1953,9 @@ public class ShephardsPlayApplet
             {
                 Mesh.Vertex vert = mesh.getVert(iVert);
 
-                vert.setXYZtriage(vert.Xtriage() * scaleX,
-                            vert.Ytriage() * scaleY,
-                            vert.Ztriage() * scaleX * scaleY);
+                vert.setXYZnaive(vert.Xnaive() * scaleX,
+                            vert.Ynaive() * scaleY,
+                            vert.Znaive() * scaleX * scaleY);
                 assert(vert.momentAndArea == null);
             }
 
@@ -1971,9 +1971,9 @@ public class ShephardsPlayApplet
                 FORIDOWN(iDualVert, dualMesh.verts.size())
                 {
                     Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
-                    dualVert.setXYZtriage(dualVert.Xtriage() * scaleY, // converse
-                                    dualVert.Ytriage() * scaleX, // converse
-                                    dualVert.Ztriage() * scaleX * scaleY);
+                    dualVert.setXYZnaive(dualVert.Xnaive() * scaleY, // converse
+                                    dualVert.Ynaive() * scaleX, // converse
+                                    dualVert.Znaive() * scaleX * scaleY);
                     assert(dualVert.momentAndArea.length == 4);
 
                     // holy hell this is incredibly hard to get right!!
@@ -1990,9 +1990,9 @@ public class ShephardsPlayApplet
                     {
                         if (iDualVert == 0)
                         {
-                            PRINT(dualVert.Xtriage());
-                            PRINT(dualVert.Ytriage());
-                            PRINT(dualVert.Htriage());
+                            PRINT(dualVert.Xnaive());
+                            PRINT(dualVert.Ynaive());
+                            PRINT(dualVert.Hnaive());
                             PRINT(dualVert.momentAndArea[0]/dualVert.momentAndArea[3]);
                             PRINT(dualVert.momentAndArea[1]/dualVert.momentAndArea[3]);
                             PRINT(dualVert.momentAndArea[2]/SQR(dualVert.momentAndArea[3]));
@@ -2029,10 +2029,10 @@ public class ShephardsPlayApplet
                 FORIDOWN(iVert, mesh.verts.size())
                 {
                     Mesh.Vertex vert = mesh.getVert(iVert);
-                    minx = MIN(minx, vert.Xtriage());
-                    maxx = MAX(maxx, vert.Xtriage());
-                    miny = MIN(miny, vert.Ytriage());
-                    maxy = MAX(maxy, vert.Ytriage());
+                    minx = MIN(minx, vert.Xnaive());
+                    maxx = MAX(maxx, vert.Xnaive());
+                    miny = MIN(miny, vert.Ynaive());
+                    maxy = MAX(maxy, vert.Ynaive());
                 }
                 double center[] = {(minx+maxx)*.5, (miny+maxy)*.5};
                 if (rotationalSymmetry > 1)
@@ -2046,17 +2046,17 @@ public class ShephardsPlayApplet
                     FORIDOWN(iVert, mesh.verts.size())
                     {
                         Mesh.Vertex vert = mesh.getVert(iVert);
-                        vert.setXYHtriage((vert.Xtriage() - center[0]) * scale,
-                                    (vert.Ytriage() - center[1]) * scale,
-                                    vert.Htriage() * (scale*scale));
+                        vert.setXYHnaive((vert.Xnaive() - center[0]) * scale,
+                                    (vert.Ynaive() - center[1]) * scale,
+                                    vert.Hnaive() * (scale*scale));
                     }
                     Mesh dualMesh = getDualMesh();
                     FORIDOWN(iDualVert, dualMesh.verts.size())
                     {
                         Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
-                        dualVert.setXYHtriage((dualVert.Xtriage() - center[0]) * scale,
-                                        (dualVert.Ytriage() - center[1]) * scale,
-                                        dualVert.Htriage() * (scale*scale)); // XXX probably wrong
+                        dualVert.setXYHnaive((dualVert.Xnaive() - center[0]) * scale,
+                                        (dualVert.Ynaive() - center[1]) * scale,
+                                        dualVert.Hnaive() * (scale*scale)); // XXX probably wrong
                     }
                 }
             }
@@ -2069,41 +2069,74 @@ public class ShephardsPlayApplet
 
         static final boolean centerSphere = false;
 
-        private double[] wrapVertAroundSphere(double px, double py, double ph, double wrapSphereRadius)
+
+        private double[] wrapVertAroundSphere(double px, double py, double ph, double wrapSphereCurvature)
         {
             double result[] = new double[3];
-            wrapVertAroundSphere(px, py, ph, wrapSphereRadius, result);
+            wrapVertAroundSphere(px, py, ph, wrapSphereCurvature, result);
             return result;
         }
-        private void wrapVertAroundSphere(double px, double py, double ph, double wrapSphereRadius,
+        private void wrapVertAroundSphere(double px, double py, double ph, double wrapSphereCurvature,
                                           double answer[/*3*/])
         {
-            px /= wrapSphereRadius;
-            py /= wrapSphereRadius;
-            ph /= SQR(wrapSphereRadius);
-
-            double pz = ph - .5 * (SQR(px) + SQR(py));
-
-            double denom = 1 - pz*.5;
-
-            double sx = px/denom;
-            double sy = py/denom;
-            double sz = pz/denom;
-
-            sx *= wrapSphereRadius;
-            sy *= wrapSphereRadius;
-            sz *= wrapSphereRadius;
-
-            if (centerSphere)
+            if (false)
             {
-                // sphere is tangent to origin... make it centered at origin
-                sz += wrapSphereRadius;
-            }
-            answer[0] = sx;
-            answer[1] = sy;
-            answer[2] = sz;
+                double wrapSphereRadius = 1./wrapSphereCurvature;
+                px /= wrapSphereRadius;
+                py /= wrapSphereRadius;
+                ph /= SQR(wrapSphereRadius);
 
-            System.out.println("at end of wrapVertAroundSphere, dist from center = "+Math.sqrt(SQR(sx)+SQR(sy)+SQR(sz+wrapSphereRadius)));
+                double pz = ph - .5 * (SQR(px) + SQR(py));
+
+                double denom = 1 - pz*.5;
+
+                double sx = px/denom;
+                double sy = py/denom;
+                double sz = pz/denom;
+
+                sx *= wrapSphereRadius;
+                sy *= wrapSphereRadius;
+                sz *= wrapSphereRadius;
+
+                if (centerSphere)
+                {
+                    // sphere is tangent to origin... make it centered at origin
+                    sz += wrapSphereRadius;
+                }
+                answer[0] = sx;
+                answer[1] = sy;
+                answer[2] = sz;
+            }
+            else if (false)
+            {
+                double wrapSphereRadius = 1./wrapSphereCurvature;
+                double pz = ph - .5 * (SQR(px) + SQR(py));
+                pz /= wrapSphereRadius;
+                double denom = 1 - (.5/wrapSphereRadius) * pz;
+                double sx = px / denom;
+                double sy = py / denom;
+                double sz = pz / denom;
+                answer[0] = sx;
+                answer[1] = sy;
+                answer[2] = sz;
+            }
+            else
+            {
+                double pz = ph - .5 * (SQR(px) + SQR(py));
+                double m[][] = {
+                    {1,0,0,0},
+                    {0,1,0,0},
+                    {0,0,wrapSphereCurvature,-.5*SQR(wrapSphereCurvature)},
+                    {0,0,0,1},
+                };
+                double in[] = {px, py, pz, 1.};
+                double out[] = VecMath.vxm(in, m);
+                answer[0] = out[0] / out[3];
+                answer[1] = out[1] / out[3];
+                answer[2] = out[2] / out[3];
+            }
+
+            //System.out.println("at end of wrapVertAroundSphere, dist from center = "+Math.sqrt(SQR(sx)+SQR(sy)+SQR(sz+wrapSphereRadius)));
 
         } // wrapVertAroundSphere
 
@@ -2119,16 +2152,16 @@ public class ShephardsPlayApplet
             FORIDOWN(iVert, mesh.verts.size())
             {
                 Mesh.Vertex vert = mesh.getVert(iVert);
-                double px = vert.Xtriage();
-                double py = vert.Ytriage();
-                double ph = vert.Htriage();
+                double px = vert.Xnaive();
+                double py = vert.Ynaive();
+                double ph = vert.Hnaive();
 
-                wrapVertAroundSphere(px, py, ph, wrapSphereRadius, vertCoords);
+                wrapVertAroundSphere(px, py, ph, wrapSphereCurvature, vertCoords);
                 double sx = vertCoords[0];
                 double sy = vertCoords[1];
                 double sz = vertCoords[2];
 
-                vert.setXYZtriage(sx, sy, sz);
+                vert.setXYZnaive(sx, sy, sz);
             }
             dirtyDualMesh();
             if (doContinuouslyDelaunayize.get()) delaunayize();
@@ -2136,37 +2169,104 @@ public class ShephardsPlayApplet
         } // wrapAroundSphere
 
 
-        private double[] unwrapVertAroundSphere(double sx, double sy, double sz, double wrapSphereRadius)
+#if 0
+        private void unwrapVertAroundSphereHomo(double out[4], double in[4],
+                                                double sphereCenter[3], double sphereRadius)
+        {
+            // 1. translate sphere so tangent to origin (if not already)
+                1  0  0  0
+                0  1  0  0
+                0  0  1  0
+                cx cy cz 1
+            // divide by wrap sphere radius
+               1/r 0 0 0
+               0 1/r 0 0
+               0 0 1/r 0
+               0 0  0  1
+            // divide by 1+z/2
+                1  0  0  0
+                0  1  0  0
+                0  0  1  .5
+                0  0  0  1
+            // multiply by wrap sphere radius
+               r 0 0 0
+               0 r 0 0
+               0 0 r 0
+               0 0 0 1
+
+            i.e. 
+                1  0  0  0
+                0  1  0  0
+                0  0  1  .5/r
+                0  0  0  1
+
+
+        }
+#endif
+
+        private double[] unwrapVertAroundSphere(double sx, double sy, double sz, double wrapSphereCurvature)
         {
             double result[] = new double[3];
-            unwrapVertAroundSphere(sx, sy, sz, wrapSphereRadius, result);
+            unwrapVertAroundSphere(sx, sy, sz, wrapSphereCurvature, result);
             return result;
         }
-        private void unwrapVertAroundSphere(double sx, double sy, double sz, double wrapSphereRadius, double answer[])
+        private void unwrapVertAroundSphere(double sx, double sy, double sz, double wrapSphereCurvature, double answer[])
         {
             if (centerSphere)
             {
                 // sphere is centered at origin... make it tangent to origin.
-                sz -= wrapSphereRadius;
+                sz -= 1./wrapSphereCurvature;
             }
-            sx /= wrapSphereRadius;
-            sy /= wrapSphereRadius;
-            sz /= wrapSphereRadius;
 
-            double denom = 1 + sz*.5;
+            if (false)
+            {
+                double wrapSphereRadius = 1./wrapSphereCurvature;
+                sx /= wrapSphereRadius;
+                sy /= wrapSphereRadius;
+                sz /= wrapSphereRadius;
 
-            double px = sx/denom;
-            double py = sy/denom;
-            double pz = sz/denom;
+                double denom = 1 + sz*.5;
 
-            double ph = pz + .5 * (SQR(px) + SQR(py));
-            px *= wrapSphereRadius;
-            py *= wrapSphereRadius;
-            ph *= SQR(wrapSphereRadius);
+                double px = sx/denom;
+                double py = sy/denom;
+                double pz = sz/denom;
 
-            answer[0] = px;
-            answer[1] = py;
-            answer[2] = ph;
+                double ph = pz + .5 * (SQR(px) + SQR(py));
+                px *= wrapSphereRadius;
+                py *= wrapSphereRadius;
+                ph *= SQR(wrapSphereRadius);
+
+                answer[0] = px;
+                answer[1] = py;
+                answer[2] = ph;
+            }
+            else if (false)
+            {
+                double wrapSphereRadius = 1./wrapSphereCurvature;
+                double denom = 1 + (.5/wrapSphereRadius) * sz;
+                double px = sx / denom;
+                double py = sy / denom;
+                double pz = sz / denom * wrapSphereRadius;
+                double ph = pz + .5 * (SQR(px) + SQR(py));
+                answer[0] = px;
+                answer[1] = py;
+                answer[2] = ph;
+            }
+            else
+            {
+                double m[][] = {
+                    {1,0,0,0},
+                    {0,1,0,0},
+                    {0,0,1./wrapSphereCurvature,.5*wrapSphereCurvature},
+                    {0,0,0,1},
+                };
+                double in[] = {sx, sy, sz, 1.};
+                double out[] = VecMath.vxm(in, m);
+                answer[0] = out[0] / out[3];
+                answer[1] = out[1] / out[3];
+                answer[2] = out[2] / out[3];
+                answer[2] += .5*(SQR(answer[0])+SQR(answer[1])); // convert from z to h
+            }
         }
         // unwrap from sphere to parabola
         private void unwrapAroundSphere(double wrapSphereCurvature)
@@ -2180,16 +2280,16 @@ public class ShephardsPlayApplet
             FORIDOWN(iVert, mesh.verts.size())
             {
                 Mesh.Vertex vert = mesh.getVert(iVert);
-                double sx = vert.Xtriage();
-                double sy = vert.Ytriage();
-                double sz = vert.Ztriage();
+                double sx = vert.Xnaive();
+                double sy = vert.Ynaive();
+                double sz = vert.Znaive();
 
-                unwrapVertAroundSphere(sx, sy, sz, wrapSphereRadius, vertCoords);
+                unwrapVertAroundSphere(sx, sy, sz, wrapSphereCurvature, vertCoords);
                 double px = vertCoords[0];
                 double py = vertCoords[1];
                 double ph = vertCoords[2];
 
-                vert.setXYHtriage(px, py, ph);
+                vert.setXYHnaive(px, py, ph);
             }
             dirtyDualMesh();
             if (doContinuouslyDelaunayize.get()) delaunayize();
@@ -2215,9 +2315,9 @@ public class ShephardsPlayApplet
             FORI (iOldVert, nOldVerts)
             {
                 Mesh.Vertex vert = mesh.getVert(iOldVert);
-                oldVerts[iOldVert][0] = vert.Xtriage();
-                oldVerts[iOldVert][1] = vert.Ytriage();
-                oldVerts[iOldVert][2] = vert.Htriage();
+                oldVerts[iOldVert][0] = vert.Xnaive();
+                oldVerts[iOldVert][1] = vert.Ynaive();
+                oldVerts[iOldVert][2] = vert.Hnaive();
             }
             double oldBbox[][] = VecMath.bbox(oldVerts);
             double workAreaSize = (nOldVerts==0 ? 1. : MAX4(ABS(oldBbox[0][0]),
@@ -2459,7 +2559,7 @@ public class ShephardsPlayApplet
                         //
                         beingDraggedVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1], mostRecentGraphics);
                         Mesh.Vertex vert = mesh.getVert(beingDraggedVertIndex);
-                        beingDraggedVertUnsnappedXY = new double[]{vert.Xtriage(), vert.Ytriage()}; // XXX not sure this is right at this point
+                        beingDraggedVertUnsnappedXY = new double[]{vert.Xnaive(), vert.Ynaive()}; // XXX not sure this is right at this point
                         rubberBandingNewEdge = true;
                     }
                     else // shift is not down
@@ -2517,7 +2617,7 @@ public class ShephardsPlayApplet
                                 // XXX TODO: this is getting really arcane, need a more straightforward procedure
                                 Mesh.Vertex closestVert = mesh.getVert(closestVertIndex);
                                 double scratch[] = new double[3];
-                                mostRecentGraphics.xform(closestVert.Xtriage(), closestVert.Ytriage(), closestVert.Ztriage(), scratch);
+                                mostRecentGraphics.xform(closestVert.Xnaive(), closestVert.Ynaive(), closestVert.Znaive(), scratch);
                                 double vertPixelCoords[] = new double[2];
                                 mostRecentGraphics.unpick(scratch[0], scratch[1], vertPixelCoords);
                                 int maxPixelDist = MAX(ABS(e.getX()-(int)Math.round(vertPixelCoords[0]-.5)),
@@ -2531,14 +2631,14 @@ public class ShephardsPlayApplet
                                 beingDraggedVertIndex = closestVertIndex;
                                 System.out.println("Dragging vertex "+beingDraggedVertIndex);
                                 Mesh.Vertex beingDraggedVert = mesh.getVert(beingDraggedVertIndex);
-                                beingDraggedVertUnsnappedXY = new double[]{beingDraggedVert.Xtriage(), beingDraggedVert.Ytriage()};
+                                beingDraggedVertUnsnappedXY = new double[]{beingDraggedVert.Xnaive(), beingDraggedVert.Ynaive()};
 
 
                                 if (snapToGrid)
                                 {
-                                    double unsnappedCoords[] = {beingDraggedVert.Xtriage(), beingDraggedVert.Ytriage()};
-                                    double snappedCoords[] = {(double)Math.round(beingDraggedVert.Xtriage()/gridSnapQuantum)*gridSnapQuantum,
-                                                              (double)Math.round(beingDraggedVert.Ytriage()/gridSnapQuantum)*gridSnapQuantum};
+                                    double unsnappedCoords[] = {beingDraggedVert.Xnaive(), beingDraggedVert.Ynaive()};
+                                    double snappedCoords[] = {(double)Math.round(beingDraggedVert.Xnaive()/gridSnapQuantum)*gridSnapQuantum,
+                                                              (double)Math.round(beingDraggedVert.Ynaive()/gridSnapQuantum)*gridSnapQuantum};
                                     double group[][][] = computeSymmetryGroup2d(rotationalSymmetry, leftRightSymmetry);
                                     int nVerts = mesh.verts.size();
                                     FORI (iGroup, group.length)
@@ -2547,14 +2647,14 @@ public class ShephardsPlayApplet
                                         FORI (iVert, nVerts)
                                         {
                                             Mesh.Vertex vertI = mesh.getVert(iVert);
-                                            if (EQ(unsnappedImage[0], vertI.Xtriage(), 1e-6)
-                                             && EQ(unsnappedImage[1], vertI.Ytriage(), 1e-6))
+                                            if (EQ(unsnappedImage[0], vertI.Xnaive(), 1e-6)
+                                             && EQ(unsnappedImage[1], vertI.Ynaive(), 1e-6))
                                             {
                                                 double snappedImage[] = VecMath.vxm(snappedCoords,group[iGroup]);
-                                                System.out.println("Snapping vertex "+iVert+" from "+vertI.Xtriage()+" "+vertI.Ytriage()+" "+vertI.Htriage()+"");
-                                                vertI.setXYtriage(snappedImage[0],
+                                                System.out.println("Snapping vertex "+iVert+" from "+vertI.Xnaive()+" "+vertI.Ynaive()+" "+vertI.Hnaive()+"");
+                                                vertI.setXYnaive(snappedImage[0],
                                                             snappedImage[1]);
-                                                System.out.println("Dragging vertex "+iVert+" from "+vertI.Xtriage()+" "+vertI.Ytriage()+" "+vertI.Htriage()+"");
+                                                System.out.println("Dragging vertex "+iVert+" from "+vertI.Xnaive()+" "+vertI.Ynaive()+" "+vertI.Hnaive()+"");
                                             }
                                         }
                                     }
@@ -2590,15 +2690,15 @@ public class ShephardsPlayApplet
                                     {
                                         if (polyhedralSymmetryFlag)
                                         {
-                                            double wrapSphereRadius = 1./wrapSphereCurvature.get();
+                                            double wrapSphereCurvatureValue = wrapSphereCurvature.get();
                                             FORI (i, vertsToAdd.length)
                                             {
                                                 vertsToAdd[i] = wrapVertAroundSphere(vertsToAdd[i][0],
                                                                                      vertsToAdd[i][1],
                                                                                      0.,
-                                                                                     wrapSphereRadius);
+                                                                                     wrapSphereCurvatureValue);
                                                 if (!centerSphere)
-                                                    vertsToAdd[i][2] += wrapSphereRadius;
+                                                    vertsToAdd[i][2] += 1./wrapSphereCurvatureValue;
                                             }
 
                                             int p = 3;
@@ -2610,11 +2710,11 @@ public class ShephardsPlayApplet
                                             FORI (i, vertsToAdd.length)
                                             {
                                                 if (!centerSphere)
-                                                    vertsToAdd[i][2] -= wrapSphereRadius;
+                                                    vertsToAdd[i][2] -= 1./wrapSphereCurvatureValue;
                                                 vertsToAdd[i] = (double[])Arrays.subarray(unwrapVertAroundSphere(vertsToAdd[i][0],
                                                                                                                  vertsToAdd[i][1],
                                                                                                                  vertsToAdd[i][2],
-                                                                                                                 wrapSphereRadius), 0, 2);
+                                                                                                                 wrapSphereCurvatureValue), 0, 2);
                                             }
                                         }
                                         else
@@ -2677,10 +2777,10 @@ public class ShephardsPlayApplet
                                                 {
                                                     double twiceThisTriArea = twiceTriangleArea(
                                                                             x, y,
-                                                                            edge.initialVertex().Xtriage(),
-                                                                            edge.initialVertex().Ytriage(),
-                                                                            edge.finalVertex().Xtriage(),
-                                                                            edge.finalVertex().Ytriage());
+                                                                            edge.initialVertex().Xnaive(),
+                                                                            edge.initialVertex().Ynaive(),
+                                                                            edge.finalVertex().Xnaive(),
+                                                                            edge.finalVertex().Ynaive());
                                                     if (twiceThisTriArea < 0)
                                                     {
                                                         thisFaceIsGoodSoFar = false; // it's bad!
@@ -2749,14 +2849,14 @@ public class ShephardsPlayApplet
                                                                 continue;
                                                             //System.out.println("    Seeing whether new edge v"+newEdge.initialVertex().myIndex()+" -> v"+newEdge.finalVertex().myIndex()+" crosses old boundary edges v"+oldEdge.initialVertex().myIndex()+" -> v"+oldEdge.finalVertex().myIndex()+"");
                                                             if (edgesCrossOrCloseToIt(
-                                                                            oldEdge.initialVertex().Xtriage(),
-                                                                            oldEdge.initialVertex().Ytriage(),
-                                                                            oldEdge.finalVertex().Xtriage(),
-                                                                            oldEdge.finalVertex().Ytriage(),
-                                                                            newEdge.initialVertex().Xtriage(),
-                                                                            newEdge.initialVertex().Ytriage(),
-                                                                            newEdge.finalVertex().Xtriage(),
-                                                                            newEdge.finalVertex().Ytriage(),
+                                                                            oldEdge.initialVertex().Xnaive(),
+                                                                            oldEdge.initialVertex().Ynaive(),
+                                                                            oldEdge.finalVertex().Xnaive(),
+                                                                            oldEdge.finalVertex().Ynaive(),
+                                                                            newEdge.initialVertex().Xnaive(),
+                                                                            newEdge.initialVertex().Ynaive(),
+                                                                            newEdge.finalVertex().Xnaive(),
+                                                                            newEdge.finalVertex().Ynaive(),
                                                                             1e-6))
                                                             {
                                                                 //System.out.println("        It does.");
@@ -2810,8 +2910,8 @@ public class ShephardsPlayApplet
                                 FORIDOWN (iVert, mesh.verts.size())
                                 {
                                     Mesh.Vertex vert = mesh.getVert(iVert);
-                                    vert.setXYtriage((double)Math.round(vert.Xtriage()/gridSnapQuantum)*gridSnapQuantum,
-                                               (double)Math.round(vert.Ytriage()/gridSnapQuantum)*gridSnapQuantum);
+                                    vert.setXYnaive((double)Math.round(vert.Xnaive()/gridSnapQuantum)*gridSnapQuantum,
+                                               (double)Math.round(vert.Ynaive()/gridSnapQuantum)*gridSnapQuantum);
                                 }
                                 if (doContinuouslyDelaunayize.get()) delaunayize();
                             }
@@ -2853,7 +2953,7 @@ public class ShephardsPlayApplet
                             if (beingDraggedVertIndex != -1)
                             {
                                 Mesh.Vertex beingDraggedVert = mesh.getVert(beingDraggedVertIndex);
-                                double v[] = {beingDraggedVert.Xtriage(), beingDraggedVert.Ytriage()};
+                                double v[] = {beingDraggedVert.Xnaive(), beingDraggedVert.Ynaive()};
                                 double group[][][] = computeSymmetryGroup2d(rotationalSymmetry, leftRightSymmetry);
                                 Mesh.Vertex vertsToDelete[] = findAllVertsThatAreImages(mesh, v, group, 1e-6);
                                 FORI (iVertToDelete, vertsToDelete.length)
@@ -3116,15 +3216,15 @@ public class ShephardsPlayApplet
                             FORIDOWN (iVert, mesh.verts.size())
                             {
                                 Mesh.Vertex vert = mesh.getVert(iVert);
-                                vert.setXYtriage(vert.Xtriage() + thisP[0]-prevP[0],
-                                           vert.Ytriage() + thisP[1]-prevP[1]);
+                                vert.setXYnaive(vert.Xnaive() + thisP[0]-prevP[0],
+                                           vert.Ynaive() + thisP[1]-prevP[1]);
                             }
                             Mesh dualMesh = getDualMesh();
                             FORIDOWN (iDualVert, dualMesh.verts.size())
                             {
                                 Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
-                                dualVert.setXYtriage(dualVert.Xtriage() + thisP[0]-prevP[0],
-                                               dualVert.Ytriage() + thisP[1]-prevP[1]);
+                                dualVert.setXYnaive(dualVert.Xnaive() + thisP[0]-prevP[0],
+                                               dualVert.Ynaive() + thisP[1]-prevP[1]);
                                 double momentAndArea[] = dualVert.momentAndArea;
                                 assert(momentAndArea.length == 4);
                                 momentAndArea[0] += (thisP[0]-prevP[0]) * momentAndArea[3];
@@ -3150,20 +3250,20 @@ public class ShephardsPlayApplet
 
                             */
                             double beingDraggedVertXY[] = new double[2];
-                            mostRecentGraphics.xform(beingDraggedVert.Xtriage(),
-                                                     beingDraggedVert.Ytriage(),
-                                                     beingDraggedVert.Ztriage(),
+                            mostRecentGraphics.xform(beingDraggedVert.Xnaive(),
+                                                     beingDraggedVert.Ynaive(),
+                                                     beingDraggedVert.Znaive(),
                                                      beingDraggedVertXY);
                             beingDraggedVertXY[0] += thisP[0] - prevP[0];
                             beingDraggedVertXY[1] += thisP[1] - prevP[1];
 
                             double beingDraggedVertNewCoords[] = new double[3];
                             pickPointOnSurface(beingDraggedVertXY, offset, beingDraggedVertNewCoords);
-                            beingDraggedVert.setXYtriage(beingDraggedVertNewCoords[0],
+                            beingDraggedVert.setXYnaive(beingDraggedVertNewCoords[0],
                                                    beingDraggedVertNewCoords[1]);
                             // if on paraboloid, h doesn't change. if on sphere, have to adjust.
                             if (wrapAroundSphereFlag.get())
-                                beingDraggedVert.setZtriage(beingDraggedVertNewCoords[2]);
+                                beingDraggedVert.setZnaive(beingDraggedVertNewCoords[2]);
 
 
 
@@ -3184,13 +3284,13 @@ public class ShephardsPlayApplet
                                  || leftRightSymmetry)
                                 {
                                     // Drag all points of kaleidoscope
-                                    double wrapSphereRadius = 1./wrapSphereCurvature.get();
+                                    double wrapSphereCurvatureValue = wrapSphereCurvature.get();
                                     double group[][][] = polyhedralSymmetryFlag ? computeSymmetryGroup3d(3, rotationalSymmetry, leftRightSymmetry)
                                                                                 : computeSymmetryGroup2d(rotationalSymmetry, leftRightSymmetry);
                                     //PRINTARRAY(group);
 
-                                    double v[] = {beingDraggedVert.Xtriage(),
-                                                  beingDraggedVert.Ytriage()};
+                                    double v[] = {beingDraggedVert.Xnaive(),
+                                                  beingDraggedVert.Ynaive()};
                                     double dv[];
                                     if (snapToGrid)
                                     {
@@ -3209,16 +3309,16 @@ public class ShephardsPlayApplet
                                     double newVertPositions[][] = new double[nVerts][2];
                                     FORI (i, newVertPositions.length)
                                     {
-                                        newVertPositions[i][0] = mesh.getVert(i).Xtriage();
-                                        newVertPositions[i][1] = mesh.getVert(i).Ytriage();
+                                        newVertPositions[i][0] = mesh.getVert(i).Xnaive();
+                                        newVertPositions[i][1] = mesh.getVert(i).Ynaive();
                                         if (polyhedralSymmetryFlag)
                                         {
                                             newVertPositions[i] = wrapVertAroundSphere(newVertPositions[i][0],
                                                                                        newVertPositions[i][1],
                                                                                        0.,
-                                                                                       wrapSphereRadius);
+                                                                                       wrapSphereCurvatureValue);
                                             if (!centerSphere)
-                                                newVertPositions[i][2] += wrapSphereRadius;
+                                                newVertPositions[i][2] += 1./wrapSphereCurvatureValue;
                                         }
                                     }
 
@@ -3236,8 +3336,8 @@ public class ShephardsPlayApplet
                                         FORI (iImage, nVerts)
                                         {
                                             Mesh.Vertex imageVert = mesh.getVert(iImage);
-                                            if (EQ(image[0], imageVert.Xtriage(), 1e-6)
-                                             && EQ(image[1], imageVert.Ytriage(), 1e-6))
+                                            if (EQ(image[0], imageVert.Xnaive(), 1e-6)
+                                             && EQ(image[1], imageVert.Ynaive(), 1e-6))
                                             {
                                                 // TODO: snap imageVertPosition to image, to prevent drift away from symmetry?
                                                 double imageTweak[] = VecMath.vxm(dv, group[iGroup]);
@@ -3252,26 +3352,26 @@ public class ShephardsPlayApplet
                                         if (polyhedralSymmetryFlag)
                                         {
                                             if (!centerSphere)
-                                                newVertPositions[i][2] -= wrapSphereRadius;
+                                                newVertPositions[i][2] -= 1./wrapSphereCurvatureValue;
                                             newVertPositions[i] = (double[])Arrays.subarray(unwrapVertAroundSphere(newVertPositions[i][0],
                                                                                                              newVertPositions[i][1],
                                                                                                              newVertPositions[i][2],
-                                                                                                             wrapSphereRadius), 0, 2);
+                                                                                                             wrapSphereCurvatureValue), 0, 2);
                                         }
-                                        mesh.getVert(i).setXYtriage(newVertPositions[i][0],
+                                        mesh.getVert(i).setXYnaive(newVertPositions[i][0],
                                                               newVertPositions[i][1]);
                                     }
                                 }
                                 else
                                 {
                                     // Drag just the selected vert
-                                    beingDraggedVert.setXYtriage(beingDraggedVertUnsnappedXY[0],
+                                    beingDraggedVert.setXYnaive(beingDraggedVertUnsnappedXY[0],
                                                            beingDraggedVertUnsnappedXY[1]);
 
                                     if (snapToGrid)
                                     {
-                                        beingDraggedVert.setXYtriage((double)Math.round(beingDraggedVert.Xtriage()/gridSnapQuantum)*gridSnapQuantum,
-                                                               (double)Math.round(beingDraggedVert.Ytriage()/gridSnapQuantum)*gridSnapQuantum);
+                                        beingDraggedVert.setXYnaive((double)Math.round(beingDraggedVert.Xnaive()/gridSnapQuantum)*gridSnapQuantum,
+                                                               (double)Math.round(beingDraggedVert.Ynaive()/gridSnapQuantum)*gridSnapQuantum);
                                     }
                                 }
                             } // if false
@@ -3281,9 +3381,9 @@ public class ShephardsPlayApplet
                             {
                                 double verts[][] = new double[mesh.verts.size()][];
                                 FORIDOWN (iVert, mesh.verts.size())
-                                    verts[iVert] = new double[] {mesh.getVert(iVert).Xtriage(),
-                                                                 mesh.getVert(iVert).Ytriage(),
-                                                                 mesh.getVert(iVert).Htriage()};
+                                    verts[iVert] = new double[] {mesh.getVert(iVert).Xnaive(),
+                                                                 mesh.getVert(iVert).Ynaive(),
+                                                                 mesh.getVert(iVert).Hnaive()};
                                 int edges[][] = new int[mesh.edges.size()][];
                                 FORIDOWN (iEdge, mesh.edges.size())
                                     edges[iEdge] = new int[] {(mesh.getEdge(iEdge)).initialVertex().myIndex(),
@@ -3357,7 +3457,7 @@ public class ShephardsPlayApplet
                         if (iVert != -1)
                         {
                             Mesh.Vertex vertI = mesh.getVert(iVert);
-                            double v[] = {vertI.Xtriage(), vertI.Ytriage()};
+                            double v[] = {vertI.Xnaive(), vertI.Ynaive()};
                             double group[][][] = computeSymmetryGroup2d(rotationalSymmetry, leftRightSymmetry);
                             Mesh.Vertex vertsToMove[] = findAllVertsThatAreImages(mesh, v, group, 1e-6);
 
@@ -3368,12 +3468,12 @@ public class ShephardsPlayApplet
                                 // i.e. increase its height,
                                 // i.e. decrease height of primal vert.
                                 if (e.isShiftDown())
-                                    vert.setHtriage(vert.Htriage() - incr*10);
+                                    vert.setHnaive(vert.Hnaive() - incr*10);
                                 else if (e.isControlDown())
-                                    vert.setHtriage(vert.Htriage() - incr*.1);
+                                    vert.setHnaive(vert.Hnaive() - incr*.1);
                                 else
-                                    vert.setHtriage(vert.Htriage() - incr);
-                                System.out.println("    verts["+vert.myIndex()+"].Htriage() -> "+vert.Htriage());
+                                    vert.setHnaive(vert.Hnaive() - incr);
+                                System.out.println("    verts["+vert.myIndex()+"].Hnaive() -> "+vert.Hnaive());
                             }
                             if (doContinuouslyDelaunayize.get()) delaunayize();
                         }
@@ -3397,7 +3497,7 @@ public class ShephardsPlayApplet
                         if (iVert != -1)
                         {
                             Mesh.Vertex vertI = mesh.getVert(iVert);
-                            double v[] = {vertI.Xtriage(), vertI.Ytriage()};
+                            double v[] = {vertI.Xnaive(), vertI.Ynaive()};
                             double group[][][] = computeSymmetryGroup2d(rotationalSymmetry, leftRightSymmetry);
                             Mesh.Vertex vertsToMove[] = findAllVertsThatAreImages(mesh, v, group, 1e-6);
 
@@ -3408,12 +3508,12 @@ public class ShephardsPlayApplet
                                 // i.e. decrease its height,
                                 // i.e. increase height of primal vert.
                                 if (e.isShiftDown())
-                                    vert.setHtriage(vert.Htriage() + incr*10);
+                                    vert.setHnaive(vert.Hnaive() + incr*10);
                                 else if (e.isControlDown())
-                                    vert.setHtriage(vert.Htriage() + incr*.1);
+                                    vert.setHnaive(vert.Hnaive() + incr*.1);
                                 else
-                                    vert.setHtriage(vert.Htriage() + incr);
-                                System.out.println("    verts["+vert.myIndex()+"].Htriage() -> "+vert.Htriage());
+                                    vert.setHnaive(vert.Hnaive() + incr);
+                                System.out.println("    verts["+vert.myIndex()+"].Hnaive() -> "+vert.Hnaive());
                             }
                             if (doContinuouslyDelaunayize.get()) delaunayize();
                         }
@@ -3508,7 +3608,7 @@ public class ShephardsPlayApplet
                             {
                                 Mesh.Vertex beingDraggedVert = mesh.getVert(beingDraggedVertIndex);
 
-                                double oldCoords[] = {beingDraggedVert.Xtriage(), beingDraggedVert.Ytriage()};
+                                double oldCoords[] = {beingDraggedVert.Xnaive(), beingDraggedVert.Ynaive()};
 
                                 // only difference between ctrl-newly-down and ctrl-newly-up...
                                 double newCoords[] = {
@@ -3524,14 +3624,14 @@ public class ShephardsPlayApplet
                                     FORI (iVert, nVerts)
                                     {
                                         Mesh.Vertex vertI = mesh.getVert(iVert);
-                                        if (EQ(oldImage[0], vertI.Xtriage(), 1e-6)
-                                         && EQ(oldImage[1], vertI.Ytriage(), 1e-6))
+                                        if (EQ(oldImage[0], vertI.Xnaive(), 1e-6)
+                                         && EQ(oldImage[1], vertI.Ynaive(), 1e-6))
                                         {
                                             double newImage[] = VecMath.vxm(newCoords,group[iGroup]);
-                                            System.out.println("Snapping vertex "+iVert+" from "+vertI.Xtriage()+" "+vertI.Ytriage()+" "+vertI.Htriage()+"");
-                                            vertI.setXYtriage(newImage[0],
+                                            System.out.println("Snapping vertex "+iVert+" from "+vertI.Xnaive()+" "+vertI.Ynaive()+" "+vertI.Hnaive()+"");
+                                            vertI.setXYnaive(newImage[0],
                                                         newImage[1]);
-                                            System.out.println("Dragging vertex "+iVert+" from "+vertI.Xtriage()+" "+vertI.Ytriage()+" "+vertI.Htriage()+"");
+                                            System.out.println("Dragging vertex "+iVert+" from "+vertI.Xnaive()+" "+vertI.Ynaive()+" "+vertI.Hnaive()+"");
                                         }
                                     }
                                 }
@@ -3570,7 +3670,7 @@ public class ShephardsPlayApplet
                             {
                                 Mesh.Vertex beingDraggedVert = mesh.getVert(beingDraggedVertIndex);
 
-                                double oldCoords[] = {beingDraggedVert.Xtriage(), beingDraggedVert.Ytriage()};
+                                double oldCoords[] = {beingDraggedVert.Xnaive(), beingDraggedVert.Ynaive()};
 
                                 // only difference between ctrl-newly-down and ctrl-newly-up...
                                 double newCoords[] = beingDraggedVertUnsnappedXY;
@@ -3583,14 +3683,14 @@ public class ShephardsPlayApplet
                                     FORI (iVert, nVerts)
                                     {
                                         Mesh.Vertex vertI = mesh.getVert(iVert);
-                                        if (EQ(oldImage[0], vertI.Xtriage(), 1e-6)
-                                         && EQ(oldImage[1], vertI.Ytriage(), 1e-6))
+                                        if (EQ(oldImage[0], vertI.Xnaive(), 1e-6)
+                                         && EQ(oldImage[1], vertI.Ynaive(), 1e-6))
                                         {
                                             double newImage[] = VecMath.vxm(newCoords,group[iGroup]);
-                                            System.out.println("Snapping vertex "+iVert+" from "+vertI.Xtriage()+" "+vertI.Ytriage()+" "+vertI.Htriage()+"");
-                                            vertI.setXYtriage(newImage[0],
+                                            System.out.println("Snapping vertex "+iVert+" from "+vertI.Xnaive()+" "+vertI.Ynaive()+" "+vertI.Hnaive()+"");
+                                            vertI.setXYnaive(newImage[0],
                                                         newImage[1]);
-                                            System.out.println("Dragging vertex "+iVert+" from "+vertI.Xtriage()+" "+vertI.Ytriage()+" "+vertI.Htriage()+"");
+                                            System.out.println("Dragging vertex "+iVert+" from "+vertI.Xnaive()+" "+vertI.Ynaive()+" "+vertI.Hnaive()+"");
                                         }
                                     }
                                 }
@@ -3811,7 +3911,7 @@ public class ShephardsPlayApplet
                                         continue; // the triangle is inside out; it's the boundary
                                 }
 
-                                mostRecentGraphics.xform(dualVert.Xtriage(), dualVert.Ytriage(), dualVert.Ztriage(), scratch);
+                                mostRecentGraphics.xform(dualVert.Xnaive(), dualVert.Ynaive(), dualVert.Znaive(), scratch);
                                 double thisDistSqrd = VecMath.distsqrd(2, prevP, scratch);
                                 if (thisDistSqrd < closestDistSqrd)
                                 {
@@ -3901,7 +4001,7 @@ public class ShephardsPlayApplet
                             System.out.println("doOptimize -> "+doOptimize.get()+" ('O' to turn back on)");
                         }
                         FORIDOWN (iVert, mesh.verts.size())
-                            mesh.getVert(iVert).setHtriage(0.);
+                            mesh.getVert(iVert).setHnaive(0.);
                         dirtyDualMesh();
                         if (doContinuouslyDelaunayize.get()) delaunayize();
                         UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
@@ -3999,7 +4099,7 @@ public class ShephardsPlayApplet
 
                         boolean heightsWereAllZero = true;
                         FORI (iVert, mesh.verts.size())
-                            if (mesh.getVert(iVert).Htriage() != 0.)
+                            if (mesh.getVert(iVert).Hnaive() != 0.)
                             {
                                 heightsWereAllZero = false;
                                 break;
@@ -4015,7 +4115,7 @@ public class ShephardsPlayApplet
                         if (heightsWereAllZero)
                         {
                             FORI (iVert, mesh.verts.size())
-                                mesh.getVert(iVert).setHtriage(0.);
+                                mesh.getVert(iVert).setHnaive(0.);
                         }
 
                         selectedTris = new int[][] {};
@@ -4190,9 +4290,9 @@ public class ShephardsPlayApplet
                             {
                                 FORI (iVert, verts.length)
                                 {
-                                    mesh.getVert(iVert).Xtriage() = verts[iVert][0];
-                                    mesh.getVert(iVert).Ytriage() = verts[iVert][1];
-                                    mesh.getVert(iVert).Htriage() = verts[iVert][2];
+                                    mesh.getVert(iVert).Xnaive() = verts[iVert][0];
+                                    mesh.getVert(iVert).Ynaive() = verts[iVert][1];
+                                    mesh.getVert(iVert).Hnaive() = verts[iVert][2];
                                 }
                             }
 
@@ -4342,14 +4442,14 @@ public class ShephardsPlayApplet
                                     nextEdge.direction != null
                                   ? Math.atan2(nextEdge.direction[1],
                                                nextEdge.direction[0])
-                                  : Math.atan2(nextEdge.finalVertex().Ytriage()-nextEdge.initialVertex().Ytriage(),
-                                               nextEdge.finalVertex().Xtriage()-nextEdge.initialVertex().Xtriage());
+                                  : Math.atan2(nextEdge.finalVertex().Ynaive()-nextEdge.initialVertex().Ynaive(),
+                                               nextEdge.finalVertex().Xnaive()-nextEdge.initialVertex().Xnaive());
                                 double thisAng =
                                     thisEdge.direction != null
                                   ? Math.atan2(thisEdge.direction[1],
                                                thisEdge.direction[0])
-                                  : Math.atan2(thisEdge.finalVertex().Ytriage()-thisEdge.initialVertex().Ytriage(),
-                                               thisEdge.finalVertex().Xtriage()-thisEdge.initialVertex().Xtriage());
+                                  : Math.atan2(thisEdge.finalVertex().Ynaive()-thisEdge.initialVertex().Ynaive(),
+                                               thisEdge.finalVertex().Xnaive()-thisEdge.initialVertex().Xnaive());
                                 double thisGap = nextAng - thisAng;
                                 if (isDualMesh)
                                     thisGap = -thisGap;
@@ -4376,9 +4476,9 @@ public class ShephardsPlayApplet
                         FORIDOWN (iVert, verts.size())
                         {
                             Mesh.Vertex vert = (Mesh.Vertex)verts.get(iVert);
-                            double x = vert.Xtriage();
-                            double y = vert.Ytriage();
-                            double z = vert.Ztriage();
+                            double x = vert.Xnaive();
+                            double y = vert.Ynaive();
+                            double z = vert.Znaive();
                             double ang;
                             if (trySmartVertexAngles)
                             {
@@ -4424,12 +4524,12 @@ public class ShephardsPlayApplet
                             else
                             {
                                 double rayLength = 1.;
-                                x0 = (v0!=null ? v0.Xtriage() : v1.Xtriage() - edge.direction[0]*rayLength);
-                                y0 = (v0!=null ? v0.Ytriage() : v1.Ytriage() - edge.direction[1]*rayLength);
-                                z0 = (v0!=null ? v0.Ztriage() : v1.Ztriage() - edge.direction[2]*rayLength);
-                                x1 = (v1!=null ? v1.Xtriage() : v0.Xtriage() + edge.direction[0]*rayLength);
-                                y1 = (v1!=null ? v1.Ytriage() : v0.Ytriage() + edge.direction[1]*rayLength);
-                                z1 = (v1!=null ? v1.Ztriage() : v0.Ztriage() + edge.direction[2]*rayLength);
+                                x0 = (v0!=null ? v0.Xnaive() : v1.Xnaive() - edge.direction[0]*rayLength);
+                                y0 = (v0!=null ? v0.Ynaive() : v1.Ynaive() - edge.direction[1]*rayLength);
+                                z0 = (v0!=null ? v0.Znaive() : v1.Znaive() - edge.direction[2]*rayLength);
+                                x1 = (v1!=null ? v1.Xnaive() : v0.Xnaive() + edge.direction[0]*rayLength);
+                                y1 = (v1!=null ? v1.Ynaive() : v0.Ynaive() + edge.direction[1]*rayLength);
+                                z1 = (v1!=null ? v1.Znaive() : v0.Znaive() + edge.direction[2]*rayLength);
                             }
 
                             double x = (x0+x1)/2;
@@ -4473,7 +4573,7 @@ public class ShephardsPlayApplet
                         FORI(iVert, nVerts)
                         {
                             Mesh.Vertex vert = mesh.getVert(iVert);
-                            double dist2 = SQR(vert.Xtriage()) + SQR(vert.Ytriage());
+                            double dist2 = SQR(vert.Xnaive()) + SQR(vert.Ynaive());
                             if (dist2 < closestDist2)
                             {
                                 iClosest = iVert;
@@ -4494,8 +4594,8 @@ public class ShephardsPlayApplet
 
                         //   p dot (x,y,1) == offset
                         //  px,py,scaleZ*pz dot scaleZ*x,scaleZ*y,1 == scaleZ * offset
-                        double startDualFacePlaneNormal[] = {localScaleZ*startVert.Xtriage(), localScaleZ*startVert.Ytriage(), 1}; // not unit length
-                        double startDualFacePlaneOffset = -localScaleZ*startVert.Ztriage(); // magic!  I don't know why, but this is the correct value
+                        double startDualFacePlaneNormal[] = {localScaleZ*startVert.Xnaive(), localScaleZ*startVert.Ynaive(), 1}; // not unit length
+                        double startDualFacePlaneOffset = -localScaleZ*startVert.Znaive(); // magic!  I don't know why, but this is the correct value
 
                         // what translation by a multiple of startDualFacePlaneNormal
                         // will take the dual face plane to the origin?
@@ -4569,7 +4669,7 @@ public class ShephardsPlayApplet
                             // to the +z axis, while keeping (dual edge times M0) fixed.
 
                             // XXX correct for scale!
-                            double jDualFacePlaneNormal[] = {localScaleZ*vertJ.Xtriage(), localScaleZ*vertJ.Ytriage(), 1}; // not unit length
+                            double jDualFacePlaneNormal[] = {localScaleZ*vertJ.Xnaive(), localScaleZ*vertJ.Ynaive(), 1}; // not unit length
                             jDualFacePlaneNormal = VecMath.vxm(jDualFacePlaneNormal, M0rotPart);
 
 
@@ -4578,9 +4678,9 @@ public class ShephardsPlayApplet
                             if (someVertOnDualEdge == null)
                                 someVertOnDualEdge = dualEdge.finalVertex();
                             // XXX correct for scale!
-                            double thisDualVertCoords[] = {someVertOnDualEdge.Xtriage(),
-                                                           someVertOnDualEdge.Ytriage(),
-                                                           someVertOnDualEdge.Ztriage()};
+                            double thisDualVertCoords[] = {someVertOnDualEdge.Xnaive(),
+                                                           someVertOnDualEdge.Ynaive(),
+                                                           someVertOnDualEdge.Znaive()};
                             thisDualVertCoords = VecMath.vxm(thisDualVertCoords, M0);
 
 
@@ -4789,7 +4889,7 @@ public class ShephardsPlayApplet
                     FORI (iVert, nVerts)
                     {
                         Mesh.Vertex vert = mesh.getVert(iVert);
-                        mg.xform(vert.Xtriage(), vert.Ytriage(), vert.Ztriage(), xys[iVert]);
+                        mg.xform(vert.Xnaive(), vert.Ynaive(), vert.Znaive(), xys[iVert]);
                     }
                     double center[] = new double[2];
                     //MiniBall.verboseLevel = 2; // 2 for nice diagram
@@ -4838,19 +4938,19 @@ public class ShephardsPlayApplet
                     Mesh.Vertex v1 = mesh.getVert(1);
                     Mesh.Vertex v4 = mesh.getVert(4);
                     Mesh.Vertex v5 = mesh.getVert(5);
-                    double A[] = {v1.Xtriage(), v1.Ytriage(), v1.Htriage() - .5 * (SQR(v1.Xtriage()) + SQR(v1.Ytriage()))};
-                    double B[] = {v4.Xtriage(), v4.Ytriage(), v4.Htriage() - .5 * (SQR(v4.Xtriage()) + SQR(v4.Ytriage()))};
-                    double C[] = {v5.Xtriage(), v5.Ytriage(), v5.Htriage() - .5 * (SQR(v5.Xtriage()) + SQR(v5.Ytriage()))};
+                    double A[] = {v1.Xnaive(), v1.Ynaive(), v1.Hnaive() - .5 * (SQR(v1.Xnaive()) + SQR(v1.Ynaive()))};
+                    double B[] = {v4.Xnaive(), v4.Ynaive(), v4.Hnaive() - .5 * (SQR(v4.Xnaive()) + SQR(v4.Ynaive()))};
+                    double C[] = {v5.Xnaive(), v5.Ynaive(), v5.Hnaive() - .5 * (SQR(v5.Xnaive()) + SQR(v5.Ynaive()))};
                     double N[] = VecMath.vxv3(VecMath.vmv(B,A),
                                               VecMath.vmv(C,A));
                     double desiredDot = VecMath.dot(N,A);
-                    double D[] = {v0.Xtriage(), v0.Ytriage(), v0.Htriage()};
+                    double D[] = {v0.Xnaive(), v0.Ynaive(), v0.Hnaive()};
                     // Find D[2] such that N dot D == desiredDot
                     // I.e. N[0]*D[0] + N[1]*D[1] + N[2]*D[2] == desiredDot
                     D[2] = (desiredDot - (N[0]*D[0] + N[1]*D[1])) / N[2];
 
-                    v0.setHtriage(D[2]
-                          + .5 * (SQR(v0.Xtriage()) + SQR(v0.Ytriage())));
+                    v0.setHnaive(D[2]
+                          + .5 * (SQR(v0.Xnaive()) + SQR(v0.Ynaive())));
                 }
 
 
@@ -4899,7 +4999,7 @@ public class ShephardsPlayApplet
                     FORI (iDualVert, nDualVerts)
                     {
                         Mesh.Vertex v = dualMesh.getVert(iDualVert);
-                        dualVertCoords[iDualVert] = new double[]{v.Xtriage(), v.Ytriage(), v.Ztriage()};
+                        dualVertCoords[iDualVert] = new double[]{v.Xnaive(), v.Ynaive(), v.Znaive()};
                     }
                     FORI (iDualEdge, nDualEdges)
                     {
@@ -4913,9 +5013,9 @@ public class ShephardsPlayApplet
                             if (v1 != null)
                             {
                                 dualEdgeInitialCoords[iDualEdge] = new double[] {
-                                    v1.Xtriage() - dualEdge.direction[0],
-                                    v1.Ytriage() - dualEdge.direction[1],
-                                    (v1.Ztriage() - dualEdge.direction[2]),
+                                    v1.Xnaive() - dualEdge.direction[0],
+                                    v1.Ynaive() - dualEdge.direction[1],
+                                    (v1.Znaive() - dualEdge.direction[2]),
                                 };
                             }
                             else
@@ -4937,10 +5037,10 @@ public class ShephardsPlayApplet
                                 Mesh.Edge primalEdge = mesh.getEdge(iDualEdge);
                                 Mesh.Vertex w0 = primalEdge.initialVertex();
                                 Mesh.Vertex w1 = primalEdge.finalVertex();
-                                double t = .5 + (w0.Htriage() - w1.Htriage()) / (SQR(w1.Xtriage()-w0.Xtriage())+SQR(w1.Ytriage()-w0.Ytriage())); // XXX beware the zero divide
-                                double p[] = {LERP(w0.Xtriage(),w1.Xtriage(),t),
-                                              LERP(w0.Ytriage(),w1.Ytriage(),t),
-                                              LERP(w0.Ztriage(),w1.Ztriage(),t)};
+                                double t = .5 + (w0.Hnaive() - w1.Hnaive()) / (SQR(w1.Xnaive()-w0.Xnaive())+SQR(w1.Ynaive()-w0.Ynaive())); // XXX beware the zero divide
+                                double p[] = {LERP(w0.Xnaive(),w1.Xnaive(),t),
+                                              LERP(w0.Ynaive(),w1.Ynaive(),t),
+                                              LERP(w0.Znaive(),w1.Znaive(),t)};
                                 // whatever depth it was below the paraboloid, raise it to that height above it for the dual
                                 p[2] = LERP(p[2], -.5*(SQR(p[0])+SQR(p[1])), 2.);
                                 VecMath.vpsxv(p, p, .5, dualEdge.direction);
@@ -4980,7 +5080,7 @@ public class ShephardsPlayApplet
                 FORI (iVert, nVerts)
                 {
                     Mesh.Vertex v = mesh.getVert(iVert);
-                    vertCoords[iVert] = new double[]{v.Xtriage(), v.Ytriage(), v.Ztriage()};
+                    vertCoords[iVert] = new double[]{v.Xnaive(), v.Ynaive(), v.Znaive()};
                 }
 
                 if (showTriangles >= 1) // 0=off, 1=verts, 2 = verts and tris
@@ -5278,8 +5378,8 @@ public class ShephardsPlayApplet
                                         if (dualVertIndexToParentEdge[triCenterDualVert.myIndex()] != null)
                                             continue; // definitely already did this vertex  XXX but root vertex stays null so it will be done 3 times :-(
                                         double triCenterDualVertPos[] = {
-                                            triCenterDualVert.Xtriage(),
-                                            triCenterDualVert.Ytriage(),
+                                            triCenterDualVert.Xnaive(),
+                                            triCenterDualVert.Ynaive(),
                                         };
 
                                         Mesh.Edge e0 = mesh.getEdge(iEdge);
@@ -5306,7 +5406,7 @@ public class ShephardsPlayApplet
                                             if (finalVertex == null)
                                                 threeFinalPositions[i] = new double[] {Double.POSITIVE_INFINITY, Double.POSITIVE_INFINITY};
                                             else
-                                                threeFinalPositions[i] = new double[] {finalVertex.Xtriage(), finalVertex.Ytriage()};
+                                                threeFinalPositions[i] = new double[] {finalVertex.Xnaive(), finalVertex.Ynaive()};
                                         }
 
                                         int bestSide = netMethodValue==NETMETHOD_OUTWARD ? 
@@ -5367,8 +5467,8 @@ public class ShephardsPlayApplet
                                         if (false) // set this to true to debug
                                         {
                                             double whereToDrawMark[] = {
-                                                triCenterDualVert.Xtriage() + .05 * threeDirections[bestSide][0],
-                                                triCenterDualVert.Ytriage() + .05 * threeDirections[bestSide][1],
+                                                triCenterDualVert.Xnaive() + .05 * threeDirections[bestSide][0],
+                                                triCenterDualVert.Ynaive() + .05 * threeDirections[bestSide][1],
                                             };
                                             mg.drawPoint(whereToDrawMark[0],
                                                          whereToDrawMark[1],
@@ -5464,8 +5564,8 @@ public class ShephardsPlayApplet
                                                     Mesh.Vertex v0 = thisEdge.initialVertex();
                                                     Mesh.Vertex v1 = thisEdge.finalVertex();
                                                     double edgeLength2 = (v0==null||v1==null ? Double.POSITIVE_INFINITY
-                                                                                             : SQR(v1.Xtriage()-v0.Xtriage())
-                                                                                             + SQR(v1.Ytriage()-v0.Ytriage()));
+                                                                                             : SQR(v1.Xnaive()-v0.Xnaive())
+                                                                                             + SQR(v1.Ynaive()-v0.Ynaive()));
                                                     thisValue = edgeLength2;
                                                     if (netMethodValue == NETMETHOD_CUT_DULLEST
                                                      || netMethodValue == NETMETHOD_FOLD_SHORTEST)
@@ -5479,8 +5579,8 @@ public class ShephardsPlayApplet
                                                     Mesh.Vertex v0 = dualEdge.initialVertex();
                                                     Mesh.Vertex v1 = dualEdge.finalVertex();
                                                     double edgeLength2 = (v0==null||v1==null ? Double.POSITIVE_INFINITY
-                                                                                             : SQR(v1.Xtriage()-v0.Xtriage())
-                                                                                             + SQR(v1.Ytriage()-v0.Ytriage()));
+                                                                                             : SQR(v1.Xnaive()-v0.Xnaive())
+                                                                                             + SQR(v1.Ynaive()-v0.Ynaive()));
                                                     thisValue = edgeLength2;
                                                     if (netMethodValue == NETMETHOD_CUT_SHORTEST
                                                      || netMethodValue == NETMETHOD_FOLD_DULLEST)
@@ -5608,8 +5708,8 @@ public class ShephardsPlayApplet
                                         double centerX = momentAndWeightStrictlyBelowDualVertex[0] / weightStrictlyBelowDualVertex;
                                         double centerY = momentAndWeightStrictlyBelowDualVertex[1] / weightStrictlyBelowDualVertex;
                                         // if dualEdge.direction dot (center - dualVert) > 0.
-                                        if (GT(dualEdge.direction[0] * (centerX - dualVert.Xtriage())
-                                             + dualEdge.direction[1] * (centerY - dualVert.Ytriage()), 0., 1e-6))
+                                        if (GT(dualEdge.direction[0] * (centerX - dualVert.Xnaive())
+                                             + dualEdge.direction[1] * (centerY - dualVert.Ynaive()), 0., 1e-6))
                                         {
                                             dualEdgeIsOffBalanceCut[dualEdge.myIndex()] = true;
                                             dualEdgeIsOffBalanceCut[dualEdge.opposite().myIndex()] = true;
@@ -5696,7 +5796,7 @@ public class ShephardsPlayApplet
                             {
                                 // starts in the lagoon, ends outside it.
                                 // is it a good exit?
-                                double initialVertexCoords[] = {initialVertex.Xtriage(), initialVertex.Ytriage()};
+                                double initialVertexCoords[] = {initialVertex.Xnaive(), initialVertex.Ynaive()};
                                 double goodness = VecMath.dot(2, dualEdge.direction,
                                                               VecMath.vmv(2, initialVertexCoords, avg));
                                 boolean isGoodExit = GEQ(goodness, 0., SQR(1e-6));
@@ -5713,11 +5813,11 @@ public class ShephardsPlayApplet
                                         // draw perpendicular at the zero level (not at the vertex),
                                         // to emphasize the wrongness if viewing non-orthogonally
                                         double rayLength = 1.;
-                                        mg.drawLine(initialVertex.Xtriage() - rayLength * dualEdge.direction[1],
-                                                    initialVertex.Ytriage() + rayLength * dualEdge.direction[0],
+                                        mg.drawLine(initialVertex.Xnaive() - rayLength * dualEdge.direction[1],
+                                                    initialVertex.Ynaive() + rayLength * dualEdge.direction[0],
                                                     0,
-                                                    initialVertex.Xtriage() + rayLength * dualEdge.direction[1],
-                                                    initialVertex.Ytriage() - rayLength * dualEdge.direction[0],
+                                                    initialVertex.Xnaive() + rayLength * dualEdge.direction[1],
+                                                    initialVertex.Ynaive() - rayLength * dualEdge.direction[0],
                                                     0,
                                                     doAntiAliasing);
                                     }
@@ -5820,8 +5920,8 @@ public class ShephardsPlayApplet
                                     // cyan for good, magenta for bad.
                                     boolean isGood = LEQ(VecMath.dot(2, alternativeExit.direction,
                                                                         VecMath.vmv(2, lagoonCenter,
-                                                                                       new double[]{alternativeExitVertex.Xtriage(),
-                                                                                                    alternativeExitVertex.Ytriage()})), 0., SQR(1e-6));
+                                                                                       new double[]{alternativeExitVertex.Xnaive(),
+                                                                                                    alternativeExitVertex.Ynaive()})), 0., SQR(1e-6));
                                     color = isGood ? java.awt.Color.cyan : java.awt.Color.magenta;
                                 }
                                 else
@@ -5968,8 +6068,8 @@ public class ShephardsPlayApplet
                                 if (parent != null)
                                 {
                                     int iParent = parent.myIndex();
-                                    double dx = child.Xtriage() - parent.Xtriage();
-                                    double dy = child.Ytriage() - parent.Ytriage();
+                                    double dx = child.Xnaive() - parent.Xnaive();
+                                    double dy = child.Ynaive() - parent.Ynaive();
                                     norm2s[iChild] = norm2s[iParent] + MyMath.hypot(dx,dy);
                                     normInfs[iChild] = normInfs[iParent] + MAX(dx,dy);
                                 }
@@ -6009,9 +6109,9 @@ public class ShephardsPlayApplet
                                     for (double pos = pos0; LEQ(pos, norm2s[iChild], 1e-6); pos += step)
                                     {
                                         double t = (pos-norm2s[iParent])/(norm2s[iChild]-norm2s[iParent]);
-                                        double x = LERP(parent.Xtriage(), child.Xtriage(), t);
-                                        double y = LERP(parent.Ytriage(), child.Ytriage(), t);
-                                        double h = LERP(parent.Ztriage(), child.Ztriage(), t);
+                                        double x = LERP(parent.Xnaive(), child.Xnaive(), t);
+                                        double y = LERP(parent.Ynaive(), child.Ynaive(), t);
+                                        double h = LERP(parent.Znaive(), child.Znaive(), t);
                                         mg.drawPoint(x, y, h, 3);
                                     }
                                 }
@@ -6024,9 +6124,9 @@ public class ShephardsPlayApplet
                                         pos0 -= step;
                                     for (double pos = pos0; GEQ(pos, -rayLength, 1e-6); pos -= step)
                                     {
-                                        double x = child.Xtriage() - pos * parentEdge.direction[0];
-                                        double y = child.Ytriage() - pos * parentEdge.direction[1];
-                                        double h = child.Ztriage() - pos * parentEdge.direction[2];
+                                        double x = child.Xnaive() - pos * parentEdge.direction[0];
+                                        double y = child.Ynaive() - pos * parentEdge.direction[1];
+                                        double h = child.Znaive() - pos * parentEdge.direction[2];
                                         mg.drawPoint(x, y, h, 3);
                                     }
                                 }
@@ -6089,20 +6189,20 @@ public class ShephardsPlayApplet
                                                       e2.initialVertex()};
                             double sideLengths[] = new double[3];
                             FORI (i, 3)
-                                sideLengths[i] = Math.sqrt(SQR(triVerts[i].Xtriage()-triVerts[(i+1)%3].Xtriage())
-                                                         + SQR(triVerts[i].Ytriage()-triVerts[(i+1)%3].Ytriage()));
+                                sideLengths[i] = Math.sqrt(SQR(triVerts[i].Xnaive()-triVerts[(i+1)%3].Xnaive())
+                                                         + SQR(triVerts[i].Ynaive()-triVerts[(i+1)%3].Ynaive()));
                             int bestSide = MAXI3(sideLengths[0], sideLengths[1], sideLengths[2]);
 
-                            double v0[] = {triVerts[bestSide].Xtriage(), triVerts[bestSide].Ytriage()};
-                            double v1[] = {triVerts[(bestSide+1)%3].Xtriage(), triVerts[(bestSide+1)%3].Ytriage()};
+                            double v0[] = {triVerts[bestSide].Xnaive(), triVerts[bestSide].Ynaive()};
+                            double v1[] = {triVerts[(bestSide+1)%3].Xnaive(), triVerts[(bestSide+1)%3].Ynaive()};
                             double toEdgeVec[] = VecMath.xv2(
                                                      VecMath.vmv(v0, v1));
                             VecMath.normalize(toEdgeVec, toEdgeVec);
                             // XXX be smarter!  maybe 1/3 of the way along the edge, or somethin
                             double whereToDrawMark[] = {
-                                triCenterDualVert.Xtriage() + .02 * toEdgeVec[0],
-                                triCenterDualVert.Ytriage() + .02 * toEdgeVec[1],
-                                triCenterDualVert.Htriage() + .02 * toEdgeVec[2],
+                                triCenterDualVert.Xnaive() + .02 * toEdgeVec[0],
+                                triCenterDualVert.Ynaive() + .02 * toEdgeVec[1],
+                                triCenterDualVert.Hnaive() + .02 * toEdgeVec[2],
                             };
                             //VecMath.vpsxv(whereToDrawMark, whereToDrawMark, .004, VecMath.random(2));
                             mg.drawPoint(whereToDrawMark[0],
@@ -6128,7 +6228,7 @@ public class ShephardsPlayApplet
                             Mesh.Vertex triVerts[] = {e0.initialVertex(),
                                                       e1.initialVertex(),
                                                       e2.initialVertex()};
-                            double triCenterDualVertCoords[] = {triCenterDualVert.Xtriage(), triCenterDualVert.Ytriage()};
+                            double triCenterDualVertCoords[] = {triCenterDualVert.Xnaive(), triCenterDualVert.Ynaive()};
                             Mesh.Vertex neighborDualVerts[] = {
                                 (dualMesh.getEdge(e0.myIndex())).initialVertex(),
                                 (dualMesh.getEdge(e1.myIndex())).initialVertex(),
@@ -6142,20 +6242,20 @@ public class ShephardsPlayApplet
                                     dualSideLengths[i] = Double.POSITIVE_INFINITY;
                                 else
                                     dualSideLengths[i] = VecMath.dist(triCenterDualVertCoords,
-                                                                      new double[]{neighborDualVerts[i].Xtriage(),
-                                                                                   neighborDualVerts[i].Ytriage()});
+                                                                      new double[]{neighborDualVerts[i].Xnaive(),
+                                                                                   neighborDualVerts[i].Ynaive()});
                             }
                             int bestSide = MINI3(dualSideLengths[0], dualSideLengths[1], dualSideLengths[2]);
-                            double v0[] = {triVerts[bestSide].Xtriage(), triVerts[bestSide].Ytriage()};
-                            double v1[] = {triVerts[(bestSide+1)%3].Xtriage(), triVerts[(bestSide+1)%3].Ytriage()};
+                            double v0[] = {triVerts[bestSide].Xnaive(), triVerts[bestSide].Ynaive()};
+                            double v1[] = {triVerts[(bestSide+1)%3].Xnaive(), triVerts[(bestSide+1)%3].Ynaive()};
                             double toEdgeVec[] = VecMath.xv2(
                                                      VecMath.vmv(v0, v1));
                             VecMath.normalize(toEdgeVec, toEdgeVec);
                             // XXX be smarter!  maybe 1/3 of the way along the edge, or somethin
                             double whereToDrawMark[] = {
-                                triCenterDualVert.Xtriage() + .02 * toEdgeVec[0],
-                                triCenterDualVert.Ytriage() + .02 * toEdgeVec[1],
-                                triCenterDualVert.Htriage() + .02 * toEdgeVec[2],
+                                triCenterDualVert.Xnaive() + .02 * toEdgeVec[0],
+                                triCenterDualVert.Ynaive() + .02 * toEdgeVec[1],
+                                triCenterDualVert.Hnaive() + .02 * toEdgeVec[2],
                             };
                             //VecMath.vpsxv(whereToDrawMark, whereToDrawMark, .005, VecMath.random(2));
                             mg.drawPoint(whereToDrawMark[0],
@@ -6293,9 +6393,9 @@ public class ShephardsPlayApplet
                     Mesh.Vertex v0 = mesh.getVert(beingDraggedVertIndex);
                     double projectedPrevP[] = new double[3];
                     pickPointOnSurface(prevP, vertOffset(v0, wrapAroundSphereFlag.get()), projectedPrevP);
-                    //mg.drawLine(v0.Xtriage(), v0.Ytriage(),
+                    //mg.drawLine(v0.Xnaive(), v0.Ynaive(),
                                 //prevP[0], prevP[1], doAntiAliasing);
-                    mg.drawLine(v0.Xtriage(), v0.Ytriage(), v0.Ztriage(),
+                    mg.drawLine(v0.Xnaive(), v0.Ynaive(), v0.Znaive(),
                                 projectedPrevP[0], projectedPrevP[1], projectedPrevP[2],
                                 doAntiAliasing);
                 } // if (rubberBandingNewEdge)
@@ -6492,8 +6592,8 @@ public class ShephardsPlayApplet
 
                 if (false) // hack-- uncomment this to mess around with crackkiller
                 {
-                    if (mesh.getVert(1).Xtriage()
-                      < mesh.getVert(0).Xtriage())
+                    if (mesh.getVert(1).Xnaive()
+                      < mesh.getVert(0).Xnaive())
                         exploreCrackHead(mesh, 1, 0);
                     else
                         exploreCrackHead(mesh, 0, 1);
@@ -6551,14 +6651,14 @@ public class ShephardsPlayApplet
                 FORI (iFace, nDualVerts)
                 {
                     Mesh.Vertex dualVert = dualMesh.getVert(iFace);
-                    double facePlaneNormal[] = {dualVert.Xtriage(), dualVert.Ytriage(), 1.}; // not unit length
-                    double facePlaneOffset = -dualVert.Ztriage(); // magic!  I don't know why, but this is the correct value
+                    double facePlaneNormal[] = {dualVert.Xnaive(), dualVert.Ynaive(), 1.}; // not unit length
+                    double facePlaneOffset = -dualVert.Znaive(); // magic!  I don't know why, but this is the correct value
                     if (wrapAroundSphereFlagValue)
                     {
-                        facePlaneNormal[2] = (centerSphere ? dualVert.Ztriage() : dualVert.Ztriage() + 1./wrapSphereCurvatureValue); // normal is toward dual vert
-                        facePlaneOffset = facePlaneNormal[0]*dualVert.Xtriage()
-                                        + facePlaneNormal[1]*dualVert.Ytriage()
-                                        + facePlaneNormal[2]*dualVert.Ztriage();
+                        facePlaneNormal[2] = (centerSphere ? dualVert.Znaive() : dualVert.Znaive() + 1./wrapSphereCurvatureValue); // normal is toward dual vert
+                        facePlaneOffset = facePlaneNormal[0]*dualVert.Xnaive()
+                                        + facePlaneNormal[1]*dualVert.Ynaive()
+                                        + facePlaneNormal[2]*dualVert.Znaive();
                     }
                     double frontness = VecMath.dot(facePlaneNormal, eyeInLocalSpace)
                                      - facePlaneOffset;
@@ -6588,7 +6688,7 @@ public class ShephardsPlayApplet
                         double area = 0.;
                         {
                             Mesh.Vertex v0 = edgeI.initialVertex();
-                            double v0coords[] = {v0.Xtriage(), v0.Ytriage(), v0.Ztriage()};
+                            double v0coords[] = {v0.Xnaive(), v0.Ynaive(), v0.Znaive()};
                             double v1coords[] = new double[3]; // scratch for loop
                             double v2coords[] = new double[3]; // scratch for loop
                             double thisCentroid[] = new double[3]; // scratch for loop
@@ -6597,12 +6697,12 @@ public class ShephardsPlayApplet
                             {
                                 Mesh.Vertex v1 = edgeJ.initialVertex();
                                 Mesh.Vertex v2 = edgeJ.finalVertex();
-                                v1coords[0] = v1.Xtriage();
-                                v1coords[1] = v1.Ytriage();
-                                v1coords[2] = v1.Ztriage();
-                                v2coords[0] = v2.Xtriage();
-                                v2coords[1] = v2.Ytriage();
-                                v2coords[2] = v2.Ztriage();
+                                v1coords[0] = v1.Xnaive();
+                                v1coords[1] = v1.Ynaive();
+                                v1coords[2] = v1.Znaive();
+                                v2coords[0] = v2.Xnaive();
+                                v2coords[1] = v2.Ynaive();
+                                v2coords[2] = v2.Znaive();
                                 VecMath.vmv(v1coords, v1coords, v0coords);
                                 VecMath.vmv(v2coords, v2coords, v0coords);
                                 VecMath.vxv3(thisWeightedNormal, v1coords, v2coords);
@@ -6705,8 +6805,8 @@ public class ShephardsPlayApplet
                 FORI (iVert, nVerts)
                 {
                     Mesh.Vertex v = mesh.getVert(iVert);
-                    verts[iVert] = new double[]{v.Xtriage(), v.Ytriage(), v.Htriage()};
-                    vertsForHull[iVert] = new double[]{v.Xtriage(), v.Ytriage(), v.Ztriage()};
+                    verts[iVert] = new double[]{v.Xnaive(), v.Ynaive(), v.Hnaive()};
+                    vertsForHull[iVert] = new double[]{v.Xnaive(), v.Ynaive(), v.Znaive()};
                 }
 
                 //PRINTARRAY(verts);
@@ -7670,7 +7770,7 @@ OFF
                 FORI (iVert, verts.length)
                 {
                     Mesh.Vertex v = mesh.getVert(iVert);
-                    v.setXYHtriage(verts[iVert][0],
+                    v.setXYHnaive(verts[iVert][0],
                              verts[iVert][1],
                              verts[iVert][2]);
                 }
@@ -7729,9 +7829,9 @@ OFF
                 FORI (i, netless8Verts.length)
                 {
                     Mesh.Vertex vertex = mesh.getVert(i);
-                    netless8Verts[i][0] = vertex.Xtriage();
-                    netless8Verts[i][1] = vertex.Ytriage();
-                    netless8Verts[i][2] = vertex.Htriage();
+                    netless8Verts[i][0] = vertex.Xnaive();
+                    netless8Verts[i][1] = vertex.Ynaive();
+                    netless8Verts[i][2] = vertex.Hnaive();
                 }
 
                 double separation = 2;
@@ -7785,11 +7885,11 @@ OFF
                 mesh = new Mesh(verts, faces);
 
                 // temporarily fudge to prevent degenerate edges on boundary
-                mesh.getVert(3).setYtriage(mesh.getVert(3).Ytriage() - 1/1024.);
-                mesh.getVert(8).setYtriage(mesh.getVert(8).Ytriage() - 1/1024.);
+                mesh.getVert(3).setYnaive(mesh.getVert(3).Ynaive() - 1/1024.);
+                mesh.getVert(8).setYnaive(mesh.getVert(8).Ynaive() - 1/1024.);
                 delaunayize();
-                mesh.getVert(3).setYtriage(mesh.getVert(3).Ytriage() + 1/1024.);
-                mesh.getVert(8).setYtriage(mesh.getVert(8).Ytriage() + 1/1024.);
+                mesh.getVert(3).setYnaive(mesh.getVert(3).Ynaive() + 1/1024.);
+                mesh.getVert(8).setYnaive(mesh.getVert(8).Ynaive() + 1/1024.);
 
             } // doCannedThingSweepKiller0
 
@@ -8037,9 +8137,9 @@ OFF
                     FORI (iVert, coords.length)
                     {
                         Mesh.Vertex v = mesh.getVert(iVert);
-                        coords[iVert][0] = v.Xtriage();
-                        coords[iVert][1] = v.Ytriage();
-                        coords[iVert][2] = v.Htriage();
+                        coords[iVert][0] = v.Xnaive();
+                        coords[iVert][1] = v.Ynaive();
+                        coords[iVert][2] = v.Hnaive();
                     }
                 }
 
@@ -8154,18 +8254,18 @@ OFF
                     Mesh.Vertex v1 = primal.getVert(1);
                     Mesh.Vertex v2 = primal.getVert(2);
 
-                    verts[0][0] = v0.Xtriage();
-                    verts[0][1] = v0.Ytriage();
-                    verts[0][2] = v0.Htriage();
-                    double origDist01 = MyMath.hypot(v1.Xtriage()-v0.Xtriage(), v1.Ytriage()-v0.Ytriage());
-                    verts[1][0] = v0.Xtriage() + (v1.Xtriage()-v0.Xtriage())/origDist01 * params[iParam];
-                    verts[1][1] = v0.Ytriage() + (v1.Ytriage()-v0.Ytriage())/origDist01 * params[iParam];
+                    verts[0][0] = v0.Xnaive();
+                    verts[0][1] = v0.Ynaive();
+                    verts[0][2] = v0.Hnaive();
+                    double origDist01 = MyMath.hypot(v1.Xnaive()-v0.Xnaive(), v1.Ynaive()-v0.Ynaive());
+                    verts[1][0] = v0.Xnaive() + (v1.Xnaive()-v0.Xnaive())/origDist01 * params[iParam];
+                    verts[1][1] = v0.Ynaive() + (v1.Ynaive()-v0.Ynaive())/origDist01 * params[iParam];
                     iParam++;
-                    verts[1][2] = v1.Htriage();
+                    verts[1][2] = v1.Hnaive();
 
                     verts[2][0] = params[iParam++];
                     verts[2][1] = params[iParam++];
-                    verts[2][2] = v2.Htriage();
+                    verts[2][2] = v2.Hnaive();
 
                     for (int iVert = 3; iVert < verts.length; ++iVert)
                     {
@@ -8848,14 +8948,14 @@ OFF
 
                 double initialGuessVerts[][] = new double[6][3];
                 {
-                    double x0 = mesh.getVert(0).Xtriage();
-                    double y0 = mesh.getVert(0).Ytriage();
-                    double h0 = mesh.getVert(0).Htriage();
+                    double x0 = mesh.getVert(0).Xnaive();
+                    double y0 = mesh.getVert(0).Ynaive();
+                    double h0 = mesh.getVert(0).Hnaive();
                     FORI (iVert, initialGuessVerts.length)
                     {
-                        initialGuessVerts[iVert][0] = mesh.getVert(iVert).Xtriage() - x0;
-                        initialGuessVerts[iVert][1] = mesh.getVert(iVert).Ytriage() - y0;
-                        initialGuessVerts[iVert][2] = mesh.getVert(iVert).Htriage() - h0;
+                        initialGuessVerts[iVert][0] = mesh.getVert(iVert).Xnaive() - x0;
+                        initialGuessVerts[iVert][1] = mesh.getVert(iVert).Ynaive() - y0;
+                        initialGuessVerts[iVert][2] = mesh.getVert(iVert).Hnaive() - h0;
                     }
                 }
                 PRINT("before scaling");
@@ -8895,7 +8995,7 @@ OFF
                 double verts[][] = optimizationPathVerts[optimizationPathVerts.length-1];
                 FORI (iVert, 6)
                 {
-                    mesh.getVert(iVert).setXYHtriage(verts[iVert][0],
+                    mesh.getVert(iVert).setXYHnaive(verts[iVert][0],
                                                verts[iVert][1],
                                                verts[iVert][2]);
                 }
@@ -9090,9 +9190,9 @@ OFF
                 {
                     double scale = .2;
                     Mesh.Vertex vert = mesh.getVert(iVert);
-                    vert.setXYHtriage(vert.Xtriage() * scale,
-                                vert.Ytriage() * scale,
-                                vert.Htriage() * (scale*scale));
+                    vert.setXYHnaive(vert.Xnaive() * scale,
+                                vert.Ynaive() * scale,
+                                vert.Hnaive() * (scale*scale));
                 }
             } // doCannedThingNetless9
 
@@ -9289,13 +9389,13 @@ OFF
                     Mesh.Vertex v0 = edge.initialVertex();
                     Mesh.Vertex v1 = edge.finalVertex();
                     Mesh.Vertex v2 = edge.next().finalVertex();
-                    double twiceTriArea = twiceTriangleArea(v0.Xtriage(),v0.Ytriage(),
-                                                            v1.Xtriage(),v1.Ytriage(),
-                                                            v2.Xtriage(),v2.Ytriage());
+                    double twiceTriArea = twiceTriangleArea(v0.Xnaive(),v0.Ynaive(),
+                                                            v1.Xnaive(),v1.Ynaive(),
+                                                            v2.Xnaive(),v2.Ynaive());
                     assert(twiceTriArea > 0);
-                    SolveForDualPoint(v0.Xtriage(), v0.Ytriage(), v0.Htriage(),
-                                      v1.Xtriage(), v1.Ytriage(), v1.Htriage(),
-                                      v2.Xtriage(), v2.Ytriage(), v2.Htriage(),
+                    SolveForDualPoint(v0.Xnaive(), v0.Ynaive(), v0.Hnaive(),
+                                      v1.Xnaive(), v1.Ynaive(), v1.Hnaive(),
+                                      v2.Xnaive(), v2.Ynaive(), v2.Hnaive(),
                                       triCenter,
                                       false, // wrapAroundSphereFlag
                                       0.); // wrapSphereCurvature
@@ -9372,8 +9472,8 @@ OFF
                     System.out.println("        left next tri edge: "+v0.myIndex()+"->"+v2.myIndex()+"");
                     System.out.println("        right next tri edge: "+v2.myIndex()+"->"+v1.myIndex()+"");
                     assert(thisTriEdge.next().next().next() == thisTriEdge);
-                    double leftNextTriEdgeNormal[] = VecMath.normalize(VecMath.xv2(new double[]{v2.Xtriage()-v0.Xtriage(), v2.Ytriage()-v0.Ytriage()}));
-                    double rightNextTriEdgeNormal[] = VecMath.normalize(VecMath.xv2(new double[]{v1.Xtriage()-v2.Xtriage(), v1.Ytriage()-v2.Ytriage()}));
+                    double leftNextTriEdgeNormal[] = VecMath.normalize(VecMath.xv2(new double[]{v2.Xnaive()-v0.Xnaive(), v2.Ynaive()-v0.Ynaive()}));
+                    double rightNextTriEdgeNormal[] = VecMath.normalize(VecMath.xv2(new double[]{v1.Xnaive()-v2.Xnaive(), v1.Ynaive()-v2.Ynaive()}));
                     //PRINTVEC(leftNextTriEdgeNormal);
                     //PRINTVEC(rightNextTriEdgeNormal);
                     double leftHeight = VecMath.dot(VecMath.vmv(totalCenter, nextTriCenter), leftNextTriEdgeNormal);
@@ -9534,16 +9634,16 @@ OFF
                 {
                     double scale = .2;
                     Mesh.Vertex vert = mesh.getVert(iVert);
-                    vert.setXYHtriage(vert.Xtriage() * scale,
-                                vert.Ytriage() * scale,
-                                vert.Htriage() * (scale*scale));
+                    vert.setXYHnaive(vert.Xnaive() * scale,
+                                vert.Ynaive() * scale,
+                                vert.Hnaive() * (scale*scale));
                 }
                 //double heightIncr = .005*.14;
                 double heightIncr = .005*.01;
                 FORIDOWN (iVert, mesh.verts.size())
                 {
                     Mesh.Vertex vert = mesh.getVert(iVert);
-                    vert.setHtriage(vert.Htriage() - heightIncr * iVert);
+                    vert.setHnaive(vert.Hnaive() - heightIncr * iVert);
                 }
             } // doCannedThingHexesSpiral
 
@@ -9618,7 +9718,7 @@ OFF
                 FORI (iVert, verts.size())
                 {
                     Vertex vert = (Vertex)verts.get(iVert);
-                    sb.append("    "+vert.Xtriage()+" "+vert.Ytriage()+" "+vert.Htriage());
+                    sb.append("    "+vert.Xnaive()+" "+vert.Ynaive()+" "+vert.Hnaive());
                     if (vert.weight != 1.)
                         sb.append("  * "+vert.weight);
 
@@ -9654,17 +9754,17 @@ OFF
                            Y = y*W
                            Z = z*W
                            H = h*W^2  (I think? not sure)
-                   blech, then we can't just use x() and setXtriage(),
-                   have to use maybe x(), setx(), X(), setXtriage()    YES, THIS
-                   or, maybe, Xtriage(), x(newx), X(), X(newX)  (blech, obscure)
+                   blech, then we can't just use x() and setXnaive(),
+                   have to use maybe x(), setx(), X(), setXnaive()    YES, THIS
+                   or, maybe, Xnaive(), x(newx), X(), X(newX)  (blech, obscure)
 
                    migration strategy:
                    a zillion callers assumed w=1 before and not clear
                    whether they really want x or X.
                    those have all been changed to:
-                        Xtriage()
-                        setXtriage()
-                   and should be consciously changed to x()/setx() or X()/setXtriage()
+                        Xnaive()
+                        setXnaive()
+                   and should be consciously changed to x()/setx() or X()/setXnaive()
                    as desired.
                 */
                         
@@ -9682,7 +9782,8 @@ OFF
                 private int _myIndex = -1;
                 public Vertex(double x, double y, double h)
                 {
-                    this.setXYHtriage(x,y,h);
+                    _W = 1.;
+                    this.setXYHnaive(x,y,h);
                     verts.add(this);
                     fixVertIndices(verts.size()-1);
                 }
@@ -9707,85 +9808,167 @@ OFF
                 public double z() { return _Z/_W; }
                 public double h() { return _H/_W; }
 
-                // XXX TODO: probably not doing the right thing when w != 1
-                public void setXYH(double x, double y, double h) // adjust z
+
+#ifdef NEVER
+                //
+                // Accessors for adjusting physical coords
+                // even when W might not be 1.
+                // TODO: not sure these are needed at all
+                //       but I'm not sure...
+                //       what if we just unwrapped from sphere (so some w's are not 1)
+                //       and we then scale? that shouldn't require normalization, should it?
+                //
+                // in physical space:
+                //      h = z + (x^2+y^2)/2
+                //      z = h - (x^2+y^2)/2
+                // in hom space:
+                //      H = h*W^2
+                //        = (z + (x^2+y^2)/2) * W^2
+                //        = Z*W + (X^2+Y^2)/2
+                //      Z = z*W
+                //        = (h - (x^2+y^2)/2)*W
+                //        = (h*W - (x^2*W+y^2*W)/2)
+                //        = (H/W - (X^2/W+Y^2/W)/2)
+                //        = (H - (X^2+Y^2)/2)/W
+                // idea: when manipulating stuff in physical space, we *know* W can't be 0,
+                //       so maybe setx can start by just normalizing so W=1?
+                public void setx(double x) // y,h fixed, adjust z
                 {
-                    _X = x;
-                    _Y = y;
-                    _H = h;
-                    _Z = _H - .5 * (_X*_X + _Y*_Y);
+                    assert(_W == 1.);
+                    _X = x*_W;
+                    _Z = _H/_W - .5 * (x*x*_W + _Y*_Y/_W);
                 }
-                public void setXYZ(double x, double y, double z) // adjust h
+                public void sety(double y) // x,h fixed, adjust z
                 {
+                    assert(_W == 1.);
+                    _Y = y*_W;
+                    _Z = _H/_W - .5 * (_X*_X/_W + y*y*_W);
+                }
+                public void setz(double z) // leave x,y fixed, adjust h
+                {
+                    assert(_W == 1.);
+                    _Z = z*_W;
+                    _H = _Z*_W + (_X*_X+_Y*_Y)/2;
+                }
+                public void seth(double h) // leave x,y fixed, adjust z
+                {
+                    assert(_W == 1.);
+                    _H = h * (_W*_W);
+                    _Z = (h*_W - .5 * (_X*_X + _Y*_Y)/_W);
+                }
+                public void setxy(double x, double y) // h fixed, adjust z
+                {
+                    assert(_W == 1.);
+                    _X = x*_W;
+                    _Y = y*_W;
+                    _Z = (_H/_W - .5 * (x*x + y*y)*_W)
+                }
+                public void setxyz(double x, double y, double z) // calculate h
+                {
+                    _W = 1.;
                     _X = x;
                     _Y = y;
                     _Z = z;
-                    _H = _Z + .5 * (_X*_X + _Y*_Y);
+                    _H = z + .5 * (x*x + y*y);
                 }
-                public void setXY(double x, double y) // leave h fixed, adjust z
+                public void setxyh(double x, double y, double h) // calculate z
                 {
+                    _W = 1.;
                     _X = x;
                     _Y = y;
-                    _Z = _H - .5 * (_X*_X + _Y*_Y);
-                }
-                public void setX(double x) // leave y,h fixed, adjust z
-                {
-                    _X = x;
-                    _Z = _H - .5 * (_X*_X + _Y*_Y);
-                }
-                public void setY(double x) // leave x,h fixed, adjust z
-                {
-                    _X = x;
-                    _Z = _H - .5 * (_X*_X + _Y*_Y);
-                }
-                public void setH(double h) // leave x,y fixed, adjust z
-                {
                     _H = h;
+                    _Z = h - .5 * (x*x + y*y);
+                }
+#endif // NEVER
+
+                public void setXYZW(double X, double Y, double Z, double W) // calculate H
+                {
+                    _X = X;
+                    _Y = Y;
+                    _Z = Z;
+                    _W = W;
+                    _H = _Z*_W + (_X*_X+_Y*_Y)/2;
+                }
+
+                //
+                // "Naive" setting functions,
+                // that set h in terms of z or vice versa.
+                // These require _W is 1.
+                //
+                public void setXYHnaive(double X, double Y, double H) // adjust Z
+                {
+                    assert(_W == 1.);
+                    _X = X;
+                    _Y = Y;
+                    _H = H;
                     _Z = _H - .5 * (_X*_X + _Y*_Y);
                 }
-                public void setZ(double z) // leave x,y fixed, adjust h
+                public void setXYZnaive(double X, double Y, double Z) // adjust H
                 {
-                    _Z = z;
+                    assert(_W == 1.);
+                    _X = X;
+                    _Y = Y;
+                    _Z = Z;
+                    _H = _Z + .5 * (_X*_X + _Y*_Y);
+                }
+                public void setXYnaive(double X, double Y) // leave H fixed, adjust Z
+                {
+                    assert(_W == 1.);
+                    _X = X;
+                    _Y = Y;
+                    _Z = _H - .5 * (_X*_X + _Y*_Y);
+                }
+                public void setXnaive(double X) // leave Y,H fixed, adjust Z
+                {
+                    assert(_W == 1.);
+                    _X = X;
+                    _Z = _H - .5 * (_X*_X + _Y*_Y);
+                }
+                public void setYnaive(double X) // leave X,H fixed, adjust Z
+                {
+                    assert(_W == 1.);
+                    _X = X;
+                    _Z = _H - .5 * (_X*_X + _Y*_Y);
+                }
+                public void setHnaive(double H) // leave X,Y fixed, adjust Z
+                {
+                    assert(_W == 1.);
+                    _H = H;
+                    _Z = _H - .5 * (_X*_X + _Y*_Y);
+                }
+                public void setZnaive(double Z) // leave X,Y fixed, adjust H
+                {
+                    assert(_W == 1.);
+                    _Z = Z;
                     _H = _Z + .5 * (_X*_X + _Y*_Y);
                 }
 
 
-                public void setXYHtriage(double x, double y, double h)
+                public double Xnaive()
                 {
-                    setXYH(x,y,h);
+                    assert(_W == 1.);
+                    return X();
                 }
-                public void setXYZtriage(double x, double y, double z)
+                public double Ynaive()
                 {
-                    setXYZ(x,y,z);
+                    assert(_W == 1.);
+                    return Y();
                 }
-                public void setXYtriage(double x, double y)
+                public double Znaive()
                 {
-                    setXY(x,y);
+                    assert(_W == 1.);
+                    return Z();
                 }
-                public void setXtriage(double x)
+                public double Hnaive()
                 {
-                    setX(x);
+                    assert(_W == 1.);
+                    return H();
                 }
-                public void setYtriage(double y)
+                public double Wnaive()
                 {
-                    setY(y);
+                    assert(_W == 1.);
+                    return W();
                 }
-                public void setHtriage(double h)
-                {
-                    setH(h);
-                }
-                public void setZtriage(double z)
-                {
-                    setZ(z);
-                }
-
-
-                // TODO: these should go away eventually... callers of this haven't decided which they want yet
-                public double Xtriage() { return X(); }
-                public double Ytriage() { return Y(); }
-                public double Ztriage() { return Z(); }
-                public double Htriage() { return H(); }
-                public double Wtriage() { return W(); }
 
             } // public class Vertex
             public class Edge
@@ -10081,10 +10264,10 @@ OFF
                     Vertex c = beforeThatEdge.finalVertex();
                     Vertex d = beforeThisEdge.initialVertex();
                     // comfort of ac relative to bd
-                    double comfort = TriangulationOptimizer.calcQuadComfort(new double[]{a.Xtriage(),a.Ytriage()},
-                                                                            new double[]{b.Xtriage(),b.Ytriage()},
-                                                                            new double[]{c.Xtriage(),c.Ytriage()},
-                                                                            new double[]{d.Xtriage(),d.Ytriage()},
+                    double comfort = TriangulationOptimizer.calcQuadComfort(new double[]{a.Xnaive(),a.Ynaive()},
+                                                                            new double[]{b.Xnaive(),b.Ynaive()},
+                                                                            new double[]{c.Xnaive(),c.Ynaive()},
+                                                                            new double[]{d.Xnaive(),d.Ynaive()},
                                                                             0, 1);
                     // XXX TODO: take height into account!!!!!
                     if (verbose)
@@ -10160,7 +10343,7 @@ OFF
                     // to add v0.
                     double bestGoodness = Double.NEGATIVE_INFINITY;
                     Edge bestBeforeThisEdge = null;
-                    double ang = Math.atan2(v0.Ytriage()-v1.Ytriage(), v0.Xtriage()-v1.Xtriage());
+                    double ang = Math.atan2(v0.Ynaive()-v1.Ynaive(), v0.Xnaive()-v1.Xnaive());
                     // for each edge out of v1, ccw
                     Edge nextEdgeOutOfV1 = null;
                     for (Edge thisEdgeOutOfV1 = someEdgeStartingAtV1; ; thisEdgeOutOfV1 = nextEdgeOutOfV1)
@@ -10171,8 +10354,8 @@ OFF
                         //PRINT(nextEdgeOutOfV1);
                         Vertex thisNeighbor = thisEdgeOutOfV1.finalVertex();
                         Vertex nextNeighbor = nextEdgeOutOfV1.finalVertex();
-                        double thisAng = Math.atan2(thisNeighbor.Ytriage()-v1.Ytriage(),
-                                                    thisNeighbor.Xtriage()-v1.Xtriage());
+                        double thisAng = Math.atan2(thisNeighbor.Ynaive()-v1.Ynaive(),
+                                                    thisNeighbor.Xnaive()-v1.Xnaive());
                         // change thisAng by multiples of 2*Math.PI
                         // so that it's >= ang by as little as possible
                         // XXX not sure this is robust... can something fall between the cracks?
@@ -10200,7 +10383,7 @@ OFF
                     // to add v1.
                     double bestGoodness = Double.NEGATIVE_INFINITY;
                     Edge bestBeforeThisEdge = null;
-                    double ang = Math.atan2(v1.Ytriage()-v0.Ytriage(), v1.Xtriage()-v0.Xtriage());
+                    double ang = Math.atan2(v1.Ynaive()-v0.Ynaive(), v1.Xnaive()-v0.Xnaive());
                     // for each edge out of v0, ccw
                     Edge nextEdgeOutOfV0 = null;
                     for (Edge thisEdgeOutOfV0 = someEdgeStartingAtV0; ; thisEdgeOutOfV0 = nextEdgeOutOfV0)
@@ -10211,8 +10394,8 @@ OFF
                         //PRINT(nextEdgeOutOfV0);
                         Vertex thisNeighbor = thisEdgeOutOfV0.finalVertex();
                         Vertex nextNeighbor = nextEdgeOutOfV0.finalVertex();
-                        double thisAng = Math.atan2(thisNeighbor.Ytriage()-v0.Ytriage(),
-                                                    thisNeighbor.Xtriage()-v0.Xtriage());
+                        double thisAng = Math.atan2(thisNeighbor.Ynaive()-v0.Ynaive(),
+                                                    thisNeighbor.Xnaive()-v0.Xnaive());
                         // change thisAng by multiples of 2*Math.PI
                         // so that it's >= ang by as little as possible
                         // XXX not sure this is robust... can something fall between the cracks? think about it
@@ -10258,9 +10441,9 @@ OFF
                 {
                     Vertex v1 = e.initialVertex();
                     Vertex v2 = e.finalVertex();
-                    sum += twiceTriangleArea(v0.Xtriage(), v0.Ytriage(),
-                                             v1.Xtriage(), v1.Ytriage(),
-                                             v2.Xtriage(), v2.Ytriage());
+                    sum += twiceTriangleArea(v0.Xnaive(), v0.Ynaive(),
+                                             v1.Xnaive(), v1.Ynaive(),
+                                             v2.Xnaive(), v2.Ynaive());
                 }
                 return sum;
             } // twiceFaceArea
@@ -10359,7 +10542,7 @@ OFF
                 FORI (iVert, verts.size()) // beginning to end, so we choose first of equal
                 {
                     Vertex vert = (Vertex)verts.get(iVert);
-                    mg.xform(vert.Xtriage(), vert.Ytriage(), vert.Ztriage(), scratch);
+                    mg.xform(vert.Xnaive(), vert.Ynaive(), vert.Znaive(), scratch);
                     double thisDistSqrd = SQR(scratch[0]-x)
                                         + SQR(scratch[1]-y);
                     if (thisDistSqrd < closestDistSqrd)
@@ -10382,16 +10565,16 @@ OFF
                     double thisDistSqrd =
                         edge.initialVertex() == null ? Double.POSITIVE_INFINITY : // no need to deal with edges whose initial vertex is NULL and final vertex isn't, since we'll encounter its opposite anyway
                         edge.finalVertex() == null ? distSqrdFromPointToRay(x,y,
-                                                                            edge.initialVertex().Xtriage(),
-                                                                            edge.initialVertex().Ytriage(),
+                                                                            edge.initialVertex().Xnaive(),
+                                                                            edge.initialVertex().Ynaive(),
                                                                             edge.direction[0],
                                                                             edge.direction[1]) :
                         edge.initialVertex().myIndex() > edge.finalVertex().myIndex() ? Double.POSITIVE_INFINITY
                                                     : distSqrdFromPointToSeg(x,y,
-                                                                             edge.initialVertex().Xtriage(),
-                                                                             edge.initialVertex().Ytriage(),
-                                                                             edge.finalVertex().Xtriage(),
-                                                                             edge.finalVertex().Ytriage());
+                                                                             edge.initialVertex().Xnaive(),
+                                                                             edge.initialVertex().Ynaive(),
+                                                                             edge.finalVertex().Xnaive(),
+                                                                             edge.finalVertex().Ynaive());
                     if (thisDistSqrd < closestDistSqrd)
                     {
                         closestDistSqrd = thisDistSqrd;
@@ -10408,11 +10591,11 @@ OFF
                     {
                         Vertex v0 = edge.initialVertex();
                         Vertex v1 = edge.finalVertex();
-                        edgeDirection = new double[]{v1.Xtriage()-v0.Xtriage(), v1.Ytriage()-v0.Ytriage()};
+                        edgeDirection = new double[]{v1.Xnaive()-v0.Xnaive(), v1.Ynaive()-v0.Ynaive()};
                     }
                     Vertex v = edge.initialVertex();
                     if (v == null) v = edge.finalVertex();
-                    double vToPoint[] = {point[0]-v.Xtriage(), point[1]-v.Ytriage()};
+                    double vToPoint[] = {point[0]-v.Xnaive(), point[1]-v.Ynaive()};
                     if (VecMath.vxv2(edgeDirection, vToPoint) * (isDualMesh ? -1. : 1.) < 0.)
                     {
                         closestEdgeIndex = edge.opposite().myIndex();
@@ -10442,14 +10625,14 @@ OFF
                         Vertex v1 = edge.next().initialVertex();
                         Vertex v2 = edge.next().next().initialVertex();
                         if (twiceTriangleArea(0,0,
-                                              v0.Xtriage(),v0.Ytriage(),
-                                              v1.Xtriage(),v1.Ytriage()) >= 0
+                                              v0.Xnaive(),v0.Ynaive(),
+                                              v1.Xnaive(),v1.Ynaive()) >= 0
                          && twiceTriangleArea(0,0,
-                                              v1.Xtriage(),v1.Ytriage(),
-                                              v2.Xtriage(),v2.Ytriage()) >= 0
+                                              v1.Xnaive(),v1.Ynaive(),
+                                              v2.Xnaive(),v2.Ynaive()) >= 0
                          && twiceTriangleArea(0,0,
-                                              v2.Xtriage(),v2.Ytriage(),
-                                              v0.Xtriage(),v0.Ytriage()) >= 0)
+                                              v2.Xnaive(),v2.Ynaive(),
+                                              v0.Xnaive(),v0.Ynaive()) >= 0)
                         {
                             dependentVertIndices[0] = v0.myIndex();
                             dependentVertIndices[1] = v1.myIndex();
@@ -10483,9 +10666,9 @@ OFF
                         Mesh.Vertex v1 = e1.initialVertex();
                         Mesh.Vertex v2 = e2.initialVertex();
 
-                        double dualVertArea = twiceTriangleArea(v0.Xtriage(),v0.Ytriage(),
-                                                                v1.Xtriage(),v1.Ytriage(),
-                                                                v2.Xtriage(),v2.Ytriage());
+                        double dualVertArea = twiceTriangleArea(v0.Xnaive(),v0.Ynaive(),
+                                                                v1.Xnaive(),v1.Ynaive(),
+                                                                v2.Xnaive(),v2.Ynaive());
                         if (dualVertArea < 0.)
                             continue; // triangle is inside out
 
@@ -10636,9 +10819,9 @@ OFF
                             Vertex v0 = (Vertex)verts.get(iVert0);
                             Vertex v1 = (Vertex)verts.get(iVert1);
                             Vertex v2 = (Vertex)verts.get(iVert2);
-                            SolveForDualPoint(v0.Xtriage(),v0.Ytriage(),h0,
-                                              v1.Xtriage(),v1.Ytriage(),h1,
-                                              v2.Xtriage(),v2.Ytriage(),h2,
+                            SolveForDualPoint(v0.Xnaive(),v0.Ynaive(),h0,
+                                              v1.Xnaive(),v1.Ynaive(),h1,
+                                              v2.Xnaive(),v2.Ynaive(),h2,
                                               sampleResultVerts[iSample][iDualVert], // dimension 2-- last coord is simply ignored
                                               false, // wrapAroundSphereFlagValue
                                               0.); // wrapCurvatureValue
@@ -10659,18 +10842,18 @@ OFF
                         FORI (iDualVert, nDualVerts)
                         {
                             int tri[] = dualVert2verts[iDualVert];
-                            double wholeArea = twiceTriangleArea(((Vertex)verts.get(tri[0])).Xtriage(), ((Vertex)verts.get(tri[0])).Ytriage(),
-                                                                 ((Vertex)verts.get(tri[1])).Xtriage(), ((Vertex)verts.get(tri[1])).Ytriage(),
-                                                                 ((Vertex)verts.get(tri[2])).Xtriage(), ((Vertex)verts.get(tri[2])).Ytriage());
+                            double wholeArea = twiceTriangleArea(((Vertex)verts.get(tri[0])).Xnaive(), ((Vertex)verts.get(tri[0])).Ynaive(),
+                                                                 ((Vertex)verts.get(tri[1])).Xnaive(), ((Vertex)verts.get(tri[1])).Ynaive(),
+                                                                 ((Vertex)verts.get(tri[2])).Xnaive(), ((Vertex)verts.get(tri[2])).Ynaive());
                             double dualVert[] = sampleResultVerts[iSample][iDualVert];
                             FORI (iVertOnTri, 3)
                             {
                                 sampleBarycentrics[iSample][iDualVert][iVertOnTri] =
                                         twiceTriangleArea(dualVert[0], dualVert[1],
-                                                          ((Vertex)verts.get(tri[(iVertOnTri+1)%3])).Xtriage(),
-                                                          ((Vertex)verts.get(tri[(iVertOnTri+1)%3])).Ytriage(),
-                                                          ((Vertex)verts.get(tri[(iVertOnTri+2)%3])).Xtriage(),
-                                                          ((Vertex)verts.get(tri[(iVertOnTri+2)%3])).Ytriage())
+                                                          ((Vertex)verts.get(tri[(iVertOnTri+1)%3])).Xnaive(),
+                                                          ((Vertex)verts.get(tri[(iVertOnTri+1)%3])).Ynaive(),
+                                                          ((Vertex)verts.get(tri[(iVertOnTri+2)%3])).Xnaive(),
+                                                          ((Vertex)verts.get(tri[(iVertOnTri+2)%3])).Ynaive())
                                       / wholeArea;
                             }
                         }
@@ -10792,10 +10975,10 @@ OFF
                                                                   sampleResultVerts[iSample][dualEdge2dualVerts[iDualEdge][1]],
                                                                    sampleResultVerts[iSample][dualEdge2dualVerts[iDualEdge][0]]);
                                 double originalEdgeDir[] = VecMath.vmv(
-                                    new double[] {((Edge)edges.get(dualEdge2edge[iDualEdge])).finalVertex().Xtriage(),
-                                                  ((Edge)edges.get(dualEdge2edge[iDualEdge])).finalVertex().Ytriage()},
-                                    new double[] {((Edge)edges.get(dualEdge2edge[iDualEdge])).initialVertex().Xtriage(),
-                                                  ((Edge)edges.get(dualEdge2edge[iDualEdge])).initialVertex().Ytriage()}
+                                    new double[] {((Edge)edges.get(dualEdge2edge[iDualEdge])).finalVertex().Xnaive(),
+                                                  ((Edge)edges.get(dualEdge2edge[iDualEdge])).finalVertex().Ynaive()},
+                                    new double[] {((Edge)edges.get(dualEdge2edge[iDualEdge])).initialVertex().Xnaive(),
+                                                  ((Edge)edges.get(dualEdge2edge[iDualEdge])).initialVertex().Ynaive()}
                                 );
                                 if (VecMath.vxv2(dualEdgeDir, originalEdgeDir) < 0)
                                 {
@@ -10877,7 +11060,7 @@ OFF
                                     continue; // only use canonical one of the two
                                 Vertex v0 = edge.initialVertex();
                                 Vertex v1 = edge.finalVertex();
-                                desiredSum += Math.sqrt(SQR(v1.Xtriage()-v0.Xtriage()) + SQR(v1.Ytriage()-v0.Ytriage()));
+                                desiredSum += Math.sqrt(SQR(v1.Xnaive()-v0.Xnaive()) + SQR(v1.Ynaive()-v0.Ynaive()));
                             }
                             if (nonEventVerbose >= 1)
                                 PRINT(desiredSum);
@@ -11007,8 +11190,8 @@ OFF
                         FORI (iVert, verts.size())
                         {
                             Vertex vert = (Vertex)verts.get(iVert);
-                            avgPrimal[0] += vert.Xtriage();
-                            avgPrimal[1] += vert.Ytriage();
+                            avgPrimal[0] += vert.Xnaive();
+                            avgPrimal[1] += vert.Ynaive();
                         }
                         VecMath.vxs(avgPrimal, avgPrimal, 1./verts.size());
                     }
@@ -11026,9 +11209,9 @@ OFF
                             double h0 = optimalVertexHeights[iVert0];
                             double h1 = optimalVertexHeights[iVert1];
                             double h2 = optimalVertexHeights[iVert2];
-                            SolveForDualPoint(v0.Xtriage(),v0.Ytriage(),h0,
-                                              v1.Xtriage(),v1.Ytriage(),h1,
-                                              v2.Xtriage(),v2.Ytriage(),h2,
+                            SolveForDualPoint(v0.Xnaive(),v0.Ynaive(),h0,
+                                              v1.Xnaive(),v1.Ynaive(),h1,
+                                              v2.Xnaive(),v2.Ynaive(),h2,
                                               scratchDualVert,
                                               false, // wrapAroundSphereFlag
                                               0.); // wrapSphereCurvature
@@ -11043,8 +11226,8 @@ OFF
                     FORI (iVert, optimalVertexHeights.length)
                     {
                         Vertex vert = (Vertex)verts.get(iVert);
-                        optimalVertexHeights[iVert] -= vert.Xtriage() * desiredDelta[0]
-                                                     + vert.Ytriage() * desiredDelta[1];
+                        optimalVertexHeights[iVert] -= vert.Xnaive() * desiredDelta[0]
+                                                     + vert.Ynaive() * desiredDelta[1];
                     }
                 }
 
@@ -11062,7 +11245,7 @@ OFF
                 FORIDOWN (iVert, verts.size())
                 {
                     //PRINTSUB(optimalVertexHeights,iVert);
-                    ((Mesh.Vertex)verts.get(iVert)).setHtriage(optimalVertexHeights[iVert]);
+                    ((Mesh.Vertex)verts.get(iVert)).setHnaive(optimalVertexHeights[iVert]);
                 }
             } // findAndApplyOptimalVertexHeights
 
@@ -11071,7 +11254,7 @@ OFF
                 FORIDOWN (iVert, verts.size())
                 {
                     Mesh.Vertex vert = (Mesh.Vertex)verts.get(iVert);
-                    vert.setXtriage(-vert.Xtriage());
+                    vert.setXnaive(-vert.Xnaive());
                 }
                 // XXX rest is dup code
                 Mesh.Vertex finalInitials[] = new Mesh.Vertex[edges.size()];
@@ -11102,7 +11285,7 @@ OFF
                 FORIDOWN (iVert, verts.size())
                 {
                     Mesh.Vertex vert = (Mesh.Vertex)verts.get(iVert);
-                    vert.setYtriage(-vert.Ytriage());
+                    vert.setYnaive(-vert.Ynaive());
                 }
                 // XXX rest is dup code
                 Mesh.Vertex finalInitials[] = new Mesh.Vertex[edges.size()];
@@ -11133,7 +11316,7 @@ OFF
                 FORIDOWN (iVert, verts.size())
                 {
                     Mesh.Vertex vert = (Mesh.Vertex)verts.get(iVert);
-                    vert.setXYtriage(vert.Ytriage(), vert.Xtriage());
+                    vert.setXYnaive(vert.Ynaive(), vert.Xnaive());
                 }
                 // XXX rest is dup code
                 Mesh.Vertex finalInitials[] = new Mesh.Vertex[edges.size()];
@@ -11164,7 +11347,7 @@ OFF
                 FORIDOWN (iVert, verts.size())
                 {
                     Mesh.Vertex vert = (Mesh.Vertex)verts.get(iVert);
-                    vert.setXYtriage(-vert.Ytriage(), -vert.Xtriage());
+                    vert.setXYnaive(-vert.Ynaive(), -vert.Xnaive());
                 }
                 // XXX rest is dup code
                 Mesh.Vertex finalInitials[] = new Mesh.Vertex[edges.size()];
@@ -11280,9 +11463,9 @@ OFF
                 FORI (iVert, nVerts)
                 {
                     Vertex originalVert = (Vertex)original.getVert(iVert);
-                    Vertex newVert = new Vertex(originalVert.Xtriage(),
-                                                originalVert.Ytriage(),
-                                                originalVert.Htriage()); // adds itself to verts
+                    Vertex newVert = new Vertex(originalVert.Xnaive(),
+                                                originalVert.Ynaive(),
+                                                originalVert.Hnaive()); // adds itself to verts
                     newVert.weight = originalVert.weight;
                     if (originalVert.momentAndArea != null)
                         newVert.momentAndArea = VecMath.copyvec(originalVert.momentAndArea);
@@ -11418,9 +11601,9 @@ OFF
                     Mesh.Vertex v1 = primalEdge.initialVertex();
                     Mesh.Vertex v2 = primalEdge.finalVertex();
 
-                    SolveForDualMomentAndArea(v0.Xtriage(), v0.Ytriage(), v0.Htriage(),
-                                              v1.Xtriage(), v1.Ytriage(), v1.Htriage(),
-                                              v2.Xtriage(), v2.Ytriage(), v2.Htriage(),
+                    SolveForDualMomentAndArea(v0.Xnaive(), v0.Ynaive(), v0.Hnaive(),
+                                              v1.Xnaive(), v1.Ynaive(), v1.Hnaive(),
+                                              v2.Xnaive(), v2.Ynaive(), v2.Hnaive(),
                                               triMomentAndArea,
                                               wrapAroundSphereFlagValue,
                                               wrapSphereCurvatureValue);
@@ -11448,9 +11631,9 @@ OFF
                     FORI (i, dualVertArity)
                     {
                         Mesh.Vertex v = primalEdge.initialVertex();
-                        coords[i][0] = v.Xtriage();
-                        coords[i][1] = v.Ytriage();
-                        coords[i][2] = v.Htriage() - .5 * (SQR(v.Xtriage())+SQR(v.Ytriage()));
+                        coords[i][0] = v.Xnaive();
+                        coords[i][1] = v.Ynaive();
+                        coords[i][2] = v.Hnaive() - .5 * (SQR(v.Xnaive())+SQR(v.Ynaive()));
                         primalEdge = primalEdge.next();
                     }
                     SolveForDualPointActual(coords, totalCenter, wrapAroundSphereFlagValue, wrapSphereCurvatureValue);
@@ -11533,12 +11716,12 @@ OFF
                     // it's a usual edge... get the direction by subtracting vertices
                     // XXX but this is not robust? but it may be better in some senses, especially if we're doing non-triangles too
                     dualEdge.direction = VecMath.normalize(VecMath.vmv(
-                        new double[]{dualEdge.finalVertex().Xtriage(),
-                                     dualEdge.finalVertex().Ytriage(),
-                                     dualEdge.finalVertex().Ztriage()},
-                        new double[]{dualEdge._initialVertex.Xtriage(),
-                                     dualEdge._initialVertex.Ytriage(),
-                                     dualEdge._initialVertex.Ztriage()}));
+                        new double[]{dualEdge.finalVertex().Xnaive(),
+                                     dualEdge.finalVertex().Ynaive(),
+                                     dualEdge.finalVertex().Znaive()},
+                        new double[]{dualEdge._initialVertex.Xnaive(),
+                                     dualEdge._initialVertex.Ynaive(),
+                                     dualEdge._initialVertex.Znaive()}));
                 }
                 else
                 {
@@ -11561,8 +11744,8 @@ OFF
                     Mesh.Edge primalEdge = primal.getEdge(iEdge);
                     Mesh.Vertex v0 = primalEdge.initialVertex();
                     Mesh.Vertex v1 = primalEdge.finalVertex();
-                    double n0[] = {v0.Xtriage(), v0.Ytriage(), wrapAroundSphereFlagValue ? v0.Ztriage() : 1};
-                    double n1[] = {v1.Xtriage(), v1.Ytriage(), wrapAroundSphereFlagValue ? v1.Ztriage() : 1};
+                    double n0[] = {v0.Xnaive(), v0.Ynaive(), wrapAroundSphereFlagValue ? v0.Znaive() : 1};
+                    double n1[] = {v1.Xnaive(), v1.Ynaive(), wrapAroundSphereFlagValue ? v1.Znaive() : 1};
                     dualEdge.direction = VecMath.normalize(VecMath.vxv3(n0,n1));
                 }
 
@@ -11576,7 +11759,7 @@ OFF
         {
             if (wrapAroundSphereFlag.get())
             {
-                double p[] = {vert.Xtriage(), vert.Ytriage(), vert.Ztriage()};
+                double p[] = {vert.Xnaive(), vert.Ynaive(), vert.Znaive()};
                 PRINT(theSurface.offset(p));
                 assert(EQ(theSurface.offset(p), 0., 1e-5)); // XXX get rid of this when debugged
                 return theSurface.offset(p);
@@ -11586,9 +11769,9 @@ OFF
                 // Mathematically this is theSurface.offset(p),
                 // but we want to do it more directly
                 // so that when it's exactly zero we'll get exactly zero.
-                double p[] = {vert.Xtriage(), vert.Ytriage(), vert.Ztriage()};
+                double p[] = {vert.Xnaive(), vert.Ynaive(), vert.Znaive()};
                 assert(EQ(theSurface.offset(p), 0., 1e-5)); // XXX get rid of this when debugged
-                return vert.Htriage();
+                return vert.Hnaive();
             }
         } // vertOffset
 
@@ -13140,8 +13323,8 @@ OFF
                     if (!foundVert[iVert])
                     {
                         Mesh.Vertex vertI = mesh.getVert(iVert);
-                        if (EQ(image[0], vertI.Xtriage(), eps)
-                         && EQ(image[1], vertI.Ytriage(), eps))
+                        if (EQ(image[0], vertI.Xnaive(), eps)
+                         && EQ(image[1], vertI.Ynaive(), eps))
                         {
                             foundVert[iVert] = true;
                             nFound++;
