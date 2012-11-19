@@ -2772,8 +2772,14 @@ public class ShephardsPlayApplet
 
                                     System.out.println("    Adding vertex "+mesh.verts.size()+" at "+x+" "+y+" "+0+"");
                                     mesh.addIsolatedVertex(x, y, 0);
+                                    if (wrapAroundSphereFlag.get())
+                                    {
+                                        double wrapSphereRadius = 1./wrapSphereCurvature.get();
+                                        mesh.getVert(mesh.verts.size()-1).setZnaive(
+                                            Math.sqrt(SQR(wrapSphereRadius)-(x*x+y*y)) + (centerSphere ? 0. : -wrapSphereRadius));
+                                    }
 
-                                    PRINT(vertOffset(mesh.getVert(mesh.verts.size()-1), wrapAroundSphereFlag.get()));
+                                    assert(EQ(vertOffset(mesh.getVert(mesh.verts.size()-1), wrapAroundSphereFlag.get()), 0., 1e-6));
 
                                     ArrayList verts = mesh.verts;
                                     ArrayList edges = mesh.edges;
@@ -3358,12 +3364,17 @@ public class ShephardsPlayApplet
                                         double newCoords[] = scratch;
                                         VecMath.vxs(newCoords, newVertexPositionSums[iVert], 1./weight);
                                         if (wrapAroundSphereFlag.get())
+                                        {
                                             mesh.getVert(iVert).setXYZnaive(newCoords[0],
                                                                             newCoords[1],
                                                                             newCoords[2]);
+                                        }
                                         else
+                                        {
+                                            // on paraboloid; h doesn't change
                                             mesh.getVert(iVert).setXYnaive(newCoords[0],
                                                                            newCoords[1]);
+                                        }
                                     }
                                 }
                             }
@@ -9903,7 +9914,7 @@ OFF
                 // that set h in terms of z or vice versa.
                 // These require _W is 1.
                 //
-                public void setXYHnaive(double X, double Y, double H) // adjust Z
+                public void setXYHnaive(double X, double Y, double H) // infer Z
                 {
                     assert(_W == 1.);
                     _X = X;
@@ -9911,7 +9922,7 @@ OFF
                     _H = H;
                     _Z = _H - .5 * (_X*_X + _Y*_Y);
                 }
-                public void setXYZnaive(double X, double Y, double Z) // adjust H
+                public void setXYZnaive(double X, double Y, double Z) // infer H
                 {
                     assert(_W == 1.);
                     _X = X;
@@ -11768,8 +11779,6 @@ OFF
             if (wrapAroundSphereFlag.get())
             {
                 double p[] = {vert.Xnaive(), vert.Ynaive(), vert.Znaive()};
-                PRINT(theSurface.offset(p));
-                assert(EQ(theSurface.offset(p), 0., 1e-5)); // XXX get rid of this when debugged
                 return theSurface.offset(p);
             }
             else
@@ -11778,7 +11787,6 @@ OFF
                 // but we want to do it more directly
                 // so that when it's exactly zero we'll get exactly zero.
                 double p[] = {vert.Xnaive(), vert.Ynaive(), vert.Znaive()};
-                assert(EQ(theSurface.offset(p), 0., 1e-5)); // XXX get rid of this when debugged
                 return vert.Hnaive();
             }
         } // vertOffset
