@@ -35,10 +35,6 @@ BUGS:
 
 
   Misc:
-    - need different way of expressing drag-all-verts than shift-middle; middle should be for view manip I think
-    - can we make ConvexHull incremental? might be useful when just dragging a single point.
-      hmm, tricky, since interior points can become non-interior.  is there a nice data structure
-      that includes them? or, maybe there are not too many, so just add them all explicitly and it might still be a win
     - should ConvexHull use fuzzy equality testing in more places, to avoid twinkling on grid? (hmm, maybe twinkling on grid is actually useful in a way?)
     - can't seem to get a cube by creating octa verts with show-inside-out--
           not sure what it's thinking
@@ -67,6 +63,12 @@ BUGS:
     - use exact group calculation rather than generateVertices when adding a point
 
 TO DO:
+    - don't draw edges if dihedral angle is flat?  would prevent flicker
+    - make verts smaller when not part of convex hull?
+    - can we make ConvexHull incremental? might be useful when just dragging a single point.
+      hmm, tricky, since interior points can become non-interior.  is there a nice data structure
+      that includes them? or, maybe there are not too many, so just add them all explicitly and it might still be a win
+    - need different way of expressing drag-all-verts than shift-middle; middle should be for view manip I think
     - get rid of "in/out makeDualMesh" message, maybe replace with in-image counter (for convexHull / makeDualMesh, redraws)
     - actually merge vertices when edge super small? (or guarantee cut?)
     - respect symmetry:
@@ -13240,29 +13242,38 @@ OFF
         // 3d symmetry groups that hold origin fixed
         // rotation of order p around z axis,
         // and rotation of order q around some point between the +z and +y axis.
+        // Note, we don't return a minimal set;
+        // rather, we add in mathematically redundant generators
+        // for all powers of p and q, since the math for generating them
+        // is a bit more accurate than we'd get by products of the minimal set of generators.
         private static double[][/*3*/][/*3*/] computeSymmetryGroupGenerators3d(int p, int q, boolean leftRightSymmetry)
         {
-            double gens[][][] = new double[0][3][3];
+            int nGens = (p-1) + (q-1) + (leftRightSymmetry ? 1 : 0);
+            double gens[][][] = new double[nGens][][];
+            int iGen = 0;
+
+            // add reflection first, so it will get favored when generating,
+            // since multiplying by it doesn't add any roundoff error.
+            if (leftRightSymmetry)
+                gens[iGen++] = new double[][]{{-1,0,0},{0,1,0},{0,0,1}};
+
             if (p > 1)
             {
-                double cp = cosPiTimes(2,p); // cos(2*pi / p)
-                double sp = sinPiTimes(2,p); // sin(2*pi / p)
-                double pGen[][] = {
-                    { cp,sp,0},
-                    {-sp,cp,0},
-                    {  0, 0,1},
-                };
-                gens = (double[][][])Arrays.append(gens, pGen);
+                for (int i = 1; i < p; ++i) // skip 0
+                {
+                    double c = cosPiTimes(2*i,p); // cos(2*pi * i/p)
+                    double s = sinPiTimes(2*i,p); // sin(2*pi * i/p)
+                    double gen[][] = {
+                        { c,s,0},
+                        {-s,c,0},
+                        { 0,0,1},
+                    };
+                    gens[iGen++] = gen;
+                }
             }
             if (q > 1)
             {
-                double cq = cosPiTimes(2,q); // cos(2*pi / q)
-                double sq = sinPiTimes(2,q); // sin(2*pi / q)
-                double qGen[][] = {
-                    { cq,sq,0},
-                    {-sq,cq,0},
-                    {  0, 0,1},
-                };
+
                 // The rotation of order p is centered on the z axis;
                 // where do we want to center the rotation of order q?
                 // Figure out the cosine and sine of the tilt,
@@ -13277,11 +13288,20 @@ OFF
                     {0,cosTilt,-sinTilt},
                     {0,sinTilt, cosTilt}
                 };
-                qGen = VecMath.mxmxm(VecMath.transpose(tiltMat), qGen, tiltMat);
-                gens = (double[][][])Arrays.append(gens, qGen);
+                for (int i = 1; i < q; ++i) // skip 0
+                {
+                    double c = cosPiTimes(2*i,q); // cos(2*pi * i/q)
+                    double s = sinPiTimes(2*i,q); // sin(2*pi * i/q)
+                    double gen[][] = {
+                        { c,s,0},
+                        {-s,c,0},
+                        { 0,0,1},
+                    };
+                    gen = VecMath.mxmxm(VecMath.transpose(tiltMat), gen, tiltMat);
+                    gens[iGen++] = gen;
+                }
             }
-            if (leftRightSymmetry)
-                gens = (double[][][])Arrays.append(gens, new double[][]{{-1,0,0},{0,1,0},{0,0,1}});
+            assert(iGen == nGens);
             return gens;
         } // computeSymmetryGroupGenerators3d
 
