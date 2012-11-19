@@ -35,6 +35,7 @@ BUGS:
 
 
   Misc:
+    - need different way of expressing drag-all-verts than shift-middle; middle should be for view manip I think
     - can we make ConvexHull incremental? might be useful when just dragging a single point.
       hmm, tricky, since interior points can become non-interior.  is there a nice data structure
       that includes them? or, maybe there are not too many, so just add them all explicitly and it might still be a win
@@ -2511,16 +2512,26 @@ public class ShephardsPlayApplet
                 }
 
                 double thisP[] = new double[2];
-                mostRecentGraphics.pick(e.getX()+.5, e.getY()+.5, thisP);
-                double projectedThisP[] = new double[3];
-                pickPointOnSurface(thisP, 0., projectedThisP, false);
 
+                mostRecentGraphics.pick(e.getX()+.5, e.getY()+.5, thisP);
+                double thisPeffective[] = thisP;
+
+                double projectedThisPeffective[] = new double[3];
+                pickPointOnSurface(thisPeffective, 0., projectedThisPeffective, false);
+                mousePressWasBackFacing = false;
+
+                // reset these guys...
+                prevP = thisP;
+                origP = thisP;
+                // and these... may further refine the effective ones below if actually picking a vertex
+                prevPeffective = thisPeffective;
+                origPeffective = thisPeffective;
 
                 boolean snapToGrid = e.isControlDown();
-                double snappedProjectedThisP[] = !snapToGrid ? projectedThisP : new double[] {
-                    (double)Math.round(projectedThisP[0]/gridSnapQuantum)*gridSnapQuantum,
-                    (double)Math.round(projectedThisP[1]/gridSnapQuantum)*gridSnapQuantum,
-                    projectedThisP[2], // we'll fix this in a moment
+                double snappedProjectedThisP[] = !snapToGrid ? projectedThisPeffective : new double[] {
+                    (double)Math.round(projectedThisPeffective[0]/gridSnapQuantum)*gridSnapQuantum,
+                    (double)Math.round(projectedThisPeffective[1]/gridSnapQuantum)*gridSnapQuantum,
+                    projectedThisPeffective[2], // we'll fix this in a moment
                 };
                 snappedProjectedThisP[2] = 0. - .5 * (SQR(snappedProjectedThisP[0]) + SQR(snappedProjectedThisP[1])); // actual
 
@@ -2568,7 +2579,7 @@ public class ShephardsPlayApplet
                             PRINT(mousePressWasBackFacing);
                         }
 
-                        beingDraggedVertUnsnappedXY = new double[]{vert.Xnaive(), vert.Ynaive()}; // XXX not sure this is right at this point
+                        beingDraggedVertUnsnappedXY = new double[]{vert.Xnaive(), vert.Ynaive()};
                         rubberBandingNewEdge = true;
                     }
                     else // shift is not down
@@ -2604,7 +2615,7 @@ public class ShephardsPlayApplet
                                 {
                                     // begin dragging a net edge or fold
                                     //PRINT(beingDraggedNetEdgeIndex);
-                                    beingDraggedNetEdgeIndex = getDualMesh().indexOfClosestEdge(projectedThisP, true); // XXX not right actually... want closest edge in screen space, not doing this paraboloid thing
+                                    beingDraggedNetEdgeIndex = getDualMesh().indexOfClosestEdge(projectedThisPeffective, true); // XXX not right actually... want closest edge in screen space, not doing this paraboloid thing
                                     //PRINT(beingDraggedNetEdgeIndex);
                                     beingDraggedNetEdgeDelta = new double[]{0,0};
                                 }
@@ -2648,6 +2659,13 @@ public class ShephardsPlayApplet
                                     PRINT(mousePressWasBackFacing);
                                 }
                                 beingDraggedVertUnsnappedXY = new double[]{beingDraggedVert.Xnaive(), beingDraggedVert.Ynaive()};
+
+                                Mesh.Vertex closestVert = mesh.getVert(closestVertIndex);
+                                double scratch[] = new double[3];
+                                mostRecentGraphics.xform(closestVert.Xnaive(), closestVert.Ynaive(), closestVert.Znaive(), scratch);
+                                thisPeffective = (double[])Arrays.subarray(scratch, 0, 2);
+                                origPeffective = thisPeffective;
+                                prevPeffective = thisPeffective;
 
 
                                 if (snapToGrid)
@@ -2996,7 +3014,6 @@ public class ShephardsPlayApplet
 
                 } // right mouse
 
-                prevP = thisP;
 
                 theCanvas.repaint();
 
@@ -3008,15 +3025,16 @@ public class ShephardsPlayApplet
 
                 double thisP[] = new double[2];
                 mostRecentGraphics.pick(e.getX()+.5, e.getY()+.5, thisP);
-                double projectedThisP[] = new double[3];
-                pickPointOnSurface(thisP, 0., projectedThisP, mousePressWasBackFacing);
+                double thisPeffective[] = VecMath.vpvmv(thisP,origPeffective,origP);
+                double projectedThisPeffective[] = new double[3];
+                pickPointOnSurface(thisPeffective, 0., projectedThisPeffective, mousePressWasBackFacing);
                 boolean snapToGrid = e.isControlDown();
-                double snappedProjectedThisP[] = !snapToGrid ? projectedThisP : new double[] {
-                    (double)Math.round(projectedThisP[0]/gridSnapQuantum)*gridSnapQuantum,
-                    (double)Math.round(projectedThisP[1]/gridSnapQuantum)*gridSnapQuantum,
+                double snappedProjectedThisPeffective[] = !snapToGrid ? projectedThisPeffective : new double[] {
+                    (double)Math.round(projectedThisPeffective[0]/gridSnapQuantum)*gridSnapQuantum,
+                    (double)Math.round(projectedThisPeffective[1]/gridSnapQuantum)*gridSnapQuantum,
                     0., // we'll fix this in a moment
                 };
-                snappedProjectedThisP[2] = 0. - .5 * (SQR(snappedProjectedThisP[0]) + SQR(snappedProjectedThisP[1]));
+                snappedProjectedThisPeffective[2] = 0. - .5 * (SQR(snappedProjectedThisPeffective[0]) + SQR(snappedProjectedThisPeffective[1]));
 
                 int whichButton = getButton(e);
                 if (whichButton == java_awt_event_MouseEvent_BUTTON1)
@@ -3025,8 +3043,8 @@ public class ShephardsPlayApplet
                     {
                         if (mesh.verts.size() == 1)
                         {
-                            System.out.println("    Adding vertex "+mesh.verts.size()+" at "+snappedProjectedThisP[0]+" "+snappedProjectedThisP[1]+" "+0+"");
-                            mesh.addIsolatedVertex(snappedProjectedThisP[0], snappedProjectedThisP[1], 0);
+                            System.out.println("    Adding vertex "+mesh.verts.size()+" at "+snappedProjectedThisPeffective[0]+" "+snappedProjectedThisPeffective[1]+" "+0+"");
+                            mesh.addIsolatedVertex(snappedProjectedThisPeffective[0], snappedProjectedThisPeffective[1], 0);
                         }
                         int finalVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1],mostRecentGraphics);
                         if (beingDraggedVertIndex != -1
@@ -3051,7 +3069,7 @@ public class ShephardsPlayApplet
                      && showNetFlag.get())
                     {
                         Mesh dualMesh = getDualMesh();
-                        int targetEdgeIndex = dualMesh.indexOfClosestEdge(projectedThisP, true); // XXX not really right, see similar comment on mouse down
+                        int targetEdgeIndex = dualMesh.indexOfClosestEdge(projectedThisPeffective, true); // XXX not really right, see similar comment on mouse down
                         if (targetEdgeIndex != -1
                          && targetEdgeIndex != beingDraggedNetEdgeIndex
                          && dualMesh.getEdge(targetEdgeIndex).opposite().myIndex() != beingDraggedNetEdgeIndex)
@@ -3128,6 +3146,9 @@ public class ShephardsPlayApplet
                 boolean snapToGrid = e.isControlDown();
                 double thisP[] = new double[2];
                 mostRecentGraphics.pick(e.getX()+.5, e.getY()+.5, thisP);
+                PRINTVEC(origPeffective);
+                PRINTVEC(origP);
+                double thisPeffective[] = VecMath.vpvmv(thisP,origPeffective,origP);
                 if (draggingRotation)
                 {
                     // increment tilt according to deltaY,
@@ -3194,21 +3215,21 @@ public class ShephardsPlayApplet
                     {
                         if (snapToGrid)
                         {
-                            double projectedThisP[] = new double[3];
-                            pickPointOnSurface(thisP, 0., projectedThisP, mousePressWasBackFacing);
-                            double snappedProjectedThisP[] = !snapToGrid ? projectedThisP : new double[] {
-                                (double)Math.round(projectedThisP[0]/gridSnapQuantum)*gridSnapQuantum,
-                                (double)Math.round(projectedThisP[1]/gridSnapQuantum)*gridSnapQuantum,
+                            double projectedThisPeffective[] = new double[3];
+                            pickPointOnSurface(thisPeffective, 0., projectedThisPeffective, mousePressWasBackFacing);
+                            double snappedProjectedThisPeffective[] = !snapToGrid ? projectedThisPeffective : new double[] {
+                                (double)Math.round(projectedThisPeffective[0]/gridSnapQuantum)*gridSnapQuantum,
+                                (double)Math.round(projectedThisPeffective[1]/gridSnapQuantum)*gridSnapQuantum,
                                 0., // we'll fix this in a moment
                             };
-                            snappedProjectedThisP[2] = 0. - .5 * (SQR(snappedProjectedThisP[0]) + SQR(snappedProjectedThisP[1]));
+                            snappedProjectedThisPeffective[2] = 0. - .5 * (SQR(snappedProjectedThisPeffective[0]) + SQR(snappedProjectedThisPeffective[1]));
 
                             // now what??? project back to screen and set prevP to it.
                             // argh, but then it will get clobbered at the bottom.
                             // oh, set *thisP* to it, so prevP will get set to that! hacky
 
                             double scratch[] = new double[3];
-                            mostRecentGraphics.xform(snappedProjectedThisP[0], snappedProjectedThisP[1], snappedProjectedThisP[2], scratch);
+                            mostRecentGraphics.xform(snappedProjectedThisPeffective[0], snappedProjectedThisPeffective[1], snappedProjectedThisPeffective[2], scratch);
                             VecMath.copyvec(2, thisP, scratch);
                         }
                     }
@@ -3217,13 +3238,13 @@ public class ShephardsPlayApplet
                         if (beingDraggedNetEdgeIndex != -1)
                         {
                             // XXX not really right... see similar comment on mouse down
-                            double projectedThisP[] = new double[3];
-                            pickPointOnSurface(thisP, 0., projectedThisP, mousePressWasBackFacing);
+                            double projectedThisPeffective[] = new double[3];
+                            pickPointOnSurface(thisP, 0., projectedThisPeffective, mousePressWasBackFacing);
                             double projectedPrevP[] = new double[3];
                             pickPointOnSurface(prevP, 0., projectedPrevP, mousePressWasBackFacing);
 
-                            beingDraggedNetEdgeDelta[0] += projectedThisP[0]-projectedPrevP[0]; // no snap to grid for this
-                            beingDraggedNetEdgeDelta[1] += projectedThisP[1]-projectedPrevP[1]; // no snap to grid for this
+                            beingDraggedNetEdgeDelta[0] += projectedThisPeffective[0]-projectedPrevP[0]; // no snap to grid for this
+                            beingDraggedNetEdgeDelta[1] += projectedThisPeffective[1]-projectedPrevP[1]; // no snap to grid for this
                         }
                         else if (e.isShiftDown())
                         {
@@ -3251,7 +3272,7 @@ public class ShephardsPlayApplet
                         else if (beingDraggedVertIndex != -1)
                         {
                             Mesh.Vertex beingDraggedVert = mesh.getVert(beingDraggedVertIndex);
-                            double offset = vertOffset(beingDraggedVert, wrapAroundSphereFlag.get());
+                            double offset = vertOffset(beingDraggedVert, wrapAroundSphereFlag.get()); // XXX TODO: should just snapshot this on mouse down... MAYBE. but keep in mind, user can change offset while dragging, with arrow keys
 
                             /*
                                 All right, how should this look?
@@ -3264,19 +3285,20 @@ public class ShephardsPlayApplet
                                     6. if paraboloid, snap x,y part to grid but retain same offset (height above paraboloid)
                                     7. for any symmetry images, do same thing to them
 
+                                Spaces:
+                                    pixel space   (mouse coords in this space)
+                                        most recent graphics mat
+                                    eye space (same as world space I think)
+                                    world space
+                                        localToWorld
+                                    vert local space
+                                    homogeneous vert space
                             */
-                            double beingDraggedVertXY[] = new double[2];
-                            mostRecentGraphics.xform(beingDraggedVert.Xnaive(),
-                                                     beingDraggedVert.Ynaive(),
-                                                     beingDraggedVert.Znaive(),
-                                                     beingDraggedVertXY);
-                            beingDraggedVertXY[0] += thisP[0] - prevP[0];
-                            beingDraggedVertXY[1] += thisP[1] - prevP[1];
-
                             double beingDraggedVertNewCoords[] = new double[3];
-                            pickPointOnSurface(beingDraggedVertXY, offset, beingDraggedVertNewCoords, mousePressWasBackFacing);
+                            pickPointOnSurface(thisPeffective, offset, beingDraggedVertNewCoords, mousePressWasBackFacing);
+
                             beingDraggedVert.setXYnaive(beingDraggedVertNewCoords[0],
-                                                   beingDraggedVertNewCoords[1]);
+                                                        beingDraggedVertNewCoords[1]);
                             // if on paraboloid, h doesn't change. if on sphere, have to adjust.
                             if (wrapAroundSphereFlag.get())
                                 beingDraggedVert.setZnaive(beingDraggedVertNewCoords[2]);
@@ -3285,13 +3307,13 @@ public class ShephardsPlayApplet
 
                             if (false)
                             {
-                                double projectedThisP[] = new double[3];
-                                pickPointOnSurface(thisP, offset, projectedThisP, mousePressWasBackFacing);
+                                double projectedThisPeffective[] = new double[3];
+                                pickPointOnSurface(thisP, offset, projectedThisPeffective, mousePressWasBackFacing);
                                 double projectedPrevP[] = new double[3];
                                 pickPointOnSurface(prevP, offset, projectedPrevP, mousePressWasBackFacing);
 
-                                beingDraggedVertUnsnappedXY[0] += projectedThisP[0] - projectedPrevP[0];
-                                beingDraggedVertUnsnappedXY[1] += projectedThisP[1] - projectedPrevP[1];
+                                beingDraggedVertUnsnappedXY[0] += projectedThisPeffective[0] - projectedPrevP[0];
+                                beingDraggedVertUnsnappedXY[1] += projectedThisPeffective[1] - projectedPrevP[1];
 
                                 // height doesn't change if on paraboloid.
                                 // but if on sphere, we have to adust it.  ARGH!
@@ -3420,6 +3442,7 @@ public class ShephardsPlayApplet
                 theCanvas.repaint();
 
                 prevP = thisP;
+                prevPeffective = thisPeffective;
 
                 if (eventVerbose >= 2) System.out.println("  out mouseDragged: "+e);
             } // mouseDragged
@@ -13939,6 +13962,10 @@ OFF
 
 
         private double prevP[] = null;
+        private double origP[] = null;
+        // "effective" position is position of the thing being dragged. might be a few pixels away from actual position.
+        private double prevPeffective[] = null;
+        private double origPeffective[] = null;
 
     //
     // Track mouse state...
