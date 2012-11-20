@@ -2700,67 +2700,10 @@ public class ShephardsPlayApplet
                             }
                             else // closest was too far-- add a new vert
                             {
-                                double vertsToAdd[][] = {
-                                    VecMath.copyvec(2, snappedProjectedThisP),
-                                };
+                                double vertsToAdd[][] = {snappedProjectedThisP};
 
-                                if (wrapAroundSphereFlag.get())
-                                {
-                                    // wrap around sphere-- hack for now
-                                    vertsToAdd[0] = Arrays.append(vertsToAdd[0], Math.sqrt(1-SQR(vertsToAdd[0][0])-SQR(vertsToAdd[0][1])));
-
-                                    if (rotationalSymmetry > 1
-                                     || leftRightSymmetry)
-                                    {
-                                        int p = 3;
-                                        int q = rotationalSymmetry;
-                                        double gens[][][] = computeSymmetryGroupGenerators3d(p, q, leftRightSymmetry);
-                                        vertsToAdd = generateVertices(vertsToAdd,
-                                                                      gens);
-                                    }
-                                }
-                                else
-                                {
-                                    if (rotationalSymmetry > 1
-                                     || leftRightSymmetry)
-                                    {
-                                        if (polyhedralSymmetryFlag)
-                                        {
-                                            double wrapSphereCurvatureValue = wrapSphereCurvature.get();
-                                            FORI (i, vertsToAdd.length)
-                                            {
-                                                vertsToAdd[i] = wrapVertAroundSphere(vertsToAdd[i][0],
-                                                                                     vertsToAdd[i][1],
-                                                                                     0.,
-                                                                                     wrapSphereCurvatureValue);
-                                                if (!centerSphere)
-                                                    vertsToAdd[i][2] += 1./wrapSphereCurvatureValue;
-                                            }
-
-                                            int p = 3;
-                                            int q = rotationalSymmetry;
-                                            double gens[][][] = computeSymmetryGroupGenerators3d(p, q, leftRightSymmetry);
-                                            vertsToAdd = generateVertices(vertsToAdd,
-                                                                          gens);
-
-                                            FORI (i, vertsToAdd.length)
-                                            {
-                                                if (!centerSphere)
-                                                    vertsToAdd[i][2] -= 1./wrapSphereCurvatureValue;
-                                                vertsToAdd[i] = (double[])Arrays.subarray(unwrapVertAroundSphere(vertsToAdd[i][0],
-                                                                                                                 vertsToAdd[i][1],
-                                                                                                                 vertsToAdd[i][2],
-                                                                                                                 wrapSphereCurvatureValue), 0, 2);
-                                            }
-                                        }
-                                        else
-                                        {
-                                            double gens[][][] = computeSymmetryGroupGenerators2d(rotationalSymmetry, leftRightSymmetry);
-                                            vertsToAdd = generateVertices(vertsToAdd,
-                                                                          gens);
-                                        }
-                                    }
-                                }
+                                double gens[][][] = getTheSymmetryGroupGenerators();
+                                vertsToAdd = generateVertices(vertsToAdd, gens);
 
                                 // we add them in reverse order, so that the original one
                                 // will be the last one added, so that it will be the one to be dragged
@@ -2775,10 +2718,12 @@ public class ShephardsPlayApplet
                                     if (wrapAroundSphereFlag.get())
                                     {
                                         double wrapSphereRadius = 1./wrapSphereCurvature.get();
+                                        PRINT(SQR(wrapSphereRadius)-(x*x+y*y));
                                         mesh.getVert(mesh.verts.size()-1).setZnaive(
                                             Math.sqrt(SQR(wrapSphereRadius)-(x*x+y*y)) + (centerSphere ? 0. : -wrapSphereRadius));
                                     }
 
+                                    PRINT(vertOffset(mesh.getVert(mesh.verts.size()-1), wrapAroundSphereFlag.get()));
                                     assert(EQ(vertOffset(mesh.getVert(mesh.verts.size()-1), wrapAroundSphereFlag.get()), 0., 1e-6));
 
                                     ArrayList verts = mesh.verts;
@@ -9029,18 +8974,27 @@ OFF
             {
                 double eps = 1e-9;
                 double verts[][] = vertGenerators; // make this an arraylist if we ever do a lot
+                double vert4in[] = {0,0,0,1};
+                double vert4out[] = new double[4];
+                double vert3out[] = new double[3];
                 FORI (iVert, verts.length) // while verts is growing
                 {
                     FORI (ixform, xforms.length)
                     {
-                        double vert[] = VecMath.vxm(verts[iVert],
-                                                    xforms[ixform]);
+                        assert(verts[iVert].length == 3);
+                        // TODO: really need homogeneous stuff
+                        VecMath.copyvec(3, vert4in, verts[iVert]);
+                        VecMath.vxm(vert4out,
+                                    vert4in,
+                                    xforms[ixform]);
+                        VecMath.vxs(3, vert3out, vert4out, 1./vert4out[3]);
+
                         int jVert;
                         FOR (jVert, verts.length)
-                            if (VecMath.equals(vert, verts[jVert], eps))
+                            if (VecMath.equals(vert3out, verts[jVert], eps))
                                 break;
                         if (jVert == verts.length)
-                            verts = (double[][])Arrays.append(verts, vert);
+                            verts = (double[][])Arrays.append(verts, VecMath.copyvec(vert3out));
                     }
                 }
                 return verts;
@@ -13254,7 +13208,7 @@ OFF
         // rather, we add in mathematically redundant generators
         // for all powers of p and q, since the math for generating them
         // is a bit more accurate than we'd get by products of the minimal set of generators.
-        private static double[][/*3*/][/*3*/] computeSymmetryGroupGenerators3d(int p, int q, boolean leftRightSymmetry)
+        private static double[][/*4*/][/*4*/] computeSymmetryGroupGenerators3d(int p, int q, boolean leftRightSymmetry)
         {
             int nGens = (p-1) + (q-1) + (leftRightSymmetry ? 1 : 0);
             double gens[][][] = new double[nGens][][];
@@ -13263,7 +13217,7 @@ OFF
             // add reflection first, so it will get favored when generating,
             // since multiplying by it doesn't add any roundoff error.
             if (leftRightSymmetry)
-                gens[iGen++] = new double[][]{{-1,0,0},{0,1,0},{0,0,1}};
+                gens[iGen++] = new double[][]{{-1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
 
             if (p > 1)
             {
@@ -13272,9 +13226,10 @@ OFF
                     double c = cosPiTimes(2*i,p); // cos(2*pi * i/p)
                     double s = sinPiTimes(2*i,p); // sin(2*pi * i/p)
                     double gen[][] = {
-                        { c,s,0},
-                        {-s,c,0},
-                        { 0,0,1},
+                        { c,s,0,0},
+                        {-s,c,0,0},
+                        { 0,0,1,0},
+                        { 0,0,0,1},
                     };
                     gens[iGen++] = gen;
                 }
@@ -13292,18 +13247,20 @@ OFF
                 double sinTilt = Math.sqrt(1.-cosSqrdTilt);
                 // tilt from +z towards +y
                 double tiltMat[][] = {
-                    {1,      0,       0},
-                    {0,cosTilt,-sinTilt},
-                    {0,sinTilt, cosTilt}
+                    {1,      0,       0,0},
+                    {0,cosTilt,-sinTilt,0},
+                    {0,sinTilt, cosTilt,0},
+                    {0,      0,       0,1},
                 };
                 for (int i = 1; i < q; ++i) // skip 0
                 {
                     double c = cosPiTimes(2*i,q); // cos(2*pi * i/q)
                     double s = sinPiTimes(2*i,q); // sin(2*pi * i/q)
                     double gen[][] = {
-                        { c,s,0},
-                        {-s,c,0},
-                        { 0,0,1},
+                        { c,s,0,0},
+                        {-s,c,0,0},
+                        { 0,0,1,0},
+                        { 0,0,0,1},
                     };
                     gen = VecMath.mxmxm(VecMath.transpose(tiltMat), gen, tiltMat);
                     gens[iGen++] = gen;
@@ -13316,20 +13273,26 @@ OFF
         // 3d symmetry groups that hold origin fixed.
         // rotation of order p around z axis,
         // and rotation of order q around some point between the +z and +y axis.
-        private static double[][/*3*/][/*3*/] computeSymmetryGroup3d(int p, int q, boolean leftRightSymmetry)
+        private static double[][/*4*/][/*4*/] computeSymmetryGroup3d(int p, int q, boolean leftRightSymmetry)
         {
             double gens[][][] = computeSymmetryGroupGenerators3d(p, q, leftRightSymmetry);
+
+            if (false)
+                System.out.println("gens = "+Arrays.toStringNonCompact(gens,
+                                                                       "", // indentString
+                                                                       "    "));  // indentIncr
+
             int nWithoutReflections = (MIN(p,q) == 1 ? MAX(p,q) :
                                        MIN(p,q) == 2 ? 2*MAX(p,q) :
                                        MIN(p,q)==3 && MAX(p,q)==3 ? 12 :
                                        MIN(p,q)==3 && MAX(p,q)==4 ? 24 :
                                        MIN(p,q)==3 && MAX(p,q)==5 ? 60 : -1);
             assert(nWithoutReflections != -1);
-            double group[][][] = new double[nWithoutReflections * (leftRightSymmetry ? 2 : 1)][3][3];
+            double group[][][] = new double[nWithoutReflections * (leftRightSymmetry ? 2 : 1)][4][4];
 
             int n = 0;
             VecMath.identitymat(group[n++]);
-            double scratch[][] = new double[3][3];
+            double scratch[][] = new double[4][4];
             FORI (i, n) // while n is growing
             {
                 FORI (iGen, gens.length)
@@ -13346,6 +13309,48 @@ OFF
             assert(n == group.length);
             return group;
         } // computeSymmetryGroup3d
+
+        // Uses:
+        //     rotationalSymmetry
+        //     leftRightSymmetry
+        //     polyhedralSymmetryFlag
+        //     wrapAroundSphereFlag
+        //     wrapSphereCurvature
+        private double[][/*4*/][/*4*/] getTheSymmetryGroup()
+        {
+            double group[][][] = this.polyhedralSymmetryFlag ? computeSymmetryGroup3d(3, this.rotationalSymmetry, this.leftRightSymmetry)
+                                                             : computeSymmetryGroup3d(this.rotationalSymmetry, 1, this.leftRightSymmetry);
+            if (wrapAroundSphereFlag.get()
+             && !centerSphere)
+            {
+                double wrapSphereRadius = 1./wrapSphereCurvature.get();
+                double originToSphereCenter[][] = {
+                    {1,0,0,0},
+                    {0,1,0,0},
+                    {0,0,1,0},
+                    {0,0,-wrapSphereRadius,1},
+                };
+                double sphereCenterToOrigin[][] = {
+                    {1,0,0,0},
+                    {0,1,0,0},
+                    {0,0,1,0},
+                    {0,0,wrapSphereRadius,1},
+                };
+                FORI (iGroup, group.length)
+                {
+                    group[iGroup] = VecMath.mxmxm(sphereCenterToOrigin,
+                                                  group[iGroup],
+                                                  originToSphereCenter);
+                }
+            }
+            return group;
+        } // getTheSymmetryGroup
+        private double[][/*4*/][/*4*/] getTheSymmetryGroupGenerators()
+        {
+            // XXX TODO: smaller set
+            return getTheSymmetryGroup();
+        } // getTheSymmetryGroupGenerators
+
 
         private static Mesh.Vertex[] findAllVertsThatAreImages(Mesh mesh, double v[/*2*/], double group[][/*2*/][/*2*/], double eps)
         {
@@ -14137,7 +14142,6 @@ OFF
         {
             // test computeSymmetryGroup3d
             int pqs[][] = {
-
                 {1,1},
                 {1,2},
                 {2,1},
@@ -14159,7 +14163,6 @@ OFF
                 {4,3},
                 {3,5},
                 {5,3},
-                {4,3},
             };
             FORI (iLeftRightSymmetry, 2)
             {
