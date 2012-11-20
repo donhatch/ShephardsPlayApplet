@@ -31,7 +31,7 @@ BUGS:
     - straighten out behavior when dragging stuff on back face
         - when dragging existing back point, send back flag to Surface.rayIntersect
         - when creating new point, if not on surface offset=0, don't reflect, create point off the surface.  maybe. (or maybe it's fine the say it is?) (or just create point on horizon?)
-    - draw horizon of surface and of ground plane?
+    - draw horizon of surface (done) and of ground plane?
 
 
   Misc:
@@ -114,6 +114,7 @@ TO DO:
     - put in dump files:
         - selected verts
         - net
+        - wrapAroundSphereFlag?
 
     - try to maintain selection when swapping diagonals and stuff
 
@@ -2683,7 +2684,7 @@ public class ShephardsPlayApplet
                                     double unsnappedCoords[] = {beingDraggedVert.Xnaive(), beingDraggedVert.Ynaive()};
                                     double snappedCoords[] = {(double)Math.round(beingDraggedVert.Xnaive()/gridSnapQuantum)*gridSnapQuantum,
                                                               (double)Math.round(beingDraggedVert.Ynaive()/gridSnapQuantum)*gridSnapQuantum};
-                                    double group[][][] = computeSymmetryGroup2d(rotationalSymmetry, leftRightSymmetry);
+                                    double group[][][] = getTheSymmetryGroup();
                                     int nVerts = mesh.verts.size();
                                     FORI (iGroup, group.length)
                                     {
@@ -2949,8 +2950,8 @@ public class ShephardsPlayApplet
                             if (beingDraggedVertIndex != -1)
                             {
                                 Mesh.Vertex beingDraggedVert = mesh.getVert(beingDraggedVertIndex);
-                                double v[] = {beingDraggedVert.Xnaive(), beingDraggedVert.Ynaive()};
-                                double group[][][] = computeSymmetryGroup2d(rotationalSymmetry, leftRightSymmetry);
+                                double v[] = {beingDraggedVert.Xnaive(), beingDraggedVert.Ynaive(), beingDraggedVert.Znaive()};
+                                double group[][][] = getTheSymmetryGroup();
                                 Mesh.Vertex vertsToDelete[] = findAllVertsThatAreImages(mesh, v, group, 1e-6);
                                 FORI (iVertToDelete, vertsToDelete.length)
                                     mesh.deleteVertex(vertsToDelete[iVertToDelete]);
@@ -3277,8 +3278,7 @@ public class ShephardsPlayApplet
                                 // is an image under more than one symmetry (i.e. when exactly on a mirror),
                                 // we average the images under each of the symmetries.
                                 //
-                                double group[][][] = polyhedralSymmetryFlag ? computeSymmetryGroup3d(3, rotationalSymmetry, leftRightSymmetry)
-                                                                            : computeSymmetryGroup3d(rotationalSymmetry, 1, leftRightSymmetry);
+                                double group[][][] = getTheSymmetryGroup();
 
                                 int nVerts = mesh.verts.size();
                                 double newVertexPositionSums[][] = new double[nVerts][]; // all null initially
@@ -3430,8 +3430,8 @@ public class ShephardsPlayApplet
                         if (iVert != -1)
                         {
                             Mesh.Vertex vertI = mesh.getVert(iVert);
-                            double v[] = {vertI.Xnaive(), vertI.Ynaive()};
-                            double group[][][] = computeSymmetryGroup2d(rotationalSymmetry, leftRightSymmetry);
+                            double v[] = {vertI.Xnaive(), vertI.Ynaive(), vertI.Znaive()};
+                            double group[][][] = getTheSymmetryGroup();
                             Mesh.Vertex vertsToMove[] = findAllVertsThatAreImages(mesh, v, group, 1e-6);
 
                             FORI (iVertToMove, vertsToMove.length)
@@ -3470,8 +3470,8 @@ public class ShephardsPlayApplet
                         if (iVert != -1)
                         {
                             Mesh.Vertex vertI = mesh.getVert(iVert);
-                            double v[] = {vertI.Xnaive(), vertI.Ynaive()};
-                            double group[][][] = computeSymmetryGroup2d(rotationalSymmetry, leftRightSymmetry);
+                            double v[] = {vertI.Xnaive(), vertI.Ynaive(), vertI.Znaive()};
+                            double group[][][] = getTheSymmetryGroup();
                             Mesh.Vertex vertsToMove[] = findAllVertsThatAreImages(mesh, v, group, 1e-6);
 
                             FORI (iVertToMove, vertsToMove.length)
@@ -3589,7 +3589,7 @@ public class ShephardsPlayApplet
                                     (double)Math.round(beingDraggedVertUnsnappedXY[1]/gridSnapQuantum)*gridSnapQuantum,
                                 };
 
-                                double group[][][] = computeSymmetryGroup2d(rotationalSymmetry, leftRightSymmetry);
+                                double group[][][] = getTheSymmetryGroup();
                                 int nVerts = mesh.verts.size();
                                 FORI (iGroup, group.length)
                                 {
@@ -3648,7 +3648,7 @@ public class ShephardsPlayApplet
                                 // only difference between ctrl-newly-down and ctrl-newly-up...
                                 double newCoords[] = beingDraggedVertUnsnappedXY;
 
-                                double group[][][] = computeSymmetryGroup2d(rotationalSymmetry, leftRightSymmetry);
+                                double group[][][] = getTheSymmetryGroup();
                                 int nVerts = mesh.verts.size();
                                 FORI (iGroup, group.length)
                                 {
@@ -13159,77 +13159,32 @@ OFF
             accumulator[accumulator.length-1] += increment[increment.length-1]; // A
         }
 
-        // 2d symmetry groups that hold origin fixed
-        private static double[][/*2*/][/*2*/] computeSymmetryGroupGenerators2d(int rotationalSymmetry, boolean leftRightSymmetry)
-        {
-            double gens[][][] = new double[leftRightSymmetry ? 2 : 1][][];
-
-            double c = cosPiTimes(2,rotationalSymmetry); // cos(2*pi/rotationalSymmetry)
-            double s = sinPiTimes(2,rotationalSymmetry); // sin(2*pi/rotationalSymmetry)
-            gens[0] = new double[][] {
-                { c,s},
-                {-s,c},
-            };
-
-            if (leftRightSymmetry)
-                gens[1] = new double[][]{{-1,0},{0,1}};
-
-            return gens;
-        } // computeSymmetryGroupGenerators2d
-
-        // XXX TODO: phasing this out, it's all 3d now
-        // 2d symmetry groups that hold origin fixed
-        // NOTE: could just generate from previous function, but this seems more well-behaved maybe?  think about whether I can tweak things so the result is exactly the same, or what. maybe add to the generators all powers of generators?
-        private static double[][/*2*/][/*2*/] computeSymmetryGroup2d(int rotationalSymmetry, boolean leftRightSymmetry)
-        {
-            double group[][][] = new double[rotationalSymmetry * (leftRightSymmetry ? 2 : 1)][][];
-            {
-                // could avoid half the work without introducing roundoff error,
-                // by only doing half of them and taking inverses (transposes),
-                // but whatever, this sure isn't a bottleneck
-                FORI (i, rotationalSymmetry)
-                {
-                    double c = cosPiTimes(2*i,rotationalSymmetry); // cos(2*pi * i/rotationalSymmetry)
-                    double s = sinPiTimes(2*i,rotationalSymmetry); // sin(2*pi * i/rotationalSymmetry)
-                    group[i] = new double[][] {
-                        { c,s},
-                        {-s,c},
-                    };
-                }
-
-
-                if (leftRightSymmetry)
-                {
-                    double leftRightReflection[][] = new double[][]{{-1,0},{0,1}};
-                    FORI (i, rotationalSymmetry)
-                        group[rotationalSymmetry+i] =
-                            VecMath.mxm(group[i],leftRightReflection);
-                }
-            }
-            return group;
-        } // computeSymmetryGroup2d
-
-
-        // 3d symmetry groups that hold origin fixed
-        // rotation of order p around z axis,
+        // 3d symmetry groups.
+        // Rotation of order p around z axis,
         // and rotation of order q around some point between the +z and +y axis.
         // Note, we don't return a minimal set;
         // rather, we add in mathematically redundant generators
         // for all powers of p and q, since the math for generating them
         // is a bit more accurate than we'd get by products of the minimal set of generators.
-        private static double[][/*4*/][/*4*/] computeSymmetryGroupGenerators3d(int p, int q, boolean leftRightSymmetry)
+        //
+        // Instead of returning a flat list, we return a list of sub-lists;
+        // each of the sub-lists are assumed to be powers of a single generator,
+        // so there's no need to try more than one thing out of a given sub-list consecutively.
+        //
+        private static double[][][/*4*/][/*4*/] computeSymmetryGroupGenerators3d(int p, int q, boolean leftRightSymmetry)
         {
-            int nGens = (p-1) + (q-1) + (leftRightSymmetry ? 1 : 0);
-            double gens[][][] = new double[nGens][][];
-            int iGen = 0;
+            double genGroups[][][][] = new double[0][][][];
 
             // add reflection first, so it will get favored when generating,
             // since multiplying by it doesn't add any roundoff error.
             if (leftRightSymmetry)
-                gens[iGen++] = new double[][]{{-1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}};
+                genGroups = (double[][][][])Arrays.append(genGroups, new double[][][]{{{-1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}}});
 
             if (p > 1)
             {
+                genGroups = (double[][][][])Arrays.append(genGroups, new double[p-1][][]);
+                double subGens[][][] = genGroups[genGroups.length-1];
+
                 for (int i = 1; i < p; ++i) // skip 0
                 {
                     double c = cosPiTimes(2*i,p); // cos(2*pi * i/p)
@@ -13240,11 +13195,13 @@ OFF
                         { 0,0,1,0},
                         { 0,0,0,1},
                     };
-                    gens[iGen++] = gen;
+                    subGens[i-1] = gen;
                 }
             }
             if (q > 1)
             {
+                genGroups = (double[][][][])Arrays.append(genGroups, new double[q-1][][]);
+                double subGens[][][] = genGroups[genGroups.length-1];
 
                 // The rotation of order p is centered on the z axis;
                 // where do we want to center the rotation of order q?
@@ -13272,11 +13229,11 @@ OFF
                         { 0,0,0,1},
                     };
                     gen = VecMath.mxmxm(VecMath.transpose(tiltMat), gen, tiltMat);
-                    gens[iGen++] = gen;
+                    subGens[i-1] = gen;
                 }
             }
-            assert(iGen == nGens);
-            return gens;
+
+            return genGroups;
         } // computeSymmetryGroupGenerators3d
 
         // 3d symmetry groups that hold origin fixed.
@@ -13284,7 +13241,7 @@ OFF
         // and rotation of order q around some point between the +z and +y axis.
         private static double[][/*4*/][/*4*/] computeSymmetryGroup3d(int p, int q, boolean leftRightSymmetry)
         {
-            double gens[][][] = computeSymmetryGroupGenerators3d(p, q, leftRightSymmetry);
+            double gens[][][][] = computeSymmetryGroupGenerators3d(p, q, leftRightSymmetry);
 
             if (false)
                 System.out.println("gens = "+Arrays.toStringNonCompact(gens,
@@ -13298,21 +13255,35 @@ OFF
                                        MIN(p,q)==3 && MAX(p,q)==5 ? 60 : -1);
             assert(nWithoutReflections != -1);
             double group[][][] = new double[nWithoutReflections * (leftRightSymmetry ? 2 : 1)][4][4];
+            int lastSubgroupIndex[] = new int[group.length];
 
             int n = 0;
-            VecMath.identitymat(group[n++]);
+            VecMath.identitymat(group[n]);
+            lastSubgroupIndex[n] = -1;
+            n++;
+
             double scratch[][] = new double[4][4];
             FORI (i, n) // while n is growing
             {
-                FORI (iGen, gens.length)
+                FORI (iSubgroup, gens.length)
                 {
-                    VecMath.mxm(scratch, gens[iGen], group[i]);
-                    int j;
-                    FOR (j, n)
-                        if (VecMath.equals(scratch, group[j], 1e-3))
-                            break;
-                    if (j == n) // if didn't find it
-                        VecMath.copymat(group[n++], scratch);
+                    if (iSubgroup == lastSubgroupIndex[i])
+                        continue; // no need to look at two in a row from the same subgroup
+                    double subgroupGens[][][] = gens[iSubgroup];
+                    FORI (iGen, subgroupGens.length)
+                    {
+                        VecMath.mxm(scratch, subgroupGens[iGen], group[i]); // or other order? not sure it matters
+                        int j;
+                        FOR (j, n)
+                            if (VecMath.equals(scratch, group[j], 1e-3))
+                                break;
+                        if (j == n) // if didn't find it
+                        {
+                            VecMath.copymat(group[n], scratch);
+                            lastSubgroupIndex[n] = iSubgroup;
+                            n++;
+                        }
+                    }
                 }
             }
             assert(n == group.length);
@@ -13361,6 +13332,19 @@ OFF
         } // getTheSymmetryGroupGenerators
 
 
+        // I seem to have set the bar too high on using VecMath for this... make private utility function
+        private static double[] v3xm44(double v[/*3*/], double m[/*4*/][/*4*/])
+        {
+            int three = v.length;
+            assert(m.length == three+1 && m[0].length == three+1);
+            double scratch[] = Arrays.append(v, 1.);
+            scratch = VecMath.vxm(scratch, m);
+            if (scratch[three] == 1.)
+                return (double[])Arrays.subarray(scratch, 0, three);
+            else
+                return VecMath.vxs(three, scratch, scratch[three]);
+        }
+
         private static Mesh.Vertex[] findAllVertsThatAreImages(Mesh mesh, double v[/*2*/], double group[][/*2*/][/*2*/], double eps)
         {
             int nVerts = mesh.verts.size();
@@ -13368,14 +13352,17 @@ OFF
             int nFound = 0;
             FORI (iGroup, group.length)
             {
-                double image[] = VecMath.vxm(v,group[iGroup]);
+                assert(v.length == 3);
+                double image[] = v3xm44(v,group[iGroup]);
+                assert(image.length == 3);
                 FORI (iVert, nVerts)
                 {
                     if (!foundVert[iVert])
                     {
                         Mesh.Vertex vertI = mesh.getVert(iVert);
                         if (EQ(image[0], vertI.Xnaive(), eps)
-                         && EQ(image[1], vertI.Ynaive(), eps))
+                         && EQ(image[1], vertI.Ynaive(), eps)
+                         && EQ(image[2], vertI.Znaive(), eps))
                         {
                             foundVert[iVert] = true;
                             nFound++;
@@ -13799,7 +13786,7 @@ OFF
         // symmetry to try to use when clicking or dragging with ctrl down
         private boolean leftRightSymmetry = false;
         private int rotationalSymmetry = 1;
-        private boolean polyhedralSymmetryFlag = false; // XXX TODO: currently hard coded
+        private boolean polyhedralSymmetryFlag = true; // XXX TODO: currently hard coded
 
         private Listenable.Boolean wrapAroundSphereFlag = new Listenable.Boolean(false);
         private Listenable.Double wrapSphereCurvature = new Listenable.Double(.001,2., 1.);
