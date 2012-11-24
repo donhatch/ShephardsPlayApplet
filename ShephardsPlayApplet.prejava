@@ -3427,6 +3427,10 @@ public class ShephardsPlayApplet
             {
                 if (eventVerbose >= 1) System.out.println("in keyPressed: "+e);
                 double incr = .005;
+                if (e.isShiftDown())
+                    incr *= 10.;
+                else if (e.isControlDown())
+                    incr /= 10.;
                 switch(e.getKeyCode())
                 {
                     case java.awt.event.KeyEvent.VK_UP:
@@ -3447,19 +3451,35 @@ public class ShephardsPlayApplet
                             double group[][][] = getTheSymmetryGroup();
                             Mesh.Vertex vertsToMove[] = findAllVertsThatAreImages(mesh, v, group, 1e-6);
 
-                            FORI (iVertToMove, vertsToMove.length)
+                            // only used in wrapAroundSphere case
+                            boolean wrapAroundSphereFlagValue = wrapAroundSphereFlag.get();
+
+                            if (wrapAroundSphereFlag.get())
                             {
-                                Mesh.Vertex vert = vertsToMove[iVertToMove];
-                                // pull the dual face *out* of the screen,
-                                // i.e. increase its height,
-                                // i.e. decrease height of primal vert.
-                                if (e.isShiftDown())
-                                    vert.setHnaive(vert.Hnaive() - incr*10);
-                                else if (e.isControlDown())
-                                    vert.setHnaive(vert.Hnaive() - incr*.1);
-                                else
+                                double sphereCenterZ = (centerSphere ? 0. : -1./wrapSphereCurvature.get());
+                                FORI (iVertToMove, vertsToMove.length)
+                                {
+                                    Mesh.Vertex vert = vertsToMove[iVertToMove];
+                                    v[0] = vert.Xnaive();
+                                    v[1] = vert.Ynaive();
+                                    v[2] = vert.Znaive() - sphereCenterZ;
+                                    double oldR = Math.sqrt(SQR(v[0])+SQR(v[1])+SQR(v[2]));
+                                    double newR = oldR - incr;
+                                    double scale = newR / oldR;
+                                    vert.setXYZnaive(v[0]*scale, v[1]*scale, v[2]*scale + sphereCenterZ);
+                                }
+                            }
+                            else
+                            {
+                                FORI (iVertToMove, vertsToMove.length)
+                                {
+                                    Mesh.Vertex vert = vertsToMove[iVertToMove];
+                                    // pull the dual face *out* of the screen,
+                                    // i.e. increase its height,
+                                    // i.e. decrease height of primal vert.
                                     vert.setHnaive(vert.Hnaive() - incr);
-                                System.out.println("    verts["+vert.myIndex()+"].Hnaive() -> "+vert.Hnaive());
+                                    System.out.println("    verts["+vert.myIndex()+"].Hnaive() -> "+vert.Hnaive());
+                                }
                             }
                             if (doContinuouslyDelaunayize.get()) delaunayize();
                         }
@@ -3487,19 +3507,32 @@ public class ShephardsPlayApplet
                             double group[][][] = getTheSymmetryGroup();
                             Mesh.Vertex vertsToMove[] = findAllVertsThatAreImages(mesh, v, group, 1e-6);
 
-                            FORI (iVertToMove, vertsToMove.length)
+                            if (wrapAroundSphereFlag.get())
                             {
-                                Mesh.Vertex vert = vertsToMove[iVertToMove];
-                                // push the dual face *into* the screen,
-                                // i.e. decrease its height,
-                                // i.e. increase height of primal vert.
-                                if (e.isShiftDown())
-                                    vert.setHnaive(vert.Hnaive() + incr*10);
-                                else if (e.isControlDown())
-                                    vert.setHnaive(vert.Hnaive() + incr*.1);
-                                else
+                                double sphereCenterZ = (centerSphere ? 0. : -1./wrapSphereCurvature.get());
+                                FORI (iVertToMove, vertsToMove.length)
+                                {
+                                    Mesh.Vertex vert = vertsToMove[iVertToMove];
+                                    v[0] = vert.Xnaive();
+                                    v[1] = vert.Ynaive();
+                                    v[2] = vert.Znaive()-sphereCenterZ;
+                                    double oldR = Math.sqrt(SQR(v[0])+SQR(v[1])+SQR(v[2]));
+                                    double newR = oldR + incr;
+                                    double scale = newR / oldR;
+                                    vert.setXYZnaive(v[0]*scale, v[1]*scale, v[2]*scale + sphereCenterZ);
+                                }
+                            }
+                            else
+                            {
+                                FORI (iVertToMove, vertsToMove.length)
+                                {
+                                    Mesh.Vertex vert = vertsToMove[iVertToMove];
+                                    // push the dual face *into* the screen,
+                                    // i.e. decrease its height,
+                                    // i.e. increase height of primal vert.
                                     vert.setHnaive(vert.Hnaive() + incr);
-                                System.out.println("    verts["+vert.myIndex()+"].Hnaive() -> "+vert.Hnaive());
+                                    System.out.println("    verts["+vert.myIndex()+"].Hnaive() -> "+vert.Hnaive());
+                                }
                             }
                             if (doContinuouslyDelaunayize.get()) delaunayize();
                         }
@@ -13077,13 +13110,13 @@ OFF
                                      b1x,b1y)
                  * twiceTriangleArea(a1x,a1y,
                                      a0x,a0y,
-                                     b0x,b0y) >= -eps*eps*eps*eps
+                                     b0x,b0y) >= -(eps*eps)*(eps*eps)
                 && twiceTriangleArea(b0x,b0y,
                                      b1x,b1y,
                                      a0x,a0y)
                  * twiceTriangleArea(b1x,b1y,
                                      b0x,b0y,
-                                     a1x,a1y) >= -eps*eps*eps*eps;
+                                     a1x,a1y) >= -(eps*eps)*(eps*eps);
         } // edgesCrossOrCloseToIt
 
         private static double distSqrdFromPointToSeg(double x, double y,
@@ -13272,7 +13305,7 @@ OFF
 
             int n = 0;
             VecMath.identitymat(group[n]);
-            lastSubgroupIndex[n] = -1;
+            lastSubgroupIndex[n] = -1; // so nothing will match it
             n++;
 
             double scratch[][] = new double[4][4];
@@ -13345,7 +13378,7 @@ OFF
         } // getTheSymmetryGroupGenerators
 
 
-        // I seem to have set the bar too high on using VecMath for this... make private utility function
+        // I seem to have set the bar too high on using VecMath for this... make private utility function instead
         private static double[] v3xm44(double v[/*3*/], double m[/*4*/][/*4*/])
         {
             int three = v.length;
