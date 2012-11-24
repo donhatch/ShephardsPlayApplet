@@ -646,9 +646,12 @@ public class ShephardsPlayApplet
                 }},
             };
 
-            final java.awt.Component theLabel = new JLabel("Wrap radius:") {{setEnabled(false);}};
-            final java.awt.Component theTextField = new TextFieldForFloat(wrapSphereSymbolicRadius) {{setEnabled(false);}};
-            final java.awt.Component theSlider = new SliderForFloat(wrapSphereSymbolicRadius) {{setEnabled(false);}};
+            final java.awt.Component theBackfaceBrightnessLabel = new JLabel("Backface brightness:");
+            final java.awt.Component theBackfaceBrightnessTextField = new TextFieldForFloat(backfaceBrightness);
+            final java.awt.Component theBackfaceBrightnessSlider = new SliderForFloat(backfaceBrightness);
+            final java.awt.Component theWrapRadiusLabel = new JLabel("Wrap radius:") {{setEnabled(false);}};
+            final java.awt.Component theWrapRadiusTextField = new TextFieldForFloat(wrapSphereSymbolicRadius) {{setEnabled(false);}};
+            final java.awt.Component theWrapRadiusSlider = new SliderForFloat(wrapSphereSymbolicRadius) {{setEnabled(false);}};
 
 
             // for making pixmaps from ascii
@@ -682,10 +685,27 @@ public class ShephardsPlayApplet
                 }}, stretchy);
             }}, stretchxy);
 
+            /*
             contentPane.add(new JRow() {{
-                add(theLabel);
-                add(theTextField);
-                add(theSlider, stretchx);
+                add(theBackfaceBrightnessLabel);
+                add(theBackfaceBrightnessTextField);
+                add(theBackfaceBrightnessSlider, stretchx);
+            }}, stretchx);
+            contentPane.add(new JRow() {{
+                add(theWrapRadiusLabel);
+                add(theWrapRadiusTextField);
+                add(theWrapRadiusSlider, stretchx);
+            }}, stretchx);
+            */
+
+            contentPane.add(new JTablePanel() {{
+                add(theBackfaceBrightnessLabel);
+                add(theBackfaceBrightnessTextField);
+                add(theBackfaceBrightnessSlider, stretchx);
+                advanceRow();
+                add(theWrapRadiusLabel);
+                add(theWrapRadiusTextField);
+                add(theWrapRadiusSlider, stretchx);
             }}, stretchx);
 
             contentPane.add(new JRow() {{ // second row: col, table, col
@@ -808,17 +828,17 @@ public class ShephardsPlayApplet
                                             {
                                                 theSurface = theSphereSurface;
                                                 wrapAroundSphere(wrapSphereCurvature.get());
-                                                theLabel.setEnabled(true);
-                                                theTextField.setEnabled(true);
-                                                theSlider.setEnabled(true);
+                                                theWrapRadiusLabel.setEnabled(true);
+                                                theWrapRadiusTextField.setEnabled(true);
+                                                theWrapRadiusSlider.setEnabled(true);
                                             }
                                             else
                                             {
                                                 theSurface = theParaboloidSurface;
                                                 unwrapAroundSphere(wrapSphereCurvature.get());
-                                                theLabel.setEnabled(false);
-                                                theTextField.setEnabled(false);
-                                                theSlider.setEnabled(false);
+                                                theWrapRadiusLabel.setEnabled(false);
+                                                theWrapRadiusTextField.setEnabled(false);
+                                                theWrapRadiusSlider.setEnabled(false);
                                             }
                                         }
                                     });
@@ -1514,6 +1534,15 @@ public class ShephardsPlayApplet
             }
 
 
+            backfaceBrightness.addListener(backfaceBrightnessListener = new Listenable.Listener() {
+                public void valueChanged()
+                {
+                    System.out.println("in backfaceBrightness valueChanged");
+                    PRINT(backfaceBrightness.get());
+                    theCanvas.repaint();
+                    System.out.println("out backfaceBrightness valueChanged");
+                }
+            });
             wrapSphereSymbolicRadius.addListener(wrapSphereSymbolicRadiusListener = new Listenable.Listener() {
                 public void valueChanged()
                 {
@@ -5104,39 +5133,51 @@ public class ShephardsPlayApplet
 
                 if (showTriangles >= 1) // 0=off, 1=verts, 2 = verts and tris
                 {
-                    //mg.setColor(java.awt.Color.white);
-                    mg.setColor(new java.awt.Color(240,240,240));
+                    int frontBrightness = 240;
+                    int backBrightness = (int)(backfaceBrightness.get() * frontBrightness);
+                    java.awt.Color frontColor = new java.awt.Color(frontBrightness,frontBrightness,frontBrightness);
+                    java.awt.Color backColor = new java.awt.Color(backBrightness,backBrightness,backBrightness);
 
                     ArrayList verts = mesh.verts;
-                    FORI (iVert, nVerts)
-                    {
-                        if (doShowInsideOutDualVerts
-                         || vertFacings[iVert] != FACING_BACK
-                         || iVert == beingDraggedVertIndex)
-                        {
-                            double vCoord[] = vertCoords[iVert];
-                            mg.drawPoint(vCoord[0],
-                                         vCoord[1],
-                                         vCoord[2],
-                                         3);
-                        }
-                    }
+                    ArrayList edges = mesh.edges;
 
-                    if (showTriangles >= 2)
+                    FORI (iPass, 2)
                     {
+                        if (iPass == 0) // back faces
+                            if (backBrightness <= 0)
+                                continue;
+                            else
+                                mg.setColor(backColor);
+                        else
+                            mg.setColor(frontColor);
 
-                        ArrayList edges = mesh.edges;
-                        FORIDOWN (iWholeEdge, edges.size()/2)
+
+                        FORI (iVert, nVerts)
                         {
-                            if (doShowInsideOutDualVerts
-                             || edgeFacings[iWholeEdge*2] != FACING_BACK)
+                            if ((vertFacings[iVert]!=FACING_BACK||iVert==beingDraggedVertIndex) == (iPass==1))
                             {
-                                Mesh.Edge edge = (Mesh.Edge)edges.get(iWholeEdge*2);
-                                double v0[] = vertCoords[edge.initialVertex().myIndex()];
-                                double v1[] = vertCoords[edge.finalVertex().myIndex()];
-                                mg.drawLine(v0[0],v0[1],v0[2],
-                                            v1[0],v1[1],v1[2],
-                                            doAntiAliasing);
+                                double vCoord[] = vertCoords[iVert];
+                                mg.drawPoint(vCoord[0],
+                                             vCoord[1],
+                                             vCoord[2],
+                                             3);
+                            }
+                        }
+
+                        if (showTriangles >= 2)
+                        {
+
+                            FORIDOWN (iWholeEdge, edges.size()/2)
+                            {
+                                if ((edgeFacings[iWholeEdge*2]!=FACING_BACK) == (iPass==1))
+                                {
+                                    Mesh.Edge edge = (Mesh.Edge)edges.get(iWholeEdge*2);
+                                    double v0[] = vertCoords[edge.initialVertex().myIndex()];
+                                    double v1[] = vertCoords[edge.finalVertex().myIndex()];
+                                    mg.drawLine(v0[0],v0[1],v0[2],
+                                                v1[0],v1[1],v1[2],
+                                                doAntiAliasing);
+                                }
                             }
                         }
                     }
@@ -5994,70 +6035,100 @@ public class ShephardsPlayApplet
                      && tilt > Math.PI*.5) // i.e. if xy plane is behind rest of picture
                         drawFlattenedNet(mg, mesh, dualMesh, dualEdgeInitialCoords, nVerts, nEdges, dualEdgeColors);
 
-                    //
-                    // Dual edges.
-                    // If showing the cut tree,
-                    // we draw the non-cut edges first, then the cut edges--
-                    // this makes the tree appear more connected.
-                    //
+                    double backfaceBrightnessValue = backfaceBrightness.get();
+                    FORI (iFacingPass, 2)
                     {
-                        double destPoint[] = new double[3]; // scratch for loop
-                        int nPasses = showNetFlag.get() ? 2 : 1;
-                        FORI (iPass, nPasses)
+                        //
+                        // Dual edges.
+                        // If showing the cut tree,
+                        // we draw the non-cut edges first, then the cut edges--
+                        // this makes the tree appear more connected.
+                        //
                         {
-                            FORIDOWN (iDualEdge, mesh.edges.size())
+                            double destPoint[] = new double[3]; // scratch for loop
+                            int nPasses = showNetFlag.get() ? 2 : 1;
+                            FORI (iPass, nPasses)
                             {
-                                if (nPasses == 2
-                                 && (theNet._edgeStatuses[iDualEdge]==Net.CUT) != (iPass==1))
-                                    continue; // when two passes, draw cuts iff iPass==1
-
-
-                                if (!doShowInsideOutDualVerts
-                                 && dualEdgeFacings[iDualEdge] == FACING_BACK)
-                                    continue;
-
-                                mg.setColor(dualEdgeColors[iDualEdge]);
-
-                                int oDualEdge = dualMesh.getEdge(iDualEdge).opposite().myIndex();
-
-                                double from[] = dualEdgeInitialCoords[iDualEdge];
-                                double to[] = dualEdgeInitialCoords[oDualEdge];
-
-                                mg.drawLine(from[0], from[1], from[2],
-                                            to[0], to[1], to[2],
-                                            doAntiAliasing);
-
-                                if (showNetFlag.get()
-                                 && pointOutRedNetEdges
-                                 && mg.getColor() == java.awt.Color.red)
+                                FORIDOWN (iDualEdge, mesh.edges.size())
                                 {
-                                    mg.drawPoint((to[0]+from[0])*.5,
-                                                 (to[1]+from[1])*.5,
-                                                 (to[2]+from[2])*.5,
-                                                 7);
+                                    if (nPasses == 2
+                                     && (theNet._edgeStatuses[iDualEdge]==Net.CUT) != (iPass==1))
+                                        continue; // when two passes, draw cuts iff iPass==1
+
+
+
+                                    if ((dualEdgeFacings[iDualEdge]!=FACING_BACK) != (iFacingPass==1))
+                                        continue;
+
+                                    java.awt.Color frontColor = dualEdgeColors[iDualEdge];
+                                    if (iFacingPass == 0)
+                                    {
+                                        // holy moly this is inefficient, probably
+                                        int rgb = frontColor.getRGB();
+                                        int R = (rgb>>16)&255;
+                                        int G = (rgb>>8)&255;
+                                        int B = rgb&255;
+                                        java.awt.Color backColor = new java.awt.Color((int)(R*backfaceBrightnessValue), (int)(G*backfaceBrightnessValue), (int)(B*backfaceBrightnessValue));
+                                        mg.setColor(backColor);
+                                    }
+                                    else
+                                        mg.setColor(frontColor);
+
+
+                                    int oDualEdge = dualMesh.getEdge(iDualEdge).opposite().myIndex();
+
+                                    double from[] = dualEdgeInitialCoords[iDualEdge];
+                                    double to[] = dualEdgeInitialCoords[oDualEdge];
+
+                                    mg.drawLine(from[0], from[1], from[2],
+                                                to[0], to[1], to[2],
+                                                doAntiAliasing);
+
+                                    if (showNetFlag.get()
+                                     && pointOutRedNetEdges
+                                     && mg.getColor() == java.awt.Color.red)
+                                    {
+                                        mg.drawPoint((to[0]+from[0])*.5,
+                                                     (to[1]+from[1])*.5,
+                                                     (to[2]+from[2])*.5,
+                                                     7);
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    //
-                    // Draw dual verts
-                    // (only if NOT showing net flow... they are disruptive to the flow)
-                    //
-                    FORIDOWN(iDualVert, dualMesh.verts.size())
-                    {
-                        // if showing flow, don't show regular verts (only show selected ones)
-                        if (showNetFlag.get() && showNetFlowFlag.get() && dualVertColors[iDualVert] != dualVertSelectionColor)
-                            continue;
-
-
-                        Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
-
-                        //System.out.println("    drawing dual vert at "+Arrays.toStringCompact(dualVert));
-                        mg.setColor(dualVertColors[iDualVert]); // TODO: only if changed?
-                        if (doShowInsideOutDualVerts
-                         || dualVertFacings[iDualVert] != FACING_BACK)
+                        //
+                        // Draw dual verts
+                        // (only if NOT showing net flow... they are disruptive to the flow)
+                        //
+                        FORIDOWN(iDualVert, dualMesh.verts.size())
                         {
+                            // if showing flow, don't show regular verts (only show selected ones)
+                            if (showNetFlag.get() && showNetFlowFlag.get() && dualVertColors[iDualVert] != dualVertSelectionColor)
+                                continue;
+
+
+                            Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
+
+                            //System.out.println("    drawing dual vert at "+Arrays.toStringCompact(dualVert));
+
+                            if ((dualVertFacings[iDualVert]!=FACING_BACK) != (iFacingPass==1))
+                                continue;
+
+                            java.awt.Color frontColor = dualVertColors[iDualVert];
+                            if (iFacingPass == 0)
+                            {
+                                // holy moly this is inefficient, probably
+                                int rgb = frontColor.getRGB();
+                                int R = (rgb>>16)&255;
+                                int G = (rgb>>8)&255;
+                                int B = rgb&255;
+                                java.awt.Color backColor = new java.awt.Color((int)(R*backfaceBrightnessValue), (int)(G*backfaceBrightnessValue), (int)(B*backfaceBrightnessValue));
+                                mg.setColor(backColor);
+                            }
+                            else
+                                mg.setColor(frontColor);
+
                             double p[] = dualVertCoords[iDualVert];
                             mg.drawPoint(p[0], p[1], p[2],
                                          showNetFlag.get() ? 2 : 5);
@@ -6492,6 +6563,12 @@ public class ShephardsPlayApplet
                     }
                 }
 
+                nPaints++;
+                mg.setColor(java.awt.Color.white);
+                mg.drawString(""+nPaints+" paints", size.width/minSize,size.height/minSize,
+                              1., -.5,
+                              java.awt.Color.black); // background
+
 
                 if (g != frontBufferGraphics)
                 {
@@ -6692,6 +6769,7 @@ public class ShephardsPlayApplet
 
                 // Bleah, the faces that don't have dual verts
                 // need to be computed by a separate method.
+                // TODO: make all faces have dual verts?  Not sure, if non-planar then maybe that will cause more damage than it fixes
                 FORI (iEdge, nEdges)
                 {
                     Mesh.Edge edgeI = mesh.getEdge(iEdge);
@@ -7467,6 +7545,22 @@ public class ShephardsPlayApplet
                         }
                     assert(iVert == verts.length);
                     mesh = new Mesh(verts, new int[][]{});
+                }
+
+                if (true)
+                {
+                    // randomly homogeneous scale half the verts by 2.
+                    // this shouldn't change anything.
+                    int nVerts = mesh.verts.size();
+                    FORI (iVert, nVerts)
+                    {
+                        Mesh.Vertex vert = mesh.getVert(iVert);
+                        if (Math.random() > .5)
+                            vert.setXYZW(vert.X()*2.,
+                                         vert.Y()*2.,
+                                         vert.Z()*2.,
+                                         vert.W()*2.);
+                    }
                 }
 
             } // doUniformGridThing
@@ -9815,6 +9909,12 @@ OFF
                     verts.add(this);
                     fixVertIndices(verts.size()-1);
                 }
+                public Vertex(double X, double Y, double Z, double W)
+                {
+                    this.setXYZW(X,Y,Z,W);
+                    verts.add(this);
+                    fixVertIndices(verts.size()-1);
+                }
 
                 // A Vertex can belong to only one Mesh.
                 // myIndex() returns the index into the Mesh's edges.
@@ -11485,15 +11585,17 @@ OFF
                 sanityCheck();
             } // Mesh from vertex positions and face indices
 
+            // copy ctor
             private Mesh(Mesh original)
             {
                 int nVerts = original.verts.size();
                 FORI (iVert, nVerts)
                 {
                     Vertex originalVert = (Vertex)original.getVert(iVert);
-                    Vertex newVert = new Vertex(originalVert.Xnaive(),
-                                                originalVert.Ynaive(),
-                                                originalVert.Hnaive()); // adds itself to verts
+                    Vertex newVert = new Vertex(originalVert.X(),
+                                                originalVert.Y(),
+                                                originalVert.Z(),
+                                                originalVert.W()); // adds itself to verts
                     newVert.weight = originalVert.weight;
                     if (originalVert.momentAndArea != null)
                         newVert.momentAndArea = VecMath.copyvec(originalVert.momentAndArea);
@@ -13706,6 +13808,7 @@ OFF
         private Listenable.Listener wrapAroundSphereFlagListener = null;
         private Listenable.Listener wrapSphereCurvatureListener = null;
         private Listenable.Listener wrapSphereSymbolicRadiusListener = null;
+        private Listenable.Listener backfaceBrightnessListener = null;
         private Listenable.Listener doOptimizeListener = null;
         private Listenable.Listener optimizationTypeIndexListener = null;
         private Listenable.Listener showMagFlagListener = null;
@@ -13810,6 +13913,7 @@ OFF
         private Listenable.Boolean wrapAroundSphereFlag = new Listenable.Boolean(false);
         private Listenable.Double wrapSphereCurvature = new Listenable.Double(.001,2., 1.);
         private Listenable.Double wrapSphereSymbolicRadius = new Listenable.Double(.001,1.999, 1.);
+        private Listenable.Double backfaceBrightness = new Listenable.Double(0.,1., .25);
         private Listenable.Int gridN = new Listenable.Int(0,1000,10);
         private Listenable.Int blueNoiseN = new Listenable.Int(0,1000,10);
 
@@ -13983,6 +14087,7 @@ OFF
         private Listenable.Boolean showMagFlag = new Listenable.Boolean(false);
         private int magFactor = 9;
         private int magWidth = 25;
+        private int nPaints = 0;
 
 
         private double prevP[] = null;
