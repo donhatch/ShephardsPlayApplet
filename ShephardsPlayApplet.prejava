@@ -12923,7 +12923,6 @@ OFF
         {
             if (wrapAroundSphereFlagValue)
             {
-                // XXX TODO: definitely not robust at this point! need to cancel the divide-by-A with the multiply-by-A
                 //System.out.println("            in SolveForDualMomentAndArea(wrap=true, curvature="+wrapSphereCurvatureValue+")");
                 // reciprocate with respect to the wrap sphere,
                 // which has radius wrapSphereRadius
@@ -12951,29 +12950,31 @@ OFF
                 // result is now the normal, some length
                 //double A = VecMath.norm(3, result); // XXX TODO: doesn't exist in VecMath yet
                 double A = Math.sqrt(VecMath.dot(3, result, result));
-                VecMath.vxs(3, result, result, 1./A);
-                // result is now unit normal
-                double offset = x0*result[0] + y0*result[1] + z0*result[2]; // result dot v0
-
-                double reciprocationMultiplier = SQR(wrapSphereRadius)/offset;
-                VecMath.vxs(3, result, result, reciprocationMultiplier);
-                if (!centerSphere)
-                {
-                    result[2] -= wrapSphereRadius;
-                }
-
-                // convert from actual to somewhat nonsensical virtual, for wrapped case
-                result[2] += .5 * (SQR(result[0])+SQR(result[1]));
-
-
-                if (result.length == 3)
-                    result[2] = A;
+                if (A == 0.)
+                    VecMath.zerovec(result);
                 else
                 {
-                    result[0] *= A;
-                    result[1] *= A;
-                    result[2] *= A;
-                    result[3] = A;
+                    // result is now unit normal times A
+                    double offsetTimesA = x0*result[0] + y0*result[1] + z0*result[2]; // result dot v0
+                    double reciprocationMultiplier = SQR(wrapSphereRadius)/offsetTimesA*A;
+                    VecMath.vxs(3, result, result, reciprocationMultiplier);
+                    if (!centerSphere)
+                        result[2] -= wrapSphereRadius*A;
+                    // convert from actual to somewhat nonsensical virtual, for wrapped case
+                    result[2] += (.5 * (SQR(result[0])+SQR(result[1]))) / A;
+
+                    if (result.length == 3)
+                    {
+                        // XXX TODO: what the hell is this case?
+                        assert(false); // see what this is, when this is hit, then document it
+                        result[0] /= A;
+                        result[1] /= A;
+                        result[2] = A;
+                    }
+                    else // result.length == 4
+                    {
+                        result[3] = A;
+                    }
                 }
 
                 //System.out.println("            out SolveForDualMomentAndArea(wrap=true)");
