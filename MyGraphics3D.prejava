@@ -12,47 +12,60 @@ public class MyGraphics3D extends MyGraphics
     public MyGraphics3D(java.awt.Graphics g,
                         java.awt.Dimension gsize,
                         double x0, double x1, double y0, double y1,
-                        double xformMat[][])
+                        double xformMat[][]) // assumed immutable
     {
         super(g, gsize, x0,x1,y0,y1);
         this.xformMat = xformMat;
     }
 
-    public void drawLine(double x0, double y0, double z0,
-                         double x1, double y1, double z1,
+    public void drawLine(double x0, double y0, double z0, double w0,
+                         double x1, double y1, double z1, double w1,
                          boolean antiAlias)
     {
         double q0[] = new double[3];
         double q1[] = new double[3];
-        double w0 = xform(x0,y0,z0, q0);
-        double w1 = xform(x1,y1,z1, q1);
+        double depth0 = xform(x0/w0,y0/w0,z0/w0, q0); // TODO: don't divide by w!
+        double depth1 = xform(x1/w1,y1/w1,z1/w1, q1); // TODO: don't divide by w!
 
         // clip to 1e-3 in front of eye
         double eps = 1e-3;
-        if (w0 < eps || w1 < eps)
+        if (depth0 < eps || depth1 < eps)
         {
-            if (w0 < eps && w1 < eps)
+            if (depth0 < eps && depth1 < eps)
                 return;
-            // clip whichever one has w < eps
-            double t = (eps - w0) / (w1 - w0);
+            // clip whichever one has depth < eps
+            double t = (eps - depth0) / (depth1 - depth0);
             double x = LERP(x0, x1, t);
             double y = LERP(y0, y1, t);
             double z = LERP(z0, z1, t);
-            double w = xform(x,y,z, w0 < eps ? q0 : q1);
+            double depth = xform(x,y,z, depth0 < eps ? q0 : q1);
         }
 
         super.drawLine(q0[0], q0[1],
                        q1[0], q1[1],
                        antiAlias);
     } // drawLine
-    public void drawPoint(double x, double y, double z, int nPixels)
+
+    public void drawLine(double x0, double y0, double z0,
+                         double x1, double y1, double z1,
+                         boolean antiAlias)
+    {
+        drawLine(x0, y0, z0, 1.,
+                 x1, y1, z1, 1.,
+                 antiAlias);
+    } // drawLine
+    public void drawPoint(double x, double y, double z, double w, int nPixels)
     {
         double q[] = new double[3];
-        double w = xform(x,y,z, q);
-        if (w <= 0.)
+        double depth = xform(x/w,y/w,z/w, q); // TODO: don't divide by w!
+        if (depth <= 0.)
             return; // culled by eye plane
 
         super.drawPoint(q[0], q[1], nPixels);
+    }
+    public void drawPoint(double x, double y, double z, int nPixels)
+    {
+        drawPoint(x, y, z, 1., nPixels);
     }
     public void drawString(String s, double x, double y, double z,
                                      double xJustify, // -1,0,1 -> L,C,R

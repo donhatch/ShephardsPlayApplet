@@ -14,6 +14,7 @@
 #JAVAROOT=/opt/blackdown-jdk-1.4.2.03
 #JAVAC=${JAVAROOT}/bin/javac
 
+# doesn't work for this project--- JFrame.EXIT_ON_CLOSE not defined
 #JAVAC=javac1.2
 #JAVAROOT=c:/jdk1.2.2
 
