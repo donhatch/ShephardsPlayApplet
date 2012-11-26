@@ -12,6 +12,7 @@ BUGS:
     - use swing sliders instead of scrollbars
 
   Wrap-sphere related:
+    - wrapAroundSphere should stay in homogeneous coords
     - symmetry averaging is wrong on sphere--- it shrinks towards sphere center.
       need a height-preserving average.
     - dragging on sphere surface not reflecting through horizon quite right yet
@@ -32,6 +33,7 @@ BUGS:
 
 
   Misc:
+    - nonuniform scaling seems wrong-- shouldn't depart from paraboloid, should it?
     - need to move iFacingPass more outer, so that all back is done before all front...
       and the horizon in between.  or else use zbuffer?
     - should ConvexHull use fuzzy equality testing in more places, to avoid twinkling on grid? (hmm, maybe twinkling on grid is actually useful in a way?)
@@ -2095,68 +2097,36 @@ public class ShephardsPlayApplet
             wrapVertAroundSphere(px, py, ph, wrapSphereCurvature, result);
             return result;
         }
-        private void wrapVertAroundSphere(double px, double py, double ph, double wrapSphereCurvature,
+        private double[] wrapVertAroundSphere(double px, double py, double pz, double pw, double wrapSphereCurvature)
+        {
+            double result[] = new double[3];
+            wrapVertAroundSphere(px, py, pz, pw, wrapSphereCurvature, result);
+            return result;
+        }
+        private void wrapVertAroundSphere(double px, double py, double pz, double pw, double wrapSphereCurvature,
                                           double answer[/*3*/])
         {
-            if (false)
-            {
-                double wrapSphereRadius = 1./wrapSphereCurvature;
-                px /= wrapSphereRadius;
-                py /= wrapSphereRadius;
-                ph /= SQR(wrapSphereRadius);
-
-                double pz = ph - .5 * (SQR(px) + SQR(py));
-
-                double denom = 1 - pz*.5;
-
-                double sx = px/denom;
-                double sy = py/denom;
-                double sz = pz/denom;
-
-                sx *= wrapSphereRadius;
-                sy *= wrapSphereRadius;
-                sz *= wrapSphereRadius;
-
-                if (centerSphere)
-                {
-                    // sphere is tangent to origin... make it centered at origin
-                    sz += wrapSphereRadius;
-                }
-                answer[0] = sx;
-                answer[1] = sy;
-                answer[2] = sz;
-            }
-            else if (false)
-            {
-                double wrapSphereRadius = 1./wrapSphereCurvature;
-                double pz = ph - .5 * (SQR(px) + SQR(py));
-                pz /= wrapSphereRadius;
-                double denom = 1 - (.5/wrapSphereRadius) * pz;
-                double sx = px / denom;
-                double sy = py / denom;
-                double sz = pz / denom;
-                answer[0] = sx;
-                answer[1] = sy;
-                answer[2] = sz;
-            }
-            else
-            {
-                double pz = ph - .5 * (SQR(px) + SQR(py));
-                double m[][] = {
-                    {1,0,0,0},
-                    {0,1,0,0},
-                    {0,0,wrapSphereCurvature,-.5*SQR(wrapSphereCurvature)},
-                    {0,0,0,1},
-                };
-                double in[] = {px, py, pz, 1.};
-                double out[] = VecMath.vxm(in, m);
-                answer[0] = out[0] / out[3];
-                answer[1] = out[1] / out[3];
-                answer[2] = out[2] / out[3];
-            }
+            // XXX TODO: not right if centerSphere, need to add/subtract wrapSphereRadius in that case
+            double m[][] = {
+                {1,0,0,0},
+                {0,1,0,0},
+                {0,0,wrapSphereCurvature,-.5*SQR(wrapSphereCurvature)},
+                {0,0,0,1},
+            };
+            double in[] = {px, py, pz, 1.};
+            double out[] = VecMath.vxm(in, m);
+            answer[0] = out[0] / out[3];
+            answer[1] = out[1] / out[3];
+            answer[2] = out[2] / out[3];
 
             //System.out.println("at end of wrapVertAroundSphere, dist from center = "+Math.sqrt(SQR(sx)+SQR(sy)+SQR(sz+wrapSphereRadius)));
 
+        } // wrapVertAroundSphere
+        private void wrapVertAroundSphere(double px, double py, double ph, double wrapSphereCurvature,
+                                          double answer[/*3*/])
+        {
+            double pz = ph - .5 * (SQR(px) + SQR(py));
+            wrapVertAroundSphere(px, py, pz, 1., wrapSphereCurvature, answer);
         } // wrapVertAroundSphere
 
         // wrap from parabola to sphere
@@ -6888,17 +6858,29 @@ public class ShephardsPlayApplet
                 // Discard the mesh edges and replace it with
                 // the Delaunay triangulation of the vertex set,
                 // using 3d convex hull.
-                // Project to a paraboloid tweaked by heights,
-                // which is the right thing to do.
-                //
+
                 int nVerts = mesh.verts.size();
-                double verts[][] = new double[nVerts][/*3*/];
+                boolean wrapAroundSphereFlagValue = wrapAroundSphereFlag.get();
+                double wrapSphereCurvatureValue = wrapSphereCurvature.get();
+
+
+                double verts[][] = new double[nVerts][/*4*/];
                 double vertsForHull[][] = new double[nVerts][/*3*/];
                 FORI (iVert, nVerts)
                 {
                     Mesh.Vertex v = mesh.getVert(iVert);
-                    verts[iVert] = new double[]{v.Xnaive(), v.Ynaive(), v.Hnaive()};
-                    vertsForHull[iVert] = new double[]{v.Xnaive(), v.Ynaive(), v.Znaive()};
+                    verts[iVert] = new double[]{v.X(), v.Y(), v.Z(), v.W()};
+                    if (wrapAroundSphereFlagValue)
+                        vertsForHull[iVert] = new double[]{v.x(), v.y(), v.z()};
+                    else
+                    {
+                        // could keep related to paraboloid,
+                        // but it's more stable to project to the sphere
+                        // (especially if there are verts at or near infinity
+                        // on the paraboloid)
+                        vertsForHull[iVert] = wrapVertAroundSphere(v.X(),v.Y(),v.Z(),v.W(),
+                                                                   wrapSphereCurvatureValue);
+                    }
                 }
 
                 //PRINTARRAY(verts);
@@ -10555,6 +10537,7 @@ OFF
                         addEdgeBetweenTwoIsolatedVertices(v0, v1);
             } // addEdgeBetweenTwoVertices
 
+            // twice area (of projection in XY plane) of the face obtained by walking around the edge.
             public double twiceFaceArea(Edge e0)
             {
                 double sum = 0;
@@ -10564,9 +10547,10 @@ OFF
                 {
                     Vertex v1 = e.initialVertex();
                     Vertex v2 = e.finalVertex();
-                    sum += twiceTriangleArea(v0.Xnaive(), v0.Ynaive(),
-                                             v1.Xnaive(), v1.Ynaive(),
-                                             v2.Xnaive(), v2.Ynaive());
+                    // TODO: this dangerous. should be using a different method to show what's inside out!
+                    sum += twiceTriangleArea(v0.x(), v0.y(),
+                                             v1.x(), v1.y(),
+                                             v2.x(), v2.y());
                 }
                 return sum;
             } // twiceFaceArea
@@ -11541,10 +11525,23 @@ OFF
 
                 FORI (i, vertPositions.length)
                 {
-                    // adds itself to verts...
-                    new Vertex(vertPositions[i][0],  // x
-                               vertPositions[i][1],  // y
-                               vertPositions[i].length == 2 ? 0 : vertPositions[i][2]); // h
+                    // Vertex ctor adds itself to verts...
+                    double vertPosition[] = vertPositions[i];
+                    if (vertPosition.length == 2)
+                        new Vertex(vertPosition[0],  // x
+                                   vertPosition[1],  // y
+                                   0); // h
+                    else if (vertPosition.length == 3)
+                        new Vertex(vertPosition[0],  // x
+                                   vertPosition[1],  // y
+                                   vertPosition[2]); // h
+                    else if (vertPosition.length == 4)
+                        new Vertex(vertPosition[0],  // x
+                                   vertPosition[1],  // y
+                                   vertPosition[2],  // z
+                                   vertPosition[3]); // w
+                    else
+                        assert(false);
                 }
                 java.util.HashMap vertIndsToEdge = new java.util.HashMap();
                 FORI (i, faceIndices.length)
