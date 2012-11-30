@@ -2091,18 +2091,6 @@ public class ShephardsPlayApplet
         static final boolean centerSphere = false;
 
 
-        private double[] wrapVertAroundSphere(double px, double py, double ph, double wrapSphereCurvature)
-        {
-            double result[] = new double[3];
-            wrapVertAroundSphere(px, py, ph, wrapSphereCurvature, result);
-            return result;
-        }
-        private double[] wrapVertAroundSphere(double px, double py, double pz, double pw, double wrapSphereCurvature)
-        {
-            double result[] = new double[3];
-            wrapVertAroundSphere(px, py, pz, pw, wrapSphereCurvature, result);
-            return result;
-        }
         private void wrapVertAroundSphere(double px, double py, double pz, double pw, double wrapSphereCurvature,
                                           double answer[/*3*/])
         {
@@ -2114,19 +2102,14 @@ public class ShephardsPlayApplet
                 {0,0,0,1},
             };
             double in[] = {px, py, pz, 1.};
-            double out[] = VecMath.vxm(in, m);
-            answer[0] = out[0] / out[3];
-            answer[1] = out[1] / out[3];
-            answer[2] = out[2] / out[3];
+            VecMath.vxm(answer, in, m);
+            if (centerSphere)
+            {
+                answer[2] += answer[3]/wrapSphereCurvature;
+            }
 
             //System.out.println("at end of wrapVertAroundSphere, dist from center = "+Math.sqrt(SQR(sx)+SQR(sy)+SQR(sz+wrapSphereRadius)));
 
-        } // wrapVertAroundSphere
-        private void wrapVertAroundSphere(double px, double py, double ph, double wrapSphereCurvature,
-                                          double answer[/*3*/])
-        {
-            double pz = ph - .5 * (SQR(px) + SQR(py));
-            wrapVertAroundSphere(px, py, pz, 1., wrapSphereCurvature, answer);
         } // wrapVertAroundSphere
 
         // wrap from parabola to sphere
@@ -2136,21 +2119,16 @@ public class ShephardsPlayApplet
 
             double wrapSphereRadius = 1./wrapSphereCurvature;
 
-            double vertCoords[] = new double[3];
+            double vertCoords[] = new double[4];
 
             FORIDOWN(iVert, mesh.verts.size())
             {
                 Mesh.Vertex vert = mesh.getVert(iVert);
-                double px = vert.Xnaive();
-                double py = vert.Ynaive();
-                double ph = vert.Hnaive();
-
-                wrapVertAroundSphere(px, py, ph, wrapSphereCurvature, vertCoords);
-                double sx = vertCoords[0];
-                double sy = vertCoords[1];
-                double sz = vertCoords[2];
-
-                vert.setXYZnaive(sx, sy, sz);
+                wrapVertAroundSphere(vert.X(), vert.Y(), vert.Z(), vert.W(), wrapSphereCurvature, vertCoords);
+                vert.setXYZW(vertCoords[0],
+                             vertCoords[1],
+                             vertCoords[2],
+                             vertCoords[3]);
             }
             dirtyDualMesh();
             if (doContinuouslyDelaunayize.get()) delaunayize();
@@ -2193,69 +2171,22 @@ public class ShephardsPlayApplet
         }
 #endif
 
-        private double[] unwrapVertAroundSphere(double sx, double sy, double sz, double wrapSphereCurvature)
-        {
-            double result[] = new double[3];
-            unwrapVertAroundSphere(sx, sy, sz, wrapSphereCurvature, result);
-            return result;
-        }
-        private void unwrapVertAroundSphere(double sx, double sy, double sz, double wrapSphereCurvature, double answer[])
+        private void unwrapVertAroundSphere(double sx, double sy, double sz, double sw, double wrapSphereCurvature, double answer[])
         {
             if (centerSphere)
             {
                 // sphere is centered at origin... make it tangent to origin.
-                sz -= 1./wrapSphereCurvature;
+                sz -= sw/wrapSphereCurvature;
             }
 
-            if (false)
-            {
-                double wrapSphereRadius = 1./wrapSphereCurvature;
-                sx /= wrapSphereRadius;
-                sy /= wrapSphereRadius;
-                sz /= wrapSphereRadius;
-
-                double denom = 1 + sz*.5;
-
-                double px = sx/denom;
-                double py = sy/denom;
-                double pz = sz/denom;
-
-                double ph = pz + .5 * (SQR(px) + SQR(py));
-                px *= wrapSphereRadius;
-                py *= wrapSphereRadius;
-                ph *= SQR(wrapSphereRadius);
-
-                answer[0] = px;
-                answer[1] = py;
-                answer[2] = ph;
-            }
-            else if (false)
-            {
-                double wrapSphereRadius = 1./wrapSphereCurvature;
-                double denom = 1 + (.5/wrapSphereRadius) * sz;
-                double px = sx / denom;
-                double py = sy / denom;
-                double pz = sz / denom * wrapSphereRadius;
-                double ph = pz + .5 * (SQR(px) + SQR(py));
-                answer[0] = px;
-                answer[1] = py;
-                answer[2] = ph;
-            }
-            else
-            {
-                double m[][] = {
-                    {1,0,0,0},
-                    {0,1,0,0},
-                    {0,0,1./wrapSphereCurvature,.5*wrapSphereCurvature},
-                    {0,0,0,1},
-                };
-                double in[] = {sx, sy, sz, 1.};
-                double out[] = VecMath.vxm(in, m);
-                answer[0] = out[0] / out[3];
-                answer[1] = out[1] / out[3];
-                answer[2] = out[2] / out[3];
-                answer[2] += .5*(SQR(answer[0])+SQR(answer[1])); // convert from z to h
-            }
+            double m[][] = {
+                {1,0,0,0},
+                {0,1,0,0},
+                {0,0,1./wrapSphereCurvature,.5*wrapSphereCurvature},
+                {0,0,0,1},
+            };
+            double in[] = {sx, sy, sz, sw};
+            VecMath.vxm(answer, in, m);
         }
         // unwrap from sphere to parabola
         private void unwrapAroundSphere(double wrapSphereCurvature)
@@ -2264,21 +2195,17 @@ public class ShephardsPlayApplet
 
             double wrapSphereRadius = 1./wrapSphereCurvature;
 
-            double vertCoords[] = new double[3];
+            double vertCoords[] = new double[4];
 
             FORIDOWN(iVert, mesh.verts.size())
             {
                 Mesh.Vertex vert = mesh.getVert(iVert);
-                double sx = vert.Xnaive();
-                double sy = vert.Ynaive();
-                double sz = vert.Znaive();
 
-                unwrapVertAroundSphere(sx, sy, sz, wrapSphereCurvature, vertCoords);
-                double px = vertCoords[0];
-                double py = vertCoords[1];
-                double ph = vertCoords[2];
-
-                vert.setXYHnaive(px, py, ph);
+                unwrapVertAroundSphere(vert.X(), vert.Y(), vert.Z(), vert.W(), wrapSphereCurvature, vertCoords);
+                vert.setXYZW(vertCoords[0],
+                             vertCoords[1],
+                             vertCoords[2],
+                             vertCoords[3]);
             }
             dirtyDualMesh();
             if (doContinuouslyDelaunayize.get()) delaunayize();
@@ -6710,16 +6637,35 @@ public class ShephardsPlayApplet
                     double facePlaneNormal[] = {dualVert.Xnaive(), dualVert.Ynaive(), 1.}; // not unit length
                     double facePlaneOffset = -dualVert.Znaive(); // magic!  I don't know why, but this is the correct value
                     */
-                    double facePlaneNormal[] = {dualVert.X(), dualVert.Y(), dualVert.W()}; // i.e. x,y,1.  not unit length.
-                    double facePlaneOffset = -dualVert.Z(); // i.e. z.  magic!  I don't know why, but this is the correct value
 
+                    double facePlaneNormal[];
+                    double facePlaneOffset;
 
                     if (wrapAroundSphereFlagValue)
                     {
-                        facePlaneNormal[2] = (centerSphere ? dualVert.Znaive() : dualVert.Znaive() + 1./wrapSphereCurvatureValue); // normal is toward dual vert
-                        facePlaneOffset = facePlaneNormal[0]*dualVert.Xnaive()
-                                        + facePlaneNormal[1]*dualVert.Ynaive()
-                                        + facePlaneNormal[2]*dualVert.Znaive();
+                        // reciprocated wrt sphere.
+
+                        // just work with frickin actual coords,
+                        // homogeneous coords are too confusing
+                        // and w=0 is exceedingly rare in wrapped-around-sphere case anyway.
+                        // this is STILL too frickin complicated!
+
+                        facePlaneNormal = new double[] {
+                            dualVert.x(),
+                            dualVert.y(),
+                            centerSphere ? dualVert.z() : dualVert.z() + 1./wrapSphereCurvatureValue
+                        };
+                        double dualVertDist2FromCenter = VecMath.normsqrd(facePlaneNormal);
+                        double facePlaneClosestPoint[] = VecMath.vxs(facePlaneNormal, 1./dualVertDist2FromCenter);
+                        if (!centerSphere)
+                            facePlaneClosestPoint[2] -= 1./wrapSphereCurvatureValue;
+                        facePlaneOffset = VecMath.dot(facePlaneNormal, facePlaneClosestPoint);
+                    }
+                    else
+                    {
+                        // reciprocated wrt paraboloid
+                        facePlaneNormal = new double[] {dualVert.X(), dualVert.Y(), dualVert.W()}; // i.e. x,y,1.  not unit length.
+                        facePlaneOffset = -dualVert.Z(); // i.e. z.  magic!  I don't know why, but this is the correct value
                     }
                     double frontness = VecMath.dot(facePlaneNormal, eyeInLocalSpace)
                                      - facePlaneOffset;
@@ -6866,6 +6812,7 @@ public class ShephardsPlayApplet
 
                 double verts[][] = new double[nVerts][/*4*/];
                 double vertsForHull[][] = new double[nVerts][/*3*/];
+                double scratchVert4[] = new double[4];
                 FORI (iVert, nVerts)
                 {
                     Mesh.Vertex v = mesh.getVert(iVert);
@@ -6878,8 +6825,12 @@ public class ShephardsPlayApplet
                         // but it's more stable to project to the sphere
                         // (especially if there are verts at or near infinity
                         // on the paraboloid)
-                        vertsForHull[iVert] = wrapVertAroundSphere(v.X(),v.Y(),v.Z(),v.W(),
-                                                                   wrapSphereCurvatureValue);
+                        wrapVertAroundSphere(v.X(),v.Y(),v.Z(),v.W(),
+                                             wrapSphereCurvatureValue,
+                                             scratchVert4);
+                        vertsForHull[iVert] = new double[]{scratchVert4[0]/scratchVert4[3],
+                                                           scratchVert4[1]/scratchVert4[3],
+                                                           scratchVert4[2]/scratchVert4[3]};
                     }
                 }
 
