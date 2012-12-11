@@ -172,6 +172,7 @@ import com.donhatchsw.util.TriangulationOptimizer;
 import com.donhatchsw.util.FuzzyPointHashTable;
 import com.donhatchsw.util.MiniBall;
 import com.donhatchsw.util.Minimizer;
+import com.donhatchsw.util.NewtonSolver;
 import com.donhatchsw.util.Listenable;
 import com.donhatchsw.compat.ArrayList;
 import com.donhatchsw.compat.IntArrayList;
@@ -2091,93 +2092,59 @@ public class ShephardsPlayApplet
         static final boolean centerSphere = false;
 
 
-        private void wrapVertAroundSphere(double px, double py, double pz, double pw, double wrapSphereCurvature,
-                                          double answer[/*3*/])
+        private static double[][] getWrapAroundSphereMatrix(double wrapSphereCurvature, boolean centerSphere)
         {
-            // XXX TODO: not right if centerSphere, need to add/subtract wrapSphereRadius in that case
+            // inverse of getUnwrapAroundSphereMatrix, I don't claim to understand it
             double m[][] = {
                 {1,0,0,0},
                 {0,1,0,0},
                 {0,0,wrapSphereCurvature,-.5*SQR(wrapSphereCurvature)},
                 {0,0,0,1},
             };
-            double in[] = {px, py, pz, 1.};
-            VecMath.vxm(answer, in, m);
             if (centerSphere)
-            {
-                answer[2] += answer[3]/wrapSphereCurvature;
-            }
-
-            //System.out.println("at end of wrapVertAroundSphere, dist from center = "+Math.sqrt(SQR(sx)+SQR(sy)+SQR(sz+wrapSphereRadius)));
-
-        } // wrapVertAroundSphere
-
-        // wrap from parabola to sphere
-        private void wrapAroundSphere(double wrapSphereCurvature)
+                m = VecMath.mxm(m, new double[][] {
+                    {1,0,0,0},
+                    {0,1,0,0},
+                    {0,0,1,0},
+                    {0,0,1./wrapSphereCurvature,1},
+                });
+            return m;
+        } // getWrapAroundSphereMatrix
+        private static double[][] getUnwrapAroundSphereMatrix(double wrapSphereCurvature, boolean centerSphere)
         {
-            //System.out.println("    in wrapAroundSphere");
-
-            double wrapSphereRadius = 1./wrapSphereCurvature;
-
-            double vertCoords[] = new double[4];
-
-            FORIDOWN(iVert, mesh.verts.size())
-            {
-                Mesh.Vertex vert = mesh.getVert(iVert);
-                wrapVertAroundSphere(vert.X(), vert.Y(), vert.Z(), vert.W(), wrapSphereCurvature, vertCoords);
-                vert.setXYZW(vertCoords[0],
-                             vertCoords[1],
-                             vertCoords[2],
-                             vertCoords[3]);
-            }
-            dirtyDualMesh();
-            if (doContinuouslyDelaunayize.get()) delaunayize();
-            //System.out.println("    out wrapAroundSphere");
-        } // wrapAroundSphere
-
-
-#if 0
-        private void unwrapVertAroundSphereHomo(double out[4], double in[4],
-                                                double sphereCenter[3], double sphereRadius)
-        {
-            // 1. translate sphere so tangent to origin (if not already)
-                1  0  0  0
-                0  1  0  0
-                0  0  1  0
-                0  0 -r  1
-            // divide by wrap sphere radius
+            /*
+            // divide by wrap sphere radius, to wrap around unit sphere
                1/r 0 0 0
                0 1/r 0 0
                0 0 1/r 0
                0 0  0  1
-            // divide by 1+z/2
+            // divide by 1+z/2, to send far point to infinity
                 1  0  0  0
                 0  1  0  0
                 0  0  1  .5
                 0  0  0  1
-            // multiply by wrap sphere radius
+            // multiply by wrap sphere radius, to get original scale and curvature at origin
                r 0 0 0
                0 r 0 0
                0 0 r 0
                0 0 0 1
-
             i.e. 
                 1  0  0  0
                 0  1  0  0
                 0  0  1  .5/r
                 0  0  0  1
-
-
-        }
-#endif
-
-        private void unwrapVertAroundSphere(double sx, double sy, double sz, double sw, double wrapSphereCurvature, double answer[])
-        {
-            if (centerSphere)
-            {
-                // sphere is centered at origin... make it tangent to origin.
-                sz -= sw/wrapSphereCurvature;
-            }
+            // Then, since we want paraboloid to have curvature 1 instead of 1/r,
+            // multiply by:
+               1 0 0 0
+               0 1 0 0
+               0 0 r 0
+               0 0 0 1
+            // i.e. (if we cared, which we probably don't since we don't unwrap around infinite radius sphere, do we?)
+               1/r 0  0  0
+               0  1/r 0  0
+               0   0  1  0
+               0   0  0 1/r
+            */
 
             double m[][] = {
                 {1,0,0,0},
@@ -2185,32 +2152,54 @@ public class ShephardsPlayApplet
                 {0,0,1./wrapSphereCurvature,.5*wrapSphereCurvature},
                 {0,0,0,1},
             };
-            double in[] = {sx, sy, sz, sw};
-            VecMath.vxm(answer, in, m);
-        }
+            if (centerSphere)
+            {
+                m = VecMath.mxm(new double[][] {
+                    {1,0,0,0},
+                    {0,1,0,0},
+                    {0,0,1,0},
+                    {0,0,-1./wrapSphereCurvature,1},
+                }, m);
+            }
+            return m;
+        } // getUnwrapAroundSphereMatrix
+
+
+        // wrap from parabola to sphere
+        private void wrapAroundSphere(double wrapSphereCurvature)
+        {
+            xformTheMesh(getWrapAroundSphereMatrix(wrapSphereCurvature, centerSphere));
+        } // wrapAroundSphere
+
+
         // unwrap from sphere to parabola
         private void unwrapAroundSphere(double wrapSphereCurvature)
         {
-            //System.out.println("    in unwrapAroundSphere");
+            xformTheMesh(getUnwrapAroundSphereMatrix(wrapSphereCurvature, centerSphere));
+        } // unwrapAroundSphere
 
-            double wrapSphereRadius = 1./wrapSphereCurvature;
-
-            double vertCoords[] = new double[4];
+        private void xformTheMesh(double mat[/*4*/][/*4*/])
+        {
+            double in[] = new double[4];
+            double out[] = new double[4];
 
             FORIDOWN(iVert, mesh.verts.size())
             {
                 Mesh.Vertex vert = mesh.getVert(iVert);
-
-                unwrapVertAroundSphere(vert.X(), vert.Y(), vert.Z(), vert.W(), wrapSphereCurvature, vertCoords);
-                vert.setXYZW(vertCoords[0],
-                             vertCoords[1],
-                             vertCoords[2],
-                             vertCoords[3]);
+                in[0] = vert.X();
+                in[1] = vert.Y();
+                in[2] = vert.Z();
+                in[3] = vert.W();
+                VecMath.vxm(out, in, mat);
+                vert.setXYZW(out[0],
+                             out[1],
+                             out[2],
+                             out[3]);
             }
+
             dirtyDualMesh();
             if (doContinuouslyDelaunayize.get()) delaunayize();
-            //System.out.println("    out unwrapAroundSphere");
-        } // unwrapAroundSphere
+        } // xformTheMesh
 
 
         public void changeMeshSymmetry(int oldRotationalSymmetry, boolean oldLeftRightSymmetry,
@@ -3674,6 +3663,7 @@ public class ShephardsPlayApplet
 
                     case 't': // cycle showTriangles
                         System.out.print("showTriangles "+showTriangles);
+                        //showTriangles = MOD(showTriangles-1, 4); // if showing barycentric experiment
                         showTriangles = MOD(showTriangles-1, 3);
                         System.out.println(" -> "+showTriangles);
                         theCanvas.repaint();
@@ -3681,6 +3671,7 @@ public class ShephardsPlayApplet
 
                     case 'T': // cycle showTriangles, backwards
                         System.out.print("showTriangles "+showTriangles);
+                        //showTriangles = MOD(showTriangles+1, 4);
                         showTriangles = MOD(showTriangles+1, 3);
                         System.out.println(" -> "+showTriangles);
                         theCanvas.repaint();
@@ -4684,6 +4675,58 @@ public class ShephardsPlayApplet
 
 
 
+            private double sphericalTriangleArea(double v0[],
+                                                 double v1[],
+                                                 double v2[])
+            {
+                // inward normals
+                double n0[] = VecMath.normalize(VecMath.vxv3(v1,v2));
+                double n1[] = VecMath.normalize(VecMath.vxv3(v2,v0));
+                double n2[] = VecMath.normalize(VecMath.vxv3(v0,v1));
+                double externalAngle0 = VecMath.angleBetweenUnitVectors(n1,n2);
+                double externalAngle1 = VecMath.angleBetweenUnitVectors(n2,n0);
+                double externalAngle2 = VecMath.angleBetweenUnitVectors(n0,n1);
+                // sum = 2*pi -> area = 0
+                // sum = 0 -> area = 2*pi
+                // area = 2*pi - sum
+                double area = 2*Math.PI - (externalAngle0+externalAngle1+externalAngle2);
+                double det = VecMath.vxvxv3(n0, n1, n2);
+                if (det < 0)
+                    area *= -1;
+                return area;
+            } // sphericalTriangleArea
+            // experimental... spherical barycentrics based on triangle areas.
+            private double[] sbary(final double v0[],
+                                   final double v1[], double t1,
+                                   final double v2[], double t2)
+            {
+                double t0 = 1. - (t1 + t2);
+                double Area = sphericalTriangleArea(v0,v1,v2);
+
+                // find s1,s2 such that bary(v0,v1,s1,v2,s2) normalized
+                // has the desired areas.
+                double targetArea1 = Area * t1;
+                double targetArea2 = Area * t2;
+                NewtonSolver.Fun fun = new NewtonSolver.Fun() {
+                    public double[] f(double x[])
+                    {
+                        double s1 = x[0];
+                        double s2 = x[1];
+                        double v[] = VecMath.normalize(VecMath.bary(v0,v1,s1,v2,s2));
+                        double area1 = sphericalTriangleArea(v0,v,v2);
+                        double area2 = sphericalTriangleArea(v0,v1,v);
+                        return new double[] {area1, area2};
+                    }
+                };
+                double x[] = {t1,t2}; // initial guess
+                double y[] = {targetArea1, targetArea2};
+                NewtonSolver.solve(x, y, fun, 20);
+                double s1 = x[0];
+                double s2 = x[1];
+                double v[] = VecMath.normalize(VecMath.bary(v0,v1,s1,v2,s2));
+                return v;
+            }
+
             // PAINT/DISPLAY/DRAW
             public void paintComponent(java.awt.Graphics frontBufferGraphics)
             {
@@ -5046,6 +5089,132 @@ public class ShephardsPlayApplet
                                              vCoordHomo[3],
                                              3);
                             }
+                        }
+
+                        if (showTriangles == 3) // spherical barycentrics experiment
+                        {
+                            double wrapSphereRadius = 1./wrapSphereCurvature.get();
+                            FORIDOWN(iEdge, edges.size())
+                            {
+                                Mesh.Edge edge0 = (Mesh.Edge)edges.get(iEdge);
+                                Mesh.Edge edge1 = edge0.next();
+                                Mesh.Edge edge2 = edge1.next();
+                                if (edge2.next() == edge0)
+                                {
+                                    // it's a triangle
+                                    Mesh.Vertex vert0 = edge0.initialVertex();
+                                    Mesh.Vertex vert1 = edge1.initialVertex();
+                                    Mesh.Vertex vert2 = edge2.initialVertex();
+                                    double ppp[][] = {{vert0.x(),vert0.y(),vert0.z()+wrapSphereRadius},
+                                                      {vert1.x(),vert1.y(),vert1.z()+wrapSphereRadius},
+                                                      {vert2.x(),vert2.y(),vert2.z()+wrapSphereRadius}};
+                                    int N = 4;
+                                    int n = 8;
+                                    mg.setColor(new java.awt.Color(0,0,255));
+                                    FORI (iii, 3)
+                                    {
+                                        double p0[] = ppp[iii];
+                                        double p1[] = ppp[(iii+1)%3];
+                                        double p2[] = ppp[(iii+2)%3];
+                                        FORI (I, N)
+                                        {
+                                            double t0 = (double)I/(double)N;
+                                            double t1 = (1.-t0)/2.;
+                                            double t2 = (1.-t0)/2.;
+                                            double midpoint[] = sbary(p0, p1,t1, p2,t2);
+                                            double point1[] = sbary(p0, p1,1.-t0, p2, 0.);
+                                            double point2[] = sbary(p0, p1,0., p2, 1.-t0);
+                                            double normal[] = VecMath.normalize(VecMath.vxv3(VecMath.vmv(midpoint,point1),VecMath.vmv(point2,midpoint)));
+                                            double offset = VecMath.dot(normal, midpoint);
+                                            double r = Math.sqrt(1.-SQR(offset));
+                                            double basis[/*3*/][/*3*/] = {normal,new double[3], new double[3]};
+                                            VecMath.extendAndOrthogonalize(1,3,basis,basis);
+                                            double from[] = new double[3];
+                                            double to[] = new double[3];
+                                            double circleCenter[] = VecMath.vxs(normal, offset);
+                                            for (int i = 0; i < 360; ++i)
+                                            {
+                                                double ang0 = (i+0.)/360*(2*Math.PI);
+                                                double ang1 = (i+1.)/360*(2*Math.PI);
+                                                VecMath.vpsxvpsxv(from, circleCenter, r*Math.cos(ang0), basis[1], r*Math.sin(ang0), basis[2]);
+                                                VecMath.vpsxvpsxv(to, circleCenter, r*Math.cos(ang1), basis[1], r*Math.sin(ang1), basis[2]);
+                                                mg.drawLine(from[0],from[1],from[2]-wrapSphereRadius,
+                                                            to[0],to[1],to[2]-wrapSphereRadius,
+                                                            doAntiAliasing);
+                                            }
+
+
+                                            if (false)
+                                            {
+                                                mg.drawLine(midpoint[0],midpoint[1],midpoint[2]-wrapSphereRadius,
+                                                            point1[0],point1[1],point1[2]-wrapSphereRadius,
+                                                            doAntiAliasing);
+                                                mg.drawLine(midpoint[0],midpoint[1],midpoint[2]-wrapSphereRadius,
+                                                            point2[0],point2[1],point2[2]-wrapSphereRadius,
+                                                            doAntiAliasing);
+                                            }
+                                        }
+                                    }
+                                    mg.setColor(java.awt.Color.white);
+                                    FORI (iii, 3)
+                                    {
+                                        double p0[] = ppp[iii];
+                                        double p1[] = ppp[(iii+1)%3];
+                                        double p2[] = ppp[(iii+2)%3];
+                                        FORI (I, N+1)
+                                        FORI (J, I+1)
+                                        {
+                                            double p[] = sbary(p0,
+                                                               p1, (double)(N-I)/(double)N,
+                                                               p2, (double)J/(double)N);
+                                            mg.drawPoint(p[0],
+                                                         p[1],
+                                                         p[2] - wrapSphereRadius,
+                                                         2);
+                                        }
+                                        FORI (I, N+1)
+                                        FORI (j, n*I+1)
+                                        {
+                                            double p[] = sbary(p0,
+                                                               p1, (double)(N-I)/(double)N,
+                                                               p2, (double)j/(double)n/(double)N);
+                                            mg.drawPoint(p[0],
+                                                         p[1],
+                                                         p[2] - wrapSphereRadius,
+                                                         1);
+                                        }
+
+                                    }
+
+
+#ifdef NOTYET
+                                    // draw three circles that will intersect in a point, hopefully
+                                    double Area = sphericalTriangleArea(p0,p1,p2);
+                                    FORI (iii, 3)
+                                    {
+                                        double p0[] = ppp[iii];
+                                        double p1[] = ppp[(iii+1)%3];
+                                        double p2[] = ppp[(iii+2)%3];
+                                        double t0 = 1/3.;
+                                        double t1 = 1/3.;
+                                        double t2 = 1/3.;
+                                        double area0 = t0*Area;
+                                        double area1 = t1*Area;
+                                        double area2 = t2*Area;
+                                        double point1[] = VecMath.vxs(p1, -1.);
+                                        double point2[] = VecMath.vxs(p1, -2.);
+
+                                        // point0 will be on the perpendicular bisector of p1p2, with area area0
+                                        // area of a right spherical triangle
+                                        // with legs alpha,beta is:
+
+
+                                        double point3[] = ???
+                                    }
+#endif
+                                }
+                            }
+                            continue;
                         }
 
                         if (showTriangles >= 2)
@@ -6812,7 +6981,9 @@ public class ShephardsPlayApplet
 
                 double verts[][] = new double[nVerts][/*4*/];
                 double vertsForHull[][] = new double[nVerts][/*3*/];
-                double scratchVert4[] = new double[4];
+                double scratchVert4in[] = new double[4];
+                double scratchVert4out[] = new double[4];
+                double wrapMat[][] = wrapAroundSphereFlagValue ? null : getWrapAroundSphereMatrix(wrapSphereCurvatureValue, centerSphere);
                 FORI (iVert, nVerts)
                 {
                     Mesh.Vertex v = mesh.getVert(iVert);
@@ -6825,12 +6996,15 @@ public class ShephardsPlayApplet
                         // but it's more stable to project to the sphere
                         // (especially if there are verts at or near infinity
                         // on the paraboloid)
-                        wrapVertAroundSphere(v.X(),v.Y(),v.Z(),v.W(),
-                                             wrapSphereCurvatureValue,
-                                             scratchVert4);
-                        vertsForHull[iVert] = new double[]{scratchVert4[0]/scratchVert4[3],
-                                                           scratchVert4[1]/scratchVert4[3],
-                                                           scratchVert4[2]/scratchVert4[3]};
+                        scratchVert4in[0] = v.X();
+                        scratchVert4in[1] = v.Y();
+                        scratchVert4in[2] = v.Z();
+                        scratchVert4in[3] = v.W();
+                        VecMath.vxm(scratchVert4out,
+                                    scratchVert4in, wrapMat);
+                        vertsForHull[iVert] = new double[]{scratchVert4out[0]/scratchVert4out[3],
+                                                           scratchVert4out[1]/scratchVert4out[3],
+                                                           scratchVert4out[2]/scratchVert4out[3]};
                     }
                 }
 
@@ -14197,6 +14371,96 @@ OFF
         }
     } // SliderForFloat
 
+    //
+    // From Tom Davis's paper "Homogeneous Coordinates and Computer Graphics"
+    //
+
+    //
+    // Find homogeneous row matrix that takes
+    // an augmented identity matrix to (some multiples of) out:
+    //     1 0 0 0  p00 p01 p02 p03  =  k0 x0  k0 y0  k0 z0  k0 w0
+    //     0 1 0 0  p10 p11 p12 p13     k1 x1  k1 y1  k1 z1  k1 w1
+    //     0 0 1 0  p20 p21 p22 p23     k2 x2  k2 y2  k2 z2  k2 w2
+    //     0 0 0 1  p30 p31 p32 p33     k3 x3  k3 y3  k3 z3  k3 w3
+    //     1 1 1 1                         x4     y4     z4     w4
+    // Multiplying out the matrix on the left:
+    //           p00             p01             p02             p03
+    //           p10             p11             p12             p13
+    //           p20             p21             p22             p23
+    //           p30             p31             p32             p33
+    //     p00+p10+p20+p30 p01+p11+p21+p31 p02+p12+p22+p32 p03+p13+p23+p33
+    // Equating the top 4x4 matrix on left and right
+    // lets us express all the pij's in terms of k's and x,y,z's.
+    // Equating the last row on the left to the last row on the right:
+    //     k0 x0 + k1 x1 + k2 x2 + k3 x3 = x4
+    //     k0 y0 + k1 y1 + k2 y2 + k3 y3 = y4
+    //     k0 z0 + k1 z1 + k2 z2 + k3 z3 = z4
+    //     k0 w0 + k1 w1 + k2 w2 + k3 w3 = w4
+    // In other words,
+    //     x0 x1 x2 x3 * k0 = x4
+    //     y0 y1 y2 y3   k1   y4
+    //     z0 z1 z2 z3   k2   z4
+    //     w0 w1 w2 w3   k3   w4
+    // i.e.
+    //    k0 k1 k2 k3 * x0 y0 z0 w0 = x4 y4 z4 w4
+    //                  x1 y1 z1 w1
+    //                  x2 y2 z2 w2
+    //                  x3 y3 z3 w3
+    //
+    private static double[/*d+1*/][/*d+1*/] rowProjectiveMatrixFromTiePointsHelper(double out[/*d+2*/][/*d+1*/])
+    {
+        int d = out.length - 2;
+        double allButLastOut[][] = (double[][])Arrays.subarray(out, 0, d+1);
+        double lastOut[] = out[d+1];
+        double k[] = VecMath.vxinvm(lastOut, allButLastOut);
+        double answer[][] = new double[d+1][d+1];
+        FORI (i, d+1)
+            VecMath.sxv(answer[i], k[i], out[i]);
+        return answer;
+    } // rowProjectiveMatrixFromTiePointsHelper
+
+    public static double[/*d+1*/][/*d+1*/] rowProjectiveMatrixFromTiePoints(double in[/*d+2*/][/*d+1*/],
+                                                              double out[/*d+2*/][/*d+1*/])
+    {
+        // answer is P^-1 Q where
+        // P is matrix that takes "identity" to in
+        // Q is matrix that takes "identity" to out
+        double P[][] = rowProjectiveMatrixFromTiePointsHelper(in);
+        double Q[][] = rowProjectiveMatrixFromTiePointsHelper(out);
+        return VecMath.invmxm(P,Q);
+    } // projectiveMatrixFromTiePoints
+
+    private static void testRowProjectiveMatrixFromTiePoints(double in[][], double out[][])
+    {
+        System.out.println("===================================");
+        PRINTMAT(in);
+        PRINTMAT(out);
+        double answer[][] = rowProjectiveMatrixFromTiePoints(in, out);
+        PRINTMAT(answer);
+        double shouldBeMultiplesOfOut[][] = VecMath.mxm(in, answer);
+        PRINTMAT(shouldBeMultiplesOfOut);
+        double outNormalized[][] = new double[out.length][out.length-1];
+        double shouldBeOutNormalized[][] = new double[out.length][out.length-1];
+        FORI (i, out.length)
+        {
+            VecMath.normalize(outNormalized[i], out[i]);
+            VecMath.normalize(shouldBeOutNormalized[i], shouldBeMultiplesOfOut[i]);
+            if (VecMath.dot(outNormalized[i], shouldBeOutNormalized[i]) < 0.)
+                VecMath.sxv(shouldBeOutNormalized[i], -1., shouldBeOutNormalized[i]);
+        }
+        PRINTMAT(outNormalized);
+        PRINTMAT(shouldBeOutNormalized);
+        FORI (i, out.length)
+        {
+            double dist = VecMath.dist(outNormalized[i], shouldBeOutNormalized[i]);
+            PRINT(dist);
+            assert(dist <= 1e-12);
+        }
+        System.out.println("===================================");
+    } // testRowProjectiveMatrixFromTiePoints
+
+
+
 
     //
     // Main...
@@ -14206,6 +14470,70 @@ OFF
         System.out.println("in main");
         System.out.println("    java "+System.getProperty("java.version"));
 
+
+        if (false)
+        {
+            // test projectiveMatrixFromTiePoints
+            double I0[][] = {
+                {1},
+                {1},
+            };
+            double I1[][] = {
+                {1,0},
+                {0,1},
+                {1,1},
+            };
+            double I2[][] = {
+                {1,0,0},
+                {0,1,0},
+                {0,0,1},
+                {1,1,1},
+            };
+            double I3[][] = {
+                {1,0,0,0},
+                {0,1,0,0},
+                {0,0,1,0},
+                {0,0,0,1},
+                {1,1,1,1},
+            };
+            testRowProjectiveMatrixFromTiePoints(I0,I0);
+            testRowProjectiveMatrixFromTiePoints(I1,I1);
+            testRowProjectiveMatrixFromTiePoints(I2,I2);
+            testRowProjectiveMatrixFromTiePoints(I3,I3);
+            testRowProjectiveMatrixFromTiePoints(I0,VecMath.sxm(10.,I0));
+            testRowProjectiveMatrixFromTiePoints(I1,VecMath.sxm(10.,I1));
+            testRowProjectiveMatrixFromTiePoints(I2,VecMath.sxm(10.,I2));
+            testRowProjectiveMatrixFromTiePoints(I3,VecMath.sxm(10.,I3));
+            for (int d = 0; d <= 4; ++d)
+            {
+                double in[][] = new double[d+2][d+1];
+                double out[][] = new double[d+2][d+1];
+                FORI (i, in.length)
+                    VecMath.random(in[i]);
+                FORI (i, out.length)
+                    VecMath.random(out[i]);
+                testRowProjectiveMatrixFromTiePoints(in, out);
+            }
+
+            if (false) // this just doesn't work with tiepoints!  TODO: fails really ungracefully in luDecompose though, should fix that
+            {
+                // into an ellipse
+                double t = .5;
+                testRowProjectiveMatrixFromTiePoints(new double[][] {
+                    {-1,0,1},
+                    {0,0,1},
+                    {1,0,1},
+                    {0,1,1},
+                }, new double[][] {
+                    {-1,0,1},
+                    {t,0,1},
+                    {1,0,1},
+                    {t,1,1},
+                });
+            }
+
+            System.exit(0);
+        }
 
         if (false)
         {
