@@ -33,7 +33,8 @@ BUGS:
 
 
   Misc:
-    - nonuniform scaling seems wrong-- shouldn't depart from paraboloid, should it?
+    - non-uniform scaling seems broken, I must have messed up something about homogeneous
+    - nonuniform scaling seems wrong-- shouldn't depart from paraboloid, should it? oh it should I think, bleah
     - need to move iFacingPass more outer, so that all back is done before all front...
       and the horizon in between.  or else use zbuffer?
     - should ConvexHull use fuzzy equality testing in more places, to avoid twinkling on grid? (hmm, maybe twinkling on grid is actually useful in a way?)
@@ -1981,9 +1982,10 @@ public class ShephardsPlayApplet
             {
                 Mesh.Vertex vert = mesh.getVert(iVert);
 
-                vert.setXYZnaive(vert.Xnaive() * scaleX,
-                            vert.Ynaive() * scaleY,
-                            vert.Znaive() * scaleX * scaleY);
+                vert.setXYZW(vert.X() * scaleX,
+                             vert.Y() * scaleY,
+                             vert.Z() * scaleX * scaleY,
+                             vert.W());
                 assert(vert.momentAndArea == null);
             }
 
@@ -1999,9 +2001,10 @@ public class ShephardsPlayApplet
                 FORIDOWN(iDualVert, dualMesh.verts.size())
                 {
                     Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
-                    dualVert.setXYZnaive(dualVert.Xnaive() * scaleY, // converse
-                                    dualVert.Ynaive() * scaleX, // converse
-                                    dualVert.Znaive() * scaleX * scaleY);
+                    dualVert.setXYZW(dualVert.X() * scaleY, // converse
+                                     dualVert.Y() * scaleX, // converse
+                                     dualVert.Z() * scaleX * scaleY,
+                                     dualVert.W());
                     assert(dualVert.momentAndArea.length == 4);
 
                     // holy hell this is incredibly hard to get right!!
@@ -2013,23 +2016,6 @@ public class ShephardsPlayApplet
                     dualVert.momentAndArea[3] *= scaleX*scaleY;
 
                     dualVert.momentAndArea[2] += .5 * (SQR(dualVert.momentAndArea[0]) + SQR(dualVert.momentAndArea[1])); // convert from "actual"
-
-                    if (false)
-                    {
-                        if (iDualVert == 0)
-                        {
-                            PRINT(dualVert.Xnaive());
-                            PRINT(dualVert.Ynaive());
-                            PRINT(dualVert.Hnaive());
-                            PRINT(dualVert.momentAndArea[0]/dualVert.momentAndArea[3]);
-                            PRINT(dualVert.momentAndArea[1]/dualVert.momentAndArea[3]);
-                            PRINT(dualVert.momentAndArea[2]/SQR(dualVert.momentAndArea[3]));
-                            PRINT(dualVert.momentAndArea[0]);
-                            PRINT(dualVert.momentAndArea[1]);
-                            PRINT(dualVert.momentAndArea[2]);
-                            PRINT(dualVert.momentAndArea[3]);
-                        }
-                    }
                 }
 
                 // dual directions are now totally messed up... fix them
@@ -10782,7 +10768,7 @@ OFF
                 FORI (iVert, verts.size()) // beginning to end, so we choose first of equal
                 {
                     Vertex vert = (Vertex)verts.get(iVert);
-                    mg.xform(vert.Xnaive(), vert.Ynaive(), vert.Znaive(), scratch);
+                    mg.xform(vert.X(), vert.Y(), vert.Z(), vert.W(), scratch);
                     double thisDistSqrd = SQR(scratch[0]-x)
                                         + SQR(scratch[1]-y);
                     if (thisDistSqrd < closestDistSqrd)
@@ -13609,9 +13595,10 @@ OFF
                     if (!foundVert[iVert])
                     {
                         Mesh.Vertex vertI = mesh.getVert(iVert);
-                        if (EQ(image[0], vertI.Xnaive(), eps)
-                         && EQ(image[1], vertI.Ynaive(), eps)
-                         && EQ(image[2], vertI.Znaive(), eps))
+                        // TODO: compute in homo
+                        if (EQ(image[0], vertI.x(), eps)
+                         && EQ(image[1], vertI.y(), eps)
+                         && EQ(image[2], vertI.z(), eps))
                         {
                             foundVert[iVert] = true;
                             nFound++;
