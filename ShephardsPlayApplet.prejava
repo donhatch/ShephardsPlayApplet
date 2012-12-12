@@ -1766,7 +1766,11 @@ public class ShephardsPlayApplet
                 FORI (iVert, mesh.verts.size())
                 {
                     Mesh.Vertex vert = mesh.getVert(iVert);
-                    writer.println("" + vert.Xnaive() + " " + vert.Ynaive() + " " + vert.Hnaive());
+                    boolean saveHomo = true;
+                    if (saveHomo) // nonstandard
+                        writer.println("" + vert.X() + " " + vert.Y() + " " + vert.Z() + " " + vert.W());
+                    else
+                        writer.println("" + vert.x() + " " + vert.y() + " " + vert.h());
                 }
 
                 // If we're going to output net cuts,
@@ -1865,7 +1869,7 @@ public class ShephardsPlayApplet
                 int nVerts = Integer.parseInt(tokens[0]);
                 int nFaces = Integer.parseInt(tokens[1]);
                 int zero = Integer.parseInt(tokens[2]);
-                double verts[][] = new double[nVerts][3];
+                double verts[][] = new double[nVerts][/* 3 or 4 */];
                 int faces[][] = new int[nFaces][];
 
                 FORI (iVert, nVerts)
@@ -1877,12 +1881,14 @@ public class ShephardsPlayApplet
                     }
                     //tokens = line.trim().split("\\s+");
                     tokens = com.donhatchsw.compat.regex.split(line.trim(), "\\s+");
-                    if (tokens.length != 3)
+                    if (tokens.length != 3
+                     && tokens.length != 4)
                     {
                         reader.close();
-                        throw new Exception("expected 3 floating point numbers, got \""+line+"\"");
+                        throw new Exception("expected 3 or 4 floating point numbers, got \""+line+"\"");
                     }
-                    FORI (i, 3)
+                    verts[iVert] = new double[tokens.length];
+                    FORI (i, tokens.length)
                         verts[iVert][i] = Double.parseDouble(tokens[i]);
                 }
                 FORI (iFace, nFaces)
@@ -6803,8 +6809,8 @@ public class ShephardsPlayApplet
 
                     // plane is all points p such that p dot facePlaneNormal == facePlaneOffset
                     /*
-                    double facePlaneNormal[] = {dualVert.Xnaive(), dualVert.Ynaive(), 1.}; // not unit length
-                    double facePlaneOffset = -dualVert.Znaive(); // magic!  I don't know why, but this is the correct value
+                    double facePlaneNormal[] = {dualVert.x(), dualVert.y(), 1.}; // not unit length
+                    double facePlaneOffset = -dualVert.z(); // magic!  I don't know why, but this is the correct value
                     */
 
                     double facePlaneNormal[];
@@ -6865,7 +6871,8 @@ public class ShephardsPlayApplet
                         double area = 0.;
                         {
                             Mesh.Vertex v0 = edgeI.initialVertex();
-                            double v0coords[] = {v0.Xnaive(), v0.Ynaive(), v0.Znaive()};
+                            // XXX TODO: compute in homogeneous space
+                            double v0coords[] = {v0.x(), v0.y(), v0.z()};
                             double v1coords[] = new double[3]; // scratch for loop
                             double v2coords[] = new double[3]; // scratch for loop
                             double thisCentroid[] = new double[3]; // scratch for loop
@@ -6874,12 +6881,12 @@ public class ShephardsPlayApplet
                             {
                                 Mesh.Vertex v1 = edgeJ.initialVertex();
                                 Mesh.Vertex v2 = edgeJ.finalVertex();
-                                v1coords[0] = v1.Xnaive();
-                                v1coords[1] = v1.Ynaive();
-                                v1coords[2] = v1.Znaive();
-                                v2coords[0] = v2.Xnaive();
-                                v2coords[1] = v2.Ynaive();
-                                v2coords[2] = v2.Znaive();
+                                v1coords[0] = v1.x();
+                                v1coords[1] = v1.y();
+                                v1coords[2] = v1.z();
+                                v2coords[0] = v2.x();
+                                v2coords[1] = v2.y();
+                                v2coords[2] = v2.z();
                                 VecMath.vmv(v1coords, v1coords, v0coords);
                                 VecMath.vmv(v2coords, v2coords, v0coords);
                                 VecMath.vxv3(thisWeightedNormal, v1coords, v2coords);
@@ -7653,6 +7660,7 @@ public class ShephardsPlayApplet
                 {
                     // randomly homogeneous scale half the verts by 2.
                     // this shouldn't change anything.
+                    System.out.println("randomly homogeneous scaling about half the verts by 2");
                     int nVerts = mesh.verts.size();
                     FORI (iVert, nVerts)
                     {
@@ -11661,10 +11669,10 @@ OFF
                                    vertPosition[1],  // y
                                    vertPosition[2]); // h
                     else if (vertPosition.length == 4)
-                        new Vertex(vertPosition[0],  // x
-                                   vertPosition[1],  // y
-                                   vertPosition[2],  // z
-                                   vertPosition[3]); // w
+                        new Vertex(vertPosition[0],  // X
+                                   vertPosition[1],  // Y
+                                   vertPosition[2],  // Z
+                                   vertPosition[3]); // W
                     else
                         assert(false);
                 }
@@ -11848,9 +11856,10 @@ OFF
                     Mesh.Vertex v1 = primalEdge.initialVertex();
                     Mesh.Vertex v2 = primalEdge.finalVertex();
 
-                    SolveForDualMomentAndArea(v0.Xnaive(), v0.Ynaive(), v0.Hnaive(),
-                                              v1.Xnaive(), v1.Ynaive(), v1.Hnaive(),
-                                              v2.Xnaive(), v2.Ynaive(), v2.Hnaive(),
+                    // XXX TODO: do this in homogeneous coords!
+                    SolveForDualMomentAndArea(v0.x(), v0.y(), v0.h(),
+                                              v1.x(), v1.y(), v1.h(),
+                                              v2.x(), v2.y(), v2.h(),
                                               triMomentAndArea,
                                               wrapAroundSphereFlagValue,
                                               wrapSphereCurvatureValue);
@@ -11944,13 +11953,14 @@ OFF
                 {
                     // it's a usual edge... get the direction by subtracting vertices
                     // XXX but this is not robust? but it may be better in some senses, especially if we're doing non-triangles too
+                    // XXX TODO: compute in homogeneous space
                     dualEdge.direction = VecMath.normalize(VecMath.vmv(
-                        new double[]{dualEdge.finalVertex().Xnaive(),
-                                     dualEdge.finalVertex().Ynaive(),
-                                     dualEdge.finalVertex().Znaive()},
-                        new double[]{dualEdge._initialVertex.Xnaive(),
-                                     dualEdge._initialVertex.Ynaive(),
-                                     dualEdge._initialVertex.Znaive()}));
+                        new double[]{dualEdge.finalVertex().x(),
+                                     dualEdge.finalVertex().y(),
+                                     dualEdge.finalVertex().z()},
+                        new double[]{dualEdge._initialVertex.x(),
+                                     dualEdge._initialVertex.y(),
+                                     dualEdge._initialVertex.z()}));
                 }
                 else
                 {
@@ -11973,8 +11983,9 @@ OFF
                     Mesh.Edge primalEdge = primal.getEdge(iEdge);
                     Mesh.Vertex v0 = primalEdge.initialVertex();
                     Mesh.Vertex v1 = primalEdge.finalVertex();
-                    double n0[] = {v0.Xnaive(), v0.Ynaive(), wrapAroundSphereFlagValue ? v0.Znaive() : 1};
-                    double n1[] = {v1.Xnaive(), v1.Ynaive(), wrapAroundSphereFlagValue ? v1.Znaive() : 1};
+                    // XXX TODO: compute in homogeneous space
+                    double n0[] = {v0.x(), v0.y(), wrapAroundSphereFlagValue ? v0.z() : 1};
+                    double n1[] = {v1.x(), v1.y(), wrapAroundSphereFlagValue ? v1.z() : 1};
                     dualEdge.direction = VecMath.normalize(VecMath.vxv3(n0,n1));
                 }
 
