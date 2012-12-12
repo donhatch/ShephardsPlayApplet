@@ -43,8 +43,8 @@ CLASSES = \
         MyGraphics.class \
         MyGraphics3D.class \
         Misc.class \
-        ShephardsPlayApplet.class \
         Surface.class \
+        ShephardsPlayApplet.class \
         GenOff.class \
         PoincareDiskIsometry.class \
         PoincareHalfSpaceIdealCenter.class \
