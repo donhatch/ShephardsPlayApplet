@@ -24,8 +24,8 @@ public class MyGraphics3D extends MyGraphics
     {
         double q0[] = new double[3];
         double q1[] = new double[3];
-        double depth0 = xform(x0/w0,y0/w0,z0/w0, q0); // TODO: don't divide by w!
-        double depth1 = xform(x1/w1,y1/w1,z1/w1, q1); // TODO: don't divide by w!
+        double depth0 = xform(x0,y0,z0,w0, q0);
+        double depth1 = xform(x1,y1,z1,w1, q1);
 
         // clip to 1e-3 in front of eye
         double eps = 1e-3;
@@ -35,10 +35,10 @@ public class MyGraphics3D extends MyGraphics
                 return;
             // clip whichever one has depth < eps
             double t = (eps - depth0) / (depth1 - depth0);
-            double x = LERP(x0, x1, t);
-            double y = LERP(y0, y1, t);
-            double z = LERP(z0, z1, t);
-            double depth = xform(x,y,z, depth0 < eps ? q0 : q1);
+            double x = LERP(x0/w0, x1/w1, t);
+            double y = LERP(y0/w0, y1/w1, t);
+            double z = LERP(z0/w0, z1/w1, t);
+            double depth = xform(x,y,z,1., depth0 < eps ? q0 : q1);
         }
 
         super.drawLine(q0[0], q0[1],
@@ -57,7 +57,7 @@ public class MyGraphics3D extends MyGraphics
     public void drawPoint(double x, double y, double z, double w, int nPixels)
     {
         double q[] = new double[3];
-        double depth = xform(x/w,y/w,z/w, q); // TODO: don't divide by w!
+        double depth = xform(x,y,z,w, q); // TODO: don't divide by w!
         if (depth <= 0.)
             return; // culled by eye plane
 
@@ -67,16 +67,16 @@ public class MyGraphics3D extends MyGraphics
     {
         drawPoint(x, y, z, 1., nPixels);
     }
-    public void drawString(String s, double x, double y, double z,
+    public void drawString(String s, double x, double y, double z, double w,
                                      double xJustify, // -1,0,1 -> L,C,R
                                      double yJustify) // -1,0,1 -> T,C,B
     {
         double q[] = new double[3];
-        xform(x,y,z, q);
+        xform(x,y,z,w, q);
         super.drawString(s, q[0], q[1], xJustify, yJustify);
     }
 
-    public double xform(double x, double y, double z, double out[/*2 or 3*/])
+    public double xform(double x, double y, double z, double w, double out[/*2 or 3 or 4*/])
     {
         // this gets called zillions of times, so use scratch arrays...
         double in[] = scratch0;
@@ -84,9 +84,9 @@ public class MyGraphics3D extends MyGraphics
         in[0] = x;
         in[1] = y;
         in[2] = z;
-        in[3] = 1.;
+        in[3] = w;
         VecMath.vxm(out4, in, xformMat);
-        double w = out4[3];
+        w = out4[3];
         if (w == 1.)
             VecMath.copyvec(out.length, out, out4);
         else
