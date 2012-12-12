@@ -1768,7 +1768,7 @@ public class ShephardsPlayApplet
                 {
                     Mesh.Vertex vert = mesh.getVert(iVert);
                     boolean saveHomo = true;
-                    if (saveHomo) // nonstandard
+                    if (saveHomo) // nonstandard .off file, 4 coords per vertex
                         writer.println("" + vert.X() + " " + vert.Y() + " " + vert.Z() + " " + vert.W());
                     else
                         writer.println("" + vert.x() + " " + vert.y() + " " + vert.h());
@@ -1989,7 +1989,7 @@ public class ShephardsPlayApplet
                 assert(vert.momentAndArea == null);
             }
 
-            if (scaleX != scaleY && doContinuouslyDelaunayize.get()) // no need to re-delaunayize if uniform scale
+            if (scaleX != scaleY && doContinuouslyDelaunayize.get()) // no need to re-delaunayize if uniform scale   TODO: actually if everything's working right, shouldn't have to do this anyway!?
             {
                 delaunayize();
                 dirtyDualMesh();
@@ -4362,14 +4362,14 @@ public class ShephardsPlayApplet
                                     nextEdge.direction != null
                                   ? Math.atan2(nextEdge.direction[1],
                                                nextEdge.direction[0])
-                                  : Math.atan2(nextEdge.finalVertex().Ynaive()-nextEdge.initialVertex().Ynaive(),
-                                               nextEdge.finalVertex().Xnaive()-nextEdge.initialVertex().Xnaive());
+                                  : Math.atan2(nextEdge.finalVertex().y()-nextEdge.initialVertex().y(),
+                                               nextEdge.finalVertex().x()-nextEdge.initialVertex().x());
                                 double thisAng =
                                     thisEdge.direction != null
                                   ? Math.atan2(thisEdge.direction[1],
                                                thisEdge.direction[0])
-                                  : Math.atan2(thisEdge.finalVertex().Ynaive()-thisEdge.initialVertex().Ynaive(),
-                                               thisEdge.finalVertex().Xnaive()-thisEdge.initialVertex().Xnaive());
+                                  : Math.atan2(thisEdge.finalVertex().y()-thisEdge.initialVertex().y(),
+                                               thisEdge.finalVertex().x()-thisEdge.initialVertex().x());
                                 double thisGap = nextAng - thisAng;
                                 if (isDualMesh)
                                     thisGap = -thisGap;
@@ -4392,13 +4392,16 @@ public class ShephardsPlayApplet
 
                     if (true)
                     {
+                        //
+                        // Vertex labels
+                        //
                         ArrayList verts = mesh.verts;
                         FORIDOWN (iVert, verts.size())
                         {
                             Mesh.Vertex vert = (Mesh.Vertex)verts.get(iVert);
-                            double x = vert.Xnaive();
-                            double y = vert.Ynaive();
-                            double z = vert.Znaive();
+                            double x = vert.x();
+                            double y = vert.y();
+                            double z = vert.z();
                             double ang;
                             if (trySmartVertexAngles)
                             {
@@ -4421,8 +4424,11 @@ public class ShephardsPlayApplet
                         }
                     }
 
-                    if (true) // edges are too busy, maybe should be separate option
+                    if (true) // edges are sometimes too busy, maybe should be separate option
                     {
+                        //
+                        // Edge labels
+                        //
                         ArrayList edges = mesh.edges;
                         FORIDOWN (iEdge, edges.size())
                         {
@@ -4444,12 +4450,12 @@ public class ShephardsPlayApplet
                             else
                             {
                                 double rayLength = 1.;
-                                x0 = (v0!=null ? v0.Xnaive() : v1.Xnaive() - edge.direction[0]*rayLength);
-                                y0 = (v0!=null ? v0.Ynaive() : v1.Ynaive() - edge.direction[1]*rayLength);
-                                z0 = (v0!=null ? v0.Znaive() : v1.Znaive() - edge.direction[2]*rayLength);
-                                x1 = (v1!=null ? v1.Xnaive() : v0.Xnaive() + edge.direction[0]*rayLength);
-                                y1 = (v1!=null ? v1.Ynaive() : v0.Ynaive() + edge.direction[1]*rayLength);
-                                z1 = (v1!=null ? v1.Znaive() : v0.Znaive() + edge.direction[2]*rayLength);
+                                x0 = (v0!=null ? v0.x() : v1.x() - edge.direction[0]*rayLength);
+                                y0 = (v0!=null ? v0.y() : v1.y() - edge.direction[1]*rayLength);
+                                z0 = (v0!=null ? v0.z() : v1.z() - edge.direction[2]*rayLength);
+                                x1 = (v1!=null ? v1.x() : v0.x() + edge.direction[0]*rayLength);
+                                y1 = (v1!=null ? v1.y() : v0.y() + edge.direction[1]*rayLength);
+                                z1 = (v1!=null ? v1.z() : v0.z() + edge.direction[2]*rayLength);
                             }
 
                             double x = (x0+x1)/2;
@@ -7652,7 +7658,7 @@ public class ShephardsPlayApplet
                 {
                     // randomly homogeneous scale half the verts by 2.
                     // this shouldn't change anything.
-                    System.out.println("randomly homogeneous scaling about half the verts by 2");
+                    System.out.println("randomly homogeneous scaling about half the grid verts by 2");
                     int nVerts = mesh.verts.size();
                     FORI (iVert, nVerts)
                     {
@@ -10036,7 +10042,7 @@ OFF
                 public double x() { return _X/_W; }
                 public double y() { return _Y/_W; }
                 public double z() { return _Z/_W; }
-                public double h() { return _H/_W; }
+                public double h() { return _H/SQR(_W); } // seems to work, not quite sure of the logic
 
 
 #ifdef NEVER
@@ -10200,6 +10206,13 @@ OFF
                     return W();
                 }
 
+                public String toString()
+                {
+                    // not too attached to this format
+                    return "v"+myIndex()+" = ("+X()+" "+Y()+" "+Z()+" "+W()+" H="+H()+")" 
+                         + " = "
+                         + "("+x()+" "+y()+" "+z()+" h="+h()+")" ;
+                }
             } // public class Vertex
             public class Edge
             {
@@ -11776,7 +11789,7 @@ OFF
                                         boolean wrapAroundSphereFlagValue,
                                         double wrapSphereCurvatureValue)
         {
-            System.out.println("    in makeDualMesh(wrapAroundSphereFlagValue="+wrapAroundSphereFlagValue+")");
+            //System.out.println("    in makeDualMesh(wrapAroundSphereFlagValue="+wrapAroundSphereFlagValue+")");
             Mesh dual = new Mesh();
             int nEdges = primal.edges.size();
             FORI (iEdge, nEdges)
@@ -11923,7 +11936,7 @@ OFF
             // Give each dual edge a direction.
             //
             fixDualDirections(primal, dual, wrapAroundSphereFlagValue, wrapSphereCurvatureValue);
-            System.out.println("    out makeDualMesh(wrapAroundSphereFlagValue="+wrapAroundSphereFlagValue+")");
+            //System.out.println("    out makeDualMesh(wrapAroundSphereFlagValue="+wrapAroundSphereFlagValue+")");
             return dual;
         } // makeDualMesh()
 
@@ -14619,6 +14632,7 @@ OFF
         frame.setSize(1001, 701);
         frame.setSize(1001, 600);
         frame.setSize(600, 550);
+        frame.setSize(1001, 550);
         frame.setVisible(true);
 
         // why can't we get here in any toolkit ever?
