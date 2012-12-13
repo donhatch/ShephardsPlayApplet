@@ -5,6 +5,10 @@ and produce the dual diagrams with heights.
 
 BUGS:
   Gui-related:
+    - maybe checkboxes next to the sliders for:
+        showGridFlag
+        showBackFaces
+        wrapAroundSphere
     - I hear Swing double-buffers by default so I don't need to
        - ARGH! can't just rip it out, the magnifying glass depends on it!
     - need to put stuff in event thread? not sure
@@ -12,6 +16,7 @@ BUGS:
     - use swing sliders instead of scrollbars
 
   Wrap-sphere related:
+    - backfacing computation must not be right-- symmetry 3,4 or something, some backfacing tries are shown with frontfacing color
     - symmetry averaging is wrong on sphere--- it shrinks towards sphere center.
       need a height-above-sphere-preserving average.
     - for Surface, most important thing is that offset is right-- should adjust final result to make it right
@@ -30,6 +35,7 @@ BUGS:
 
 
   Misc:
+    - polyhedral (q!=1) symmetries aren't working during dragging when on paraboloid. (they work on mouse down, but not drag)
     - when switching symmetry, map the fundamental region (schwarz triangle)
     - non-uniform scaling seems broken, I must have messed up something about homogeneous
     - think about whether current non-uniform scaling is more useful than keeping primal on sphere and re-computing dual, and/or whether both are useful
@@ -65,6 +71,7 @@ TO DO:
     - really need a concept of separate viewing matrix,
       that can be changed without accumulating rounding error in the verts
     - thank about attaching a listener to a tuple of values, so they just get one callback when multiple values changed?
+    - also get-on-demand (so can make a push-dirty pull-clean dag)
     - don't draw edges if dihedral angle is flat?  would prevent flicker
     - make verts smaller when not part of convex hull?
     - can we make ConvexHull incremental? might be useful when just dragging a single point.
@@ -652,6 +659,9 @@ public class ShephardsPlayApplet
                 }},
             };
 
+            final java.awt.Component theGridBrightnessLabel = new JLabel("Grid brightness:");
+            final java.awt.Component theGridBrightnessTextField = new TextFieldForFloat(gridBrightness);
+            final java.awt.Component theGridBrightnessSlider = new SliderForFloat(gridBrightness);
             final java.awt.Component theBackfaceBrightnessLabel = new JLabel("Backface brightness:");
             final java.awt.Component theBackfaceBrightnessTextField = new TextFieldForFloat(backfaceBrightness);
             final java.awt.Component theBackfaceBrightnessSlider = new SliderForFloat(backfaceBrightness);
@@ -688,12 +698,16 @@ public class ShephardsPlayApplet
             }}, stretchxy);
 
             contentPane.add(new JTablePanel() {{
+                add(theGridBrightnessLabel);
+                add(theGridBrightnessTextField);
+                add(theGridBrightnessSlider, stretchx);
+                advanceRow();
                 add(theBackfaceBrightnessLabel);
-                add(theBackfaceBrightnessTextField, stretchx);
+                add(theBackfaceBrightnessTextField);
                 add(theBackfaceBrightnessSlider, stretchx);
                 advanceRow();
                 add(theWrapRadiusLabel);
-                add(theWrapRadiusTextField, stretchx);
+                add(theWrapRadiusTextField);
                 add(theWrapRadiusSlider, stretchx);
             }}, stretchx);
 
@@ -1639,6 +1653,15 @@ public class ShephardsPlayApplet
             }
 
 
+            gridBrightness.addListener(gridBrightnessListener = new Listenable.Listener() {
+                public void valueChanged()
+                {
+                    System.out.println("in gridBrightness valueChanged");
+                    PRINT(gridBrightness.get());
+                    theCanvas.repaint();
+                    System.out.println("out gridBrightness valueChanged");
+                }
+            });
             backfaceBrightness.addListener(backfaceBrightnessListener = new Listenable.Listener() {
                 public void valueChanged()
                 {
@@ -4904,6 +4927,8 @@ public class ShephardsPlayApplet
                 {
                     // experiment with grids... not sure exactly what I want yet
 
+                    double gridBrightnessValue = gridBrightness.get();
+
                     double xmax = size.width/minSize;
                     double ymax = size.height/minSize;
                     
@@ -4918,8 +4943,7 @@ public class ShephardsPlayApplet
                     {
                         // color for grid and circle
                         {
-                            // tweaked til I like it...
-                            double start = .09;
+                            double start = gridBrightnessValue;
                             double speed = 1./3.;
                             float luminance = (float)(start * Math.pow(.5, iLevel*speed));
                             mg.setColor(new java.awt.Color(luminance,luminance,luminance));
@@ -4971,9 +4995,6 @@ public class ShephardsPlayApplet
 
                     int nPoints = 360;
                     double horizonPoints[][] = theSurface.horizon(0.,eyeInLocalSpace,nPoints);
-
-                    float luminance = 0.5f; // currently grid is .09f
-                    mg.setColor(new java.awt.Color(luminance,luminance,luminance));
                     mg.setColor(java.awt.Color.red);
                     FORI (iPoint, horizonPoints.length)
                         mg.drawPoint(horizonPoints[iPoint][0],
@@ -14062,11 +14083,12 @@ OFF
         private int[] selectedDualVertIndices = {};
         private Mesh meshOfSelectedTris = mesh; // possibly ill-advised attempt to invalidate selectedTris and selectedDualVertIndices automatically so people can just reset mesh without having to remember
 
-        // XXX is there an easier way to associate that stuff with a certain object? maybe be able to just pass this object to addListener, and make it automatically remove the listener when I go away?
+        // XXX is there an easier way to associate that stuff with a certain object? maybe be able to just pass this object to addListener, and make it automatically remove the listener when I go away?  OH, just add it as a member variable in the object, I think?
         private Listenable.Listener doContinuouslyDelaunayizeListener = null;
         private Listenable.Listener wrapAroundSphereFlagListener = null;
         private Listenable.Listener wrapSphereCurvatureListener = null;
         private Listenable.Listener wrapSphereSymbolicRadiusListener = null;
+        private Listenable.Listener gridBrightnessListener = null;
         private Listenable.Listener backfaceBrightnessListener = null;
         private Listenable.Listener doOptimizeListener = null;
         private Listenable.Listener optimizationTypeIndexListener = null;
@@ -14159,6 +14181,7 @@ OFF
         private int highlightedDualEdgeIndex = -1;
         private boolean showOriginFlag = false;
         private boolean showGridFlag = true;
+        private Listenable.Double gridBrightness = new Listenable.Double(0.,1.,.09); // tweaked til I like it
         private boolean showSmallestEnclosingDisk = false; // no way to change, currently
         private double gridSnapQuantum = 1./64; // no way to change, currently
         private boolean thermometerIsLinear = false;
@@ -14414,6 +14437,7 @@ OFF
         }
         public java.awt.Dimension getPreferredSize()
         {
+            System.out.println("in TextFieldForFloat.getPreferredSize()");
             // default seems taller than necessary
             // on my computer... and in recent VMs it's even worse
             // (changed from 29 to 31).
@@ -14424,6 +14448,12 @@ OFF
             //System.out.println("textfield.super.preferredSize() = "+preferredSize);
             if (true)
                 preferredSize.height -= 2;
+
+            // XXX another hack, wtf?
+            if (true)
+                preferredSize.width = 100;
+
+            System.out.println("out TextFieldForFloat.getPreferredSize(), returning "+preferredSize);
             return preferredSize;
         }
         // weird, the following is called during horizontal shrinking
@@ -14431,10 +14461,17 @@ OFF
         // then it looks wrong when shrinking.  what a hack...
         public java.awt.Dimension getMinimumSize()
         {
+            System.out.println("in TextFieldForFloat.getMinimumSize()");
             java.awt.Dimension minimumSize = super.getMinimumSize();
             //System.out.println("textfield.super.minimumSize() = "+minimumSize);
             if (true)
                 minimumSize.height -= 2;
+
+            // XXX another hack, wtf?
+            if (true)
+                minimumSize.width = 100;
+
+            System.out.println("out TextFieldForFloat.getMinimumSize(), returning "+minimumSize);
             return minimumSize;
         }
     } // TextFieldForFloat
