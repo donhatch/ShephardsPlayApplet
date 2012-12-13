@@ -5188,197 +5188,21 @@ public class ShephardsPlayApplet
                     vertCoordsHomo[iVert] = new double[]{v.X(), v.Y(), v.Z(), v.W()};
                 }
 
-                if (showTriangles >= 1) // 0=off, 1=verts, 2 = verts and tris
-                {
-                    int frontBrightness = 240;
-                    int backBrightness = (int)(backfaceBrightness.get() * frontBrightness);
-                    java.awt.Color frontColor = new java.awt.Color(frontBrightness,frontBrightness,frontBrightness);
-                    java.awt.Color backColor = new java.awt.Color(backBrightness,backBrightness,backBrightness);
-
-                    ArrayList verts = mesh.verts;
-                    ArrayList edges = mesh.edges;
-
-                    FORI (iFacingPass, 2)
-                    {
-                        if (iFacingPass == 0) // back faces
-                            if (backBrightness <= 0)
-                                continue;
-                            else
-                                mg.setColor(backColor);
-                        else
-                            mg.setColor(frontColor);
-
-
-                        FORI (iVert, nVerts)
-                        {
-                            if ((vertFacings[iVert]!=FACING_BACK||iVert==beingDraggedVertIndex) == (iFacingPass==1))
-                            {
-                                double vCoordHomo[] = vertCoordsHomo[iVert];
-                                mg.drawPoint(vCoordHomo[0],
-                                             vCoordHomo[1],
-                                             vCoordHomo[2],
-                                             vCoordHomo[3],
-                                             3);
-                            }
-                        }
-
-                        if (showTriangles == 3) // spherical barycentrics experiment
-                        {
-                            double wrapSphereRadius = 1./wrapSphereCurvature.get();
-                            FORIDOWN(iEdge, edges.size())
-                            {
-                                Mesh.Edge edge0 = (Mesh.Edge)edges.get(iEdge);
-                                Mesh.Edge edge1 = edge0.next();
-                                Mesh.Edge edge2 = edge1.next();
-                                if (edge2.next() == edge0)
-                                {
-                                    // it's a triangle
-                                    Mesh.Vertex vert0 = edge0.initialVertex();
-                                    Mesh.Vertex vert1 = edge1.initialVertex();
-                                    Mesh.Vertex vert2 = edge2.initialVertex();
-                                    double ppp[][] = {{vert0.x(),vert0.y(),vert0.z()+wrapSphereRadius},
-                                                      {vert1.x(),vert1.y(),vert1.z()+wrapSphereRadius},
-                                                      {vert2.x(),vert2.y(),vert2.z()+wrapSphereRadius}};
-                                    int N = 4;
-                                    int n = 8;
-                                    mg.setColor(new java.awt.Color(0,0,255));
-                                    FORI (iii, 3)
-                                    {
-                                        double p0[] = ppp[iii];
-                                        double p1[] = ppp[(iii+1)%3];
-                                        double p2[] = ppp[(iii+2)%3];
-                                        FORI (I, N)
-                                        {
-                                            double t0 = (double)I/(double)N;
-                                            double t1 = (1.-t0)/2.;
-                                            double t2 = (1.-t0)/2.;
-                                            double midpoint[] = sbary(p0, p1,t1, p2,t2);
-                                            double point1[] = sbary(p0, p1,1.-t0, p2, 0.);
-                                            double point2[] = sbary(p0, p1,0., p2, 1.-t0);
-                                            double normal[] = VecMath.normalize(VecMath.vxv3(VecMath.vmv(midpoint,point1),VecMath.vmv(point2,midpoint)));
-                                            double offset = VecMath.dot(normal, midpoint);
-                                            double r = Math.sqrt(1.-SQR(offset));
-                                            double basis[/*3*/][/*3*/] = {normal,new double[3], new double[3]};
-                                            VecMath.extendAndOrthogonalize(1,3,basis,basis);
-                                            double from[] = new double[3];
-                                            double to[] = new double[3];
-                                            double circleCenter[] = VecMath.vxs(normal, offset);
-                                            for (int i = 0; i < 360; ++i)
-                                            {
-                                                double ang0 = (i+0.)/360*(2*Math.PI);
-                                                double ang1 = (i+1.)/360*(2*Math.PI);
-                                                VecMath.vpsxvpsxv(from, circleCenter, r*Math.cos(ang0), basis[1], r*Math.sin(ang0), basis[2]);
-                                                VecMath.vpsxvpsxv(to, circleCenter, r*Math.cos(ang1), basis[1], r*Math.sin(ang1), basis[2]);
-                                                mg.drawLine(from[0],from[1],from[2]-wrapSphereRadius,
-                                                            to[0],to[1],to[2]-wrapSphereRadius,
-                                                            doAntiAliasing);
-                                            }
-
-
-                                            if (false)
-                                            {
-                                                mg.drawLine(midpoint[0],midpoint[1],midpoint[2]-wrapSphereRadius,
-                                                            point1[0],point1[1],point1[2]-wrapSphereRadius,
-                                                            doAntiAliasing);
-                                                mg.drawLine(midpoint[0],midpoint[1],midpoint[2]-wrapSphereRadius,
-                                                            point2[0],point2[1],point2[2]-wrapSphereRadius,
-                                                            doAntiAliasing);
-                                            }
-                                        }
-                                    }
-                                    mg.setColor(java.awt.Color.white);
-                                    FORI (iii, 3)
-                                    {
-                                        double p0[] = ppp[iii];
-                                        double p1[] = ppp[(iii+1)%3];
-                                        double p2[] = ppp[(iii+2)%3];
-                                        FORI (I, N+1)
-                                        FORI (J, I+1)
-                                        {
-                                            double p[] = sbary(p0,
-                                                               p1, (double)(N-I)/(double)N,
-                                                               p2, (double)J/(double)N);
-                                            mg.drawPoint(p[0],
-                                                         p[1],
-                                                         p[2] - wrapSphereRadius,
-                                                         2);
-                                        }
-                                        FORI (I, N+1)
-                                        FORI (j, n*I+1)
-                                        {
-                                            double p[] = sbary(p0,
-                                                               p1, (double)(N-I)/(double)N,
-                                                               p2, (double)j/(double)n/(double)N);
-                                            mg.drawPoint(p[0],
-                                                         p[1],
-                                                         p[2] - wrapSphereRadius,
-                                                         1);
-                                        }
-
-                                    }
-
-
-#ifdef NOTYET
-                                    // draw three circles that will intersect in a point, hopefully
-                                    double Area = sphericalTriangleArea(p0,p1,p2);
-                                    FORI (iii, 3)
-                                    {
-                                        double p0[] = ppp[iii];
-                                        double p1[] = ppp[(iii+1)%3];
-                                        double p2[] = ppp[(iii+2)%3];
-                                        double t0 = 1/3.;
-                                        double t1 = 1/3.;
-                                        double t2 = 1/3.;
-                                        double area0 = t0*Area;
-                                        double area1 = t1*Area;
-                                        double area2 = t2*Area;
-                                        double point1[] = VecMath.vxs(p1, -1.);
-                                        double point2[] = VecMath.vxs(p1, -2.);
-
-                                        // point0 will be on the perpendicular bisector of p1p2, with area area0
-                                        // area of a right spherical triangle
-                                        // with legs alpha,beta is:
-
-
-                                        double point3[] = ???
-                                    }
-#endif
-                                }
-                            }
-                            continue;
-                        }
-
-                        if (showTriangles >= 2)
-                        {
-
-                            FORIDOWN (iWholeEdge, edges.size()/2)
-                            {
-                                if ((edgeFacings[iWholeEdge*2]!=FACING_BACK) == (iFacingPass==1))
-                                {
-                                    Mesh.Edge edge = (Mesh.Edge)edges.get(iWholeEdge*2);
-                                    double v0[] = vertCoordsHomo[edge.initialVertex().myIndex()];
-                                    double v1[] = vertCoordsHomo[edge.finalVertex().myIndex()];
-                                    mg.drawLine(v0[0],v0[1],v0[2],v0[3],
-                                                v1[0],v1[1],v1[2],v1[3],
-                                                doAntiAliasing);
-                                }
-                            }
-                        }
-                    }
-                }
-
-
-
-
-
-
-
+                // bunch of stuff that only gets set if drawing dual diagram...
+                java.awt.Color dualVertColors[] = null;
+                java.awt.Color dualEdgeColors[] = null;
+                double avg[] = null; // we set it to non-null if drawing one
+                double lagoonCenter[] = null; // we set it to non-null if drawing one
+                double momentAndWeightStrictlyBelowEachDualVertex[][] = null;
+                boolean dualEdgeIsOffBalanceCut[] = null;
 
                 int nOffBalanceCuts = -1;
                 int nNonZeroLengthWholeEdges = -1;
                 int nNonZeroLengthOffBalanceCuts = -1;
 
-                if (true)
+                boolean drawDualDiagramFlag = true; // hard-coded
+
+                if (drawDualDiagramFlag)
                 {
                     //
                     // Compute and store the dual mesh if necessary
@@ -5449,10 +5273,10 @@ public class ShephardsPlayApplet
                         if (selectedDualVertIndices[i] != -1)
                             isSelectedDualVert[selectedDualVertIndices[i]] = true;
 
-                    java.awt.Color dualVertColors[] = new java.awt.Color[dualMesh.verts.size()];
+                    dualVertColors = new java.awt.Color[dualMesh.verts.size()];
                     FORI (i, dualVertColors.length)
                         dualVertColors[i] = dualColor; // default-- may change if special
-                    java.awt.Color dualEdgeColors[] = new java.awt.Color[dualMesh.edges.size()];
+                    dualEdgeColors = new java.awt.Color[dualMesh.edges.size()];
                     FORI (i, dualEdgeColors.length)
                         dualEdgeColors[i] = dualColor; // default-- may change if special
 
@@ -5460,7 +5284,6 @@ public class ShephardsPlayApplet
                     // Set color for selected dual vertices,
                     // and compute their center of curvature
                     //
-                    double avg[] = null;
                     {
                         double momentAndAreaSum[] = new double[4]; // zeros
                         FORI (i, selectedDualVertIndices.length)
@@ -5488,9 +5311,6 @@ public class ShephardsPlayApplet
                     // For now, sweep upwards,
                     // color good edges green and off-balance ones red.
                     //
-                    double momentAndWeightStrictlyBelowEachDualVertex[][] = null;
-                    boolean dualEdgeIsOffBalanceCut[] = null;
-                    double lagoonCenter[] = null; // we set it to non-null if drawing one
 
                     if (showNetFlag.get())
                     {
@@ -6081,147 +5901,325 @@ public class ShephardsPlayApplet
                             }
                         }
                     } // if (!showNetFlag)
+                } // if (drawDualDiagramFlag)
 
 
-
-                    //
-                    // Draw dual edges, in chosen colors
-                    // 
-
-                    java.awt.Color darkBlue = new java.awt.Color(0.f,0.f,1/4.f);
-                    //java.awt.Color darkBlue = new java.awt.Color(0.f,0.f,1/2.f);
-                    //java.awt.Color darkBlue = new java.awt.Color(0.f,0.f,3/4.f);
-                    //java.awt.Color darkBlue = new java.awt.Color(0.f,0.f,7/8.f);
-                    java.awt.Color darkGray = new java.awt.Color(1/4.f,1/4.f,1/4.f);
-
-
-                    if (showNetFlag.get())
+                FORI (iFacingPass, 2)
+                {
+                    if (showTriangles >= 1) // 0=off, 1=verts, 2 = verts and tris
                     {
-                        //
-                        // showing net-- different color scheme,
-                        // and draw the being-dragged net edge if any
-                        //
-                        FORIDOWN(iEdge, mesh.edges.size())
-                        {
-                            if (dualEdgeIsOffBalanceCut[iEdge])
-                            {
-                                dualEdgeColors[iEdge] = java.awt.Color.red;
-                            }
-                            else if (theNet._edgeStatuses[iEdge] == Net.CUT)
-                            {
-                                dualEdgeColors[iEdge] = java.awt.Color.green;
-                            }
-                            else if (theNet._edgeStatuses[iEdge] == Net.FOLD)
-                            {
-                                dualEdgeColors[iEdge] = darkBlue;
-                            }
+                        int frontBrightness = 240;
+                        int backBrightness = (int)(backfaceBrightness.get() * frontBrightness);
+
+                        ArrayList verts = mesh.verts;
+                        ArrayList edges = mesh.edges;
+
+                        if (iFacingPass == 0) // back faces
+                            if (backBrightness <= 0)
+                                continue;
                             else
+                                mg.setColor(new java.awt.Color(backBrightness,backBrightness,backBrightness));
+                        else
+                            mg.setColor(new java.awt.Color(frontBrightness,frontBrightness,frontBrightness));
+
+
+                        FORI (iVert, nVerts)
+                        {
+                            if ((vertFacings[iVert]!=FACING_BACK||iVert==beingDraggedVertIndex) == (iFacingPass==1))
                             {
-                                dualEdgeColors[iEdge] = darkGray;
+                                double vCoordHomo[] = vertCoordsHomo[iVert];
+                                mg.drawPoint(vCoordHomo[0],
+                                             vCoordHomo[1],
+                                             vCoordHomo[2],
+                                             vCoordHomo[3],
+                                             3);
                             }
                         }
-                        if (beingDraggedNetEdgeIndex != -1)
+
+                        if (showTriangles == 3) // spherical barycentrics experiment
                         {
-                            boolean itsACut = (theNet._edgeStatuses[beingDraggedNetEdgeIndex] == Net.CUT);
-                            if (itsACut)
+                            double wrapSphereRadius = 1./wrapSphereCurvature.get();
+                            FORIDOWN(iEdge, edges.size())
                             {
-                                // Make sure beingDraggedNetEdgeIndex points towards root of cut tree--
-                                // if not, reverse it.
-                                if (dualMesh.getEdge(beingDraggedNetEdgeIndex).initialVertex() == null
-                                 || theNet._vertToParentEdgeInd[dualMesh.getEdge(beingDraggedNetEdgeIndex).initialVertex().myIndex()] != beingDraggedNetEdgeIndex)
-                                    beingDraggedNetEdgeIndex = _dualMesh.getEdge(beingDraggedNetEdgeIndex).opposite().myIndex();
-                                assert(theNet._vertToParentEdgeInd[dualMesh.getEdge(beingDraggedNetEdgeIndex).initialVertex().myIndex()] == beingDraggedNetEdgeIndex);
-
-                                // set lagoonCenter from null... this will cause it to be drawn down below, after edges
+                                Mesh.Edge edge0 = (Mesh.Edge)edges.get(iEdge);
+                                Mesh.Edge edge1 = edge0.next();
+                                Mesh.Edge edge2 = edge1.next();
+                                if (edge2.next() == edge0)
                                 {
-                                    Mesh.Edge netEdgeBeingDragged = dualMesh.getEdge(beingDraggedNetEdgeIndex);
-                                    Mesh.Vertex initialVertex = netEdgeBeingDragged.initialVertex();
+                                    // it's a triangle
+                                    Mesh.Vertex vert0 = edge0.initialVertex();
+                                    Mesh.Vertex vert1 = edge1.initialVertex();
+                                    Mesh.Vertex vert2 = edge2.initialVertex();
+                                    double ppp[][] = {{vert0.x(),vert0.y(),vert0.z()+wrapSphereRadius},
+                                                      {vert1.x(),vert1.y(),vert1.z()+wrapSphereRadius},
+                                                      {vert2.x(),vert2.y(),vert2.z()+wrapSphereRadius}};
+                                    int N = 4;
+                                    int n = 8;
+                                    mg.setColor(new java.awt.Color(0,0,255));
+                                    FORI (iii, 3)
+                                    {
+                                        double p0[] = ppp[iii];
+                                        double p1[] = ppp[(iii+1)%3];
+                                        double p2[] = ppp[(iii+2)%3];
+                                        FORI (I, N)
+                                        {
+                                            double t0 = (double)I/(double)N;
+                                            double t1 = (1.-t0)/2.;
+                                            double t2 = (1.-t0)/2.;
+                                            double midpoint[] = sbary(p0, p1,t1, p2,t2);
+                                            double point1[] = sbary(p0, p1,1.-t0, p2, 0.);
+                                            double point2[] = sbary(p0, p1,0., p2, 1.-t0);
+                                            double normal[] = VecMath.normalize(VecMath.vxv3(VecMath.vmv(midpoint,point1),VecMath.vmv(point2,midpoint)));
+                                            double offset = VecMath.dot(normal, midpoint);
+                                            double r = Math.sqrt(1.-SQR(offset));
+                                            double basis[/*3*/][/*3*/] = {normal,new double[3], new double[3]};
+                                            VecMath.extendAndOrthogonalize(1,3,basis,basis);
+                                            double from[] = new double[3];
+                                            double to[] = new double[3];
+                                            double circleCenter[] = VecMath.vxs(normal, offset);
+                                            for (int i = 0; i < 360; ++i)
+                                            {
+                                                double ang0 = (i+0.)/360*(2*Math.PI);
+                                                double ang1 = (i+1.)/360*(2*Math.PI);
+                                                VecMath.vpsxvpsxv(from, circleCenter, r*Math.cos(ang0), basis[1], r*Math.sin(ang0), basis[2]);
+                                                VecMath.vpsxvpsxv(to, circleCenter, r*Math.cos(ang1), basis[1], r*Math.sin(ang1), basis[2]);
+                                                mg.drawLine(from[0],from[1],from[2]-wrapSphereRadius,
+                                                            to[0],to[1],to[2]-wrapSphereRadius,
+                                                            doAntiAliasing);
+                                            }
 
-                                    double lagoonMomentAndWeight[] = new double[4]; // zeros
-                                    accumulateMomentAndArea(lagoonMomentAndWeight, momentAndWeightStrictlyBelowEachDualVertex[initialVertex.myIndex()]);
-                                    accumulateMomentAndArea(lagoonMomentAndWeight, initialVertex.momentAndArea);
-                                    lagoonCenter = new double[] {
-                                        lagoonMomentAndWeight[0] / lagoonMomentAndWeight[3],
-                                        lagoonMomentAndWeight[1] / lagoonMomentAndWeight[3],
-                                        lagoonMomentAndWeight[2] / SQR(lagoonMomentAndWeight[3]),
-                                    };
+
+                                            if (false)
+                                            {
+                                                mg.drawLine(midpoint[0],midpoint[1],midpoint[2]-wrapSphereRadius,
+                                                            point1[0],point1[1],point1[2]-wrapSphereRadius,
+                                                            doAntiAliasing);
+                                                mg.drawLine(midpoint[0],midpoint[1],midpoint[2]-wrapSphereRadius,
+                                                            point2[0],point2[1],point2[2]-wrapSphereRadius,
+                                                            doAntiAliasing);
+                                            }
+                                        }
+                                    }
+                                    mg.setColor(java.awt.Color.white);
+                                    FORI (iii, 3)
+                                    {
+                                        double p0[] = ppp[iii];
+                                        double p1[] = ppp[(iii+1)%3];
+                                        double p2[] = ppp[(iii+2)%3];
+                                        FORI (I, N+1)
+                                        FORI (J, I+1)
+                                        {
+                                            double p[] = sbary(p0,
+                                                               p1, (double)(N-I)/(double)N,
+                                                               p2, (double)J/(double)N);
+                                            mg.drawPoint(p[0],
+                                                         p[1],
+                                                         p[2] - wrapSphereRadius,
+                                                         2);
+                                        }
+                                        FORI (I, N+1)
+                                        FORI (j, n*I+1)
+                                        {
+                                            double p[] = sbary(p0,
+                                                               p1, (double)(N-I)/(double)N,
+                                                               p2, (double)j/(double)n/(double)N);
+                                            mg.drawPoint(p[0],
+                                                         p[1],
+                                                         p[2] - wrapSphereRadius,
+                                                         1);
+                                        }
+
+                                    }
+
+
+#ifdef NOTYET
+                                    // draw three circles that will intersect in a point, hopefully
+                                    double Area = sphericalTriangleArea(p0,p1,p2);
+                                    FORI (iii, 3)
+                                    {
+                                        double p0[] = ppp[iii];
+                                        double p1[] = ppp[(iii+1)%3];
+                                        double p2[] = ppp[(iii+2)%3];
+                                        double t0 = 1/3.;
+                                        double t1 = 1/3.;
+                                        double t2 = 1/3.;
+                                        double area0 = t0*Area;
+                                        double area1 = t1*Area;
+                                        double area2 = t2*Area;
+                                        double point1[] = VecMath.vxs(p1, -1.);
+                                        double point2[] = VecMath.vxs(p1, -2.);
+
+                                        // point0 will be on the perpendicular bisector of p1p2, with area area0
+                                        // area of a right spherical triangle
+                                        // with legs alpha,beta is:
+
+
+                                        double point3[] = ???
+                                    }
+#endif
                                 }
                             }
+                            continue;
+                        }
 
-                            Mesh.Edge alternatives[] = theNet.alternatives(beingDraggedNetEdgeIndex);
+                        if (showTriangles >= 2)
+                        {
 
-                            // add in the original exit itself, to simplify the loop
-                            alternatives = (Mesh.Edge[])Arrays.append(alternatives, dualMesh.getEdge(beingDraggedNetEdgeIndex));
-
-                            FORI (iAlternative, alternatives.length)
+                            FORIDOWN (iWholeEdge, edges.size()/2)
                             {
-                                Mesh.Edge alternativeExit = alternatives[iAlternative];
-                                Mesh.Vertex alternativeExitVertex = alternativeExit.initialVertex();
-                                java.awt.Color color;
-                                if (itsACut)
+                                if ((edgeFacings[iWholeEdge*2]!=FACING_BACK) == (iFacingPass==1))
                                 {
-                                    // Dragging a cut: highlight alternative exits--
-                                    // cyan for good, magenta for bad.
-                                    boolean isGood = LEQ(VecMath.dot(2, alternativeExit.direction,
-                                                                        VecMath.vmv(2, lagoonCenter,
-                                                                                       new double[]{alternativeExitVertex.Xnaive(),
-                                                                                                    alternativeExitVertex.Ynaive()})), 0., SQR(1e-6));
-                                    color = isGood ? java.awt.Color.cyan : java.awt.Color.magenta;
+                                    Mesh.Edge edge = (Mesh.Edge)edges.get(iWholeEdge*2);
+                                    double v0[] = vertCoordsHomo[edge.initialVertex().myIndex()];
+                                    double v1[] = vertCoordsHomo[edge.finalVertex().myIndex()];
+                                    mg.drawLine(v0[0],v0[1],v0[2],v0[3],
+                                                v1[0],v1[1],v1[2],v1[3],
+                                                doAntiAliasing);
+                                }
+                            }
+                        }
+                    } // if (showTriangles >= 1)
+
+
+                    if (drawDualDiagramFlag)
+                    {
+                        //
+                        // Draw dual edges, in chosen colors
+                        // 
+
+                        java.awt.Color darkBlue = new java.awt.Color(0.f,0.f,1/4.f);
+                        //java.awt.Color darkBlue = new java.awt.Color(0.f,0.f,1/2.f);
+                        //java.awt.Color darkBlue = new java.awt.Color(0.f,0.f,3/4.f);
+                        //java.awt.Color darkBlue = new java.awt.Color(0.f,0.f,7/8.f);
+                        java.awt.Color darkGray = new java.awt.Color(1/4.f,1/4.f,1/4.f);
+
+
+                        if (showNetFlag.get())
+                        {
+                            //
+                            // showing net-- different color scheme,
+                            // and draw the being-dragged net edge if any
+                            //
+                            FORIDOWN(iEdge, mesh.edges.size())
+                            {
+                                if (dualEdgeIsOffBalanceCut[iEdge])
+                                {
+                                    dualEdgeColors[iEdge] = java.awt.Color.red;
+                                }
+                                else if (theNet._edgeStatuses[iEdge] == Net.CUT)
+                                {
+                                    dualEdgeColors[iEdge] = java.awt.Color.green;
+                                }
+                                else if (theNet._edgeStatuses[iEdge] == Net.FOLD)
+                                {
+                                    dualEdgeColors[iEdge] = darkBlue;
                                 }
                                 else
                                 {
-                                    // If dragging a fold: just highlight alternative folds
-                                    // in whatever color they are in (green->cyan, red->magenta, darkBlue->blue)
-                                    color = dualEdgeColors[alternativeExit.myIndex()];
-                                    color = (alternativeExit.myIndex()==beingDraggedNetEdgeIndex
-                                          || alternativeExit.opposite().myIndex()==beingDraggedNetEdgeIndex) ? java.awt.Color.blue :
-                                            dualEdgeIsOffBalanceCut[alternativeExit.myIndex()] ? java.awt.Color.magenta
-                                                                                               : java.awt.Color.cyan;
+                                    dualEdgeColors[iEdge] = darkGray;
                                 }
-
-                                dualEdgeColors[alternativeExit.myIndex()] = color;
-                                dualEdgeColors[alternativeExit.opposite().myIndex()] = color;
                             }
-
-                            if (VecMath.normsqrd(beingDraggedNetEdgeDelta) != 0.)
+                            if (beingDraggedNetEdgeIndex != -1)
                             {
-                                if (dualEdgeColors[beingDraggedNetEdgeIndex] == java.awt.Color.cyan)
+                                boolean itsACut = (theNet._edgeStatuses[beingDraggedNetEdgeIndex] == Net.CUT);
+                                if (itsACut)
                                 {
-                                    //mg.setColor(darkGreen);
-                                    mg.setColor(darkCyan);
+                                    // Make sure beingDraggedNetEdgeIndex points towards root of cut tree--
+                                    // if not, reverse it.
+                                    if (dualMesh.getEdge(beingDraggedNetEdgeIndex).initialVertex() == null
+                                     || theNet._vertToParentEdgeInd[dualMesh.getEdge(beingDraggedNetEdgeIndex).initialVertex().myIndex()] != beingDraggedNetEdgeIndex)
+                                        beingDraggedNetEdgeIndex = _dualMesh.getEdge(beingDraggedNetEdgeIndex).opposite().myIndex();
+                                    assert(theNet._vertToParentEdgeInd[dualMesh.getEdge(beingDraggedNetEdgeIndex).initialVertex().myIndex()] == beingDraggedNetEdgeIndex);
+
+                                    // set lagoonCenter from null... this will cause it to be drawn down below, after edges
+                                    {
+                                        Mesh.Edge netEdgeBeingDragged = dualMesh.getEdge(beingDraggedNetEdgeIndex);
+                                        Mesh.Vertex initialVertex = netEdgeBeingDragged.initialVertex();
+
+                                        double lagoonMomentAndWeight[] = new double[4]; // zeros
+                                        accumulateMomentAndArea(lagoonMomentAndWeight, momentAndWeightStrictlyBelowEachDualVertex[initialVertex.myIndex()]);
+                                        accumulateMomentAndArea(lagoonMomentAndWeight, initialVertex.momentAndArea);
+                                        lagoonCenter = new double[] {
+                                            lagoonMomentAndWeight[0] / lagoonMomentAndWeight[3],
+                                            lagoonMomentAndWeight[1] / lagoonMomentAndWeight[3],
+                                            lagoonMomentAndWeight[2] / SQR(lagoonMomentAndWeight[3]),
+                                        };
+                                    }
                                 }
-                                else if (dualEdgeColors[beingDraggedNetEdgeIndex] == java.awt.Color.magenta)
+
+                                Mesh.Edge alternatives[] = theNet.alternatives(beingDraggedNetEdgeIndex);
+
+                                // add in the original exit itself, to simplify the loop
+                                alternatives = (Mesh.Edge[])Arrays.append(alternatives, dualMesh.getEdge(beingDraggedNetEdgeIndex));
+
+                                FORI (iAlternative, alternatives.length)
                                 {
-                                    //mg.setColor(darkRed);
-                                    mg.setColor(darkMagenta);
+                                    Mesh.Edge alternativeExit = alternatives[iAlternative];
+                                    Mesh.Vertex alternativeExitVertex = alternativeExit.initialVertex();
+                                    java.awt.Color color;
+                                    if (itsACut)
+                                    {
+                                        // Dragging a cut: highlight alternative exits--
+                                        // cyan for good, magenta for bad.
+                                        boolean isGood = LEQ(VecMath.dot(2, alternativeExit.direction,
+                                                                            VecMath.vmv(2, lagoonCenter,
+                                                                                           new double[]{alternativeExitVertex.Xnaive(),
+                                                                                                        alternativeExitVertex.Ynaive()})), 0., SQR(1e-6));
+                                        color = isGood ? java.awt.Color.cyan : java.awt.Color.magenta;
+                                    }
+                                    else
+                                    {
+                                        // If dragging a fold: just highlight alternative folds
+                                        // in whatever color they are in (green->cyan, red->magenta, darkBlue->blue)
+                                        color = dualEdgeColors[alternativeExit.myIndex()];
+                                        color = (alternativeExit.myIndex()==beingDraggedNetEdgeIndex
+                                              || alternativeExit.opposite().myIndex()==beingDraggedNetEdgeIndex) ? java.awt.Color.blue :
+                                                dualEdgeIsOffBalanceCut[alternativeExit.myIndex()] ? java.awt.Color.magenta
+                                                                                                   : java.awt.Color.cyan;
+                                    }
+
+                                    dualEdgeColors[alternativeExit.myIndex()] = color;
+                                    dualEdgeColors[alternativeExit.opposite().myIndex()] = color;
                                 }
-                                else if (dualEdgeColors[beingDraggedNetEdgeIndex] == java.awt.Color.blue)
-                                    mg.setColor(darkBlue);
+
+                                if (VecMath.normsqrd(beingDraggedNetEdgeDelta) != 0.)
+                                {
+                                    if (dualEdgeColors[beingDraggedNetEdgeIndex] == java.awt.Color.cyan)
+                                    {
+                                        //mg.setColor(darkGreen);
+                                        mg.setColor(darkCyan);
+                                    }
+                                    else if (dualEdgeColors[beingDraggedNetEdgeIndex] == java.awt.Color.magenta)
+                                    {
+                                        //mg.setColor(darkRed);
+                                        mg.setColor(darkMagenta);
+                                    }
+                                    else if (dualEdgeColors[beingDraggedNetEdgeIndex] == java.awt.Color.blue)
+                                        mg.setColor(darkBlue);
 
 
-                                double from[] = dualEdgeInitialCoords[beingDraggedNetEdgeIndex];
-                                double to[] = dualEdgeInitialCoords[dualMesh.getEdge(beingDraggedNetEdgeIndex).opposite().myIndex()];
-                                mg.drawLine(from[0]+beingDraggedNetEdgeDelta[0],
-                                            from[1]+beingDraggedNetEdgeDelta[1],
-                                            from[2],
-                                            to[0]+beingDraggedNetEdgeDelta[0],
-                                            to[1]+beingDraggedNetEdgeDelta[1],
-                                            to[2],
-                                            doAntiAliasing);
+                                    double from[] = dualEdgeInitialCoords[beingDraggedNetEdgeIndex];
+                                    double to[] = dualEdgeInitialCoords[dualMesh.getEdge(beingDraggedNetEdgeIndex).opposite().myIndex()];
+                                    mg.drawLine(from[0]+beingDraggedNetEdgeDelta[0],
+                                                from[1]+beingDraggedNetEdgeDelta[1],
+                                                from[2],
+                                                to[0]+beingDraggedNetEdgeDelta[0],
+                                                to[1]+beingDraggedNetEdgeDelta[1],
+                                                to[2],
+                                                doAntiAliasing);
+                                }
                             }
                         }
-                    }
 
 
-                    if (showNetFlag.get()
-                     && showFlattenedNetFlag.get()
-                     && localScaleZ != 0.
-                     && tilt > Math.PI*.5) // i.e. if xy plane is behind rest of picture
-                        drawFlattenedNet(mg, mesh, dualMesh, dualEdgeInitialCoords, nVerts, nEdges, dualEdgeColors);
+                        if (showNetFlag.get()
+                         && showFlattenedNetFlag.get()
+                         && localScaleZ != 0.
+                         && tilt > Math.PI*.5) // i.e. if xy plane is behind rest of picture
+                            drawFlattenedNet(mg, mesh, dualMesh, dualEdgeInitialCoords, nVerts, nEdges, dualEdgeColors);
 
-                    double backfaceBrightnessValue = backfaceBrightness.get();
-                    FORI (iFacingPass, 2)
-                    {
+                        double backfaceBrightnessValue = backfaceBrightness.get();
+
                         //
                         // Dual edges.
                         // If showing the cut tree,
@@ -6317,239 +6315,238 @@ public class ShephardsPlayApplet
                             mg.drawPoint(p[0], p[1], p[2],
                                          showNetFlag.get() ? 2 : 5);
                         }
-                    }
 
-                    if (showNetFlag.get() && showNetFlowFlag.get()
-                     && theNet._topSortedVertInds != null) // TODO: can probably remove this check eventually, when I get topsort working even if only forest
-                    {
-                        //
-                        // Figure out distance (both 2-norm and infinity-norm) from each vertex
-                        // to the root-most one in its tree, in 2 dimensions
-                        //
-                        double norm2s[] = new double[nDualVerts]; // zeros initially
-                        double normInfs[] = new double[nDualVerts]; // zeros initially
-                        FORI (iiChild, theNet._topSortedVertInds.length) // roots to leaves
+                        if (showNetFlag.get() && showNetFlowFlag.get()
+                         && theNet._topSortedVertInds != null) // TODO: can probably remove this check eventually, when I get topsort working even if only forest
                         {
-                            int iChild = theNet._topSortedVertInds[iiChild];
-                            if (iChild == nDualVerts)
-                                continue; // it's the infinite vertex, i.e. the root
-                            Mesh.Vertex child = dualMesh.getVert(iChild);
-                            int parentEdgeInd = theNet._vertToParentEdgeInd[iChild];
-                            if (parentEdgeInd != -1)
+                            //
+                            // Figure out distance (both 2-norm and infinity-norm) from each vertex
+                            // to the root-most one in its tree, in 2 dimensions
+                            //
+                            double norm2s[] = new double[nDualVerts]; // zeros initially
+                            double normInfs[] = new double[nDualVerts]; // zeros initially
+                            FORI (iiChild, theNet._topSortedVertInds.length) // roots to leaves
                             {
-                                Mesh.Edge parentEdge = dualMesh.getEdge(parentEdgeInd);
-                                Mesh.Vertex parent = parentEdge.finalVertex();
-                                if (parent != null)
+                                int iChild = theNet._topSortedVertInds[iiChild];
+                                if (iChild == nDualVerts)
+                                    continue; // it's the infinite vertex, i.e. the root
+                                Mesh.Vertex child = dualMesh.getVert(iChild);
+                                int parentEdgeInd = theNet._vertToParentEdgeInd[iChild];
+                                if (parentEdgeInd != -1)
                                 {
-                                    int iParent = parent.myIndex();
-                                    double dx = child.Xnaive() - parent.Xnaive();
-                                    double dy = child.Ynaive() - parent.Ynaive();
-                                    norm2s[iChild] = norm2s[iParent] + MyMath.hypot(dx,dy);
-                                    normInfs[iChild] = normInfs[iParent] + MAX(dx,dy);
-                                }
-                            }
-                        }
-
-                        double unitsPerPixel = 1./mg.getScaleX(); // scale is uniform
-                        int period = 9; // how many redraws to get back to original state, to traverse a step
-                        double step = 9 * unitsPerPixel;
-
-                        //mg.setColor(lightBlue);
-                        mg.setColor(java.awt.Color.red); // lava
-
-                        FORI (iChild, nDualVerts)
-                        {
-                            Mesh.Vertex child = dualMesh.getVert(iChild);
-                            int parentEdgeInd = theNet._vertToParentEdgeInd[iChild];
-                            if (parentEdgeInd != -1)
-                            {
-                                if (!doShowInsideOutDualVerts
-                                 && dualEdgeFacings[parentEdgeInd] == FACING_BACK)
-                                    continue;
-
-                                Mesh.Edge parentEdge = dualMesh.getEdge(parentEdgeInd);
-                                Mesh.Vertex parent = parentEdge.finalVertex();
-                                // TODO: combine the following two cases, using edgeInitialCoords instead of doing the ray calculation yet again
-                                if (parent != null)
-                                {
-                                    int iParent = parent.myIndex();
-                                    // norm2s[parent] rounded up to multiple of step
-                                    // TODO: screwy math, it works but could be made simpler probably
-                                    double pos0 = Math.ceil(norm2s[iParent]/step)*step; // XXX should subtract some slack before taking ceil
-                                    pos0 -= (netFlowIndex % period)/(double)period * step;
-                                    if (pos0 < norm2s[iParent]-1e-6)
-                                        pos0 += step;
-
-                                    for (double pos = pos0; LEQ(pos, norm2s[iChild], 1e-6); pos += step)
+                                    Mesh.Edge parentEdge = dualMesh.getEdge(parentEdgeInd);
+                                    Mesh.Vertex parent = parentEdge.finalVertex();
+                                    if (parent != null)
                                     {
-                                        double t = (pos-norm2s[iParent])/(norm2s[iChild]-norm2s[iParent]);
-                                        double x = LERP(parent.Xnaive(), child.Xnaive(), t);
-                                        double y = LERP(parent.Ynaive(), child.Ynaive(), t);
-                                        double h = LERP(parent.Znaive(), child.Znaive(), t);
-                                        mg.drawPoint(x, y, h, 3);
-                                    }
-                                }
-                                else
-                                {
-                                    double rayLength = 1.;
-                                    // TODO: screwy math, it works but could be made simpler probably
-                                    double pos0 = ((period-netFlowIndex)%period)/(double)period * step;
-                                    while (GT(pos0, 0, 1e-6))
-                                        pos0 -= step;
-                                    for (double pos = pos0; GEQ(pos, -rayLength, 1e-6); pos -= step)
-                                    {
-                                        double x = child.Xnaive() - pos * parentEdge.direction[0];
-                                        double y = child.Ynaive() - pos * parentEdge.direction[1];
-                                        double h = child.Znaive() - pos * parentEdge.direction[2];
-                                        mg.drawPoint(x, y, h, 3);
+                                        int iParent = parent.myIndex();
+                                        double dx = child.Xnaive() - parent.Xnaive();
+                                        double dy = child.Ynaive() - parent.Ynaive();
+                                        norm2s[iChild] = norm2s[iParent] + MyMath.hypot(dx,dy);
+                                        normInfs[iChild] = normInfs[iParent] + MAX(dx,dy);
                                     }
                                 }
                             }
+
+                            double unitsPerPixel = 1./mg.getScaleX(); // scale is uniform
+                            int period = 9; // how many redraws to get back to original state, to traverse a step
+                            double step = 9 * unitsPerPixel;
+
+                            //mg.setColor(lightBlue);
+                            mg.setColor(java.awt.Color.red); // lava
+
+                            FORI (iChild, nDualVerts)
+                            {
+                                Mesh.Vertex child = dualMesh.getVert(iChild);
+                                int parentEdgeInd = theNet._vertToParentEdgeInd[iChild];
+                                if (parentEdgeInd != -1)
+                                {
+                                    if (!doShowInsideOutDualVerts
+                                     && dualEdgeFacings[parentEdgeInd] == FACING_BACK)
+                                        continue;
+
+                                    Mesh.Edge parentEdge = dualMesh.getEdge(parentEdgeInd);
+                                    Mesh.Vertex parent = parentEdge.finalVertex();
+                                    // TODO: combine the following two cases, using edgeInitialCoords instead of doing the ray calculation yet again
+                                    if (parent != null)
+                                    {
+                                        int iParent = parent.myIndex();
+                                        // norm2s[parent] rounded up to multiple of step
+                                        // TODO: screwy math, it works but could be made simpler probably
+                                        double pos0 = Math.ceil(norm2s[iParent]/step)*step; // XXX should subtract some slack before taking ceil
+                                        pos0 -= (netFlowIndex % period)/(double)period * step;
+                                        if (pos0 < norm2s[iParent]-1e-6)
+                                            pos0 += step;
+
+                                        for (double pos = pos0; LEQ(pos, norm2s[iChild], 1e-6); pos += step)
+                                        {
+                                            double t = (pos-norm2s[iParent])/(norm2s[iChild]-norm2s[iParent]);
+                                            double x = LERP(parent.Xnaive(), child.Xnaive(), t);
+                                            double y = LERP(parent.Ynaive(), child.Ynaive(), t);
+                                            double h = LERP(parent.Znaive(), child.Znaive(), t);
+                                            mg.drawPoint(x, y, h, 3);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        double rayLength = 1.;
+                                        // TODO: screwy math, it works but could be made simpler probably
+                                        double pos0 = ((period-netFlowIndex)%period)/(double)period * step;
+                                        while (GT(pos0, 0, 1e-6))
+                                            pos0 -= step;
+                                        for (double pos = pos0; GEQ(pos, -rayLength, 1e-6); pos -= step)
+                                        {
+                                            double x = child.Xnaive() - pos * parentEdge.direction[0];
+                                            double y = child.Ynaive() - pos * parentEdge.direction[1];
+                                            double h = child.Znaive() - pos * parentEdge.direction[2];
+                                            mg.drawPoint(x, y, h, 3);
+                                        }
+                                    }
+                                }
+                            }
+
+                            netFlowIndex++;
                         }
 
-                        netFlowIndex++;
-                    }
-
-                    //
-                    // Draw center of curvature
-                    if (avg != null)
-                    {
-                        mg.setColor(dualVertSelectionColor);
-                        mg.drawPoint(avg[0],
-                                     avg[1],
-                                     avg[2],
-                                     7);
-                    }
-
-
-                    if (lagoonCenter != null)
-                    {
-                        mg.setColor(dualVertSelectionColor);
-                        mg.drawPoint(lagoonCenter[0],
-                                     lagoonCenter[1],
-                                     lagoonCenter[2],
-                                     3);
-                    }
-
-
-
-
-                    //
-                    // Now try marking the sharpest dihedral dual edge
-                    // out of each dual vertex.
-                    // I.e. the dual edge opposite the largest dual angle.
-                    // I.e. the dual edge corresponding to the longest of the three primal
-                    // triangle sides.
-                    // We draw it 3 times, to make sure we get the same logic from each direction. If there are ties, it will get drawn in each place I think.
-                    //
-                    if (doArrowsTowardsSharpestDihedrals)
-                    {
-                        if (showNetFlag.get())
-                            mg.setColor(dualColor);
-                        else
+                        //
+                        // Draw center of curvature
+                        if (avg != null)
+                        {
                             mg.setColor(dualVertSelectionColor);
-                        FORIDOWN (iEdge, mesh.edges.size())
-                        {
-                            Mesh.Vertex triCenterDualVert = (dualMesh.getEdge(iEdge)).finalVertex();
-                            if (triCenterDualVert == null)
-                                continue; // primary face was not a triangle, or inside out
-
-                            Mesh.Edge e0 = mesh.getEdge(iEdge);
-                            Mesh.Edge e1 = e0.next();
-                            Mesh.Edge e2 = e1.next();
-                            assert(e2.next() == e0);
-                            Mesh.Vertex triVerts[] = {e0.initialVertex(),
-                                                      e1.initialVertex(),
-                                                      e2.initialVertex()};
-                            double sideLengths[] = new double[3];
-                            FORI (i, 3)
-                                sideLengths[i] = Math.sqrt(SQR(triVerts[i].Xnaive()-triVerts[(i+1)%3].Xnaive())
-                                                         + SQR(triVerts[i].Ynaive()-triVerts[(i+1)%3].Ynaive()));
-                            int bestSide = MAXI3(sideLengths[0], sideLengths[1], sideLengths[2]);
-
-                            double v0[] = {triVerts[bestSide].Xnaive(), triVerts[bestSide].Ynaive()};
-                            double v1[] = {triVerts[(bestSide+1)%3].Xnaive(), triVerts[(bestSide+1)%3].Ynaive()};
-                            double toEdgeVec[] = VecMath.xv2(
-                                                     VecMath.vmv(v0, v1));
-                            VecMath.normalize(toEdgeVec, toEdgeVec);
-                            // XXX be smarter!  maybe 1/3 of the way along the edge, or somethin
-                            double whereToDrawMark[] = {
-                                triCenterDualVert.Xnaive() + .02 * toEdgeVec[0],
-                                triCenterDualVert.Ynaive() + .02 * toEdgeVec[1],
-                                triCenterDualVert.Hnaive() + .02 * toEdgeVec[2],
-                            };
-                            //VecMath.vpsxv(whereToDrawMark, whereToDrawMark, .004, VecMath.random(2));
-                            mg.drawPoint(whereToDrawMark[0],
-                                         whereToDrawMark[1],
-                                         whereToDrawMark[2],
-                                         5);
+                            mg.drawPoint(avg[0],
+                                         avg[1],
+                                         avg[2],
+                                         7);
                         }
-                    } // doArrowsTowardsSharpestDihedrals
-                    if (doArrowsTowardsShortestEdges)
-                    {
-                        // XXX we do this in 3 ways, possibly getting different answer each time, in case of a tie... should fix that
-                        mg.setColor(java.awt.Color.cyan);
-                        FORIDOWN (iEdge, mesh.edges.size())
+
+
+                        if (lagoonCenter != null)
                         {
-                            Mesh.Vertex triCenterDualVert = (dualMesh.getEdge(iEdge)).finalVertex();
-                            if (triCenterDualVert == null)
-                                continue; // primary face was not a triangle, or inside out
+                            mg.setColor(dualVertSelectionColor);
+                            mg.drawPoint(lagoonCenter[0],
+                                         lagoonCenter[1],
+                                         lagoonCenter[2],
+                                         3);
+                        }
 
-                            Mesh.Edge e0 = mesh.getEdge(iEdge);
-                            Mesh.Edge e1 = e0.next();
-                            Mesh.Edge e2 = e1.next();
-                            assert(e2.next() == e0);
-                            Mesh.Vertex triVerts[] = {e0.initialVertex(),
-                                                      e1.initialVertex(),
-                                                      e2.initialVertex()};
-                            double triCenterDualVertCoords[] = {triCenterDualVert.Xnaive(), triCenterDualVert.Ynaive()};
-                            Mesh.Vertex neighborDualVerts[] = {
-                                (dualMesh.getEdge(e0.myIndex())).initialVertex(),
-                                (dualMesh.getEdge(e1.myIndex())).initialVertex(),
-                                (dualMesh.getEdge(e2.myIndex())).initialVertex(),
-                            };
 
-                            double dualSideLengths[] = new double[3];
-                            FORI (i, 3)
+
+
+                        //
+                        // Now try marking the sharpest dihedral dual edge
+                        // out of each dual vertex.
+                        // I.e. the dual edge opposite the largest dual angle.
+                        // I.e. the dual edge corresponding to the longest of the three primal
+                        // triangle sides.
+                        // We draw it 3 times, to make sure we get the same logic from each direction. If there are ties, it will get drawn in each place I think.
+                        //
+                        if (doArrowsTowardsSharpestDihedrals)
+                        {
+                            if (showNetFlag.get())
+                                mg.setColor(dualColor);
+                            else
+                                mg.setColor(dualVertSelectionColor);
+                            FORIDOWN (iEdge, mesh.edges.size())
                             {
-                                if (neighborDualVerts[i] == null)
-                                    dualSideLengths[i] = Double.POSITIVE_INFINITY;
-                                else
-                                    dualSideLengths[i] = VecMath.dist(triCenterDualVertCoords,
-                                                                      new double[]{neighborDualVerts[i].Xnaive(),
-                                                                                   neighborDualVerts[i].Ynaive()});
+                                Mesh.Vertex triCenterDualVert = (dualMesh.getEdge(iEdge)).finalVertex();
+                                if (triCenterDualVert == null)
+                                    continue; // primary face was not a triangle, or inside out
+
+                                Mesh.Edge e0 = mesh.getEdge(iEdge);
+                                Mesh.Edge e1 = e0.next();
+                                Mesh.Edge e2 = e1.next();
+                                assert(e2.next() == e0);
+                                Mesh.Vertex triVerts[] = {e0.initialVertex(),
+                                                          e1.initialVertex(),
+                                                          e2.initialVertex()};
+                                double sideLengths[] = new double[3];
+                                FORI (i, 3)
+                                    sideLengths[i] = Math.sqrt(SQR(triVerts[i].Xnaive()-triVerts[(i+1)%3].Xnaive())
+                                                             + SQR(triVerts[i].Ynaive()-triVerts[(i+1)%3].Ynaive()));
+                                int bestSide = MAXI3(sideLengths[0], sideLengths[1], sideLengths[2]);
+
+                                double v0[] = {triVerts[bestSide].Xnaive(), triVerts[bestSide].Ynaive()};
+                                double v1[] = {triVerts[(bestSide+1)%3].Xnaive(), triVerts[(bestSide+1)%3].Ynaive()};
+                                double toEdgeVec[] = VecMath.xv2(
+                                                         VecMath.vmv(v0, v1));
+                                VecMath.normalize(toEdgeVec, toEdgeVec);
+                                // XXX be smarter!  maybe 1/3 of the way along the edge, or somethin
+                                double whereToDrawMark[] = {
+                                    triCenterDualVert.Xnaive() + .02 * toEdgeVec[0],
+                                    triCenterDualVert.Ynaive() + .02 * toEdgeVec[1],
+                                    triCenterDualVert.Hnaive() + .02 * toEdgeVec[2],
+                                };
+                                //VecMath.vpsxv(whereToDrawMark, whereToDrawMark, .004, VecMath.random(2));
+                                mg.drawPoint(whereToDrawMark[0],
+                                             whereToDrawMark[1],
+                                             whereToDrawMark[2],
+                                             5);
                             }
-                            int bestSide = MINI3(dualSideLengths[0], dualSideLengths[1], dualSideLengths[2]);
-                            double v0[] = {triVerts[bestSide].Xnaive(), triVerts[bestSide].Ynaive()};
-                            double v1[] = {triVerts[(bestSide+1)%3].Xnaive(), triVerts[(bestSide+1)%3].Ynaive()};
-                            double toEdgeVec[] = VecMath.xv2(
-                                                     VecMath.vmv(v0, v1));
-                            VecMath.normalize(toEdgeVec, toEdgeVec);
-                            // XXX be smarter!  maybe 1/3 of the way along the edge, or somethin
-                            double whereToDrawMark[] = {
-                                triCenterDualVert.Xnaive() + .02 * toEdgeVec[0],
-                                triCenterDualVert.Ynaive() + .02 * toEdgeVec[1],
-                                triCenterDualVert.Hnaive() + .02 * toEdgeVec[2],
-                            };
-                            //VecMath.vpsxv(whereToDrawMark, whereToDrawMark, .005, VecMath.random(2));
-                            mg.drawPoint(whereToDrawMark[0],
-                                         whereToDrawMark[1],
-                                         whereToDrawMark[2],
-                                         5);
+                        } // doArrowsTowardsSharpestDihedrals
+                        if (doArrowsTowardsShortestEdges)
+                        {
+                            // XXX we do this in 3 ways, possibly getting different answer each time, in case of a tie... should fix that
+                            mg.setColor(java.awt.Color.cyan);
+                            FORIDOWN (iEdge, mesh.edges.size())
+                            {
+                                Mesh.Vertex triCenterDualVert = (dualMesh.getEdge(iEdge)).finalVertex();
+                                if (triCenterDualVert == null)
+                                    continue; // primary face was not a triangle, or inside out
 
-                        }
-                    } // doArrowsTowardsShortestEdges
+                                Mesh.Edge e0 = mesh.getEdge(iEdge);
+                                Mesh.Edge e1 = e0.next();
+                                Mesh.Edge e2 = e1.next();
+                                assert(e2.next() == e0);
+                                Mesh.Vertex triVerts[] = {e0.initialVertex(),
+                                                          e1.initialVertex(),
+                                                          e2.initialVertex()};
+                                double triCenterDualVertCoords[] = {triCenterDualVert.Xnaive(), triCenterDualVert.Ynaive()};
+                                Mesh.Vertex neighborDualVerts[] = {
+                                    (dualMesh.getEdge(e0.myIndex())).initialVertex(),
+                                    (dualMesh.getEdge(e1.myIndex())).initialVertex(),
+                                    (dualMesh.getEdge(e2.myIndex())).initialVertex(),
+                                };
+
+                                double dualSideLengths[] = new double[3];
+                                FORI (i, 3)
+                                {
+                                    if (neighborDualVerts[i] == null)
+                                        dualSideLengths[i] = Double.POSITIVE_INFINITY;
+                                    else
+                                        dualSideLengths[i] = VecMath.dist(triCenterDualVertCoords,
+                                                                          new double[]{neighborDualVerts[i].Xnaive(),
+                                                                                       neighborDualVerts[i].Ynaive()});
+                                }
+                                int bestSide = MINI3(dualSideLengths[0], dualSideLengths[1], dualSideLengths[2]);
+                                double v0[] = {triVerts[bestSide].Xnaive(), triVerts[bestSide].Ynaive()};
+                                double v1[] = {triVerts[(bestSide+1)%3].Xnaive(), triVerts[(bestSide+1)%3].Ynaive()};
+                                double toEdgeVec[] = VecMath.xv2(
+                                                         VecMath.vmv(v0, v1));
+                                VecMath.normalize(toEdgeVec, toEdgeVec);
+                                // XXX be smarter!  maybe 1/3 of the way along the edge, or somethin
+                                double whereToDrawMark[] = {
+                                    triCenterDualVert.Xnaive() + .02 * toEdgeVec[0],
+                                    triCenterDualVert.Ynaive() + .02 * toEdgeVec[1],
+                                    triCenterDualVert.Hnaive() + .02 * toEdgeVec[2],
+                                };
+                                //VecMath.vpsxv(whereToDrawMark, whereToDrawMark, .005, VecMath.random(2));
+                                mg.drawPoint(whereToDrawMark[0],
+                                             whereToDrawMark[1],
+                                             whereToDrawMark[2],
+                                             5);
+
+                            }
+                        } // doArrowsTowardsShortestEdges
 
 
-                    if (showNetFlag.get()
-                     && showFlattenedNetFlag.get()
-                     && localScaleZ != 0.
-                     && tilt <= Math.PI*.5) // i.e. if xy plane is in front of rest of picture
-                        drawFlattenedNet(mg, mesh, dualMesh, dualEdgeInitialCoords, nVerts, nEdges, dualEdgeColors);
+                        if (showNetFlag.get()
+                         && showFlattenedNetFlag.get()
+                         && localScaleZ != 0.
+                         && tilt <= Math.PI*.5) // i.e. if xy plane is in front of rest of picture
+                            drawFlattenedNet(mg, mesh, dualMesh, dualEdgeInitialCoords, nVerts, nEdges, dualEdgeColors);
 
-                } // if (true) (draw dual diagram)
+                    } // if (drawDualDiagramFlag)
 
-
+                } // for iFacingPass
 
                 //
                 // Draw the labels last...
