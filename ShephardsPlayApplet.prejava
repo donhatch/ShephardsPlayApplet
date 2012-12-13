@@ -5,7 +5,6 @@ and produce the dual diagrams with heights.
 
 BUGS:
   Gui-related:
-    - gui element for leftRightSymmetry
     - I hear Swing double-buffers by default so I don't need to
        - ARGH! can't just rip it out, the magnifying glass depends on it!
     - need to put stuff in event thread? not sure
@@ -13,11 +12,8 @@ BUGS:
     - use swing sliders instead of scrollbars
 
   Wrap-sphere related:
-    - wrapAroundSphere should stay in homogeneous coords
     - symmetry averaging is wrong on sphere--- it shrinks towards sphere center.
-      need a height-preserving average.
-    - dragging on sphere surface not reflecting through horizon quite right yet
-
+      need a height-above-sphere-preserving average.
     - for Surface, most important thing is that offset is right-- should adjust final result to make it right
     - backface culling is flakey (or, need a coherent scheme, not keying on show-inside-out)
     - backface culling sometimes slightly wrong-- using wrong criterion?
@@ -34,10 +30,10 @@ BUGS:
 
 
   Misc:
+    - need to move iFacingPass more outer, so that all back is done before all front...
     - when switching symmetry, map the fundamental region (schwarz triangle)
     - non-uniform scaling seems broken, I must have messed up something about homogeneous
-    - nonuniform scaling seems wrong-- shouldn't depart from paraboloid, should it? oh it should I think, bleah
-    - need to move iFacingPass more outer, so that all back is done before all front...
+    - think about whether current non-uniform scaling is more useful than keeping primal on sphere and re-computing dual, and/or whether both are useful
       and the horizon in between.  or else use zbuffer?
     - should ConvexHull use fuzzy equality testing in more places, to avoid twinkling on grid? (hmm, maybe twinkling on grid is actually useful in a way?)
     - can't seem to get a cube by creating octa verts with show-inside-out--
@@ -67,6 +63,9 @@ BUGS:
     - use exact group calculation rather than generateVertices when adding a point
 
 TO DO:
+    - really need a concept of separate viewing matrix,
+      that can be changed without accumulating rounding error in the verts
+    - thank about attaching a listener to a tuple of values, so they just get one callback when multiple values changed?
     - don't draw edges if dihedral angle is flat?  would prevent flicker
     - make verts smaller when not part of convex hull?
     - can we make ConvexHull incremental? might be useful when just dragging a single point.
@@ -1327,7 +1326,28 @@ public class ShephardsPlayApplet
                     final ButtonGroup qButtonGroup = new ButtonGroup();
                     final java.awt.Insets nomargin = new java.awt.Insets(0,0,0,0);
 
-                    add(new JLabel("Sym"));
+                    //add(new JLabel("Sym")); // can't think of a good place to put this
+                    add(new JRadioButton("") {
+                        Listenable.Listener listener;
+                        {
+                            addActionListener(new java.awt.event.ActionListener() {
+                                public void actionPerformed(java.awt.event.ActionEvent e)
+                                {
+                                    boolean newLeftRightSymmetry = isSelected();
+                                    changeSymmetry(pRotationalSymmetry.get(), qRotationalSymmetry.get(), newLeftRightSymmetry);
+                                }
+                            });
+                            setSelected(leftRightSymmetry.get());
+                            setMargin(nomargin);
+                            leftRightSymmetry.addListener(listener = new Listenable.Listener() {
+                                public void valueChanged()
+                                {
+                                    setSelected(leftRightSymmetry.get());
+                                }
+                            });
+                        }
+                    });
+
                     for (int i = 1; i <= maxpq; ++i)
                     {
                         add(new JLabel((i<=9?"  ":" ")+i));
@@ -2190,12 +2210,15 @@ public class ShephardsPlayApplet
                 {0,0,0,1},
             };
             if (centerSphere)
+            {
+                // end by moving center from -r to origin
                 m = VecMath.mxm(m, new double[][] {
                     {1,0,0,0},
                     {0,1,0,0},
                     {0,0,1,0},
                     {0,0,1./wrapSphereCurvature,1},
                 });
+            }
             return m;
         } // getWrapAroundSphereMatrix
         private static double[][] getUnwrapAroundSphereMatrix(double wrapSphereCurvature, boolean centerSphere)
@@ -2242,6 +2265,7 @@ public class ShephardsPlayApplet
             };
             if (centerSphere)
             {
+                // start by moving center from origin to -r
                 m = VecMath.mxm(new double[][] {
                     {1,0,0,0},
                     {0,1,0,0},
@@ -2333,9 +2357,9 @@ public class ShephardsPlayApplet
             FORI (iOldVert, nOldVerts)
             {
                 Mesh.Vertex vert = mesh.getVert(iOldVert);
-                oldVerts[iOldVert][0] = vert.Xnaive();
-                oldVerts[iOldVert][1] = vert.Ynaive();
-                oldVerts[iOldVert][2] = vert.Hnaive();
+                oldVerts[iOldVert][0] = vert.x();
+                oldVerts[iOldVert][1] = vert.y();
+                oldVerts[iOldVert][2] = vert.h();
             }
             double oldBbox[][] = VecMath.bbox(oldVerts);
             double workAreaSize = (nOldVerts==0 ? 1. : MAX4(ABS(oldBbox[0][0]),
@@ -2711,8 +2735,9 @@ public class ShephardsPlayApplet
                                             {
                                                 double snappedImage[] = VecMath.vxm(snappedCoords,group[iGroup]);
                                                 System.out.println("Snapping vertex "+iVert+" from "+vertI.x()+" "+vertI.y()+" "+vertI.h()+"");
-                                                vertI.setXYnaive(snappedImage[0],
-                                                            snappedImage[1]);
+                                                vertI.setxyh(snappedImage[0],
+                                                             snappedImage[1],
+                                                             vertI.h());
                                                 System.out.println("Dragging vertex "+iVert+" from "+vertI.x()+" "+vertI.y()+" "+vertI.h()+"");
                                             }
                                         }
@@ -3346,17 +3371,20 @@ public class ShephardsPlayApplet
                                     {
                                         double newCoords[] = scratch;
                                         VecMath.vxs(newCoords, newVertexPositionSums[iVert], 1./weight);
+                                        Mesh.Vertex vert = mesh.getVert(iVert);
                                         if (wrapAroundSphereFlag.get())
                                         {
-                                            mesh.getVert(iVert).setXYZnaive(newCoords[0],
-                                                                            newCoords[1],
-                                                                            newCoords[2]);
+                                            vert.setXYZW(newCoords[0],
+                                                         newCoords[1],
+                                                         newCoords[2],
+                                                         1.);
                                         }
                                         else
                                         {
-                                            // on paraboloid; h doesn't change
-                                            mesh.getVert(iVert).setXYnaive(newCoords[0],
-                                                                           newCoords[1]);
+                                            // on paraboloid; h doesn't change, and more accurate if we use the old h
+                                            vert.setxyh(newCoords[0],
+                                                        newCoords[1],
+                                                        vert.h());
                                         }
                                     }
                                 }
