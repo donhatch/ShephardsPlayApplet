@@ -17,7 +17,7 @@ BUGS:
 
   Wrap-sphere related:
     - backfacing computation must not be right-- symmetry 3,4 or something, some backfacing tries are shown with frontfacing color
-    - symmetry averaging is wrong on sphere--- it shrinks towards sphere center.
+    - symmetry averaging is wrong on sphere--- it shrinks towards sphere center (and even worse now that I'm doing it in homo space, I think).
       need a height-above-sphere-preserving average.
     - for Surface, most important thing is that offset is right-- should adjust final result to make it right
     - backface culling is flakey (or, need a coherent scheme, not keying on show-inside-out)
@@ -35,7 +35,6 @@ BUGS:
 
 
   Misc:
-    - polyhedral (q!=1) symmetries aren't working during dragging when on paraboloid. (they work on mouse down, but not drag)
     - when switching symmetry, map the fundamental region (schwarz triangle)
     - non-uniform scaling seems broken, I must have messed up something about homogeneous
     - think about whether current non-uniform scaling is more useful than keeping primal on sphere and re-computing dual, and/or whether both are useful
@@ -2772,7 +2771,9 @@ public class ShephardsPlayApplet
                             {
                                 double vertsToAdd[][] = {snappedProjectedThisP};
 
-                                if (pRotationalSymmetry.get() > 1)
+                                if (pRotationalSymmetry.get() > 1
+                                 || qRotationalSymmetry.get() > 1
+                                 || leftRightSymmetry.get())
                                 {
                                     double gens[][][] = getTheSymmetryGroupGenerators();
                                     vertsToAdd = generateVertices(vertsToAdd, gens);
@@ -3333,6 +3334,7 @@ public class ShephardsPlayApplet
                             */
                             double beingDraggedVertNewCoords[] = new double[3];
                             pickPointOnSurface(thisPeffective, offset, beingDraggedVertNewCoords, mousePressWasBackFacing);
+                            beingDraggedVertNewCoords = (double[])Arrays.append(beingDraggedVertNewCoords, 1.); // TODO: just make this homogeneous throughout
 
                             // TODO: snap!
 
@@ -3340,11 +3342,13 @@ public class ShephardsPlayApplet
                             // to beingDraggedVertNewCoords.
 
                             if (pRotationalSymmetry.get() > 1
+                             || qRotationalSymmetry.get() > 1
                              || leftRightSymmetry.get())
                             {
                                 double beingDraggedVertOldCoords[] = {beingDraggedVert.x(),
                                                                       beingDraggedVert.y(),
-                                                                      beingDraggedVert.z()};
+                                                                      beingDraggedVert.z(),
+                                                                      1.};
                                 // Drag all points of kaleidoscope.
                                 //
                                 // If any other verts are images of beingDraggedVert in the kaleidescope,
@@ -3359,26 +3363,33 @@ public class ShephardsPlayApplet
                                 int nVerts = mesh.verts.size();
                                 double newVertexPositionSums[][] = new double[nVerts][]; // all null initially
                                 int newVertexPositionWeights[] = new int[nVerts]; // all zeros initially
-                                double scratch[] = new double[3];
+                                double scratch[] = new double[4];
 
                                 FORI (iGroup, group.length)
                                 {
                                     double oldImage[] = VecMath.vxm(beingDraggedVertOldCoords, group[iGroup]);
+                                    VecMath.normalize(oldImage, oldImage);
                                     double newImage[] = null; // calculated on demand the first time it's needed below
                                     FORI (iVert, nVerts)
                                     {
                                         Mesh.Vertex vert = mesh.getVert(iVert);
-                                        scratch[0] = vert.x();
-                                        scratch[1] = vert.y();
-                                        scratch[2] = vert.z();
+                                        scratch[0] = vert.X();
+                                        scratch[1] = vert.Y();
+                                        scratch[2] = vert.Z();
+                                        scratch[3] = vert.W();
+                                        VecMath.normalize(scratch, scratch);
                                         if (EQ(oldImage[0], scratch[0], 1e-6)
                                          && EQ(oldImage[1], scratch[1], 1e-6)
-                                         && EQ(oldImage[2], scratch[2], 1e-6))
+                                         && EQ(oldImage[2], scratch[2], 1e-6)
+                                         && EQ(oldImage[3], scratch[3], 1e-6))
                                         {
                                             if (newImage == null)
                                                 newImage = VecMath.vxm(beingDraggedVertNewCoords, group[iGroup]);
                                             if (newVertexPositionSums[iVert] == null)
-                                                newVertexPositionSums[iVert] = new double[3]; // zeros
+                                                newVertexPositionSums[iVert] = new double[4]; // zeros
+                                            // XXX TODO: wow this is totally wrong now, can't just add in homogeneous space
+                                            assert(newImage.length == 4);
+                                            assert(newVertexPositionSums[iVert].length == 4);
                                             VecMath.vpv(newVertexPositionSums[iVert],
                                                         newVertexPositionSums[iVert],
                                                         newImage);
@@ -3399,32 +3410,32 @@ public class ShephardsPlayApplet
                                             vert.setXYZW(newCoords[0],
                                                          newCoords[1],
                                                          newCoords[2],
-                                                         1.);
+                                                         newCoords[3]);
                                         }
                                         else
                                         {
                                             // on paraboloid; h doesn't change, and more accurate if we use the old h
-                                            vert.setxyh(newCoords[0],
-                                                        newCoords[1],
+                                            vert.setxyh(newCoords[0]/newCoords[3],
+                                                        newCoords[1]/newCoords[3],
                                                         vert.h());
                                         }
                                     }
                                 }
                             }
-                            else
+                            else // no non-identity symmetries, just the vert
                             {
                                 if (wrapAroundSphereFlag.get())
                                 {
                                     beingDraggedVert.setXYZW(beingDraggedVertNewCoords[0],
                                                              beingDraggedVertNewCoords[1],
                                                              beingDraggedVertNewCoords[2],
-                                                             1.);
+                                                             beingDraggedVertNewCoords[3]);
                                 }
                                 else
                                 {
                                     // on paraboloid; h doesn't change
-                                    beingDraggedVert.setxyh(beingDraggedVertNewCoords[0],
-                                                            beingDraggedVertNewCoords[1],
+                                    beingDraggedVert.setxyh(beingDraggedVertNewCoords[0]/beingDraggedVertNewCoords[3],
+                                                            beingDraggedVertNewCoords[1]/beingDraggedVertNewCoords[3],
                                                             beingDraggedVert.h());
                                 }
                             }
@@ -13700,8 +13711,8 @@ OFF
         private double[][/*4*/][/*4*/] getTheSymmetryGroup()
         {
             double group[][][] = computeSymmetryGroup3d(this.pRotationalSymmetry.get(), this.qRotationalSymmetry.get(), this.leftRightSymmetry.get());
-            if (wrapAroundSphereFlag.get()
-             && !centerSphere)
+
+            if (!centerSphere)
             {
                 double wrapSphereRadius = 1./wrapSphereCurvature.get();
                 double originToSphereCenter[][] = {
@@ -13722,6 +13733,15 @@ OFF
                                                   group[iGroup],
                                                   originToSphereCenter);
                 }
+            }
+            if (!wrapAroundSphereFlag.get())
+            {
+                double wrapMat[][] = getWrapAroundSphereMatrix(wrapSphereCurvature.get(), centerSphere);
+                double unwrapMat[][] = getUnwrapAroundSphereMatrix(wrapSphereCurvature.get(), centerSphere);
+                FORI (iGroup, group.length)
+                    group[iGroup] = VecMath.mxmxm(wrapMat,
+                                                  group[iGroup],
+                                                  unwrapMat);
             }
             return group;
         } // getTheSymmetryGroup
@@ -14267,8 +14287,9 @@ OFF
         //  getRotMat()
         //  eye
         //  wrap
-        private void pickPointOnSurface(double thisP[], double offset, double resultPointOnSurface[], boolean preferBackFacing)
+        private void pickPointOnSurface(double thisP[], double offset, double resultPointOnSurface[/*3*/], boolean preferBackFacing)
         {
+            assert(resultPointOnSurface.length == 3); // TODO: change to 4 at some point
             double eyeInLocalSpace[] = VecMath.mxv(getRotMat(), eye); // multiply on wrong side, i.e. apply transpose i.e. inverse
             if (!wrapAroundSphereFlag.get())
                 eyeInLocalSpace[2] /= MAX(localScaleZ, 1e-6); // XXX aren't we doing this below too?
