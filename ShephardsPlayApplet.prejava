@@ -1338,15 +1338,21 @@ public class ShephardsPlayApplet
                     final ButtonGroup qButtonGroup = new ButtonGroup();
                     final java.awt.Insets nomargin = new java.awt.Insets(0,0,0,0);
 
-                    //add(new JLabel("Sym")); // can't think of a good place to put this
-                    add(new JCheckBox("") {
+                    add(new JLabel("Sym"));
+                    add(new JLabel(""));
+                    for (int i = 1; i <= maxpq; ++i)
+                    {
+                        add(new JLabel((i<=9?"  ":" ")+i)); // XXX I don't quite understand why this makes it look ok
+                    }
+                    advanceRow();
+                    add(new JCheckBox("lr") {
                         Listenable.Listener listener;
                         {
                             addActionListener(new java.awt.event.ActionListener() {
                                 public void actionPerformed(java.awt.event.ActionEvent e)
                                 {
                                     boolean newLeftRightSymmetry = isSelected();
-                                    changeSymmetry(pRotationalSymmetry.get(), qRotationalSymmetry.get(), newLeftRightSymmetry);
+                                    changeSymmetry(pRotationalSymmetry.get(), qRotationalSymmetry.get(), newLeftRightSymmetry, centralSymmetry.get());
                                 }
                             });
                             setSelected(leftRightSymmetry.get());
@@ -1359,12 +1365,6 @@ public class ShephardsPlayApplet
                             });
                         }
                     });
-
-                    for (int i = 1; i <= maxpq; ++i)
-                    {
-                        add(new JLabel((i<=9?"  ":" ")+i));
-                    }
-                    advanceRow();
                     add(new JLabel("p:"), rightjustify);
                     {
                         for (int i = 1; i <= maxpq; ++i)
@@ -1378,7 +1378,7 @@ public class ShephardsPlayApplet
                                         {
                                             int p = final_i;
                                             System.out.println("p = "+p);
-                                            changeSymmetry(p, qRotationalSymmetry.get(), leftRightSymmetry.get());
+                                            changeSymmetry(p, qRotationalSymmetry.get(), leftRightSymmetry.get(), centralSymmetry.get());
                                             int maxq = p<=2 ? maxpq : p==3 ? 5 : p==4 ? 3 : p==5 ? 3 : 2;
                                             int q = 1;
                                             for (java.util.Enumeration qButtons = qButtonGroup.getElements();
@@ -1406,6 +1406,26 @@ public class ShephardsPlayApplet
                         }
                     }
                     advanceRow();
+                    add(new JCheckBox("c") {
+                        Listenable.Listener listener;
+                        {
+                            addActionListener(new java.awt.event.ActionListener() {
+                                public void actionPerformed(java.awt.event.ActionEvent e)
+                                {
+                                    boolean newCentralSymmetry = isSelected();
+                                    changeSymmetry(pRotationalSymmetry.get(), qRotationalSymmetry.get(), leftRightSymmetry.get(), newCentralSymmetry);
+                                }
+                            });
+                            setSelected(centralSymmetry.get());
+                            setMargin(nomargin);
+                            centralSymmetry.addListener(listener = new Listenable.Listener() {
+                                public void valueChanged()
+                                {
+                                    setSelected(centralSymmetry.get());
+                                }
+                            });
+                        }
+                    });
                     add(new JLabel("q:"), rightjustify);
                     {
                         for (int i = 1; i <= maxpq; ++i)
@@ -1419,7 +1439,7 @@ public class ShephardsPlayApplet
                                         {
                                             int q = final_i;
                                             System.out.println("q = "+q);
-                                            changeSymmetry(pRotationalSymmetry.get(), q, leftRightSymmetry.get());
+                                            changeSymmetry(pRotationalSymmetry.get(), q, leftRightSymmetry.get(), centralSymmetry.get());
                                             int maxp = q<=2 ? maxpq : q==3 ? 5 : q==4 ? 3 : q==5 ? 3 : 2;
                                             int p = 1;
                                             for (java.util.Enumeration pButtons = pButtonGroup.getElements();
@@ -2336,23 +2356,28 @@ public class ShephardsPlayApplet
 
 
         // crappy name-- this is changeMeshSymmetry with undo and repaint
-        private void changeSymmetry(int p, int q, boolean leftRight)
+        private void changeSymmetry(int p, int q, boolean leftRight, boolean central)
         {
             if (p == pRotationalSymmetry.get()
              && q == qRotationalSymmetry.get()
-             && leftRight == leftRightSymmetry.get())
+             && leftRight == leftRightSymmetry.get()
+             && central == centralSymmetry.get())
             {
                 return; // no change
             }
 
-            System.out.println("rotationalSymmetry -> "+p+","+q+" "+(leftRight?"with":"without")+" left-right symmetry");
+            System.out.println("rotationalSymmetry -> "+p+","+q
+                + " "+(leftRight?"with":"without")+" left-right symmetry"
+                + " "+(central?"with":"without")+" central symmetry");
 
             UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
-            changeMeshSymmetry(pRotationalSymmetry.get(), leftRightSymmetry.get(),
-                               p, leftRight);
-            pRotationalSymmetry.set(p); // XXX problematic if being set from button that's listening to value
+            changeMeshSymmetry(pRotationalSymmetry.get(), qRotationalSymmetry.get(), leftRightSymmetry.get(), centralSymmetry.get(),
+                               p, q, leftRight, central);
+            // probably a lot of excess messages going on...
+            pRotationalSymmetry.set(p);
             qRotationalSymmetry.set(q);
             leftRightSymmetry.set(leftRight);
+            centralSymmetry.set(central);
             if (doContinuouslyDelaunayize.get()) delaunayize();
             UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
             undoTreeSquirrel.Do(new UndoItem(before, after));
@@ -2360,12 +2385,15 @@ public class ShephardsPlayApplet
             theCanvas.repaint();
         } // changeSymmetry
 
-        public void changeMeshSymmetry(int oldRotationalSymmetry, boolean oldLeftRightSymmetry,
-                                       int newRotationalSymmetry, boolean newLeftRightSymmetry)
+        // TODO: needs an overhaul, doesn't use q or central yet
+        public void changeMeshSymmetry(int oldRotationalSymmetry, int oldQ, boolean oldLeftRightSymmetry, boolean oldCentral,
+                                       int newRotationalSymmetry, int newQ, boolean newLeftRightSymmetry, boolean newCentral)
         {
             System.out.println("    in changeMeshSymmetry");
             if (oldRotationalSymmetry == newRotationalSymmetry
-             && oldLeftRightSymmetry == newLeftRightSymmetry)
+             && oldQ == newQ
+             && oldLeftRightSymmetry == newLeftRightSymmetry
+             && oldCentral == newCentral)
             {
                 System.out.println("    out changeMeshSymmetry (nothing changed)");
                 return; // nothing change; no point in introducing round-off error
@@ -2773,7 +2801,8 @@ public class ShephardsPlayApplet
 
                                 if (pRotationalSymmetry.get() > 1
                                  || qRotationalSymmetry.get() > 1
-                                 || leftRightSymmetry.get())
+                                 || leftRightSymmetry.get()
+                                 || centralSymmetry.get())
                                 {
                                     double gens[][][] = getTheSymmetryGroupGenerators();
                                     vertsToAdd = generateVertices(vertsToAdd, gens);
@@ -3343,7 +3372,8 @@ public class ShephardsPlayApplet
 
                             if (pRotationalSymmetry.get() > 1
                              || qRotationalSymmetry.get() > 1
-                             || leftRightSymmetry.get())
+                             || leftRightSymmetry.get()
+                             || centralSymmetry.get())
                             {
                                 double beingDraggedVertOldCoords[] = {beingDraggedVert.x(),
                                                                       beingDraggedVert.y(),
@@ -3705,7 +3735,7 @@ public class ShephardsPlayApplet
                     {
                         if (!controlIsDown)
                         {
-                            System.out.println("ctrl newly down!");
+                            //System.out.println("ctrl newly down!");
                             if (beingDraggedVertIndex != -1)
                             {
                                 Mesh.Vertex beingDraggedVert = mesh.getVert(beingDraggedVertIndex);
@@ -3767,7 +3797,7 @@ public class ShephardsPlayApplet
                             // (if they were both down previously),
                             // but most likely they are both now up.
                             // if we get this wrong it's not a huge deal.
-                            System.out.println("ctrl newly up!");
+                            //System.out.println("ctrl newly up!");
                             if (beingDraggedVertIndex != -1)
                             {
                                 Mesh.Vertex beingDraggedVert = mesh.getVert(beingDraggedVertIndex);
@@ -4335,13 +4365,13 @@ public class ShephardsPlayApplet
                     case '1': case '2': case '3': case '4': case '5':
                     case '6': case '7': case '8': case '9': case '0':
                     {
-                        changeSymmetry(c=='0' ? 10 : c-'0', qRotationalSymmetry.get(), false);
+                        changeSymmetry(c=='0' ? 10 : c-'0', qRotationalSymmetry.get(), false, false);
                         break;
                     }
                     case '!': case '@': case '#': case '$': case '%':
                     case '^': case '&': case '*': case '(': case ')':
                     {
-                        changeSymmetry(c==')' ? 10 : ")!@#$%^&*(".indexOf(c), qRotationalSymmetry.get(), true);
+                        changeSymmetry(c==')' ? 10 : ")!@#$%^&*(".indexOf(c), qRotationalSymmetry.get(), true, false);
                         break;
                     }
 
@@ -13583,7 +13613,7 @@ OFF
         // each of the sub-lists are assumed to be powers of a single generator,
         // so there's no need to try more than one thing out of a given sub-list consecutively.
         //
-        private static double[][][/*4*/][/*4*/] computeSymmetryGroupGenerators3d(int p, int q, boolean leftRightSymmetry)
+        private static double[][][/*4*/][/*4*/] computeSymmetryGroupGenerators3d(int p, int q, boolean leftRightSymmetry, boolean centralSymmetry)
         {
             double genGroups[][][][] = new double[0][][][];
 
@@ -13591,6 +13621,11 @@ OFF
             // since multiplying by it doesn't add any roundoff error.
             if (leftRightSymmetry)
                 genGroups = (double[][][][])Arrays.append(genGroups, new double[][][]{{{-1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}}});
+
+            if (centralSymmetry)
+                genGroups = (double[][][][])Arrays.append(genGroups, new double[][][]{{{-1,0,0,0},{0,-1,0,0},{0,0,-1,0},{0,0,0,1}}});
+
+
 
             if (p > 1)
             {
@@ -13651,22 +13686,34 @@ OFF
         // 3d symmetry groups that hold origin fixed.
         // rotation of order p around z axis,
         // and rotation of order q around some point between the +z and +y axis.
-        private static double[][/*4*/][/*4*/] computeSymmetryGroup3d(int p, int q, boolean leftRightSymmetry)
+        private static double[][/*4*/][/*4*/] computeSymmetryGroup3d(int p, int q, boolean leftRightSymmetry, boolean centralSymmetry)
         {
-            double gens[][][][] = computeSymmetryGroupGenerators3d(p, q, leftRightSymmetry);
+            double gens[][][][] = computeSymmetryGroupGenerators3d(p, q, leftRightSymmetry, centralSymmetry);
 
             if (false)
                 System.out.println("gens = "+Arrays.toStringNonCompact(gens,
                                                                        "", // indentString
                                                                        "    "));  // indentIncr
 
-            int nWithoutReflections = (MIN(p,q) == 1 ? MAX(p,q) :
-                                       MIN(p,q) == 2 ? 2*MAX(p,q) :
-                                       MIN(p,q)==3 && MAX(p,q)==3 ? 12 :
-                                       MIN(p,q)==3 && MAX(p,q)==4 ? 24 :
-                                       MIN(p,q)==3 && MAX(p,q)==5 ? 60 : -1);
-            assert(nWithoutReflections != -1);
-            double group[][][] = new double[nWithoutReflections * (leftRightSymmetry ? 2 : 1)][4][4];
+            int nExpected = (MIN(p,q) == 1 ? MAX(p,q) :
+                             MIN(p,q) == 2 ? 2*MAX(p,q) :
+                             MIN(p,q)==3 && MAX(p,q)==3 ? 12 :
+                             MIN(p,q)==3 && MAX(p,q)==4 ? 24 :
+                             MIN(p,q)==3 && MAX(p,q)==5 ? 60 : -1);
+            assert(nExpected != -1);
+            if (leftRightSymmetry)
+                nExpected *= 2;
+            if (centralSymmetry)
+                nExpected *= 2;
+            // In some cases, leftRightSymmetry is redundant with centralSymmetry.
+            // I don't know of any rhyme or reason to this, it just is.
+            if (leftRightSymmetry && centralSymmetry)
+                if ((MIN(p,q)==2 && MAX(p,q)%2==0) || MIN(p,q)==3&&MAX(p,q)>=4)
+                {
+                    nExpected /= 2;
+                }
+
+            double group[][][] = new double[nExpected][4][4];
             int lastSubgroupIndex[] = new int[group.length];
 
             int n = 0;
@@ -13706,14 +13753,16 @@ OFF
         //     pRotationalSymmetry
         //     qRotationalSymmetry
         //     leftRightSymmetry
+        //     centralSymmetry
         //     wrapAroundSphereFlag
         //     wrapSphereCurvature
         private double[][/*4*/][/*4*/] getTheSymmetryGroup()
         {
-            double group[][][] = computeSymmetryGroup3d(this.pRotationalSymmetry.get(), this.qRotationalSymmetry.get(), this.leftRightSymmetry.get());
+            double group[][][] = computeSymmetryGroup3d(this.pRotationalSymmetry.get(), this.qRotationalSymmetry.get(), this.leftRightSymmetry.get(), this.centralSymmetry.get());
 
             if (!centerSphere)
             {
+                // un-center the symmetry group
                 double wrapSphereRadius = 1./wrapSphereCurvature.get();
                 double originToSphereCenter[][] = {
                     {1,0,0,0},
@@ -13736,6 +13785,7 @@ OFF
             }
             if (!wrapAroundSphereFlag.get())
             {
+                // unwrap the symmetry group
                 double wrapMat[][] = getWrapAroundSphereMatrix(wrapSphereCurvature.get(), centerSphere);
                 double unwrapMat[][] = getUnwrapAroundSphereMatrix(wrapSphereCurvature.get(), centerSphere);
                 FORI (iGroup, group.length)
@@ -14208,9 +14258,10 @@ OFF
         private int thermometerWidth = 10;
 
         // symmetry to try to use when clicking or dragging with ctrl down
-        private Listenable.Boolean leftRightSymmetry = new Listenable.Boolean(false);
         private Listenable.Int pRotationalSymmetry = new Listenable.Int(1,10, 1);
         private Listenable.Int qRotationalSymmetry = new Listenable.Int(1,10, 1);
+        private Listenable.Boolean leftRightSymmetry = new Listenable.Boolean(false);
+        private Listenable.Boolean centralSymmetry = new Listenable.Boolean(false);
 
         private Listenable.Boolean wrapAroundSphereFlag = new Listenable.Boolean(false);
         private Listenable.Double wrapSphereCurvature = new Listenable.Double(.001,2., 1.);
@@ -14746,6 +14797,10 @@ OFF
                 {3,1},
                 {1,4},
                 {4,1},
+                {1,5},
+                {5,1},
+                {1,6},
+                {6,1},
 
                 {2,2},
                 {2,3},
@@ -14754,6 +14809,8 @@ OFF
                 {4,2},
                 {2,5},
                 {5,2},
+                {2,6},
+                {6,2},
 
                 {3,3},
                 {3,4},
@@ -14761,16 +14818,19 @@ OFF
                 {3,5},
                 {5,3},
             };
+
+            FORI (iCentralSymmetry, 2)
             FORI (iLeftRightSymmetry, 2)
             {
+                boolean centralSymmetry = iCentralSymmetry==1;
                 boolean leftRightSymmetry = iLeftRightSymmetry==1;
                 FORI (i, pqs.length)
                 {
                     int p = pqs[i][0];
                     int q = pqs[i][1];
                     {
-                        System.out.println("    testing computeSymmetryGroup3d(p="+p+", q="+q+", leftRightSymmetry="+leftRightSymmetry+"");
-                        computeSymmetryGroup3d(p, q, leftRightSymmetry);
+                        System.out.println("    testing computeSymmetryGroup3d(p="+p+", q="+q+", leftRight="+leftRightSymmetry+", central="+centralSymmetry);
+                        computeSymmetryGroup3d(p, q, leftRightSymmetry, centralSymmetry);
                     }
                 }
             }
