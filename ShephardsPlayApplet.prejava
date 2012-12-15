@@ -17,12 +17,10 @@ BUGS:
     - use swing sliders instead of scrollbars
 
   Wrap-sphere related:
-    - backfacing computation must not be right-- symmetry 3,4 or something, some backfacing tries are shown with frontfacing color
-    - symmetry averaging is wrong on sphere--- it shrinks towards sphere center (and even worse now that I'm doing it in homo space, I think).
       need a height-above-sphere-preserving average.
     - for Surface, most important thing is that offset is right-- should adjust final result to make it right
     - backface culling is flakey (or, need a coherent scheme, not keying on show-inside-out)
-    - backface culling sometimes slightly wrong-- using wrong criterion?
+    - backface culling sometimes slightly wrong-- using wrong criterion? symmetry 3,4 or something, some backfacing tries are shown with frontfacing color
     - doesn't interact correctly with undo/redo or save/restore
     - should compute ray lengths in flat space or something so they don't overshoot
       the point that goes to infinity.  or, just recognize the point
@@ -34,10 +32,26 @@ BUGS:
       or exactly equal
     - draw horizon of surface (done) and of ground plane?
 
+  Symmetry-related:
+    - when switching symmetry, map the fundamental region (schwarz triangle)
+    - symmetry averaging is wrong on sphere--- it shrinks towards sphere center (and even worse now that I'm doing it in homo space, I think).
+    - respect symmetry:
+        - rubberbanding
+    - collapse to-add verts via symmetries (e.g. so we don't add multiple verts at origin)
+    - improve kaleidescope:
+        - detect and use center
+        - detect and use complete symmetry group
+        - key to increase or decrease period (requires vertex in center?)
+        - snap closest image to exact image? hmm, not sure
+        - mode to place new verts in kaleidescope? (draw dots at images of cursor?)
+    - when increasing or decreasing rotational symmetry, show animation?
+
+  Snap-related:
+    - snapping should work orthogonally to symmetry (should just snap original, not images, I think... and then make images be the images of the snapped?)
+
 
   Misc:
     - option to not display edges whose dihedral is flat?
-    - when switching symmetry, map the fundamental region (schwarz triangle)
     - think about whether current non-uniform scaling is more useful than keeping primal on sphere and re-computing dual, and/or whether both are useful
       and the horizon in between.  or else use zbuffer?
     - should ConvexHull use fuzzy equality testing in more places, to avoid twinkling on grid? (hmm, maybe twinkling on grid is actually useful in a way?)
@@ -48,7 +62,6 @@ BUGS:
     - when non-ortho, snap-to-grid produces coords with some round-off error, e.g. 0.12500000000000003
     - clear and click with shift down-- creates a zero-length edge, I think it shouldn't.
       just make it so the rubberbanding won't create a new vert to exact same place.
-    - snapping should work orthogonally to symmetry (should just snap original, not images, I think... and then make images be the images of the snapped?)
     - tri grid, '+' 3 times, tilt 180 degrees -> assert fail in IsMiniBall
         (very big radius?)
     - Hexes Spiral Alt -> assert fail in IsMiniBall
@@ -60,12 +73,12 @@ BUGS:
             left is too right by 1 pixel
         radius 1/2:
             left is too right by 1 pixel
-    - symmetry=3, rotate in 3d, drag a point... it often gets stuck??
     - why do I need that extendAndOrthogonalize?  it shouldn't be getting non-orthogonal so quickly! (that was when using trackball... maybe a moot issue now)
     - can't run it with donhatchsw.jar?? can build it though! (using ; instead of :)
     - use exact group calculation rather than generateVertices when adding a point
 
 TO DO:
+    - replace notion of inside-outedness with external edges
     - really need a concept of separate viewing matrix,
       that can be changed without accumulating rounding error in the verts
     - thank about attaching a listener to a tuple of values, so they just get one callback when multiple values changed?
@@ -78,19 +91,9 @@ TO DO:
     - need different way of expressing drag-all-verts than shift-middle; middle should be for view manip I think
     - get rid of "in/out makeDualMesh" message, maybe replace with in-image counter (for convexHull / makeDualMesh, redraws)
     - actually merge vertices when edge super small? (or guarantee cut?)
-    - respect symmetry:
-        - rubberbanding
     - think about how user can express grid params
     - uniform hyperbolic grid? hmm
     - add a bit of symbolic fuzzy fudge to convex hull, to make it think flat edges are a bit convex? oh wait, is this just a question of sidedness testing afterwards? hmm. I did it, it seems to work for small things but it doesn't keep me from needing to add those extra verts to the grids?? (MAY BE DEFUNCT SINCE COPLANAR CONVEX HULL IS FIXED)
-    - collapse to-add verts via symmetries (e.g. so we don't add multiple verts at origin)
-    - improve kaleidescope:
-        - detect and use center
-        - detect and use complete symmetry group
-        - key to increase or decrease period (requires vertex in center?)
-        - snap closest image to exact image? hmm, not sure
-        - mode to place new verts in kaleidescope? (draw dots at images of cursor?)
-    - when increasing or decreasing rotational symmetry, show animation?
     - need a way to ask where remaining bad lagoon exits are (finding them visually
       is a needle in a haystack sometimes)
     - change ambiguous doThis and doThat to this(), that(), thisFlag, thatFlag?
@@ -2239,7 +2242,7 @@ public class ShephardsPlayApplet
             theCanvas.repaint();
         } // frame
 
-        static final boolean centerSphere = false;
+        static final boolean centerSphere = true;
 
 
         private static double[][] getWrapAroundSphereMatrix(double wrapSphereCurvature, boolean centerSphere)
@@ -4149,6 +4152,7 @@ public class ShephardsPlayApplet
                                 if (!centerSphere)
                                     scratch[2] += wrapSphereRadius;
                                 VecMath.normalize(scratch, scratch);
+                                VecMath.vxs(scratch, scratch, wrapSphereRadius);
                                 if (!centerSphere)
                                     scratch[2] -= wrapSphereRadius;
                                 vert.setXYZW(scratch[0],
