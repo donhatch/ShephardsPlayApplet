@@ -51,7 +51,6 @@ BUGS:
 
 
   Misc:
-    - option to not display edges whose dihedral is flat?
     - think about whether current non-uniform scaling is more useful than keeping primal on sphere and re-computing dual, and/or whether both are useful
       and the horizon in between.  or else use zbuffer?
     - should ConvexHull use fuzzy equality testing in more places, to avoid twinkling on grid? (hmm, maybe twinkling on grid is actually useful in a way?)
@@ -1774,7 +1773,7 @@ public class ShephardsPlayApplet
             "    Left/Right arrow - rotate closest cut or fold CCW or CW around its lagoon in the net",
             "    'S' - turn off optimize, and re-spherize",
             "    'd' - delete closest edge",
-            "    ctrl-'i' - toggle doShowInsideOutDualVerts",
+            "    ctrl-'i' - toggle showInsideOutVertsFlag",
             "    ctrl-'o' - cycle optimizationType",
             "    ctrl-'v' - toggle nonEventVerbose",
             "    Up arrow: pull face plane of closest vertex out",
@@ -1873,7 +1872,7 @@ public class ShephardsPlayApplet
                 {
                     Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
                     if (dualVert.arity == 3
-                     && (doShowInsideOutDualVerts
+                     && (showInsideOutVertsFlag
                       || dualVert.weight >= 0))
                         writer.println("        {" + dualVert.Xnaive()
                                    + ", " + dualVert.Ynaive()
@@ -2920,7 +2919,7 @@ public class ShephardsPlayApplet
                                                 int oldNumEdges = mesh.edges.size();
                                                 mesh.kisIsolatedVertex((Mesh.Vertex)verts.get(verts.size()-1),
                                                                        edgeOnMostNegativeFace);
-                                                if (!doShowInsideOutDualVerts)
+                                                if (!showInsideOutVertsFlag)
                                                 {
                                                     for (int iEdge = oldNumEdges;
                                                          iEdge < mesh.edges.size();
@@ -4044,7 +4043,7 @@ public class ShephardsPlayApplet
                                 Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
                                 if (dualVert.arity != 3)
                                     continue; // not a triangle
-                                if (!doShowInsideOutDualVerts)
+                                if (!showInsideOutVertsFlag)
                                 {
                                     if (dualVert.weight < 0)
                                         continue; // the triangle is inside out; it's the boundary
@@ -4371,9 +4370,9 @@ public class ShephardsPlayApplet
                         help();
                         break;
 
-                    case CTRL('i'): // toggle doShowInsideOutDualVerts
-                        doShowInsideOutDualVerts ^= true;
-                        System.out.println("doShowInsideOutDualVerts -> "+doShowInsideOutDualVerts);
+                    case CTRL('i'): // toggle showInsideOutVertsFlag
+                        showInsideOutVertsFlag ^= true;
+                        System.out.println("showInsideOutVertsFlag -> "+showInsideOutVertsFlag);
                         if (doContinuouslyDelaunayize.get()) delaunayize();
                         dirtyDualMesh();
                         theCanvas.repaint();
@@ -5273,10 +5272,18 @@ public class ShephardsPlayApplet
                 //
 
                 double vertCoordsHomo[][] = new double[nVerts][4];
+                double dualVertCoordsHomoNormalized[][] = new double[nDualVerts][4];
                 FORI (iVert, nVerts)
                 {
                     Mesh.Vertex v = mesh.getVert(iVert);
                     vertCoordsHomo[iVert] = new double[]{v.X(), v.Y(), v.Z(), v.W()};
+                }
+                FORI (iDualVert, nDualVerts)
+                {
+                    Mesh.Vertex v = dualMesh.getVert(iDualVert);
+                    dualVertCoordsHomoNormalized[iDualVert] = new double[]{v.X(), v.Y(), v.Z(), v.W()};
+                    VecMath.normalize(dualVertCoordsHomoNormalized[iDualVert],
+                                      dualVertCoordsHomoNormalized[iDualVert]);
                 }
 
                 // bunch of stuff that only gets set if drawing dual diagram...
@@ -6006,6 +6013,7 @@ public class ShephardsPlayApplet
                     {
                         ArrayList verts = mesh.verts;
                         ArrayList edges = mesh.edges;
+                        ArrayList dualEdges = dualMesh.edges;
 
                         if (iFacingPass == 0) // back faces
                             mg.setColor(new java.awt.Color(backBrightness,backBrightness,backBrightness));
@@ -6160,6 +6168,23 @@ public class ShephardsPlayApplet
                                 if ((edgeFacings[iWholeEdge*2]!=FACING_BACK) == (iFacingPass==1))
                                 {
                                     Mesh.Edge edge = (Mesh.Edge)edges.get(iWholeEdge*2);
+
+                                    if (!showFlatEdgesFlag)
+                                    {
+                                        // Is it flat?  It's flat if the dual edge has very small length.
+                                        Mesh.Edge dualEdge = (Mesh.Edge)dualEdges.get(iWholeEdge*2);
+                                        Mesh.Vertex vert0 = dualEdge.initialVertex();
+                                        Mesh.Vertex vert1 = dualEdge.finalVertex();
+                                        if (vert0 != null && vert1 != null)
+                                        {
+                                            double v0[] = dualVertCoordsHomoNormalized[vert0.myIndex()];
+                                            double v1[] = dualVertCoordsHomoNormalized[vert1.myIndex()];
+                                            double flatThreshold = 1e-6;
+                                            if (VecMath.distsqrd(v0,v1) < SQR(flatThreshold))
+                                                continue;
+                                        }
+                                    }
+
                                     double v0[] = vertCoordsHomo[edge.initialVertex().myIndex()];
                                     double v1[] = vertCoordsHomo[edge.finalVertex().myIndex()];
                                     mg.drawLine(v0[0],v0[1],v0[2],v0[3],
@@ -6450,7 +6475,7 @@ public class ShephardsPlayApplet
                                 int parentEdgeInd = theNet._vertToParentEdgeInd[iChild];
                                 if (parentEdgeInd != -1)
                                 {
-                                    if (!doShowInsideOutDualVerts
+                                    if (!showInsideOutVertsFlag
                                      && dualEdgeFacings[parentEdgeInd] == FACING_BACK)
                                         continue;
 
@@ -7284,7 +7309,7 @@ public class ShephardsPlayApplet
                 // Analyze all the edges first before deleting any,
                 // so that we are only looking at triangle areas.
                 //
-                if (!doShowInsideOutDualVerts)
+                if (!showInsideOutVertsFlag)
                 {
                     ArrayList edgesToDelete = new ArrayList();
                     int nEdges = mesh.edges.size();
@@ -12025,7 +12050,7 @@ OFF
                     // If we do this, then applying makeDualMesh twice
                     // will reverse all the edges,
                     // I think.
-                    // (assumimg doShowInsideOutDualVerts is true)
+                    // (assumimg showInsideOutVertsFlag is true)
                     dualEdge._next = dual.getEdge(primalEdge._prev._opposite._myIndex);
                     dualEdge._prev = dual.getEdge(primalEdge._opposite._next._myIndex);
                 }
@@ -12036,7 +12061,7 @@ OFF
                     // If we do this, then makeDualMesh(makeDualMesh(mesh))
                     // should return something identical to the original,
                     // I think.
-                    // (assumimg doShowInsideOutDualVerts is true)
+                    // (assumimg showInsideOutVertsFlag is true)
                     // XXX Odd, this seems to behave better all around (I expected rays to go in wrong direction,
                     // but it works better than the other way... should think about why)
                     dualEdge._next = dual.getEdge(primalEdge._next._opposite._myIndex);
@@ -14159,7 +14184,7 @@ OFF
             {
                 _dualMesh = makeDualMesh(mesh,
                                          false,  // includeNonArity3
-                                         doShowInsideOutDualVerts, // includeInsideOut
+                                         showInsideOutVertsFlag, // includeInsideOut
                                          wrapAroundSphereFlag.get(),
                                          wrapSphereCurvature.get());
                 _meshOfDualMesh = mesh;
@@ -14269,7 +14294,8 @@ OFF
         private boolean showLabelsFlag = false;
         private boolean doArrowsTowardsSharpestDihedrals = false;
         private boolean doArrowsTowardsShortestEdges = false;
-        private boolean doShowInsideOutDualVerts = false; // might also be nice to have option for implicit primal vertex in middle of outer face, so that dual will be single-face-bounded... and maybe ctrl-up,ctrl-down will adjust the height of that face
+        private boolean showInsideOutVertsFlag = false; // might also be nice to have option for implicit primal vertex in middle of outer face, so that dual will be single-face-bounded... and maybe ctrl-up,ctrl-down will adjust the height of that face
+        private boolean showFlatEdgesFlag = false; // hard-coded for now
 
         private boolean doShowPositiveOrthantnessVisualization = false; // XXX total hack-- it's cool but put it somewhere else!!
         private int showTriangles = 2; // 0: nothing, 1: verts, 2: and tris
