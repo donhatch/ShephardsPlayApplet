@@ -17,7 +17,6 @@ BUGS:
     - use swing sliders instead of scrollbars
 
   Wrap-sphere related:
-    - spherize doesn't work right on sphere
     - backfacing computation must not be right-- symmetry 3,4 or something, some backfacing tries are shown with frontfacing color
     - symmetry averaging is wrong on sphere--- it shrinks towards sphere center (and even worse now that I'm doing it in homo space, I think).
       need a height-above-sphere-preserving average.
@@ -4137,12 +4136,36 @@ public class ShephardsPlayApplet
                             doOptimize.set(false);
                             System.out.println("doOptimize -> "+doOptimize.get()+" ('O' to turn back on)");
                         }
-                        FORIDOWN (iVert, mesh.verts.size())
+                        if (wrapAroundSphereFlag.get())
                         {
-                            Mesh.Vertex vert = mesh.getVert(iVert);
-                            vert.setxyh(vert.x(),
-                                        vert.y(),
-                                        0.);
+                            double wrapSphereRadius = 1./wrapSphereCurvature.get();
+                            double scratch[] = new double[3];
+                            FORIDOWN (iVert, mesh.verts.size())
+                            {
+                                Mesh.Vertex vert = mesh.getVert(iVert);
+                                scratch[0] = vert.x();
+                                scratch[1] = vert.y();
+                                scratch[2] = vert.z();
+                                if (!centerSphere)
+                                    scratch[2] += wrapSphereRadius;
+                                VecMath.normalize(scratch, scratch);
+                                if (!centerSphere)
+                                    scratch[2] -= wrapSphereRadius;
+                                vert.setXYZW(scratch[0],
+                                             scratch[1],
+                                             scratch[2],
+                                             1.);
+                            }
+                        }
+                        else
+                        {
+                            FORIDOWN (iVert, mesh.verts.size())
+                            {
+                                Mesh.Vertex vert = mesh.getVert(iVert);
+                                vert.setxyh(vert.x(),
+                                            vert.y(),
+                                            0.);
+                            }
                         }
                         dirtyDualMesh();
                         if (doContinuouslyDelaunayize.get()) delaunayize();
