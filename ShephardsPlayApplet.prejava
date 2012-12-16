@@ -49,9 +49,14 @@ BUGS:
   Snap-related:
     - snapping should work orthogonally to symmetry (should just snap original, not images, I think... and then make images be the images of the snapped?)
 
+  External edges related:
+    - blue noise, switch to wrap, delaunayize... looks funky whether or not showInsideOut.
+    - different criterion maybe?  external iff it's between a negative and positive dual vert?
+    - I don't think I like them, on a simple quad swap.  is there a way to differentiate that
+       from the cases I do like?
 
   Misc:
-    - drawExternalEdgesFlag=true not working-- DUMP.off.externalEdgesFuckedUp, and switch to sphere
+    - hit '/', it assert-fails
     - showFlatEdgesFlag=false not working-- it suppresses completely sharp edges too
     - think about whether current non-uniform scaling is more useful than keeping primal on sphere and re-computing dual, and/or whether both are useful
       and the horizon in between.  or else use zbuffer?
@@ -5188,7 +5193,7 @@ public class ShephardsPlayApplet
                 // if there is an initial vertex, otherwise an appropriately computed
                 // place to draw the edge from.
                 //
-                double dualVertCoords[][] = new double[nDualVerts][];
+                double dualVertCoords[][] = new double[nDualVerts][]; // TODO: wait a minute, there's also dualVertsHomoNormalized or something
                 double dualEdgeInitialCoords[][] = new double[nEdges][];
                 {
                     FORI (iDualVert, nDualVerts)
@@ -5201,7 +5206,9 @@ public class ShephardsPlayApplet
                         Mesh.Edge dualEdge = dualMesh.getEdge(iDualEdge);
                         Mesh.Vertex v0 = dualEdge.initialVertex();
                         if (v0 != null)
+                        {
                             dualEdgeInitialCoords[iDualEdge] = dualVertCoords[v0.myIndex()];
+                        }
                         else
                         {
                             Mesh.Vertex v1 = dualEdge.finalVertex();
@@ -6393,41 +6400,51 @@ public class ShephardsPlayApplet
                                     //
                                     double direction[] = dualEdge.direction;
                                     assert(direction != null);
-
-                                    // assume this for now, if it changes we'll have to make the computation smarter
-                                    assert(to[3] == 1.);
-                                    assert(from[3] == 1.);
-
+                                    assert(direction.length == 3);
 
                                     boolean drawAsExternal = false;
-                                    boolean showExternalEdgesFlag = false;
                                     if (showExternalEdgesFlag)
                                     {
-                                        double dotProd = direction[0]*(to[0]-from[0])
-                                                       + direction[1]*(to[1]-from[1])
-                                                       + direction[2]*(to[2]-from[2]);
-                                        if (dotProd < -1e-3)
-                                            drawAsExternal = true;
+                                        if (dualEdge.initialVertex() != null
+                                         && dualEdge.finalVertex() != null)
+                                        {
+                                            if (false)
+                                            {
+                                                // XXX TODO: doesn't seem to be working.
+                                                double dotProd = direction[0]*(to[0]/to[3]-from[0]/from[3])
+                                                               + direction[1]*(to[1]/to[3]-from[1]/from[3])
+                                                               + direction[2]*(to[2]/to[3]-from[2]/from[3]);
+                                                if (dotProd < -1e-3)
+                                                    drawAsExternal = true;
+                                            }
+                                            else
+                                            {
+                                                // XXX TODO: doesn't seem to be working.
+                                                drawAsExternal = (from[3]*to[3] < 0.);
+                                            }
+                                        }
                                     }
                                     if (drawAsExternal)
                                     {
                                         // external edge
                                         //mg.setColor(java.awt.Color.yellow);
-                                        double other[] = new double[3];
-                                        VecMath.vpv(other, from, direction);
-                                        mg.drawLine(from[0], from[1], from[2], 1.,
-                                                    other[0], other[1], other[2], 1.,
+                                        double other[] = new double[4];
+                                        VecMath.copyvec(other, from);
+                                        VecMath.vpsxv(3, other, other, other[3], direction); // other = from + direction   XXX isn't this backwards?
+                                        mg.drawLine(from[0], from[1], from[2], from[3],
+                                                    other[0], other[1], other[2], other[3],
                                                     doAntiAliasing);
-                                        VecMath.vmv(other, to, direction);
-                                        mg.drawLine(other[0], other[1], other[2], 1.,
-                                                    to[0], to[1], to[2], 1.,
+                                        VecMath.copyvec(other, to);
+                                        VecMath.vpsxv(3, other, other, -other[3], direction); // other = to - direction   XXX isn't this backwards?
+                                        mg.drawLine(other[0], other[1], other[2], other[3],
+                                                    to[0], to[1], to[2], to[3],
                                                     doAntiAliasing);
                                     }
                                     else
                                     {
                                         // internal edge
-                                        mg.drawLine(from[0], from[1], from[2], 1.,
-                                                    to[0], to[1], to[2], 1.,
+                                        mg.drawLine(from[0], from[1], from[2], from[3],
+                                                    to[0], to[1], to[2], to[3],
                                                     doAntiAliasing);
                                     }
 
@@ -6477,7 +6494,7 @@ public class ShephardsPlayApplet
                                 mg.setColor(frontColor);
 
                             double p[] = dualVertCoords[iDualVert];
-                            mg.drawPoint(p[0], p[1], p[2],
+                            mg.drawPoint(p[0], p[1], p[2], p[3],
                                          showNetFlag.get() ? 2 : 5);
                         }
 
@@ -10294,8 +10311,8 @@ OFF
                 private double _H; // height above the paraboloid z = -(x^2+y^2)/2 (has curvature 1 at origin)
 
                 // TODO: I think weight can be merged with w, and should be storing moment instead of position when weight is non-1 ... except I'm not sure if there's confusion when w is also being used to convey infinite position
-                public double weight = 1.; // optional, if this is a computed dual vertex, this should be the original triangle area
-                public double momentAndArea[/*4*/] = null; // optional... similar to weight. x*A,y*A,h*A^2,A where A is twice tri area
+                public double weight = 1.; // optional, if this is a computed dual vertex, this should be the original triangle area (projected to xy plane I think)
+                public double momentAndArea[/*4*/] = null; // optional... similar to weight. x*A,y*A,h*A^2,A where A is twice tri area (projected to xy plane I think)
                 public int arity = 0; // number of edges having this vertex as initial vertex
 
                 private int _myIndex = -1;
@@ -12061,6 +12078,10 @@ OFF
             {
                 return new Vertex(x, y, h);
             }
+            Vertex newVertex(double X, double Y, double Z, double W)
+            {
+                return new Vertex(X, Y, Z, W);
+            }
 
 
         } // class Mesh
@@ -12125,62 +12146,163 @@ OFF
             // Include inside-out ones for starters,
             // to avoid lots of redundant calculation.  We'll remove them afterwards.
             //
+            double vertCoords3d[][] = null;
+            if (wrapAroundSphereFlagValue)
+            {
+                int nVerts = primal.verts.size();
+                vertCoords3d = new double[nVerts][3];
+                FORI (iVert, nVerts)
+                {
+                    double coord[] = vertCoords3d[iVert];
+                    Mesh.Vertex v = primal.getVert(iVert);
+                    coord[0] = v.x();
+                    coord[1] = v.y();
+                    coord[2] = v.z();
+
+                }
+            }
             FORI (iEdge, nEdges)
             {
                 Mesh.Edge dualEdge0 = dual.getEdge(iEdge);
                 if (dualEdge0._opposite._initialVertex != null)
                     continue; // did this one already
 
-                Mesh.Edge primalEdge0 = primal.getEdge(iEdge);
+                Mesh.Vertex dualVert; // TODO: merge this back when ported to new way
 
-                //
-                // Triangulate,
-                // using primalEdge0's initial vertex as the hub.
-                // The final dual vertex will be the triangle-area-weighted average
-                // of the circumcenters of the triangles.
-                // (the answer is the same regardless of triangulation...
-                // at least for the x,y part.  not sure what this does to the h part.)
-                // XXX TODO: don't we already do this in some version of SolveForDualPoint or SolveForDualMomentAndArea or something?
-                //
-                double totalMomentAndArea[] = new double[4]; // zero initially
-
-                double triMomentAndArea[] = new double[4]; // scratch for loop
-                Mesh.Vertex v0 = primalEdge0._initialVertex;
-                int dualVertArity = 2; // and counting
-                for (Mesh.Edge primalEdge = primalEdge0.next();
-                     primalEdge.finalVertex() != v0;
-                     primalEdge = primalEdge.next())
+                if (wrapAroundSphereFlagValue)
                 {
-                    Mesh.Vertex v1 = primalEdge.initialVertex();
-                    Mesh.Vertex v2 = primalEdge.finalVertex();
+                    // Triangulate,
+                    // using primalEdge0's initial vertex as the hub.
 
-                    // XXX TODO: do this in homogeneous coords!
-                    SolveForDualMomentAndArea(v0.x(), v0.y(), v0.h(),
-                                              v1.x(), v1.y(), v1.h(),
-                                              v2.x(), v2.y(), v2.h(),
-                                              triMomentAndArea,
-                                              wrapAroundSphereFlagValue,
-                                              wrapSphereCurvatureValue);
-                    accumulateMomentAndArea(totalMomentAndArea, triMomentAndArea);
+                    double totalWeightedNormal[] = new double[3]; // zero initially
 
-                    dualVertArity++;
+                    {
+                        // TODO: move these more outward
+                        double edgeVec1[] = new double[3]; // scratch for loop
+                        double edgeVec2[] = new double[3]; // scratch for loop
+                        double edgeCenter[] = new double[3]; // scratch for loop
+
+                        Mesh.Edge primalEdge0 = primal.getEdge(iEdge);
+                        Mesh.Vertex v0 = primalEdge0._initialVertex;
+                        double v0coords[] = {v0.x(), v0.y(), v0.z()};
+                        for (Mesh.Edge primalEdge = primalEdge0.next();
+                             primalEdge.finalVertex() != v0;
+                             primalEdge = primalEdge.next())
+                        {
+                            double v1coords[] = vertCoords3d[primalEdge.initialVertex().myIndex()];
+                            double v2coords[] = vertCoords3d[primalEdge.finalVertex().myIndex()];
+
+                            VecMath.vmv(edgeVec1, v1coords, v0coords);
+                            VecMath.vmv(edgeVec2, v2coords, v0coords);
+
+                            VecMath.vpvxv3(totalWeightedNormal,
+                                           totalWeightedNormal,
+                                           edgeVec1,
+                                           edgeVec2);
+                        }
+                    }
+
+                    // want triangulation-independent representative point--
+                    // use the perimeter center.
+                    double perimeterMomentAndLength[] = new double[4]; // zero initially
+                    {
+                        Mesh.Edge primalEdge0 = primal.getEdge(iEdge);
+                        Mesh.Edge primalEdge = primalEdge0;
+                        do {
+                            double v1coords[] = vertCoords3d[primalEdge.initialVertex().myIndex()];
+                            double v2coords[] = vertCoords3d[primalEdge.finalVertex().myIndex()];
+                            double edgeLength = VecMath.dist(v1coords, v2coords);
+                            VecMath.vpsxvpsxv(3, perimeterMomentAndLength,
+                                                 perimeterMomentAndLength, .5*edgeLength, v1coords,
+                                                                           .5*edgeLength, v2coords);
+                            perimeterMomentAndLength[3] += edgeLength;
+                        } while ((primalEdge=primalEdge.next()) != primalEdge0);
+                    }
+
+                    // working with unit normal simplifies things, though I'm not sure it's really necessary
+                    double unitNormal[] = VecMath.normalize(totalWeightedNormal);
+
+                    // take dot product of normal with perimeter center
+                    double dotProd = VecMath.dot(3, perimeterMomentAndLength, unitNormal) / perimeterMomentAndLength[3];
+                    if (!centerSphere)
+                        dotProd += unitNormal[2]/wrapSphereCurvatureValue; // TODO: can we get rid of the divide and make it a multiply somewhere else?
+
+                    // want length of answer to be r^2 / dotProd.
+                    // so, could just return unitNormalOut scaled by r^2/dotProd,
+                    // but now we can be clever and stick the denominator in the W part,
+                    // so that the answer is correct and robust even if dotProd is 0 or close to it.
+                    // We also put wrapSphereCurvature in there too-- not sure whether this matters,
+                    // but it makes the XYZ part be the unit normal (if centerSphere), which is nice maybe.
+                    double X = unitNormal[0];
+                    double Y = unitNormal[1];
+                    double Z = unitNormal[2];
+                    double W = dotProd * SQR(wrapSphereCurvatureValue);
+                    if (!centerSphere)
+                        Z -= dotProd*wrapSphereCurvatureValue; // wrapSphereRadius*W but more robust when curvature is close to 0
+
+                    double weight = dotProd; // times SQR(wrapSphereCurvature)? or not?
+
+                    dualVert = dual.newVertex(X,Y,Z,W);
+                    dualVert.weight = weight;
+                    dualVert.momentAndArea = new double[] {X,Y,Z,W}; // seems redundant at this point, at least for sphere... maybe try to get rid
                 }
-
-                double twiceTotalArea = totalMomentAndArea[3];
-
-                double totalCenter[] = new double[3]; // zero arbitrarily XXX should set it to center of edge? not sure
-                if (twiceTotalArea != 0.)
+                else // paraboloid
                 {
-                    totalCenter[0] = totalMomentAndArea[0] / twiceTotalArea;
-                    totalCenter[1] = totalMomentAndArea[1] / twiceTotalArea;
-                    totalCenter[2] = totalMomentAndArea[2] / (wrapAroundSphereFlagValue ? twiceTotalArea : SQR(twiceTotalArea));
-                }
+                    //
+                    // Triangulate,
+                    // using primalEdge0's initial vertex as the hub.
+                    // The final dual vertex will be the triangle-area-weighted average
+                    // of the circumcenters of the triangles.
+                    // (the answer is the same regardless of triangulation...
+                    // at least for the x,y part.  not sure what this does to the h part.)
+                    // XXX TODO: don't we already do this in some version of SolveForDualPoint or SolveForDualMomentAndArea or something?
+                    //
+                    double totalMomentAndArea[] = new double[4]; // zero initially
 
-                Mesh.Vertex dualVert = dual.newVertex(totalCenter[0],
-                                                      totalCenter[1],
-                                                      totalCenter[2]);
-                dualVert.weight = .5 * twiceTotalArea;
-                dualVert.momentAndArea = totalMomentAndArea;
+                    double triMomentAndArea[] = new double[4]; // scratch for loop
+                    Mesh.Edge primalEdge0 = primal.getEdge(iEdge);
+                    Mesh.Vertex v0 = primalEdge0._initialVertex;
+                    for (Mesh.Edge primalEdge = primalEdge0.next();
+                         primalEdge.finalVertex() != v0;
+                         primalEdge = primalEdge.next())
+                    {
+                        Mesh.Vertex v1 = primalEdge.initialVertex();
+                        Mesh.Vertex v2 = primalEdge.finalVertex();
+
+                        // XXX TODO: do this in homogeneous coords!  or not? hmm
+                        SolveForDualMomentAndArea(v0.x(), v0.y(), v0.h(),
+                                                  v1.x(), v1.y(), v1.h(),
+                                                  v2.x(), v2.y(), v2.h(),
+                                                  triMomentAndArea,
+                                                  wrapAroundSphereFlagValue, // TODO: doesn't need to take this any more, we're paraboloid at this point
+                                                  wrapSphereCurvatureValue); // TODO: doesn't need to take this any more, we're paraboloid at this point
+                        accumulateMomentAndArea(totalMomentAndArea, triMomentAndArea);
+                    }
+
+                    double twiceTotalArea = totalMomentAndArea[3];
+
+                    double totalCenter[] = new double[3]; // zero arbitrarily XXX should set it to center of edge? not sure
+                    if (twiceTotalArea != 0.)
+                    {
+                        totalCenter[0] = totalMomentAndArea[0] / twiceTotalArea;
+                        totalCenter[1] = totalMomentAndArea[1] / twiceTotalArea;
+                        totalCenter[2] = totalMomentAndArea[2] / (wrapAroundSphereFlagValue ? twiceTotalArea : SQR(twiceTotalArea));
+                    }
+
+                    dualVert = dual.newVertex(totalCenter[0],
+                                              totalCenter[1],
+                                              totalCenter[2]);
+                    dualVert.weight = .5 * twiceTotalArea;
+                    dualVert.momentAndArea = totalMomentAndArea;
+
+                    // haphazard fixup
+                    if (dualVert.weight < 0.)
+                        dualVert.setXYZW(-dualVert.X(),
+                                         -dualVert.Y(),
+                                         -dualVert.Z(),
+                                         -dualVert.W());
+
+                }
 
                 // Set dualVert to be the *final* vertex (i.e. initial vertex of opposite)
                 // of each dual edge ending at it.
@@ -13401,7 +13523,7 @@ OFF
                                               double x1, double y1, double h1,
                                               double x2, double y2, double h2,
                                               double result[],
-                                              boolean wrapAroundSphereFlagValue,
+                                              boolean wrapAroundSphereFlagValue, // huh? not used at the moment?
                                               double wrapSphereCurvatureValue)
         {
             double M[][] = {
@@ -14380,7 +14502,8 @@ OFF
         private boolean doArrowsTowardsSharpestDihedrals = false;
         private boolean doArrowsTowardsShortestEdges = false;
         private boolean showInsideOutVertsFlag = false; // might also be nice to have option for implicit primal vertex in middle of outer face, so that dual will be single-face-bounded... and maybe ctrl-up,ctrl-down will adjust the height of that face
-        private boolean showFlatEdgesFlag = true; // hard-coded for now
+        private boolean showFlatEdgesFlag = false; // hard-coded for now, seems to work well
+        boolean showExternalEdgesFlag = false; // not ready for prime time
 
         private boolean doShowPositiveOrthantnessVisualization = false; // XXX total hack-- it's cool but put it somewhere else!!
         private int showTriangles = 2; // 0: nothing, 1: verts, 2: and tris
