@@ -48,12 +48,6 @@ BUGS:
   Snap-related:
     - snapping should work orthogonally to symmetry (should just snap original, not images, I think... and then make images be the images of the snapped?)
 
-  External edges related:
-    - blue noise, switch to wrap, delaunayize... looks funky whether or not showInsideOut.
-    - different criterion maybe?  external iff it's between a negative and positive dual vert?
-    - I don't think I like them, on a simple quad swap.  is there a way to differentiate that
-       from the cases I do like?
-
   Misc:
     - showFlatEdgesFlag=false not working-- it suppresses completely sharp edges too
     - think about whether current non-uniform scaling is more useful than keeping primal on sphere and re-computing dual, and/or whether both are useful
@@ -1778,6 +1772,7 @@ public class ShephardsPlayApplet
             "    Left/Right arrow - rotate closest cut or fold CCW or CW around its lagoon in the net",
             "    'S' - turn off optimize, and re-spherize",
             "    'd' - delete closest edge",
+            "    'e' - toggle showExternalEdgesFlag",
             "    ctrl-'i' - toggle showInsideOutVertsFlag",
             "    ctrl-'o' - cycle optimizationType",
             "    ctrl-'v' - toggle nonEventVerbose",
@@ -1879,10 +1874,17 @@ public class ShephardsPlayApplet
                     if (dualVert.arity == 3
                      && (showInsideOutVertsFlag
                       || dualVert.weight >= 0))
-                        writer.println("        {" + dualVert.Xnaive()
-                                   + ", " + dualVert.Ynaive()
-                                   + ", " + dualVert.Hnaive()
-                                   + "},");
+                    {
+                        //writer.println("        {" + dualVert.Xnaive()
+                        //           + ", " + dualVert.Ynaive()
+                        //           + ", " + dualVert.Hnaive()
+                        //           + "},");
+                        writer.println("        {" + dualVert.X()
+                                            + ", " + dualVert.Y()
+                                            + ", " + dualVert.Z()
+                                            + ", " + dualVert.W()
+                                            + "},");
+                    }
                     else
                         writer.println("null");
                 }
@@ -4300,6 +4302,14 @@ public class ShephardsPlayApplet
                         break;
                     }
 
+                    case 'e': // toggle showExternalEdgesFlag
+                    {
+                        showExternalEdgesFlag = !showExternalEdgesFlag;
+                        System.out.println("showExternalEdgesFlag -> "+showExternalEdgesFlag);
+                        theCanvas.repaint();
+                        break;
+                    }
+
                     case 'u': case CTRL('z'): // undo
                     {
                         UndoItem item = (UndoItem)undoTreeSquirrel.undo();
@@ -6400,28 +6410,10 @@ public class ShephardsPlayApplet
                                     assert(direction != null);
                                     assert(direction.length == 3);
 
-                                    boolean drawAsExternal = false;
-                                    if (showExternalEdgesFlag)
-                                    {
-                                        if (dualEdge.initialVertex() != null
-                                         && dualEdge.finalVertex() != null)
-                                        {
-                                            if (false)
-                                            {
-                                                // XXX TODO: doesn't seem to be working.
-                                                double dotProd = direction[0]*(to[0]/to[3]-from[0]/from[3])
-                                                               + direction[1]*(to[1]/to[3]-from[1]/from[3])
-                                                               + direction[2]*(to[2]/to[3]-from[2]/from[3]);
-                                                if (dotProd < -1e-3)
-                                                    drawAsExternal = true;
-                                            }
-                                            else
-                                            {
-                                                // XXX TODO: doesn't seem to be working.
-                                                drawAsExternal = (from[3]*to[3] < 0.);
-                                            }
-                                        }
-                                    }
+                                    boolean drawAsExternal = showExternalEdgesFlag
+                                                          && dualEdge.initialVertex() != null
+                                                          && dualEdge.finalVertex() != null
+                                                          && from[3]*to[3] < 0.;
                                     if (drawAsExternal)
                                     {
                                         // external edge
@@ -6588,7 +6580,8 @@ public class ShephardsPlayApplet
                         }
 
                         //
-                        // Draw center of curvature
+                        // Draw center of curvature if we recorded one
+                        //
                         if (avg != null)
                         {
                             mg.setColor(dualVertSelectionColor);
@@ -14509,7 +14502,7 @@ OFF
         private boolean doArrowsTowardsShortestEdges = false;
         private boolean showInsideOutVertsFlag = false; // might also be nice to have option for implicit primal vertex in middle of outer face, so that dual will be single-face-bounded... and maybe ctrl-up,ctrl-down will adjust the height of that face
         private boolean showFlatEdgesFlag = false; // hard-coded for now, seems to work well
-        boolean showExternalEdgesFlag = false; // not ready for prime time
+        boolean showExternalEdgesFlag = true;
 
         private boolean doShowPositiveOrthantnessVisualization = false; // XXX total hack-- it's cool but put it somewhere else!!
         private int showTriangles = 2; // 0: nothing, 1: verts, 2: and tris
