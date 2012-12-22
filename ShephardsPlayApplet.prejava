@@ -6362,6 +6362,7 @@ public class ShephardsPlayApplet
                         // we draw the non-cut edges first, then the cut edges--
                         // this makes the tree appear more connected.
                         //
+                        if (true)
                         {
                             double destPoint[] = new double[3]; // scratch for loop
                             int nPasses = showNetFlag.get() ? 2 : 1;
@@ -6399,43 +6400,53 @@ public class ShephardsPlayApplet
                                     double from[] = dualEdgeInitialCoords[iDualEdge];
                                     double to[] = dualEdgeInitialCoords[oDualEdge];
 
-
                                     //
-                                    // Figure out whether it's an internal or external edge,
-                                    // that is, whether the edge direction points
-                                    // from initial vert towards final vert
-                                    // or away from it.
+                                    // Never draw dual edges between negative and positive dual verts
+                                    // (if anything, draw the external edge).
+                                    // Strategies for drawing dual edges:
+                                    // Strategy for drawing internal/external dual edges can be:
+                                    //     none
+                                    //     positive parts only
+                                    //     negative parts only
+                                    //     positive and negative parts
                                     //
-                                    double direction[] = dualEdge.direction;
-                                    assert(direction != null);
-                                    assert(direction.length == 3);
+                                    boolean drawFrontDualVertsFlag = true;
+                                    boolean drawBackDualVertsFlag = showInsideOutVertsFlag;
 
-                                    boolean drawAsExternal = showExternalEdgesFlag
-                                                          && dualEdge.initialVertex() != null
-                                                          && dualEdge.finalVertex() != null
-                                                          && from[3]*to[3] < 0.;
-                                    if (drawAsExternal)
+                                    if (from[3]*to[3] > 0.)
                                     {
-                                        // external edge
-                                        //mg.setColor(java.awt.Color.yellow);
-                                        double other[] = new double[4];
-                                        VecMath.copyvec(other, from);
-                                        VecMath.vpsxv(3, other, other, other[3], direction); // other = from + direction   XXX isn't this backwards?
-                                        mg.drawLine(from[0], from[1], from[2], from[3],
-                                                    other[0], other[1], other[2], other[3],
-                                                    doAntiAliasing);
-                                        VecMath.copyvec(other, to);
-                                        VecMath.vpsxv(3, other, other, -other[3], direction); // other = to - direction   XXX isn't this backwards?
-                                        mg.drawLine(other[0], other[1], other[2], other[3],
-                                                    to[0], to[1], to[2], to[3],
-                                                    doAntiAliasing);
+                                        if (from[3]>0 ? drawFrontDualVertsFlag : drawBackDualVertsFlag)
+                                        {
+                                            // internal edge
+                                            mg.drawLine(from[0], from[1], from[2], from[3],
+                                                        to[0], to[1], to[2], to[3],
+                                                        doAntiAliasing);
+                                        }
                                     }
                                     else
                                     {
-                                        // internal edge
-                                        mg.drawLine(from[0], from[1], from[2], from[3],
-                                                    to[0], to[1], to[2], to[3],
-                                                    doAntiAliasing);
+                                        // external edge -- draw two parts separately
+                                        double direction[] = dualEdge.direction;
+                                        assert(direction.length == 3);
+
+
+                                        if (from[3]>0 ? drawFrontDualVertsFlag : drawBackDualVertsFlag)
+                                        {
+                                            double other[] = VecMath.copyvec(from); // length 4
+                                            VecMath.vpsxv(3, other, other, other[3], direction); // other = from + direction   XXX isn't this backwards?
+                                            mg.drawLine(from[0], from[1], from[2], from[3],
+                                                        other[0], other[1], other[2], other[3],
+                                                        doAntiAliasing);
+                                        }
+
+                                        if (to[3]>0 ? drawFrontDualVertsFlag : drawBackDualVertsFlag)
+                                        {
+                                            double other[] = VecMath.copyvec(to); // length 4
+                                            VecMath.vpsxv(3, other, other, -other[3], direction); // other = to - direction   XXX isn't this backwards?
+                                            mg.drawLine(other[0], other[1], other[2], other[3],
+                                                        to[0], to[1], to[2], to[3],
+                                                        doAntiAliasing);
+                                        }
                                     }
 
                                     if (showNetFlag.get()
@@ -6461,8 +6472,11 @@ public class ShephardsPlayApplet
                             if (showNetFlag.get() && showNetFlowFlag.get() && dualVertColors[iDualVert] != dualVertSelectionColor)
                                 continue;
 
-
                             Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
+
+                            if (!showInsideOutVertsFlag
+                             && dualVert.weight < 0.)
+                                continue;
 
                             //System.out.println("    drawing dual vert at "+Arrays.toStringCompact(dualVert));
 
@@ -7367,7 +7381,7 @@ public class ShephardsPlayApplet
                 // Analyze all the edges first before deleting any,
                 // so that we are only looking at triangle areas.
                 //
-                if (!showInsideOutVertsFlag)
+                if (!calcInsideOutVertsFlag)
                 {
                     ArrayList edgesToDelete = new ArrayList();
                     int nEdges = mesh.edges.size();
@@ -12102,7 +12116,7 @@ OFF
         //
         public static Mesh makeDualMesh(Mesh primal,
                                         boolean includeNonArity3,
-                                        boolean includeInsideOut,
+                                        boolean includeInsideOut,  // always true these days
                                         boolean wrapAroundSphereFlagValue,
                                         double wrapSphereCurvatureValue)
         {
@@ -12124,7 +12138,7 @@ OFF
                     // If we do this, then applying makeDualMesh twice
                     // will reverse all the edges,
                     // I think.
-                    // (assumimg showInsideOutVertsFlag is true)
+                    // (assumimg calcInsideOutVertsFlag is true)
                     dualEdge._next = dual.getEdge(primalEdge._prev._opposite._myIndex);
                     dualEdge._prev = dual.getEdge(primalEdge._opposite._next._myIndex);
                 }
@@ -12135,7 +12149,7 @@ OFF
                     // If we do this, then makeDualMesh(makeDualMesh(mesh))
                     // should return something identical to the original,
                     // I think.
-                    // (assumimg showInsideOutVertsFlag is true)
+                    // (assumimg calcInsideOutVertsFlag is true)
                     // XXX Odd, this seems to behave better all around (I expected rays to go in wrong direction,
                     // but it works better than the other way... should think about why)
                     dualEdge._next = dual.getEdge(primalEdge._next._opposite._myIndex);
@@ -14390,7 +14404,7 @@ OFF
             {
                 _dualMesh = makeDualMesh(mesh,
                                          false,  // includeNonArity3
-                                         showInsideOutVertsFlag, // includeInsideOut
+                                         calcInsideOutVertsFlag, // includeInsideOut
                                          wrapAroundSphereFlag.get(),
                                          wrapSphereCurvature.get());
                 _meshOfDualMesh = mesh;
@@ -14500,7 +14514,10 @@ OFF
         private boolean showLabelsFlag = false;
         private boolean doArrowsTowardsSharpestDihedrals = false;
         private boolean doArrowsTowardsShortestEdges = false;
-        private boolean showInsideOutVertsFlag = false; // might also be nice to have option for implicit primal vertex in middle of outer face, so that dual will be single-face-bounded... and maybe ctrl-up,ctrl-down will adjust the height of that face
+
+        private boolean calcInsideOutVertsFlag = true; // moving towards always doing this
+        private boolean showInsideOutVertsFlag = false; // might also be nice to have option for implicit primal vertex in middle of outer face, so that dual will be single-face-bounded... and maybe ctrl-up,ctrl-down will adjust the height of that face.
+
         private boolean showFlatEdgesFlag = false; // hard-coded for now, seems to work well
         boolean showExternalEdgesFlag = true;
 
