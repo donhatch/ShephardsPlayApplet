@@ -288,6 +288,1423 @@ public class ShephardsPlayApplet
     //
     // Implementing Applet methods...
     //
+        private class ShephardsPlayAppletControlPanel
+            extends JPanel
+        {
+            public ShephardsPlayAppletControlPanel()
+            {
+                java.awt.Container contentPane = this;
+
+                contentPane.setLayout(new ColLayout());
+
+                // used as "fill" argument to add()
+                final java.awt.GridBagConstraints stretchx = new java.awt.GridBagConstraints(){{fill=HORIZONTAL;weightx=1.;}};
+                final java.awt.GridBagConstraints stretchy = new java.awt.GridBagConstraints(){{fill=VERTICAL;weighty=1.;}};
+                final java.awt.GridBagConstraints stretchxy = new java.awt.GridBagConstraints(){{fill=BOTH;weightx=weighty=1.;}};
+                final java.awt.GridBagConstraints rightjustify = new java.awt.GridBagConstraints(){{anchor=EAST;}};
+
+
+                final JButton clearButton = new JButton("Clear") {
+                    public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                {
+                    addActionListener(new java.awt.event.ActionListener() {
+                        public void actionPerformed(java.awt.event.ActionEvent e)
+                        {
+                            // XXX dup code
+                            UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                            synchronized(showNetFlag) // since another thread checks it once in a while
+                            {
+                                showNetFlag.set(false); // so user won't get confused when clicking doesn't make verts appear
+                            }
+                            mesh = new Mesh();
+                            selectedTris = new int[][] {};
+                            selectedDualVertIndices = new int[] {};
+                            resetLocalToWorld();
+                            if (doContinuouslyDelaunayize.get()) delaunayize();
+                            dirtyDualMesh(); // before snapping after state, so theNet will be cleared XXX aren't there a zillion places we're neglecting to take this into account?
+
+                            UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                            undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                            theCanvas.repaint();
+                        }
+                    });
+                }};
+                final JButton loadButton = new JButton("Load DUMP.off") {
+                    public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                {
+                    addActionListener(new java.awt.event.ActionListener() {
+                        public void actionPerformed(java.awt.event.ActionEvent e)
+                        {
+                            UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+
+                            load("DUMP.off");
+
+                            UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                            undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                            theCanvas.repaint();
+                        }
+                    });
+                }};
+                final JButton saveButton = new JButton("Save DUMP.off") {
+                    public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                {
+                    addActionListener(new java.awt.event.ActionListener() {
+                        public void actionPerformed(java.awt.event.ActionEvent e)
+                        {
+                            save("DUMP.off");
+                        }
+                    });
+                }};
+                final JButton saveDualButton = new JButton("Save DUALVERTS.txt") {
+                    public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                {
+                    addActionListener(new java.awt.event.ActionListener() {
+                        public void actionPerformed(java.awt.event.ActionEvent e)
+                        {
+                            dualSave("DUALVERTS.txt");
+                        }
+                    });
+                }};
+
+                final TextFieldForFloat theGridNTextField = new TextFieldForFloat(gridN);
+                final TextFieldForFloat theBlueNoiseNTextField = new TextFieldForFloat(blueNoiseN);
+
+                final java.awt.Component cannedThingButtons[] = {
+                    new JButton("Hexes Spiral") {
+                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                    {
+                        addActionListener(new java.awt.event.ActionListener() {
+                            public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+
+                                doCannedThingHexesSpiral();
+
+                                UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                theCanvas.repaint();
+                            }
+                        });
+                    }},
+                    new JButton("Hexes Spiral Alt") {
+                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                    {
+                        addActionListener(new java.awt.event.ActionListener() {
+                            public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+
+                                doCannedThingHexesSpiralOther();
+
+                                UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                theCanvas.repaint();
+                            }
+                        });
+                    }},
+                    new JButton("netless8 symmetric") {
+                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                    {
+                        addActionListener(new java.awt.event.ActionListener() {
+                            public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+
+                                doCannedThingNetless8Symmetric();
+
+                                UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                theCanvas.repaint();
+                            }
+                        });
+                    }},
+                    new JButton("netless8") {
+                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                    {
+                        addActionListener(new java.awt.event.ActionListener() {
+                            public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+
+                                doCannedThingNetless8();
+
+                                UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                theCanvas.repaint();
+                            }
+                        });
+                    }},
+                    new JButton("netless9") {
+                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                    {
+                        addActionListener(new java.awt.event.ActionListener() {
+                            public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+
+                                doCannedThingNetless9();
+
+                                UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                theCanvas.repaint();
+                            }
+                        });
+                    }},
+                    new JButton("Crack Killer") {
+                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                    {
+                        addActionListener(new java.awt.event.ActionListener() {
+                            public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+
+                                doCannedThingCrackKiller();
+
+                                UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                theCanvas.repaint();
+                            }
+                        });
+                    }},
+                    new JButton("Sweep Killer") {
+                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                    {
+                        addActionListener(new java.awt.event.ActionListener() {
+                            public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+
+                                doCannedThingSweepKiller0();
+
+                                UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                theCanvas.repaint();
+                            }
+                        });
+                    }},
+                    new JButton("Sweep Killer 1") {
+                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                    {
+                        addActionListener(new java.awt.event.ActionListener() {
+                            public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+
+                                doCannedThingSweepKiller1();
+
+                                UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                theCanvas.repaint();
+                            }
+                        });
+                    }},
+                    new JButton("Sweep Killer 2") {
+                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                    {
+                        addActionListener(new java.awt.event.ActionListener() {
+                            public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+
+                                doCannedThingSweepKiller2();
+
+                                UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                theCanvas.repaint();
+                            }
+                        });
+                    }},
+                    new JButton("Algorithm5 Killer0") {
+                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                    {
+                        addActionListener(new java.awt.event.ActionListener() {
+                            public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+
+                                doCannedThingAlgorithm5Killer0();
+
+                                UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                theCanvas.repaint();
+                            }
+                        });
+                    }},
+                    new JButton("Algorithm5 Killer1") {
+                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                    {
+                        addActionListener(new java.awt.event.ActionListener() {
+                            public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+
+                                doCannedThingAlgorithm5Killer1();
+
+                                UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                theCanvas.repaint();
+                            }
+                        });
+                    }},
+                    new JButton("Far Lagoon Killer 1") {
+                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                    {
+                        addActionListener(new java.awt.event.ActionListener() {
+                            public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+
+                                doCannedThingFarthestLagoonExitKiller();
+
+                                UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                theCanvas.repaint();
+                            }
+                        });
+                    }},
+                    new JButton("Far Lagoon Killer 2") {
+                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                    {
+                        addActionListener(new java.awt.event.ActionListener() {
+                            public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+
+                                doCannedThingFarthestLagoonExitKillerAltB();
+
+                                UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                theCanvas.repaint();
+                            }
+                        });
+                    }},
+                    new JRow() {{
+                        add(new JButton("Grid") {
+                            public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                        {
+                            addActionListener(new java.awt.event.ActionListener() {
+                                public void actionPerformed(java.awt.event.ActionEvent e)
+                                {
+                                    // Flush the textfield value into gridN
+                                    try
+                                    {
+                                        gridN.setDouble(Double.valueOf(theGridNTextField.getText()).doubleValue());
+                                    }
+                                    catch (java.lang.NumberFormatException nfe)
+                                    {
+                                        // maybe should print an error message or something
+                                        theGridNTextField.updateText(gridN);
+                                    }
+
+
+                                    UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+
+                                    doUniformGridThing(gridN.get());
+
+                                    if (doContinuouslyDelaunayize.get()) delaunayize();
+                                    UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                    undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                    theCanvas.repaint();
+                                }
+                            });
+                        }}, stretchx);
+                        add(theGridNTextField, stretchx);
+                    }},
+                    new JRow() {{
+                        add(new JButton("Blue Noise") {
+                            public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                        {
+                            addActionListener(new java.awt.event.ActionListener() {
+                                public void actionPerformed(java.awt.event.ActionEvent e)
+                                {
+                                    // Flush the textfield value into blueNoiseN
+                                    try
+                                    {
+                                        blueNoiseN.setDouble(Double.valueOf(theBlueNoiseNTextField.getText()).doubleValue());
+                                    }
+                                    catch (java.lang.NumberFormatException nfe)
+                                    {
+                                        // maybe should print an error message or something
+                                        theBlueNoiseNTextField.updateText(blueNoiseN);
+                                    }
+
+                                    UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+
+                                    doBlueNoiseThing(blueNoiseN.get());
+
+                                    if (doContinuouslyDelaunayize.get()) delaunayize();
+                                    UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                    undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                    theCanvas.repaint();
+                                }
+                            });
+                        }}, stretchx);
+                        add(theBlueNoiseNTextField, stretchx);
+                    }},
+                };
+
+                final java.awt.Component theGridBrightnessLabel = new JLabel("Grid brightness:");
+                final java.awt.Component theGridBrightnessTextField = new TextFieldForFloat(gridBrightness);
+                final java.awt.Component theGridBrightnessSlider = new SliderForFloat(gridBrightness);
+                final java.awt.Component theBackfaceBrightnessLabel = new JLabel("Backface brightness:");
+                final java.awt.Component theBackfaceBrightnessTextField = new TextFieldForFloat(backfaceBrightness);
+                final java.awt.Component theBackfaceBrightnessSlider = new SliderForFloat(backfaceBrightness);
+                final java.awt.Component theWrapRadiusLabel = new JLabel("Wrap radius:") {{setEnabled(false);}};
+                final java.awt.Component theWrapRadiusTextField = new TextFieldForFloat(wrapSphereSymbolicRadius) {{setEnabled(false);}};
+                final java.awt.Component theWrapRadiusSlider = new SliderForFloat(wrapSphereSymbolicRadius) {{setEnabled(false);}};
+
+
+                // for making pixmaps from ascii
+                final java.awt.Color asciiToColor[] = new java.awt.Color[128];
+                asciiToColor[' '] = java.awt.Color.black;
+                asciiToColor['w'] = java.awt.Color.white;
+                asciiToColor['B'] = new java.awt.Color(64,64,255); // slightly light blue
+                asciiToColor['b'] = new java.awt.Color(224,224,255); // very light blue
+
+
+                contentPane.add(new JRow() {{
+                    add(new JCol() {{
+                        add(new JLabel(""), stretchxy);
+                        add(clearButton, rightjustify);
+                        add(loadButton, stretchx);
+                        add(saveButton, stretchx);
+                        add(saveDualButton, stretchx);
+                    }}, stretchy);
+                    add(new JPanel(), stretchxy); // placeholder for where canvas was);
+                    add(new JCol() {{
+                        add(new JLabel(""), stretchxy);
+                        FORI (i, cannedThingButtons.length)
+                            add(cannedThingButtons[i], stretchx);
+                    }}, stretchy);
+                }}, stretchxy);
+
+                contentPane.add(new JTablePanel() {{
+                    add(theGridBrightnessLabel);
+                    add(theGridBrightnessTextField);
+                    add(theGridBrightnessSlider, stretchx);
+                    advanceRow();
+                    add(theBackfaceBrightnessLabel);
+                    add(theBackfaceBrightnessTextField);
+                    add(theBackfaceBrightnessSlider, stretchx);
+                    advanceRow();
+                    add(theWrapRadiusLabel);
+                    add(theWrapRadiusTextField);
+                    add(theWrapRadiusSlider, stretchx);
+                }}, stretchx);
+
+                contentPane.add(new JRow() {{ // second row: col, table, col
+                    add(new JCol() {{
+                        add(new JRow() {{
+                            add(new JCheckBox("Optimize", doOptimize.get()) {
+                                public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                                {
+                                    addItemListener(new java.awt.event.ItemListener() {
+                                        public void itemStateChanged(java.awt.event.ItemEvent e)
+                                        {
+                                            UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                            doOptimize.set(isSelected());
+                                            System.out.println("doOptimize -> "+doOptimize.get());
+                                            if (doContinuouslyDelaunayize.get()) delaunayize();
+                                            UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                            undoTreeSquirrel.Do(new UndoItem(before, after));
+                                            dirtyDualMesh(); // XXX why is this necessary here, and not, for example, for Delaunayize? I'm confused
+                                            theCanvas.repaint();
+                                        }
+                                    });
+                                    doOptimize.addListener(doOptimizeListener = new Listenable.Listener() {
+                                        public void valueChanged()
+                                        {
+                                            setSelected(doOptimize.get()); // of the checkbox
+                                        }
+                                    });
+                                }
+                            });
+
+                            add(new JComboBox() {{
+
+
+                                FORI (i, optimizationTypeNames.length)
+                                    addItem(optimizationTypeNames[availableOptimizationTypes[i]]);
+
+                                setSelectedIndex(optimizationTypeIndex.get());
+                                addItemListener(new java.awt.event.ItemListener() {
+                                    public void itemStateChanged(java.awt.event.ItemEvent e)
+                                    {
+                                        int newValue = getSelectedIndex();
+                                        if (newValue != optimizationTypeIndex.get())
+                                        {
+                                            UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+
+
+                                            optimizationTypeIndex.set(newValue);
+                                            optimizationType = availableOptimizationTypes[optimizationTypeIndex.get()];
+                                            System.out.println("optimizationType -> "+optimizationTypeNames[optimizationType]);
+
+
+                                            if (doContinuouslyDelaunayize.get()) delaunayize();
+                                            UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                            undoTreeSquirrel.Do(new UndoItem(before, after));
+                                            dirtyDualMesh(); // XXX why is this necessary here, and not, for example, for Delaunayize? I'm confused
+                                            theCanvas.repaint();
+                                            System.out.println("calling repaint!");
+                                        }
+                                    }
+                                });
+                                optimizationTypeIndex.addListener(optimizationTypeIndexListener = new Listenable.Listener() {
+                                    public void valueChanged()
+                                    {
+                                        int newValue = optimizationTypeIndex.get();
+                                        if (newValue != getSelectedIndex())
+                                            setSelectedIndex(newValue);
+                                    }
+                                });
+                            }});
+                            add(new JLabel(""), stretchxy);
+                            add(new JCol() {{
+                                add(new JCheckBox("Delaunayize", doContinuouslyDelaunayize.get()) {
+                                    public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                                    {
+                                        setToolTipText("<html>Turning this on delaunayizes the triangulation and keeps it delaunayized on every mesh editing operation.<br>To just delaunayize it once, turn this on and then off again.</html>");
+                                        addItemListener(new java.awt.event.ItemListener() {
+                                            public void itemStateChanged(java.awt.event.ItemEvent e)
+                                            {
+                                                UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                                doContinuouslyDelaunayize.set(isSelected());
+                                                System.out.println("doContinuouslyDelaunayize -> "+doContinuouslyDelaunayize.get());
+                                                if (doContinuouslyDelaunayize.get()) delaunayize();
+                                                UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                                undoTreeSquirrel.Do(new UndoItem(before, after));
+                                                theCanvas.repaint();
+                                            }
+                                        });
+                                        doContinuouslyDelaunayize.addListener(doContinuouslyDelaunayizeListener = new Listenable.Listener() {
+                                            public void valueChanged()
+                                            {
+                                                setSelected(doContinuouslyDelaunayize.get()); // of the checkbox
+                                                // XXX wait a minute, isn't this where we should delaunayize, rather than above?
+                                            }
+                                        });
+                                    }
+                                });
+                                add(new JCheckBox("Wrap around sphere", wrapAroundSphereFlag.get()) {
+                                    public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                                    {
+                                        addItemListener(new java.awt.event.ItemListener() {
+                                            public void itemStateChanged(java.awt.event.ItemEvent e)
+                                            {
+                                                UndoItem.State before = new UndoItem.State(mesh, wrapAroundSphereFlag.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                                wrapAroundSphereFlag.set(isSelected());
+                                                System.out.println("wrapAroundSphereFlag -> "+wrapAroundSphereFlag.get());
+                                                UndoItem.State after = new UndoItem.State(mesh, wrapAroundSphereFlag.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                                                undoTreeSquirrel.Do(new UndoItem(before, after));
+                                                theCanvas.repaint();
+                                            }
+                                        });
+                                        wrapAroundSphereFlag.addListener(wrapAroundSphereFlagListener = new Listenable.Listener() {
+                                            public void valueChanged()
+                                            {
+                                                // XXX this should go in one listener
+                                                setSelected(wrapAroundSphereFlag.get()); // of the checkbox
+
+                                                // XXX the rest should go in a separate listener
+
+                                                // XXX this isn't really the right place for the following; should do the following regardless of whether there's a checkbox for it
+                                                if (wrapAroundSphereFlag.get())
+                                                {
+                                                    theSurface = theSphereSurface;
+                                                    wrapAroundSphere(wrapSphereCurvature.get());
+                                                    theWrapRadiusLabel.setEnabled(true);
+                                                    theWrapRadiusTextField.setEnabled(true);
+                                                    theWrapRadiusSlider.setEnabled(true);
+                                                }
+                                                else
+                                                {
+                                                    theSurface = theParaboloidSurface;
+                                                    unwrapAroundSphere(wrapSphereCurvature.get());
+                                                    theWrapRadiusLabel.setEnabled(false);
+                                                    theWrapRadiusTextField.setEnabled(false);
+                                                    theWrapRadiusSlider.setEnabled(false);
+                                                }
+                                            }
+                                        });
+                                    }
+                                });
+                            }});
+                            add(new JLabel(""), stretchxy);
+                            add(new JCol() {{
+                                add(new JCheckBox("Net", showNetFlag.get()) {
+                                    public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                                    {
+                                        addItemListener(new java.awt.event.ItemListener() {
+                                            public void itemStateChanged(java.awt.event.ItemEvent e)
+                                            {
+                                                synchronized(showNetFlag) // since another thread checks it once in a while
+                                                {
+                                                    showNetFlag.set(isSelected());
+                                                }
+                                                theCanvas.repaint();
+                                            }
+                                        });
+                                        showNetFlag.addListener(showNetFlagListener = new Listenable.Listener() {
+                                            public void valueChanged()
+                                            {
+                                                setSelected(showNetFlag.get()); // of the checkbox
+
+
+                                                // XXX TODO: arguably this should be in a different listener... it should happen even if we decided not to have this checkbox
+                                                if (showNetFlag.get() && showNetFlowFlag.get())
+                                                {
+                                                    Runnable runnable = new Runnable() {
+                                                        public void run()
+                                                        {
+                                                            System.out.println("starting animator thread");
+                                                            int fps = 10; // XXX need user control of this?
+                                                            while (true) // while (showNetFlag.get()), but synchronized
+                                                            {
+                                                                synchronized(showNetFlag)
+                                                                {
+                                                                    if (!showNetFlag.get())
+                                                                        break;
+                                                                }
+
+                                                                theCanvas.repaint();
+                                                                //System.out.println("    sleeping for "+(1000/fps)+" ms");
+                                                                try {
+                                                                    Thread.sleep(1000/fps);
+                                                                } catch (InterruptedException e) {
+                                                                    break;
+                                                                }
+                                                            }
+                                                            System.out.println("terminating animator thread");
+                                                            // XXX TODO: does master thread need to join?
+                                                        }
+                                                    };
+                                                    Thread animatorThread = new Thread(runnable);
+                                                    animatorThread.setDaemon(true); // make it so the java vm won't wait for it to finish before exiting
+                                                    animatorThread.start();
+                                                }
+
+                                            }
+                                        });
+                                    }
+                                });
+                                add(new JCheckBox("Flow", showNetFlowFlag.get()) {
+                                    {
+                                        setEnabled(showNetFlag.get());
+                                    }
+                                    public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                                    {
+                                        addItemListener(new java.awt.event.ItemListener() {
+                                            public void itemStateChanged(java.awt.event.ItemEvent e)
+                                            {
+                                                synchronized(showNetFlowFlag) // since another thread checks it once in a while
+                                                {
+                                                    showNetFlowFlag.set(isSelected());
+                                                }
+                                                theCanvas.repaint();
+                                            }
+                                        });
+                                        showNetFlag.addListener(showNetFlagListener2 = new Listenable.Listener() {
+                                            public void valueChanged()
+                                            {
+                                                setEnabled(showNetFlag.get()); // of the showNetFlowFlag checkbox
+                                            }
+                                        });
+                                        showNetFlowFlag.addListener(showNetFlowFlagListener = new Listenable.Listener() {
+                                            public void valueChanged()
+                                            {
+                                                setSelected(showNetFlowFlag.get()); // of the checkbox
+
+
+                                                // XXX TODO: arguably this should be in a different listener... it should happen even if we decided not to have this checkbox
+                                                if (showNetFlag.get() && showNetFlowFlag.get())
+                                                {
+                                                    Runnable runnable = new Runnable() {
+                                                        public void run()
+                                                        {
+                                                            System.out.println("starting animator thread");
+                                                            int fps = 10; // XXX need user control of this?
+                                                            while (true) // while (showNetFlag.get() && showNetFlowFlag.get()), but synchronized
+                                                            {
+                                                                synchronized(showNetFlag)
+                                                                {
+                                                                    synchronized(showNetFlowFlag)
+                                                                    {
+                                                                        if (!showNetFlag.get() && !showNetFlowFlag.get())
+                                                                            break;
+                                                                    }
+                                                                }
+
+                                                                theCanvas.repaint();
+                                                                //System.out.println("    sleeping for "+(1000/fps)+" ms");
+                                                                try {
+                                                                    Thread.sleep(1000/fps);
+                                                                } catch (InterruptedException e) {
+                                                                    break;
+                                                                }
+                                                            }
+                                                            System.out.println("terminating animator thread");
+                                                            // XXX TODO: does master thread need to join?
+                                                        }
+                                                    };
+                                                    Thread animatorThread = new Thread(runnable);
+                                                    animatorThread.setDaemon(true); // make it so the java vm won't wait for it to finish before exiting
+                                                    animatorThread.start();
+                                                }
+
+                                            }
+                                        });
+                                    }
+                                });
+                            }});
+                            add(new JComboBox(netMethodNames) {{
+                                setSelectedIndex(netMethod.get());
+                                addItemListener(new java.awt.event.ItemListener() {
+                                    public void itemStateChanged(java.awt.event.ItemEvent e)
+                                    {
+                                        // evidently this gets called twice??
+                                        // no idea why (java.awt.Choice doesn't behave like that)
+                                        // (well it had a different bug,
+                                        // namely it called the callback on mouse up
+                                        // even if the user selected what was already selected).
+                                        // so check whether the new value is really new,
+                                        // and if not, don't do anything.
+                                        // (not that the extra stuff was expensive...
+                                        // but I was noticing the "netMethod -> whatever"
+                                        // was coming out 4 times
+                                        int newValue = getSelectedIndex();
+                                        if (getSelectedIndex() != netMethod.get())
+                                        {
+                                            netMethod.set(newValue);
+                                            System.out.println("netMethod -> "+netMethodNames[netMethod.get()]);
+                                            theNet = null;
+                                            theCanvas.repaint();
+                                        }
+                                    }
+                                });
+                                netMethod.addListener(netMethodListener = new Listenable.Listener() {
+                                    public void valueChanged()
+                                    {
+                                        int newValue = netMethod.get();
+                                        // setSelectedIndex does callbacks
+                                        // even if the value isn't new,
+                                        // so don't call it unless the value is new
+                                        if (newValue != getSelectedIndex())
+                                            setSelectedIndex(newValue);
+                                    }
+                                });
+                            }});
+                            add(new JLabel(""), stretchxy);
+                        }}, stretchx);
+                    }}, stretchy);
+
+                    add(new JTablePanel() {{
+                        add(new JButton("") {
+                            public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                            public java.awt.Dimension getPreferredSize() { return new java.awt.Dimension(20,20); }
+                            public java.awt.Dimension getMinimumSize()   { return new java.awt.Dimension(20,20); }
+                            public void paint(java.awt.Graphics g)
+                            {
+                                drawPixmapCentered(g, getSize(), asciiToColor,
+                                                   new String[] {
+                                                      "        w        ",
+                                                      "       www       ",
+                                                      "      ww ww      ",
+                                                      "                 ",
+                                                      "      BB BB      ",
+                                                      "       BBB       ",
+                                                      "  B w   B   w B  ",
+                                                      " BB ww     ww BB ",
+                                                      "BB   ww   ww   BB",
+                                                      " BB ww     ww BB ",
+                                                      "  B w   B   w B  ",
+                                                      "       BBB       ",
+                                                      "      BB BB      ",
+                                                      "                 ",
+                                                      "      ww ww      ",
+                                                      "       www       ",
+                                                      "        w        ",
+                                                   });
+                            }
+                        {
+                            addActionListener(new java.awt.event.ActionListener() {
+                                public void actionPerformed(java.awt.event.ActionEvent e)
+                                {
+                                    rescale(Math.sqrt(.5), Math.sqrt(2.));
+                                }
+                            });
+                        }}, stretchxy);
+                        add(new JButton("") {
+                            public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                            public java.awt.Dimension getPreferredSize() { return new java.awt.Dimension(20,20); }
+                            public java.awt.Dimension getMinimumSize()   { return new java.awt.Dimension(20,20); }
+                            public void paint(java.awt.Graphics g)
+                            {
+                                drawPixmapCentered(g, getSize(), asciiToColor,
+                                                   new String[] {
+                                                      "                 ",
+                                                      "        w        ",
+                                                      "       www       ",
+                                                      "      ww ww      ",
+                                                      "                 ",
+                                                      "                 ",
+                                                      "   B         B   ",
+                                                      "  BB         BB  ",
+                                                      " BB           BB ",
+                                                      "  BB         BB  ",
+                                                      "   B         B   ",
+                                                      "                 ",
+                                                      "                 ",
+                                                      "      ww ww      ",
+                                                      "       www       ",
+                                                      "        w        ",
+                                                      "                 ",
+                                                   });
+                            }
+                        {
+                            addActionListener(new java.awt.event.ActionListener() {
+                                public void actionPerformed(java.awt.event.ActionEvent e)
+                                {
+                                    rescale(1., Math.sqrt(2.));
+                                }
+                            });
+                        }}, stretchxy);
+                        add(new JButton("") {
+                            public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                            public java.awt.Dimension getPreferredSize() { return new java.awt.Dimension(20,20); }
+                            public java.awt.Dimension getMinimumSize()   { return new java.awt.Dimension(20,20); }
+                            public void paint(java.awt.Graphics g)
+                            {
+                                drawPixmapCentered(g, getSize(), asciiToColor,
+                                                   new String[] {
+                                                      "                 ",
+                                                      "        b        ",
+                                                      "       bbb       ",
+                                                      "      bb bb      ",
+                                                      "                 ",
+                                                      "                 ",
+                                                      "   b         b   ",
+                                                      "  bb         bb  ",
+                                                      " bb           bb ",
+                                                      "  bb         bb  ",
+                                                      "   b         b   ",
+                                                      "                 ",
+                                                      "                 ",
+                                                      "      bb bb      ",
+                                                      "       bbb       ",
+                                                      "        b        ",
+                                                      "                 ",
+                                                   });
+                            }
+                        {
+                            addActionListener(new java.awt.event.ActionListener() {
+                                public void actionPerformed(java.awt.event.ActionEvent e)
+                                {
+                                    rescale(Math.sqrt(2.), Math.sqrt(2.));
+                                }
+                            });
+                        }}, stretchxy);
+                        advanceRow();
+                        add(new JButton("") {
+                            public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                            public java.awt.Dimension getPreferredSize() { return new java.awt.Dimension(20,20); }
+                            public java.awt.Dimension getMinimumSize()   { return new java.awt.Dimension(20,20); }
+                            public void paint(java.awt.Graphics g)
+                            {
+                                drawPixmapCentered(g, getSize(), asciiToColor,
+                                                   new String[] {
+                                                      "                 ",
+                                                      "                 ",
+                                                      "                 ",
+                                                      "      BB BB      ",
+                                                      "       BBB       ",
+                                                      "    w   B   w    ",
+                                                      "    ww     ww    ",
+                                                      "     ww   ww     ",
+                                                      "    ww     ww    ",
+                                                      "    w   B   w    ",
+                                                      "       BBB       ",
+                                                      "      BB BB      ",
+                                                      "                 ",
+                                                      "                 ",
+                                                      "                 ",
+                                                   });
+                            }
+                        {
+                            addActionListener(new java.awt.event.ActionListener() {
+                                public void actionPerformed(java.awt.event.ActionEvent e)
+                                {
+                                    rescale(Math.sqrt(.5), 1.);
+                                }
+                            });
+                        }}, stretchxy);
+                        add(new JButton("f") {
+                            public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                            public java.awt.Dimension getPreferredSize() { return new java.awt.Dimension(20,20); }
+                            public java.awt.Dimension getMinimumSize()   { return new java.awt.Dimension(20,20); }
+                            public void paint(java.awt.Graphics g)
+                            {
+                                drawPixmapCentered(g, getSize(), asciiToColor,
+                                                   new String[] {
+                                                      "wwwwwwwwwwwwwww",
+                                                      "w  w   w   w  w",
+                                                      "w  w   w   w  w",
+                                                      "wwwwwwwwwwwwwww",
+                                                      "w  w       w  w",
+                                                      "w  w  www  w  w",
+                                                      "w  w  w    w  w",
+                                                      "wwww  ww   wwww",
+                                                      "w  w  w    w  w",
+                                                      "w  w  w    w  w",
+                                                      "w  w       w  w",
+                                                      "wwwwwwwwwwwwwww",
+                                                      "w  w   w   w  w",
+                                                      "w  w   w   w  w",
+                                                      "wwwwwwwwwwwwwww",
+                                                   });
+                            }
+                        {
+                            addActionListener(new java.awt.event.ActionListener() {
+                                public void actionPerformed(java.awt.event.ActionEvent e)
+                                {
+                                    frame();
+                                }
+                            });
+                        }}, stretchxy);
+                        add(new JButton("") {
+                            public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                            public java.awt.Dimension getPreferredSize() { return new java.awt.Dimension(20,20); }
+                            public java.awt.Dimension getMinimumSize()   { return new java.awt.Dimension(20,20); }
+                            public void paint(java.awt.Graphics g)
+                            {
+                                drawPixmapCentered(g, getSize(), asciiToColor,
+                                                   // leave 4 spaces horizontally, 2 spaces vertically
+                                                   new String[] {
+                                                      "                 ",
+                                                      "        B        ",
+                                                      "       BBB       ",
+                                                      "      BB BB      ",
+                                                      "                 ",
+                                                      "                 ",
+                                                      "   w         w   ",
+                                                      "  ww         ww  ",
+                                                      " ww           ww ",
+                                                      "  ww         ww  ",
+                                                      "   w         w   ",
+                                                      "                 ",
+                                                      "                 ",
+                                                      "      BB BB      ",
+                                                      "       BBB       ",
+                                                      "        B        ",
+                                                      "                 ",
+                                                   });
+                            }
+                        {
+                            addActionListener(new java.awt.event.ActionListener() {
+                                public void actionPerformed(java.awt.event.ActionEvent e)
+                                {
+                                    rescale(Math.sqrt(2.), 1.);
+                                }
+                            });
+                        }}, stretchxy);
+                        advanceRow();
+                        add(new JButton("") {
+                            public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                            public java.awt.Dimension getPreferredSize() { return new java.awt.Dimension(20,20); }
+                            public java.awt.Dimension getMinimumSize()   { return new java.awt.Dimension(20,20); }
+                            public void paint(java.awt.Graphics g)
+                            {
+                                drawPixmapCentered(g, getSize(), asciiToColor,
+                                                   new String[] {
+                                                      "                 ",
+                                                      "                 ",
+                                                      "                 ",
+                                                      "                 ",
+                                                      "      bb bb      ",
+                                                      "       bbb       ",
+                                                      "    b   b   b    ",
+                                                      "    bb     bb    ",
+                                                      "     bb   bb     ",
+                                                      "    bb     bb    ",
+                                                      "    b   b   b    ",
+                                                      "       bbb       ",
+                                                      "      bb bb      ",
+                                                      "                 ",
+                                                      "                 ",
+                                                      "                 ",
+                                                      "                 ",
+                                                   });
+                            }
+                        {
+                            addActionListener(new java.awt.event.ActionListener() {
+                                public void actionPerformed(java.awt.event.ActionEvent e)
+                                {
+                                    rescale(Math.sqrt(.5), Math.sqrt(.5));
+                                }
+                            });
+                        }}, stretchxy);
+                        add(new JButton("") {
+                            public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                            public java.awt.Dimension getPreferredSize() { return new java.awt.Dimension(20,20); }
+                            public java.awt.Dimension getMinimumSize()   { return new java.awt.Dimension(20,20); }
+                            public void paint(java.awt.Graphics g)
+                            {
+                                drawPixmapCentered(g, getSize(), asciiToColor,
+                                                   new String[] {
+                                                      "                 ",
+                                                      "                 ",
+                                                      "                 ",
+                                                      "                 ",
+                                                      "      ww ww      ",
+                                                      "       www       ",
+                                                      "    B   w   B    ",
+                                                      "    BB     BB    ",
+                                                      "     BB   BB     ",
+                                                      "    BB     BB    ",
+                                                      "    B   w   B    ",
+                                                      "       www       ",
+                                                      "      ww ww      ",
+                                                      "                 ",
+                                                      "                 ",
+                                                      "                 ",
+                                                      "                 ",
+                                                   });
+                            }
+                        {
+                            addActionListener(new java.awt.event.ActionListener() {
+                                public void actionPerformed(java.awt.event.ActionEvent e)
+                                {
+                                    rescale(1., Math.sqrt(.5));
+                                }
+                            });
+                        }}, stretchxy);
+                        add(new JButton("") {
+                            public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                            public java.awt.Dimension getPreferredSize() { return new java.awt.Dimension(20,20); }
+                            public java.awt.Dimension getMinimumSize()   { return new java.awt.Dimension(20,20); }
+                            public void paint(java.awt.Graphics g)
+                            {
+                                drawPixmapCentered(g, getSize(), asciiToColor,
+                                                   new String[] {
+                                                      "        B        ",
+                                                      "       BBB       ",
+                                                      "      BB BB      ",
+                                                      "                 ",
+                                                      "      ww ww      ",
+                                                      "       www       ",
+                                                      "  w B   w   B w  ",
+                                                      " ww BB     BB ww ",
+                                                      "ww   BB   BB   ww",
+                                                      " ww BB     BB ww ",
+                                                      "  w B   w   B w  ",
+                                                      "       www       ",
+                                                      "      ww ww      ",
+                                                      "                 ",
+                                                      "      BB BB      ",
+                                                      "       BBB       ",
+                                                      "        B        ",
+                                                   });
+                            }
+                        {
+                            addActionListener(new java.awt.event.ActionListener() {
+                                public void actionPerformed(java.awt.event.ActionEvent e)
+                                {
+                                    rescale(Math.sqrt(2.), Math.sqrt(.5));
+                                }
+                            });
+                        }}, stretchxy);
+                    }}); // table
+
+                    add(new JCol() {{
+                        final java.awt.Insets nomargin = new java.awt.Insets(0,0,0,0);
+                        add(new JTablePanel() {{
+                            final int maxpq = 10;
+                            final ButtonGroup pButtonGroup = new ButtonGroup();
+                            final ButtonGroup qButtonGroup = new ButtonGroup();
+
+                            add(new JLabel("Sym"));
+                            add(new JLabel(""));
+                            for (int i = 1; i <= maxpq; ++i)
+                            {
+                                add(new JLabel((i<=9?"  ":" ")+i)); // XXX I don't quite understand why this makes it look ok
+                            }
+                            advanceRow();
+                            add(new JCheckBox("lr") {
+                                {setToolTipText("Left-right symmetry");}
+                                Listenable.Listener listener;
+                                {
+                                    addActionListener(new java.awt.event.ActionListener() {
+                                        public void actionPerformed(java.awt.event.ActionEvent e)
+                                        {
+                                            boolean newLeftRightSymmetry = isSelected();
+                                            changeSymmetry(pRotationalSymmetry.get(), qRotationalSymmetry.get(), newLeftRightSymmetry, centralSymmetry.get(), remapFundamentalRegionWhenChangingSymmetry.get());
+                                        }
+                                    });
+                                    setSelected(leftRightSymmetry.get());
+                                    setMargin(nomargin);
+                                    leftRightSymmetry.addListener(listener = new Listenable.Listener() {
+                                        public void valueChanged()
+                                        {
+                                            setSelected(leftRightSymmetry.get());
+                                        }
+                                    });
+                                }
+                            });
+                            add(new JLabel("p:"), rightjustify);
+                            {
+                                for (int i = 1; i <= maxpq; ++i)
+                                {
+                                    final int final_i = i;
+                                    add(new JRadioButton("") {
+                                        Listenable.Listener listener;
+                                        {
+                                            addActionListener(new java.awt.event.ActionListener() {
+                                                public void actionPerformed(java.awt.event.ActionEvent e)
+                                                {
+                                                    int p = final_i;
+                                                    System.out.println("p = "+p);
+                                                    changeSymmetry(p, qRotationalSymmetry.get(), leftRightSymmetry.get(), centralSymmetry.get(), remapFundamentalRegionWhenChangingSymmetry.get());
+                                                    int maxq = p<=2 ? maxpq : p==3 ? 5 : p==4 ? 3 : p==5 ? 3 : 2;
+                                                    int q = 1;
+                                                    for (java.util.Enumeration qButtons = qButtonGroup.getElements();
+                                                         qButtons.hasMoreElements();
+                                                         q++)
+                                                    {
+                                                        JRadioButton qButton = (JRadioButton)qButtons.nextElement();
+                                                        qButton.setEnabled(q <= maxq);
+                                                        qButton.setVisible(q <= maxq);
+                                                    }
+                                                }
+                                            });
+                                            setSelected(final_i == pRotationalSymmetry.get());
+                                            setMargin(nomargin);
+                                            pButtonGroup.add(this);
+
+                                            pRotationalSymmetry.addListener(listener = new Listenable.Listener() {
+                                                public void valueChanged()
+                                                {
+                                                    setSelected(pRotationalSymmetry.get() == final_i);
+                                                }
+                                            });
+                                        }
+                                    });
+                                }
+                            }
+                            advanceRow();
+                            add(new JCheckBox("c") {
+                                {setToolTipText("Central symmetry");}
+                                Listenable.Listener listener;
+                                {
+                                    addActionListener(new java.awt.event.ActionListener() {
+                                        public void actionPerformed(java.awt.event.ActionEvent e)
+                                        {
+                                            boolean newCentralSymmetry = isSelected();
+                                            changeSymmetry(pRotationalSymmetry.get(), qRotationalSymmetry.get(), leftRightSymmetry.get(), newCentralSymmetry, remapFundamentalRegionWhenChangingSymmetry.get());
+                                        }
+                                    });
+                                    setSelected(centralSymmetry.get());
+                                    setMargin(nomargin);
+                                    centralSymmetry.addListener(listener = new Listenable.Listener() {
+                                        public void valueChanged()
+                                        {
+                                            setSelected(centralSymmetry.get());
+                                        }
+                                    });
+                                }
+                            });
+                            add(new JLabel("q:"), rightjustify);
+                            {
+                                for (int i = 1; i <= maxpq; ++i)
+                                {
+                                    final int final_i = i;
+                                    add(new JRadioButton("") {
+                                        Listenable.Listener listener;
+                                        {
+                                            addActionListener(new java.awt.event.ActionListener() {
+                                                public void actionPerformed(java.awt.event.ActionEvent e)
+                                                {
+                                                    int q = final_i;
+                                                    System.out.println("q = "+q);
+                                                    changeSymmetry(pRotationalSymmetry.get(), q, leftRightSymmetry.get(), centralSymmetry.get(), remapFundamentalRegionWhenChangingSymmetry.get());
+                                                    int maxp = q<=2 ? maxpq : q==3 ? 5 : q==4 ? 3 : q==5 ? 3 : 2;
+                                                    int p = 1;
+                                                    for (java.util.Enumeration pButtons = pButtonGroup.getElements();
+                                                         pButtons.hasMoreElements();
+                                                         p++)
+                                                    {
+                                                        JRadioButton pButton = (JRadioButton)pButtons.nextElement();
+                                                        pButton.setEnabled(p <= maxp);
+                                                        pButton.setVisible(p <= maxp);
+                                                    }
+                                                }
+                                            });
+                                            setSelected(final_i == qRotationalSymmetry.get());
+                                            setMargin(nomargin);
+                                            qButtonGroup.add(this);
+
+                                            qRotationalSymmetry.addListener(listener = new Listenable.Listener() {
+                                                public void valueChanged()
+                                                {
+                                                    setSelected(qRotationalSymmetry.get() == final_i);
+                                                }
+                                            });
+                                        }
+                                    });
+                                }
+                            }
+                        }});
+                        add(new JCheckBox("remap when changing symmetry") { Listenable.Listener listener; {
+                            setToolTipText("Remap fundamental region when changing symmetry");
+                            setSelected(remapFundamentalRegionWhenChangingSymmetry.get());
+                            setMargin(nomargin);
+                            addActionListener(new java.awt.event.ActionListener() {
+                                public void actionPerformed(java.awt.event.ActionEvent e)
+                                {
+                                    remapFundamentalRegionWhenChangingSymmetry.set(isSelected());
+                                }
+                            });
+                            remapFundamentalRegionWhenChangingSymmetry.addListener(listener = new Listenable.Listener() {
+                                public void valueChanged()
+                                {
+                                    setSelected(remapFundamentalRegionWhenChangingSymmetry.get());
+                                }
+                            });
+                        }});
+                    }});
+
+                    add(new JCol() {{
+                        add(new JRow() {{
+                            add(new JLabel(""), stretchx);
+
+                            add(new JButton("Help") {
+                                public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                            {
+                                addActionListener(new java.awt.event.ActionListener() {
+                                    public void actionPerformed(java.awt.event.ActionEvent e)
+                                    {
+                                        help();
+                                    }
+                                });
+                            }});
+                        }}, stretchxy);
+                        add(new JRow() {{
+                            add(new JLabel(""), stretchx);
+
+                            add(new JCheckBox("Magnifying glass", showMagFlag.get()) {
+                                public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                                {
+                                    addItemListener(new java.awt.event.ItemListener() {
+                                        public void itemStateChanged(java.awt.event.ItemEvent e)
+                                        {
+                                            showMagFlag.set(isSelected());
+                                            System.out.println("showMagFlag -> "+showMagFlag.get());
+                                            doDoubleBuffer = showMagFlag.get();
+                                            System.out.println("    doDoubleBuffer -> "+doDoubleBuffer);
+                                            theCanvas.repaint();
+                                        }
+                                    });
+                                    showMagFlag.addListener(showMagFlagListener = new Listenable.Listener() {
+                                        public void valueChanged()
+                                        {
+                                            setSelected(showMagFlag.get()); // of the checkbox
+                                        }
+                                    });
+                                }
+                            });
+
+                            add(new JLabel(""), stretchx);
+
+                            add(new JButton("Undo") {
+                                public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                            {
+                                addActionListener(new java.awt.event.ActionListener() {
+                                    public void actionPerformed(java.awt.event.ActionEvent e)
+                                    {
+                                        UndoItem item = (UndoItem)undoTreeSquirrel.undo();
+                                        if (item != null)
+                                        {
+                                            mesh = new Mesh(item.before.mesh);
+                                            meshOfSelectedTris = mesh; // hackish
+                                            doContinuouslyDelaunayize.set(item.before.doContinuouslyDelaunayize);
+                                            doOptimize.set(item.before.doOptimize);
+                                            optimizationTypeIndex.set(item.before.optimizationTypeIndex);
+                                            optimizationType = availableOptimizationTypes[optimizationTypeIndex.get()];
+                                            selectedTris = (int[][])Arrays.copy(item.before.selectedTris, 2);
+                                            selectedDualVertIndices = VecMath.copyvec(item.before.selectedDualVertIndices);
+                                            dirtyDualMesh(); // *before* we restore theNet
+                                            theNet = (item.before.netEdgeStatuses==null ? null : new Net(getDualMesh(), mesh, item.before.netEdgeStatuses));
+                                        }
+                                        else
+                                        {
+                                            System.out.println("Nothing to undo!");
+                                        }
+                                        theCanvas.repaint();
+                                    }
+                                });
+                            }});
+                            add(new JButton("Redo") {
+                                public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                            {
+                                addActionListener(new java.awt.event.ActionListener() {
+                                    public void actionPerformed(java.awt.event.ActionEvent e)
+                                    {
+                                        UndoItem item = (UndoItem)undoTreeSquirrel.redo();
+                                        if (item != null)
+                                        {
+                                            mesh = new Mesh(item.after.mesh);
+                                            meshOfSelectedTris = mesh; // hackish
+                                            doContinuouslyDelaunayize.set(item.after.doContinuouslyDelaunayize);
+                                            doOptimize.set(item.after.doOptimize);
+                                            optimizationTypeIndex.set(item.after.optimizationTypeIndex);
+                                            optimizationType = availableOptimizationTypes[optimizationTypeIndex.get()];
+                                            selectedTris = (int[][])Arrays.copy(item.after.selectedTris, 2);
+                                            selectedDualVertIndices = VecMath.copyvec(item.after.selectedDualVertIndices);
+                                            dirtyDualMesh(); // *before* we restore theNet
+                                            theNet = (item.after.netEdgeStatuses==null ? null : new Net(getDualMesh(), mesh, item.after.netEdgeStatuses));
+                                        }
+                                        else
+                                        {
+                                            System.out.println("Nothing to redo!");
+                                        }
+                                        theCanvas.repaint();
+                                    }
+                                });
+                            }});
+                        }}, stretchx);
+                    }}, stretchxy);
+                }}, stretchx); // second row: col, table, col
+
+                //randomlyColorize(this);
+
+                //
+                // Make the help window
+                //
+                {
+                    theHelpWindow = new JFrame("Shephard's Play Applet Help");
+
+                    // no need for setDefaultCloseOperation
+                    // since the default is HIDE_ON_CLOSE which is what we want
+
+                    // TODO: figure out how to make it scroll in response to arrow keys
+
+                    if (true)
+                    {
+                        // Use a JTextArea made to look like a label so text will be selectable
+                        String text = "";
+                        FORI (i, helpMessage.length)
+                            text += "  " + helpMessage[i] + "  \n";
+                        theHelpWindow.getContentPane().add(
+                            new JScrollPane(
+                                new JTextArea(text) {{
+                                    // make it like a JLabel as much as possible, but text selectable
+                                    this.setEditable(false);
+                                    this.setDisabledTextColor(java.awt.Color.black);
+                                    this.setBackground(null); // same as JLabel
+                                    this.setBorder(null); // same as JLabel
+                                }}
+                            ) {{
+                                // if we don't do the following, it will screw up
+                                // and pick a width that forces a horizontal scrollbar... lame!
+                                this.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
+                            }}
+                        );
+                    }
+                    else
+                    {
+                        // Use a JLabel -- text not selectable :-(
+                        String htmlHelpMessage = "<html><pre>";
+                        FORI (i, helpMessage.length)
+                            htmlHelpMessage += helpMessage[i] + "  \n";
+                        htmlHelpMessage += "</pre></html>";
+
+                        theHelpWindow.getContentPane().add(new JScrollPane(new JLabel(htmlHelpMessage)) {{
+
+                            // if we don't do the following, it will screw up
+                            // and pick a width that forces a horizontal scrollbar... lame!
+                            this.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
+                        }});
+                    }
+
+                    theHelpWindow.setLocation(210,30); // XXX do I really want this?  can I center it instead? doing it so the help window doesn't end up in same place as main window.
+                    theHelpWindow.pack(); // so that getWidth() will be the preferred width
+                    theHelpWindow.setSize(theHelpWindow.getWidth(),700); // XXX heuristic for my screen
+                    //theHelpWindow.setVisible(true); // uncomment when debugging
+                }
+
+
+                gridBrightness.addListener(gridBrightnessListener = new Listenable.Listener() {
+                    public void valueChanged()
+                    {
+                        System.out.println("in gridBrightness valueChanged");
+                        PRINT(gridBrightness.get());
+                        theCanvas.repaint();
+                        System.out.println("out gridBrightness valueChanged");
+                    }
+                });
+                backfaceBrightness.addListener(backfaceBrightnessListener = new Listenable.Listener() {
+                    public void valueChanged()
+                    {
+                        System.out.println("in backfaceBrightness valueChanged");
+                        PRINT(backfaceBrightness.get());
+                        theCanvas.repaint();
+                        System.out.println("out backfaceBrightness valueChanged");
+                    }
+                });
+                wrapSphereSymbolicRadius.addListener(wrapSphereSymbolicRadiusListener = new Listenable.Listener() {
+                    public void valueChanged()
+                    {
+                        //System.out.println("in wrapSphereSymbolicRadius valueChanged");
+                        // the widgets control this, not wrapSphereCurvature directly
+                        double value = wrapSphereSymbolicRadius.get();
+                        if (value <= 1.)
+                            wrapSphereCurvature.set(1./value);
+                        else
+                            wrapSphereCurvature.set(2.-value);
+                        //System.out.println("out wrapSphereSymbolicRadius valueChanged");
+                    }
+                });
+                wrapSphereCurvature.addListener(wrapSphereCurvatureListener = new Listenable.Listener() {
+                    double previousValue = wrapSphereCurvature.get(); // track value of the Listenable
+                    public void valueChanged()
+                    {
+                        //System.out.println("    in wrapSphereCurvature valueChanged");
+                        double currentValue = wrapSphereCurvature.get();
+                        assert(currentValue != previousValue); // Listenable wouldn't notify us otherwise
+
+                        theSphereSurface.radius = 1./currentValue;
+                        if (!centerSphere)
+                            theSphereSurface.center[2] = -theSphereSurface.radius;
+
+                        if (wrapAroundSphereFlag.get())
+                        {
+                            unwrapAroundSphere(previousValue);
+                            wrapAroundSphere(currentValue);
+                            theCanvas.repaint();
+                        }
+
+                        previousValue = currentValue;
+                        //System.out.println("    out wrapSphereCurvature valueChanged");
+                    }
+                });
+            } // ShephardsPlayAppletControlPanel ctor
+        } // class ShephardsPlayAppletControlPanel
         public ShephardsPlayApplet()
         {
             java.awt.Container contentPane = getContentPane();
@@ -675,921 +2092,7 @@ public class ShephardsPlayApplet
             asciiToColor['B'] = new java.awt.Color(64,64,255); // slightly light blue
             asciiToColor['b'] = new java.awt.Color(224,224,255); // very light blue
 
-
-            contentPane.add(new JRow() {{
-                add(new JCol() {{
-                    add(new JLabel(""), stretchxy);
-                    add(clearButton, rightjustify);
-                    add(loadButton, stretchx);
-                    add(saveButton, stretchx);
-                    add(saveDualButton, stretchx);
-                }}, stretchy);
-                add(theCanvas = new TheCanvas() {
-                    },
-                    stretchxy
-                );
-                add(new JCol() {{
-                    add(new JLabel(""), stretchxy);
-                    FORI (i, cannedThingButtons.length)
-                        add(cannedThingButtons[i], stretchx);
-                }}, stretchy);
-            }}, stretchxy);
-
-            contentPane.add(new JTablePanel() {{
-                add(theGridBrightnessLabel);
-                add(theGridBrightnessTextField);
-                add(theGridBrightnessSlider, stretchx);
-                advanceRow();
-                add(theBackfaceBrightnessLabel);
-                add(theBackfaceBrightnessTextField);
-                add(theBackfaceBrightnessSlider, stretchx);
-                advanceRow();
-                add(theWrapRadiusLabel);
-                add(theWrapRadiusTextField);
-                add(theWrapRadiusSlider, stretchx);
-            }}, stretchx);
-
-            contentPane.add(new JRow() {{ // second row: col, table, col
-                add(new JCol() {{
-                    add(new JRow() {{
-                        add(new JCheckBox("Optimize", doOptimize.get()) {
-                            public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                            {
-                                addItemListener(new java.awt.event.ItemListener() {
-                                    public void itemStateChanged(java.awt.event.ItemEvent e)
-                                    {
-                                        UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
-                                        doOptimize.set(isSelected());
-                                        System.out.println("doOptimize -> "+doOptimize.get());
-                                        if (doContinuouslyDelaunayize.get()) delaunayize();
-                                        UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
-                                        undoTreeSquirrel.Do(new UndoItem(before, after));
-                                        dirtyDualMesh(); // XXX why is this necessary here, and not, for example, for Delaunayize? I'm confused
-                                        theCanvas.repaint();
-                                    }
-                                });
-                                doOptimize.addListener(doOptimizeListener = new Listenable.Listener() {
-                                    public void valueChanged()
-                                    {
-                                        setSelected(doOptimize.get()); // of the checkbox
-                                    }
-                                });
-                            }
-                        });
-
-                        add(new JComboBox() {{
-
-
-                            FORI (i, optimizationTypeNames.length)
-                                addItem(optimizationTypeNames[availableOptimizationTypes[i]]);
-
-                            setSelectedIndex(optimizationTypeIndex.get());
-                            addItemListener(new java.awt.event.ItemListener() {
-                                public void itemStateChanged(java.awt.event.ItemEvent e)
-                                {
-                                    int newValue = getSelectedIndex();
-                                    if (newValue != optimizationTypeIndex.get())
-                                    {
-                                        UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
-
-
-                                        optimizationTypeIndex.set(newValue);
-                                        optimizationType = availableOptimizationTypes[optimizationTypeIndex.get()];
-                                        System.out.println("optimizationType -> "+optimizationTypeNames[optimizationType]);
-
-
-                                        if (doContinuouslyDelaunayize.get()) delaunayize();
-                                        UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
-                                        undoTreeSquirrel.Do(new UndoItem(before, after));
-                                        dirtyDualMesh(); // XXX why is this necessary here, and not, for example, for Delaunayize? I'm confused
-                                        theCanvas.repaint();
-                                        System.out.println("calling repaint!");
-                                    }
-                                }
-                            });
-                            optimizationTypeIndex.addListener(optimizationTypeIndexListener = new Listenable.Listener() {
-                                public void valueChanged()
-                                {
-                                    int newValue = optimizationTypeIndex.get();
-                                    if (newValue != getSelectedIndex())
-                                        setSelectedIndex(newValue);
-                                }
-                            });
-                        }});
-                        add(new JLabel(""), stretchxy);
-                        add(new JCol() {{
-                            add(new JCheckBox("Delaunayize", doContinuouslyDelaunayize.get()) {
-                                public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                                {
-                                    setToolTipText("<html>Turning this on delaunayizes the triangulation and keeps it delaunayized on every mesh editing operation.<br>To just delaunayize it once, turn this on and then off again.</html>");
-                                    addItemListener(new java.awt.event.ItemListener() {
-                                        public void itemStateChanged(java.awt.event.ItemEvent e)
-                                        {
-                                            UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
-                                            doContinuouslyDelaunayize.set(isSelected());
-                                            System.out.println("doContinuouslyDelaunayize -> "+doContinuouslyDelaunayize.get());
-                                            if (doContinuouslyDelaunayize.get()) delaunayize();
-                                            UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
-                                            undoTreeSquirrel.Do(new UndoItem(before, after));
-                                            theCanvas.repaint();
-                                        }
-                                    });
-                                    doContinuouslyDelaunayize.addListener(doContinuouslyDelaunayizeListener = new Listenable.Listener() {
-                                        public void valueChanged()
-                                        {
-                                            setSelected(doContinuouslyDelaunayize.get()); // of the checkbox
-                                            // XXX wait a minute, isn't this where we should delaunayize, rather than above?
-                                        }
-                                    });
-                                }
-                            });
-                            add(new JCheckBox("Wrap around sphere", wrapAroundSphereFlag.get()) {
-                                public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                                {
-                                    addItemListener(new java.awt.event.ItemListener() {
-                                        public void itemStateChanged(java.awt.event.ItemEvent e)
-                                        {
-                                            UndoItem.State before = new UndoItem.State(mesh, wrapAroundSphereFlag.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
-                                            wrapAroundSphereFlag.set(isSelected());
-                                            System.out.println("wrapAroundSphereFlag -> "+wrapAroundSphereFlag.get());
-                                            UndoItem.State after = new UndoItem.State(mesh, wrapAroundSphereFlag.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
-                                            undoTreeSquirrel.Do(new UndoItem(before, after));
-                                            theCanvas.repaint();
-                                        }
-                                    });
-                                    wrapAroundSphereFlag.addListener(wrapAroundSphereFlagListener = new Listenable.Listener() {
-                                        public void valueChanged()
-                                        {
-                                            // XXX this should go in one listener
-                                            setSelected(wrapAroundSphereFlag.get()); // of the checkbox
-
-                                            // XXX the rest should go in a separate listener
-
-                                            // XXX this isn't really the right place for the following; should do the following regardless of whether there's a checkbox for it
-                                            if (wrapAroundSphereFlag.get())
-                                            {
-                                                theSurface = theSphereSurface;
-                                                wrapAroundSphere(wrapSphereCurvature.get());
-                                                theWrapRadiusLabel.setEnabled(true);
-                                                theWrapRadiusTextField.setEnabled(true);
-                                                theWrapRadiusSlider.setEnabled(true);
-                                            }
-                                            else
-                                            {
-                                                theSurface = theParaboloidSurface;
-                                                unwrapAroundSphere(wrapSphereCurvature.get());
-                                                theWrapRadiusLabel.setEnabled(false);
-                                                theWrapRadiusTextField.setEnabled(false);
-                                                theWrapRadiusSlider.setEnabled(false);
-                                            }
-                                        }
-                                    });
-                                }
-                            });
-                        }});
-                        add(new JLabel(""), stretchxy);
-                        add(new JCol() {{
-                            add(new JCheckBox("Net", showNetFlag.get()) {
-                                public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                                {
-                                    addItemListener(new java.awt.event.ItemListener() {
-                                        public void itemStateChanged(java.awt.event.ItemEvent e)
-                                        {
-                                            synchronized(showNetFlag) // since another thread checks it once in a while
-                                            {
-                                                showNetFlag.set(isSelected());
-                                            }
-                                            theCanvas.repaint();
-                                        }
-                                    });
-                                    showNetFlag.addListener(showNetFlagListener = new Listenable.Listener() {
-                                        public void valueChanged()
-                                        {
-                                            setSelected(showNetFlag.get()); // of the checkbox
-
-
-                                            // XXX TODO: arguably this should be in a different listener... it should happen even if we decided not to have this checkbox
-                                            if (showNetFlag.get() && showNetFlowFlag.get())
-                                            {
-                                                Runnable runnable = new Runnable() {
-                                                    public void run()
-                                                    {
-                                                        System.out.println("starting animator thread");
-                                                        int fps = 10; // XXX need user control of this?
-                                                        while (true) // while (showNetFlag.get()), but synchronized
-                                                        {
-                                                            synchronized(showNetFlag)
-                                                            {
-                                                                if (!showNetFlag.get())
-                                                                    break;
-                                                            }
-
-                                                            theCanvas.repaint();
-                                                            //System.out.println("    sleeping for "+(1000/fps)+" ms");
-                                                            try {
-                                                                Thread.sleep(1000/fps);
-                                                            } catch (InterruptedException e) {
-                                                                break;
-                                                            }
-                                                        }
-                                                        System.out.println("terminating animator thread");
-                                                        // XXX TODO: does master thread need to join?
-                                                    }
-                                                };
-                                                Thread animatorThread = new Thread(runnable);
-                                                animatorThread.setDaemon(true); // make it so the java vm won't wait for it to finish before exiting
-                                                animatorThread.start();
-                                            }
-
-                                        }
-                                    });
-                                }
-                            });
-                            add(new JCheckBox("Flow", showNetFlowFlag.get()) {
-                                {
-                                    setEnabled(showNetFlag.get());
-                                }
-                                public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                                {
-                                    addItemListener(new java.awt.event.ItemListener() {
-                                        public void itemStateChanged(java.awt.event.ItemEvent e)
-                                        {
-                                            synchronized(showNetFlowFlag) // since another thread checks it once in a while
-                                            {
-                                                showNetFlowFlag.set(isSelected());
-                                            }
-                                            theCanvas.repaint();
-                                        }
-                                    });
-                                    showNetFlag.addListener(showNetFlagListener2 = new Listenable.Listener() {
-                                        public void valueChanged()
-                                        {
-                                            setEnabled(showNetFlag.get()); // of the showNetFlowFlag checkbox
-                                        }
-                                    });
-                                    showNetFlowFlag.addListener(showNetFlowFlagListener = new Listenable.Listener() {
-                                        public void valueChanged()
-                                        {
-                                            setSelected(showNetFlowFlag.get()); // of the checkbox
-
-
-                                            // XXX TODO: arguably this should be in a different listener... it should happen even if we decided not to have this checkbox
-                                            if (showNetFlag.get() && showNetFlowFlag.get())
-                                            {
-                                                Runnable runnable = new Runnable() {
-                                                    public void run()
-                                                    {
-                                                        System.out.println("starting animator thread");
-                                                        int fps = 10; // XXX need user control of this?
-                                                        while (true) // while (showNetFlag.get() && showNetFlowFlag.get()), but synchronized
-                                                        {
-                                                            synchronized(showNetFlag)
-                                                            {
-                                                                synchronized(showNetFlowFlag)
-                                                                {
-                                                                    if (!showNetFlag.get() && !showNetFlowFlag.get())
-                                                                        break;
-                                                                }
-                                                            }
-
-                                                            theCanvas.repaint();
-                                                            //System.out.println("    sleeping for "+(1000/fps)+" ms");
-                                                            try {
-                                                                Thread.sleep(1000/fps);
-                                                            } catch (InterruptedException e) {
-                                                                break;
-                                                            }
-                                                        }
-                                                        System.out.println("terminating animator thread");
-                                                        // XXX TODO: does master thread need to join?
-                                                    }
-                                                };
-                                                Thread animatorThread = new Thread(runnable);
-                                                animatorThread.setDaemon(true); // make it so the java vm won't wait for it to finish before exiting
-                                                animatorThread.start();
-                                            }
-
-                                        }
-                                    });
-                                }
-                            });
-                        }});
-                        add(new JComboBox(netMethodNames) {{
-                            setSelectedIndex(netMethod.get());
-                            addItemListener(new java.awt.event.ItemListener() {
-                                public void itemStateChanged(java.awt.event.ItemEvent e)
-                                {
-                                    // evidently this gets called twice??
-                                    // no idea why (java.awt.Choice doesn't behave like that)
-                                    // (well it had a different bug,
-                                    // namely it called the callback on mouse up
-                                    // even if the user selected what was already selected).
-                                    // so check whether the new value is really new,
-                                    // and if not, don't do anything.
-                                    // (not that the extra stuff was expensive...
-                                    // but I was noticing the "netMethod -> whatever"
-                                    // was coming out 4 times
-                                    int newValue = getSelectedIndex();
-                                    if (getSelectedIndex() != netMethod.get())
-                                    {
-                                        netMethod.set(newValue);
-                                        System.out.println("netMethod -> "+netMethodNames[netMethod.get()]);
-                                        theNet = null;
-                                        theCanvas.repaint();
-                                    }
-                                }
-                            });
-                            netMethod.addListener(netMethodListener = new Listenable.Listener() {
-                                public void valueChanged()
-                                {
-                                    int newValue = netMethod.get();
-                                    // setSelectedIndex does callbacks
-                                    // even if the value isn't new,
-                                    // so don't call it unless the value is new
-                                    if (newValue != getSelectedIndex())
-                                        setSelectedIndex(newValue);
-                                }
-                            });
-                        }});
-                        add(new JLabel(""), stretchxy);
-                    }}, stretchx);
-                }}, stretchy);
-
-                add(new JTablePanel() {{
-                    add(new JButton("") {
-                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                        public java.awt.Dimension getPreferredSize() { return new java.awt.Dimension(20,20); }
-                        public java.awt.Dimension getMinimumSize()   { return new java.awt.Dimension(20,20); }
-                        public void paint(java.awt.Graphics g)
-                        {
-                            drawPixmapCentered(g, getSize(), asciiToColor,
-                                               new String[] {
-                                                  "        w        ",
-                                                  "       www       ",
-                                                  "      ww ww      ",
-                                                  "                 ",
-                                                  "      BB BB      ",
-                                                  "       BBB       ",
-                                                  "  B w   B   w B  ",
-                                                  " BB ww     ww BB ",
-                                                  "BB   ww   ww   BB",
-                                                  " BB ww     ww BB ",
-                                                  "  B w   B   w B  ",
-                                                  "       BBB       ",
-                                                  "      BB BB      ",
-                                                  "                 ",
-                                                  "      ww ww      ",
-                                                  "       www       ",
-                                                  "        w        ",
-                                               });
-                        }
-                    {
-                        addActionListener(new java.awt.event.ActionListener() {
-                            public void actionPerformed(java.awt.event.ActionEvent e)
-                            {
-                                rescale(Math.sqrt(.5), Math.sqrt(2.));
-                            }
-                        });
-                    }}, stretchxy);
-                    add(new JButton("") {
-                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                        public java.awt.Dimension getPreferredSize() { return new java.awt.Dimension(20,20); }
-                        public java.awt.Dimension getMinimumSize()   { return new java.awt.Dimension(20,20); }
-                        public void paint(java.awt.Graphics g)
-                        {
-                            drawPixmapCentered(g, getSize(), asciiToColor,
-                                               new String[] {
-                                                  "                 ",
-                                                  "        w        ",
-                                                  "       www       ",
-                                                  "      ww ww      ",
-                                                  "                 ",
-                                                  "                 ",
-                                                  "   B         B   ",
-                                                  "  BB         BB  ",
-                                                  " BB           BB ",
-                                                  "  BB         BB  ",
-                                                  "   B         B   ",
-                                                  "                 ",
-                                                  "                 ",
-                                                  "      ww ww      ",
-                                                  "       www       ",
-                                                  "        w        ",
-                                                  "                 ",
-                                               });
-                        }
-                    {
-                        addActionListener(new java.awt.event.ActionListener() {
-                            public void actionPerformed(java.awt.event.ActionEvent e)
-                            {
-                                rescale(1., Math.sqrt(2.));
-                            }
-                        });
-                    }}, stretchxy);
-                    add(new JButton("") {
-                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                        public java.awt.Dimension getPreferredSize() { return new java.awt.Dimension(20,20); }
-                        public java.awt.Dimension getMinimumSize()   { return new java.awt.Dimension(20,20); }
-                        public void paint(java.awt.Graphics g)
-                        {
-                            drawPixmapCentered(g, getSize(), asciiToColor,
-                                               new String[] {
-                                                  "                 ",
-                                                  "        b        ",
-                                                  "       bbb       ",
-                                                  "      bb bb      ",
-                                                  "                 ",
-                                                  "                 ",
-                                                  "   b         b   ",
-                                                  "  bb         bb  ",
-                                                  " bb           bb ",
-                                                  "  bb         bb  ",
-                                                  "   b         b   ",
-                                                  "                 ",
-                                                  "                 ",
-                                                  "      bb bb      ",
-                                                  "       bbb       ",
-                                                  "        b        ",
-                                                  "                 ",
-                                               });
-                        }
-                    {
-                        addActionListener(new java.awt.event.ActionListener() {
-                            public void actionPerformed(java.awt.event.ActionEvent e)
-                            {
-                                rescale(Math.sqrt(2.), Math.sqrt(2.));
-                            }
-                        });
-                    }}, stretchxy);
-                    advanceRow();
-                    add(new JButton("") {
-                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                        public java.awt.Dimension getPreferredSize() { return new java.awt.Dimension(20,20); }
-                        public java.awt.Dimension getMinimumSize()   { return new java.awt.Dimension(20,20); }
-                        public void paint(java.awt.Graphics g)
-                        {
-                            drawPixmapCentered(g, getSize(), asciiToColor,
-                                               new String[] {
-                                                  "                 ",
-                                                  "                 ",
-                                                  "                 ",
-                                                  "      BB BB      ",
-                                                  "       BBB       ",
-                                                  "    w   B   w    ",
-                                                  "    ww     ww    ",
-                                                  "     ww   ww     ",
-                                                  "    ww     ww    ",
-                                                  "    w   B   w    ",
-                                                  "       BBB       ",
-                                                  "      BB BB      ",
-                                                  "                 ",
-                                                  "                 ",
-                                                  "                 ",
-                                               });
-                        }
-                    {
-                        addActionListener(new java.awt.event.ActionListener() {
-                            public void actionPerformed(java.awt.event.ActionEvent e)
-                            {
-                                rescale(Math.sqrt(.5), 1.);
-                            }
-                        });
-                    }}, stretchxy);
-                    add(new JButton("f") {
-                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                        public java.awt.Dimension getPreferredSize() { return new java.awt.Dimension(20,20); }
-                        public java.awt.Dimension getMinimumSize()   { return new java.awt.Dimension(20,20); }
-                        public void paint(java.awt.Graphics g)
-                        {
-                            drawPixmapCentered(g, getSize(), asciiToColor,
-                                               new String[] {
-                                                  "wwwwwwwwwwwwwww",
-                                                  "w  w   w   w  w",
-                                                  "w  w   w   w  w",
-                                                  "wwwwwwwwwwwwwww",
-                                                  "w  w       w  w",
-                                                  "w  w  www  w  w",
-                                                  "w  w  w    w  w",
-                                                  "wwww  ww   wwww",
-                                                  "w  w  w    w  w",
-                                                  "w  w  w    w  w",
-                                                  "w  w       w  w",
-                                                  "wwwwwwwwwwwwwww",
-                                                  "w  w   w   w  w",
-                                                  "w  w   w   w  w",
-                                                  "wwwwwwwwwwwwwww",
-                                               });
-                        }
-                    {
-                        addActionListener(new java.awt.event.ActionListener() {
-                            public void actionPerformed(java.awt.event.ActionEvent e)
-                            {
-                                frame();
-                            }
-                        });
-                    }}, stretchxy);
-                    add(new JButton("") {
-                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                        public java.awt.Dimension getPreferredSize() { return new java.awt.Dimension(20,20); }
-                        public java.awt.Dimension getMinimumSize()   { return new java.awt.Dimension(20,20); }
-                        public void paint(java.awt.Graphics g)
-                        {
-                            drawPixmapCentered(g, getSize(), asciiToColor,
-                                               // leave 4 spaces horizontally, 2 spaces vertically
-                                               new String[] {
-                                                  "                 ",
-                                                  "        B        ",
-                                                  "       BBB       ",
-                                                  "      BB BB      ",
-                                                  "                 ",
-                                                  "                 ",
-                                                  "   w         w   ",
-                                                  "  ww         ww  ",
-                                                  " ww           ww ",
-                                                  "  ww         ww  ",
-                                                  "   w         w   ",
-                                                  "                 ",
-                                                  "                 ",
-                                                  "      BB BB      ",
-                                                  "       BBB       ",
-                                                  "        B        ",
-                                                  "                 ",
-                                               });
-                        }
-                    {
-                        addActionListener(new java.awt.event.ActionListener() {
-                            public void actionPerformed(java.awt.event.ActionEvent e)
-                            {
-                                rescale(Math.sqrt(2.), 1.);
-                            }
-                        });
-                    }}, stretchxy);
-                    advanceRow();
-                    add(new JButton("") {
-                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                        public java.awt.Dimension getPreferredSize() { return new java.awt.Dimension(20,20); }
-                        public java.awt.Dimension getMinimumSize()   { return new java.awt.Dimension(20,20); }
-                        public void paint(java.awt.Graphics g)
-                        {
-                            drawPixmapCentered(g, getSize(), asciiToColor,
-                                               new String[] {
-                                                  "                 ",
-                                                  "                 ",
-                                                  "                 ",
-                                                  "                 ",
-                                                  "      bb bb      ",
-                                                  "       bbb       ",
-                                                  "    b   b   b    ",
-                                                  "    bb     bb    ",
-                                                  "     bb   bb     ",
-                                                  "    bb     bb    ",
-                                                  "    b   b   b    ",
-                                                  "       bbb       ",
-                                                  "      bb bb      ",
-                                                  "                 ",
-                                                  "                 ",
-                                                  "                 ",
-                                                  "                 ",
-                                               });
-                        }
-                    {
-                        addActionListener(new java.awt.event.ActionListener() {
-                            public void actionPerformed(java.awt.event.ActionEvent e)
-                            {
-                                rescale(Math.sqrt(.5), Math.sqrt(.5));
-                            }
-                        });
-                    }}, stretchxy);
-                    add(new JButton("") {
-                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                        public java.awt.Dimension getPreferredSize() { return new java.awt.Dimension(20,20); }
-                        public java.awt.Dimension getMinimumSize()   { return new java.awt.Dimension(20,20); }
-                        public void paint(java.awt.Graphics g)
-                        {
-                            drawPixmapCentered(g, getSize(), asciiToColor,
-                                               new String[] {
-                                                  "                 ",
-                                                  "                 ",
-                                                  "                 ",
-                                                  "                 ",
-                                                  "      ww ww      ",
-                                                  "       www       ",
-                                                  "    B   w   B    ",
-                                                  "    BB     BB    ",
-                                                  "     BB   BB     ",
-                                                  "    BB     BB    ",
-                                                  "    B   w   B    ",
-                                                  "       www       ",
-                                                  "      ww ww      ",
-                                                  "                 ",
-                                                  "                 ",
-                                                  "                 ",
-                                                  "                 ",
-                                               });
-                        }
-                    {
-                        addActionListener(new java.awt.event.ActionListener() {
-                            public void actionPerformed(java.awt.event.ActionEvent e)
-                            {
-                                rescale(1., Math.sqrt(.5));
-                            }
-                        });
-                    }}, stretchxy);
-                    add(new JButton("") {
-                        public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                        public java.awt.Dimension getPreferredSize() { return new java.awt.Dimension(20,20); }
-                        public java.awt.Dimension getMinimumSize()   { return new java.awt.Dimension(20,20); }
-                        public void paint(java.awt.Graphics g)
-                        {
-                            drawPixmapCentered(g, getSize(), asciiToColor,
-                                               new String[] {
-                                                  "        B        ",
-                                                  "       BBB       ",
-                                                  "      BB BB      ",
-                                                  "                 ",
-                                                  "      ww ww      ",
-                                                  "       www       ",
-                                                  "  w B   w   B w  ",
-                                                  " ww BB     BB ww ",
-                                                  "ww   BB   BB   ww",
-                                                  " ww BB     BB ww ",
-                                                  "  w B   w   B w  ",
-                                                  "       www       ",
-                                                  "      ww ww      ",
-                                                  "                 ",
-                                                  "      BB BB      ",
-                                                  "       BBB       ",
-                                                  "        B        ",
-                                               });
-                        }
-                    {
-                        addActionListener(new java.awt.event.ActionListener() {
-                            public void actionPerformed(java.awt.event.ActionEvent e)
-                            {
-                                rescale(Math.sqrt(2.), Math.sqrt(.5));
-                            }
-                        });
-                    }}, stretchxy);
-                }}); // table
-
-                add(new JCol() {{
-                    final java.awt.Insets nomargin = new java.awt.Insets(0,0,0,0);
-                    add(new JTablePanel() {{
-                        final int maxpq = 10;
-                        final ButtonGroup pButtonGroup = new ButtonGroup();
-                        final ButtonGroup qButtonGroup = new ButtonGroup();
-
-                        add(new JLabel("Sym"));
-                        add(new JLabel(""));
-                        for (int i = 1; i <= maxpq; ++i)
-                        {
-                            add(new JLabel((i<=9?"  ":" ")+i)); // XXX I don't quite understand why this makes it look ok
-                        }
-                        advanceRow();
-                        add(new JCheckBox("lr") {
-                            {setToolTipText("Left-right symmetry");}
-                            Listenable.Listener listener;
-                            {
-                                addActionListener(new java.awt.event.ActionListener() {
-                                    public void actionPerformed(java.awt.event.ActionEvent e)
-                                    {
-                                        boolean newLeftRightSymmetry = isSelected();
-                                        changeSymmetry(pRotationalSymmetry.get(), qRotationalSymmetry.get(), newLeftRightSymmetry, centralSymmetry.get(), remapFundamentalRegionWhenChangingSymmetry.get());
-                                    }
-                                });
-                                setSelected(leftRightSymmetry.get());
-                                setMargin(nomargin);
-                                leftRightSymmetry.addListener(listener = new Listenable.Listener() {
-                                    public void valueChanged()
-                                    {
-                                        setSelected(leftRightSymmetry.get());
-                                    }
-                                });
-                            }
-                        });
-                        add(new JLabel("p:"), rightjustify);
-                        {
-                            for (int i = 1; i <= maxpq; ++i)
-                            {
-                                final int final_i = i;
-                                add(new JRadioButton("") {
-                                    Listenable.Listener listener;
-                                    {
-                                        addActionListener(new java.awt.event.ActionListener() {
-                                            public void actionPerformed(java.awt.event.ActionEvent e)
-                                            {
-                                                int p = final_i;
-                                                System.out.println("p = "+p);
-                                                changeSymmetry(p, qRotationalSymmetry.get(), leftRightSymmetry.get(), centralSymmetry.get(), remapFundamentalRegionWhenChangingSymmetry.get());
-                                                int maxq = p<=2 ? maxpq : p==3 ? 5 : p==4 ? 3 : p==5 ? 3 : 2;
-                                                int q = 1;
-                                                for (java.util.Enumeration qButtons = qButtonGroup.getElements();
-                                                     qButtons.hasMoreElements();
-                                                     q++)
-                                                {
-                                                    JRadioButton qButton = (JRadioButton)qButtons.nextElement();
-                                                    qButton.setEnabled(q <= maxq);
-                                                    qButton.setVisible(q <= maxq);
-                                                }
-                                            }
-                                        });
-                                        setSelected(final_i == pRotationalSymmetry.get());
-                                        setMargin(nomargin);
-                                        pButtonGroup.add(this);
-
-                                        pRotationalSymmetry.addListener(listener = new Listenable.Listener() {
-                                            public void valueChanged()
-                                            {
-                                                setSelected(pRotationalSymmetry.get() == final_i);
-                                            }
-                                        });
-                                    }
-                                });
-                            }
-                        }
-                        advanceRow();
-                        add(new JCheckBox("c") {
-                            {setToolTipText("Central symmetry");}
-                            Listenable.Listener listener;
-                            {
-                                addActionListener(new java.awt.event.ActionListener() {
-                                    public void actionPerformed(java.awt.event.ActionEvent e)
-                                    {
-                                        boolean newCentralSymmetry = isSelected();
-                                        changeSymmetry(pRotationalSymmetry.get(), qRotationalSymmetry.get(), leftRightSymmetry.get(), newCentralSymmetry, remapFundamentalRegionWhenChangingSymmetry.get());
-                                    }
-                                });
-                                setSelected(centralSymmetry.get());
-                                setMargin(nomargin);
-                                centralSymmetry.addListener(listener = new Listenable.Listener() {
-                                    public void valueChanged()
-                                    {
-                                        setSelected(centralSymmetry.get());
-                                    }
-                                });
-                            }
-                        });
-                        add(new JLabel("q:"), rightjustify);
-                        {
-                            for (int i = 1; i <= maxpq; ++i)
-                            {
-                                final int final_i = i;
-                                add(new JRadioButton("") {
-                                    Listenable.Listener listener;
-                                    {
-                                        addActionListener(new java.awt.event.ActionListener() {
-                                            public void actionPerformed(java.awt.event.ActionEvent e)
-                                            {
-                                                int q = final_i;
-                                                System.out.println("q = "+q);
-                                                changeSymmetry(pRotationalSymmetry.get(), q, leftRightSymmetry.get(), centralSymmetry.get(), remapFundamentalRegionWhenChangingSymmetry.get());
-                                                int maxp = q<=2 ? maxpq : q==3 ? 5 : q==4 ? 3 : q==5 ? 3 : 2;
-                                                int p = 1;
-                                                for (java.util.Enumeration pButtons = pButtonGroup.getElements();
-                                                     pButtons.hasMoreElements();
-                                                     p++)
-                                                {
-                                                    JRadioButton pButton = (JRadioButton)pButtons.nextElement();
-                                                    pButton.setEnabled(p <= maxp);
-                                                    pButton.setVisible(p <= maxp);
-                                                }
-                                            }
-                                        });
-                                        setSelected(final_i == qRotationalSymmetry.get());
-                                        setMargin(nomargin);
-                                        qButtonGroup.add(this);
-
-                                        qRotationalSymmetry.addListener(listener = new Listenable.Listener() {
-                                            public void valueChanged()
-                                            {
-                                                setSelected(qRotationalSymmetry.get() == final_i);
-                                            }
-                                        });
-                                    }
-                                });
-                            }
-                        }
-                    }});
-                    add(new JCheckBox("remap when changing symmetry") { Listenable.Listener listener; {
-                        setToolTipText("Remap fundamental region when changing symmetry");
-                        setSelected(remapFundamentalRegionWhenChangingSymmetry.get());
-                        setMargin(nomargin);
-                        addActionListener(new java.awt.event.ActionListener() {
-                            public void actionPerformed(java.awt.event.ActionEvent e)
-                            {
-                                remapFundamentalRegionWhenChangingSymmetry.set(isSelected());
-                            }
-                        });
-                        remapFundamentalRegionWhenChangingSymmetry.addListener(listener = new Listenable.Listener() {
-                            public void valueChanged()
-                            {
-                                setSelected(remapFundamentalRegionWhenChangingSymmetry.get());
-                            }
-                        });
-                    }});
-                }});
-
-                add(new JCol() {{
-                    add(new JRow() {{
-                        add(new JLabel(""), stretchx);
-
-                        add(new JButton("Help") {
-                            public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                        {
-                            addActionListener(new java.awt.event.ActionListener() {
-                                public void actionPerformed(java.awt.event.ActionEvent e)
-                                {
-                                    help();
-                                }
-                            });
-                        }});
-                    }}, stretchxy);
-                    add(new JRow() {{
-                        add(new JLabel(""), stretchx);
-
-                        add(new JCheckBox("Magnifying glass", showMagFlag.get()) {
-                            public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                            {
-                                addItemListener(new java.awt.event.ItemListener() {
-                                    public void itemStateChanged(java.awt.event.ItemEvent e)
-                                    {
-                                        showMagFlag.set(isSelected());
-                                        System.out.println("showMagFlag -> "+showMagFlag.get());
-                                        doDoubleBuffer = showMagFlag.get();
-                                        System.out.println("    doDoubleBuffer -> "+doDoubleBuffer);
-                                        theCanvas.repaint();
-                                    }
-                                });
-                                showMagFlag.addListener(showMagFlagListener = new Listenable.Listener() {
-                                    public void valueChanged()
-                                    {
-                                        setSelected(showMagFlag.get()); // of the checkbox
-                                    }
-                                });
-                            }
-                        });
-
-                        add(new JLabel(""), stretchx);
-
-                        add(new JButton("Undo") {
-                            public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                        {
-                            addActionListener(new java.awt.event.ActionListener() {
-                                public void actionPerformed(java.awt.event.ActionEvent e)
-                                {
-                                    UndoItem item = (UndoItem)undoTreeSquirrel.undo();
-                                    if (item != null)
-                                    {
-                                        mesh = new Mesh(item.before.mesh);
-                                        meshOfSelectedTris = mesh; // hackish
-                                        doContinuouslyDelaunayize.set(item.before.doContinuouslyDelaunayize);
-                                        doOptimize.set(item.before.doOptimize);
-                                        optimizationTypeIndex.set(item.before.optimizationTypeIndex);
-                                        optimizationType = availableOptimizationTypes[optimizationTypeIndex.get()];
-                                        selectedTris = (int[][])Arrays.copy(item.before.selectedTris, 2);
-                                        selectedDualVertIndices = VecMath.copyvec(item.before.selectedDualVertIndices);
-                                        dirtyDualMesh(); // *before* we restore theNet
-                                        theNet = (item.before.netEdgeStatuses==null ? null : new Net(getDualMesh(), mesh, item.before.netEdgeStatuses));
-                                    }
-                                    else
-                                    {
-                                        System.out.println("Nothing to undo!");
-                                    }
-                                    theCanvas.repaint();
-                                }
-                            });
-                        }});
-                        add(new JButton("Redo") {
-                            public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                        {
-                            addActionListener(new java.awt.event.ActionListener() {
-                                public void actionPerformed(java.awt.event.ActionEvent e)
-                                {
-                                    UndoItem item = (UndoItem)undoTreeSquirrel.redo();
-                                    if (item != null)
-                                    {
-                                        mesh = new Mesh(item.after.mesh);
-                                        meshOfSelectedTris = mesh; // hackish
-                                        doContinuouslyDelaunayize.set(item.after.doContinuouslyDelaunayize);
-                                        doOptimize.set(item.after.doOptimize);
-                                        optimizationTypeIndex.set(item.after.optimizationTypeIndex);
-                                        optimizationType = availableOptimizationTypes[optimizationTypeIndex.get()];
-                                        selectedTris = (int[][])Arrays.copy(item.after.selectedTris, 2);
-                                        selectedDualVertIndices = VecMath.copyvec(item.after.selectedDualVertIndices);
-                                        dirtyDualMesh(); // *before* we restore theNet
-                                        theNet = (item.after.netEdgeStatuses==null ? null : new Net(getDualMesh(), mesh, item.after.netEdgeStatuses));
-                                    }
-                                    else
-                                    {
-                                        System.out.println("Nothing to redo!");
-                                    }
-                                    theCanvas.repaint();
-                                }
-                            });
-                        }});
-                    }}, stretchx);
-                }}, stretchxy);
-            }}, stretchx); // second row: col, table, col
+            contentPane.add(theCanvas = new TheCanvas() {}, stretchxy);
 
 
             if (true)
@@ -1618,11 +2121,21 @@ public class ShephardsPlayApplet
                 editMenu.addSeparator();
                 editMenu.add(new JMenuItem("Clear"));
 
+                JMenu windowsMenu = new JMenu("Windows", true);
+                menuBar.add(windowsMenu);
+                windowsMenu.add(new JMenuItem("Control Panel") {{
+                    addActionListener(new java.awt.event.ActionListener() {
+                        public void actionPerformed(java.awt.event.ActionEvent e)
+                        {
+                            System.out.println("popping up control panel!");
+                            theControlPanelWindow.setVisible(true);
+                        }
+                    });
+                }});
+
                 JMenu helpMenu = new JMenu("Help", true);
                 menuBar.add(helpMenu);
-                helpMenu.add(new JMenuItem("Help") {
-                    public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                {
+                helpMenu.add(new JMenuItem("Help") {{
                     addActionListener(new java.awt.event.ActionListener() {
                         public void actionPerformed(java.awt.event.ActionEvent e)
                         {
@@ -1631,10 +2144,22 @@ public class ShephardsPlayApplet
                     });
                 }});
                 helpMenu.add(new JMenuItem("About...") {{
+                    // TODO: do me
                 }});
             }
 
             //randomlyColorize(this);
+
+            //
+            // Make the control panel window
+            //
+            if (true)
+            {
+                theControlPanelWindow = new JFrame("Shephards Play Applet Control Panel");
+                theControlPanelWindow.add(new ShephardsPlayAppletControlPanel());
+                theControlPanelWindow.setSize(1200, 550);
+                //theControlPanelWindow.setVisible(true); // uncomment when debugging
+            }
 
 
             //
@@ -14524,6 +15049,7 @@ OFF
         private java.awt.Component theCanvas = null;
         //private java.awt.Component theHelpWindow = null;
         private JFrame theHelpWindow = null;
+        private JFrame theControlPanelWindow = null;
 
         // hack
         private int netless8OptimizationIndex = -1;
