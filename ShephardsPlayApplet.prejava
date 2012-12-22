@@ -17,7 +17,9 @@ BUGS:
     - use swing sliders instead of scrollbars
 
   Wrap-sphere related:
+    - grid, wrap, unwrap-- seems funky, certainly doesn't come back the same
     - for Surface, most important thing is that offset is right-- should adjust final result to make it right
+    - backfaces now completely nonfunctional
     - backface culling is flakey (or, need a coherent scheme, not keying on show-inside-out)
     - backface culling sometimes slightly wrong-- using wrong criterion? symmetry 3,4 or something, some backfacing tries are shown with frontfacing color
     - doesn't interact correctly with undo/redo or save/restore
@@ -1294,6 +1296,26 @@ public class ShephardsPlayApplet
                                 });
                             }
                         });
+                        add(new JCheckBox("Show back faces and second dual sheet (if any)", applet.wrapAroundSphereFlag.get()) {
+                            private Listenable.Listener listener;
+                            public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                            {
+                                addItemListener(new java.awt.event.ItemListener() {
+                                    public void itemStateChanged(java.awt.event.ItemEvent e)
+                                    {
+                                        applet.showInsideOutDualVertsFlag.set(isSelected());
+                                        System.out.println("applet.showInsideOutDualVertsFlag -> "+applet.showInsideOutDualVertsFlag.get());
+                                        applet.theCanvas.repaint();
+                                    }
+                                });
+                                applet.showInsideOutDualVertsFlag.addListener(listener = new Listenable.Listener() {
+                                    public void valueChanged()
+                                    {
+                                        setSelected(applet.showInsideOutDualVertsFlag.get()); // of the checkbox
+                                    }
+                                });
+                            }
+                        });
                         add(new JTablePanel() {{
                             add(theGridBrightnessLabel);
                             add(theGridBrightnessTextField);
@@ -1362,6 +1384,7 @@ public class ShephardsPlayApplet
                                 final ButtonGroup pButtonGroup = new ButtonGroup();
                                 final ButtonGroup qButtonGroup = new ButtonGroup();
 
+                                add(new JLabel(""), rightjustify);
                                 for (int i = 1; i <= maxpq; ++i)
                                 {
                                     add(new JLabel((i<=9?"  ":" ")+i)); // XXX I don't quite understand why this makes it look ok
@@ -1823,8 +1846,10 @@ public class ShephardsPlayApplet
 
                 theControlPanelWindow.add(new ShephardsPlayAppletControlPanel(this));
 
-                theControlPanelWindow.setSize(850, 700); // empirical-- will be wrong on another machine, no doubt XXX TODO: can we compute a good preferred size? pack() or something?
-                theControlPanelWindow.setSize(618, 720); // empirical-- will be wrong on another machine, no doubt XXX TODO: can we compute a good preferred size? pack() or something?
+
+
+                theControlPanelWindow.setLocation(730, 10);
+                theControlPanelWindow.setSize(618, 740); // empirical-- will be wrong on another machine, no doubt XXX TODO: can we compute a good preferred size? pack() or something?
 
                 // theControlPanelWindow.pack(); // no, the Canned Things flow thing messes it up.  need to control that somehow... ?
                 theControlPanelWindow.setVisible(true);
@@ -2079,17 +2104,14 @@ public class ShephardsPlayApplet
 
                 Mesh dualMesh = getDualMesh();
                 int nDualVerts = dualMesh.verts.size();
+                boolean showInsideOutDualVertsFlagValue = showInsideOutDualVertsFlag.get();
                 FORI (iDualVert, nDualVerts)
                 {
                     Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
                     if (dualVert.arity == 3
-                     && (showInsideOutDualVertsFlag
+                     && (showInsideOutDualVertsFlagValue
                       || dualVert.weight >= 0))
                     {
-                        //writer.println("        {" + dualVert.Xnaive()
-                        //           + ", " + dualVert.Ynaive()
-                        //           + ", " + dualVert.Hnaive()
-                        //           + "},");
                         writer.println("        {" + dualVert.X()
                                             + ", " + dualVert.Y()
                                             + ", " + dualVert.Z()
@@ -3138,7 +3160,7 @@ public class ShephardsPlayApplet
                                                 int oldNumEdges = mesh.edges.size();
                                                 mesh.kisIsolatedVertex((Mesh.Vertex)verts.get(verts.size()-1),
                                                                        edgeOnMostNegativeFace);
-                                                if (!showInsideOutDualVertsFlag)
+                                                if (!showInsideOutDualVertsFlag.get())
                                                 {
                                                     for (int iEdge = oldNumEdges;
                                                          iEdge < mesh.edges.size();
@@ -4262,7 +4284,7 @@ public class ShephardsPlayApplet
                                 Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
                                 if (dualVert.arity != 3)
                                     continue; // not a triangle
-                                if (!showInsideOutDualVertsFlag)
+                                if (!showInsideOutDualVertsFlag.get())
                                 {
                                     if (dualVert.weight < 0)
                                         continue; // the triangle is inside out; it's the boundary
@@ -4590,10 +4612,8 @@ public class ShephardsPlayApplet
                         break;
 
                     case CTRL('i'): // toggle showInsideOutDualVertsFlag
-                        showInsideOutDualVertsFlag ^= true;
-                        System.out.println("showInsideOutDualVertsFlag -> "+showInsideOutDualVertsFlag);
-                        if (doContinuouslyDelaunayize.get()) delaunayize();
-                        dirtyDualMesh();
+                        showInsideOutDualVertsFlag.set(!showInsideOutDualVertsFlag.get());
+                        System.out.println("showInsideOutDualVertsFlag -> "+showInsideOutDualVertsFlag.get());
                         theCanvas.repaint();
                         break;
 
@@ -6222,6 +6242,7 @@ public class ShephardsPlayApplet
                     } // if (!showNetFlag)
                 } // if (drawDualDiagramFlag)
 
+                boolean showInsideOutDualVertsFlagValue = showInsideOutDualVertsFlag.get();
 
                 FORI (iFacingPass, 2) // back, then front
                 {
@@ -6390,7 +6411,7 @@ public class ShephardsPlayApplet
                                 {
                                     Mesh.Edge edge = (Mesh.Edge)edges.get(iWholeEdge*2);
 
-                                    if (!showFlatEdgesFlag || !showInsideOutDualVertsFlag)
+                                    if (!showFlatEdgesFlag || !showInsideOutDualVertsFlagValue)
                                     {
                                         Mesh.Edge dualEdge = (Mesh.Edge)dualEdges.get(iWholeEdge*2);
                                         Mesh.Vertex vert0 = dualEdge.initialVertex();
@@ -6410,7 +6431,7 @@ public class ShephardsPlayApplet
                                                 if (VecMath.distsqrd(v0,v1) < SQR(flatThreshold))
                                                     continue;
                                             }
-                                            if (!showInsideOutDualVertsFlag)
+                                            if (!showInsideOutDualVertsFlagValue)
                                             {
                                                 if (v0[3] < 0. && v1[3] < 0.)
                                                     continue;
@@ -6623,7 +6644,7 @@ public class ShephardsPlayApplet
                                     //     positive and negative parts
                                     //
                                     boolean drawFrontDualVertsFlag = true;
-                                    boolean drawBackDualVertsFlag = showInsideOutDualVertsFlag;
+                                    boolean drawBackDualVertsFlag = showInsideOutDualVertsFlagValue;
 
                                     if (from[3]*to[3] > 0.)
                                     {
@@ -6686,7 +6707,7 @@ public class ShephardsPlayApplet
 
                             Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
 
-                            if (!showInsideOutDualVertsFlag
+                            if (!showInsideOutDualVertsFlagValue
                              && dualVert.weight < 0.)
                                 continue;
 
@@ -6758,7 +6779,7 @@ public class ShephardsPlayApplet
                                 int parentEdgeInd = theNet._vertToParentEdgeInd[iChild];
                                 if (parentEdgeInd != -1)
                                 {
-                                    if (!showInsideOutDualVertsFlag
+                                    if (!showInsideOutDualVertsFlagValue
                                      && dualEdgeFacings[parentEdgeInd] == FACING_BACK)
                                         continue;
 
@@ -14729,7 +14750,7 @@ OFF
         private boolean doArrowsTowardsShortestEdges = false;
 
         private boolean calcInsideOutVertsFlag = true; // moving towards always doing this
-        private boolean showInsideOutDualVertsFlag = false; // might also be nice to have option for implicit primal vertex in middle of outer face, so that dual will be single-face-bounded... and maybe ctrl-up,ctrl-down will adjust the height of that face.
+        private Listenable.Boolean showInsideOutDualVertsFlag = new Listenable.Boolean(false);
 
         private boolean showFlatEdgesFlag = false; // hard-coded for now, seems to work well
 
@@ -15366,12 +15387,8 @@ OFF
         applet.init();
         applet.start();
 
-        frame.setLocation(200, 20);
-        frame.setSize(200,200);
-        frame.setSize(1001, 701);
-        frame.setSize(1001, 600);
-        frame.setSize(600, 550);
-        frame.setSize(1200, 550);
+        frame.setLocation(10, 10);
+        frame.setSize(720, 720);
 
         frame.setVisible(true);
 
