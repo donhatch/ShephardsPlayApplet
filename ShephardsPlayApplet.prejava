@@ -49,7 +49,6 @@ BUGS:
     - snapping should work orthogonally to symmetry (should just snap original, not images, I think... and then make images be the images of the snapped?)
 
   Misc:
-    - showFlatEdgesFlag=false not working-- it suppresses completely sharp edges too
     - think about whether current non-uniform scaling is more useful than keeping primal on sphere and re-computing dual, and/or whether both are useful
       and the horizon in between.  or else use zbuffer?
     - should ConvexHull use fuzzy equality testing in more places, to avoid twinkling on grid? (hmm, maybe twinkling on grid is actually useful in a way?)
@@ -1772,7 +1771,6 @@ public class ShephardsPlayApplet
             "    Left/Right arrow - rotate closest cut or fold CCW or CW around its lagoon in the net",
             "    'S' - turn off optimize, and re-spherize",
             "    'd' - delete closest edge",
-            "    'e' - toggle showExternalEdgesFlag",
             "    ctrl-'i' - toggle showInsideOutDualVertsFlag",
             "    ctrl-'o' - cycle optimizationType",
             "    ctrl-'v' - toggle nonEventVerbose",
@@ -4302,14 +4300,6 @@ public class ShephardsPlayApplet
                         break;
                     }
 
-                    case 'e': // toggle showExternalEdgesFlag
-                    {
-                        showExternalEdgesFlag = !showExternalEdgesFlag;
-                        System.out.println("showExternalEdgesFlag -> "+showExternalEdgesFlag);
-                        theCanvas.repaint();
-                        break;
-                    }
-
                     case 'u': case CTRL('z'): // undo
                     {
                         UndoItem item = (UndoItem)undoTreeSquirrel.undo();
@@ -6186,10 +6176,8 @@ public class ShephardsPlayApplet
                                 {
                                     Mesh.Edge edge = (Mesh.Edge)edges.get(iWholeEdge*2);
 
-                                    if (!showFlatEdgesFlag)
+                                    if (!showFlatEdgesFlag || !showInsideOutDualVertsFlag)
                                     {
-                                        // Is it flat?  It's flat if the dual edge has very small length.
-                                        // ACK! That's not adequate, what about a triangular dihedron? 2 verts in same position but opposite normals.  how to differentiate them?  can we signify the "backwards" one by a negative w? or is that too weird?
                                         Mesh.Edge dualEdge = (Mesh.Edge)dualEdges.get(iWholeEdge*2);
                                         Mesh.Vertex vert0 = dualEdge.initialVertex();
                                         Mesh.Vertex vert1 = dualEdge.finalVertex();
@@ -6197,11 +6185,21 @@ public class ShephardsPlayApplet
                                         {
                                             double v0[] = dualVertCoordsHomoNormalized[vert0.myIndex()];
                                             double v1[] = dualVertCoordsHomoNormalized[vert1.myIndex()];
-                                            double flatThreshold = 1e-6;
-                                            if (VecMath.distsqrd(v0,v1) < SQR(flatThreshold))
+
+                                            if (!showFlatEdgesFlag)
                                             {
-                                                continue;
-                                                //mg.setColor(java.awt.Color.yellow);
+                                                // Is it flat?  It's flat if the two dual verts
+                                                // are very close together.
+                                                // This works even for a triangular dihedron,
+                                                // since in that case we negated the whole homogeneous coords of one of them.
+                                                double flatThreshold = 1e-6;
+                                                if (VecMath.distsqrd(v0,v1) < SQR(flatThreshold))
+                                                    continue;
+                                            }
+                                            if (!showInsideOutDualVertsFlag)
+                                            {
+                                                if (v0[3] < 0. && v1[3] < 0.)
+                                                    continue;
                                             }
                                         }
                                     }
@@ -14519,7 +14517,6 @@ OFF
         private boolean showInsideOutDualVertsFlag = false; // might also be nice to have option for implicit primal vertex in middle of outer face, so that dual will be single-face-bounded... and maybe ctrl-up,ctrl-down will adjust the height of that face.
 
         private boolean showFlatEdgesFlag = false; // hard-coded for now, seems to work well
-        boolean showExternalEdgesFlag = true;
 
         private boolean doShowPositiveOrthantnessVisualization = false; // XXX total hack-- it's cool but put it somewhere else!!
         private int showTriangles = 2; // 0: nothing, 1: verts, 2: and tris
