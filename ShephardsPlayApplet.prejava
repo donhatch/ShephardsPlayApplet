@@ -52,8 +52,11 @@ BUGS:
   Snap-related:
     - snapping should work orthogonally to symmetry (should just snap original, not images, I think... and then make images be the images of the snapped?)
 
+  Labels-related:
+    - labels inside out primal edges even if not drawing them
+    - smart orientations not working for negative dual parts-- ends up opposite smallest instead of at largest, I think
+
   Misc:
-    - labels aren't right for external dual edges
     - 'f' button assert-fails
     - think about whether current non-uniform scaling is more useful than keeping primal on sphere and re-computing dual, and/or whether both are useful
       and the horizon in between.  or else use zbuffer?
@@ -4929,7 +4932,7 @@ public class ShephardsPlayApplet
                 private void drawLabels(MyGraphics3D mg,
                                         Mesh mesh,
                                         boolean isDualMesh,
-                                        boolean showInsideOutDualVertsFlag,
+                                        boolean showInsideOutParts,
                                         double edgeInitialCoords[/*nEdges*/][/*at most 2*/][/*4*/]) // optional-- only used for dual... for primal, we just get from verts directly
                 {
                     boolean trySmartVertexAngles = true;
@@ -4999,6 +5002,8 @@ public class ShephardsPlayApplet
                         FORIDOWN (iVert, verts.size())
                         {
                             Mesh.Vertex vert = (Mesh.Vertex)verts.get(iVert);
+                            if (vert.weight < 0. && !showInsideOutParts)
+                                continue;
                             double X = vert.X();
                             double Y = vert.Y();
                             double Z = vert.Z();
@@ -5038,13 +5043,14 @@ public class ShephardsPlayApplet
                             Mesh.Vertex v0 = edge.initialVertex();
                             Mesh.Vertex v1 = edge.finalVertex();
 
-                            int nParts = showInsideOutDualVertsFlag && edgeInitialCoords!=null && edgeInitialCoords[iEdge].length==2 && edgeInitialCoords[iEdge][1]!=null ? 2 : 1;
+                            int nParts = showInsideOutParts && edgeInitialCoords!=null ? 2 : 1;
                             FORI (iPart, nParts)
                             {
-                                assert(iPart==0); // XXX coverage-- remove when hit
                                 double x0,y0,z0, x1,y1,z1;
                                 if (edgeInitialCoords != null)
                                 {
+                                    if (edgeInitialCoords[iEdge][iPart] == null)
+                                        continue;
                                     int oEdge = edge.opposite().myIndex();
                                     x0 = edgeInitialCoords[iEdge][iPart][0]/edgeInitialCoords[iEdge][iPart][3];
                                     y0 = edgeInitialCoords[iEdge][iPart][1]/edgeInitialCoords[iEdge][iPart][3];
@@ -5090,7 +5096,7 @@ public class ShephardsPlayApplet
                 // Experimental--
                 // show the net of the faces in 3d, flattened onto the xy plane
                 //
-                void drawFlattenedNet(MyGraphics3D mg, Mesh mesh, Mesh dualMesh, double dualEdgeInitialCoords[/*nDualEdges*/][/*1 or 2*/][/*4*/], int nVerts, int nEdges, java.awt.Color dualEdgeColors[/*nEdges*/])
+                void drawFlattenedNet(MyGraphics3D mg, Mesh mesh, Mesh dualMesh, double dualEdgeInitialCoords[/*nDualEdges*/][/*2*/][/*4*/], int nVerts, int nEdges, java.awt.Color dualEdgeColors[/*nEdges*/])
                 {
                     // We want a rotate/translate matrix for each dual face
                     // (i.e. each primal vertex)
@@ -5264,6 +5270,8 @@ public class ShephardsPlayApplet
                         Mesh.Vertex v0 = edge.initialVertex();
                         Mesh.Edge dualEdge = dualMesh.getEdge(iEdge);
                         double M[][] = dualFaceMats[v0.myIndex()];
+                        if (dualEdgeInitialCoords[iEdge][0] == null)
+                            continue; // edge has no positively oriented part
                         double coords[][] = {
                             dualEdgeInitialCoords[iEdge][0],
                             dualEdgeInitialCoords[dualEdge.opposite().myIndex()][0],
@@ -5573,12 +5581,12 @@ public class ShephardsPlayApplet
 
                 //
                 // Gather coords of dual verts and dual ray ends.
-                // dualEdgeInitialCoords[iDualEdge] will be dualVertCoords[initial vertex]
+                // dualEdgeInitialCoords[iDualEdge][iPart] will be dualVertCoords[initial vertex of this part]
                 // if there is an initial vertex, otherwise an appropriately computed
                 // place to draw the edge from.
                 //
                 double dualVertCoords[][] = new double[nDualVerts][]; // TODO: wait a minute, there's also dualVertsHomoNormalized or something
-                double dualEdgeInitialCoords[/*nEdges*/][/*1 or 2*/][/*4*/] = new double[nEdges][][];
+                double dualEdgeInitialCoords[/*nEdges*/][/*2*/][/*4*/] = new double[nEdges][2][];
                 {
                     FORI (iDualVert, nDualVerts)
                     {
@@ -5589,54 +5597,76 @@ public class ShephardsPlayApplet
                     {
                         Mesh.Edge dualEdge = dualMesh.getEdge(iDualEdge);
                         Mesh.Vertex v0 = dualEdge.initialVertex();
-                        if (v0 != null)
+                        Mesh.Vertex v1 = dualEdge.finalVertex();
+                        double v0coords[] = v0!=null ? dualVertCoords[v0.myIndex()] : null;
+                        double v1coords[] = v1!=null ? dualVertCoords[v1.myIndex()] : null;
+
+
+                        if (false)
                         {
-                            dualEdgeInitialCoords[iDualEdge] = new double[][] {dualVertCoords[v0.myIndex()]};
-                        }
-                        else
-                        {
-                            assert(false); // I think all dual verts exist, these days
-                            Mesh.Vertex v1 = dualEdge.finalVertex();
-                            if (v1 != null)
+                            // naive way-- all internal edges
+                            if (v0 != null)
                             {
-                                dualEdgeInitialCoords[iDualEdge] = new double[][] {{
+                                dualEdgeInitialCoords[iDualEdge][0] = v0coords;
+                            }
+                            else if (v1 != null)
+                            {
+                                dualEdgeInitialCoords[iDualEdge][0] = new double[] {
+                                    // TODO: do math in homo coords, from v1coords, not v1.x(),y(),z()
                                     v1.x() - dualEdge.direction[0],
                                     v1.y() - dualEdge.direction[1],
                                     v1.z() - dualEdge.direction[2],
                                     1.,
-                                }};
+                                };
                             }
-                            else
+                        }
+                        else
+                        {
+                            // proper external edges
+                            if (v0 != null)
+                                dualEdgeInitialCoords[iDualEdge][v0coords[3]<0.?1:0] = v0coords;
+                            if (v1 != null && (v0==null || (v1coords[3]<0.) != (v0coords[3]<0.)))
                             {
-                                assert(false); // I think all dual verts exist, these days
-                                // Both ends infinite.
-                                // This edge is the dual of an isolated edge or whisker
-                                // in the primal.
-                                // In this case we want to draw a perpendicular line,
-                                // of length 1.
-                                //
-                                // We know the edge direction,
-                                // we need its center.
-                                // this will lie directly above (or below)
-                                // the point on the dual (original primal) edge line
-                                // that's deepest in the paraboloid.
-                                // the formula for this has to be
-                                // lerp(w0,w1,t) where t is some simple
-                                // multiple of w0.h-w1.h I bet.
-                                Mesh.Edge primalEdge = mesh.getEdge(iDualEdge);
-                                Mesh.Vertex w0 = primalEdge.initialVertex();
-                                Mesh.Vertex w1 = primalEdge.finalVertex();
-                                double t = .5 + (w0.h() - w1.h()) / (SQR(w1.x()-w0.x())+SQR(w1.y()-w0.y())); // XXX beware the zero divide
-                                double p[] = {LERP(w0.x(),w1.x(),t),
-                                              LERP(w0.y(),w1.y(),t),
-                                              LERP(w0.z(),w1.z(),t)};
-                                // whatever depth it was below the paraboloid, raise it to that height above it for the dual
-                                p[2] = LERP(p[2], -.5*(SQR(p[0])+SQR(p[1])), 2.);
-                                // -.5 instead of +.5 in the following is empirical... if we do it the other way, it ends up looking like an external edge
-                                VecMath.vpsxv(p, p, -.5, dualEdge.direction); // XXX TODO: should dualEdge.direction be homogeneous?
-                                p = Arrays.append(p, 1.);
-                                dualEdgeInitialCoords[iDualEdge] = new double[][] {p};
+                                assert(dualEdgeInitialCoords[iDualEdge][v1coords[3]<0.?1:0] == null);
+                                dualEdgeInitialCoords[iDualEdge][v1coords[3]<0.?1:0] = new double[] {
+                                    // TODO: do math in homo coords, from v1coords, not v1.x(),y(),z()
+                                    v1.x() - dualEdge.direction[0],
+                                    v1.y() - dualEdge.direction[1],
+                                    v1.z() - dualEdge.direction[2],
+                                    1.,
+                                };
                             }
+                        }
+
+                        if (v0==null && v1==null)
+                        {
+                            // Both ends infinite.
+                            // This edge is the dual of an isolated edge or whisker
+                            // in the primal.
+                            // In this case we want to draw a perpendicular line,
+                            // of length 1.
+                            //
+                            // We know the edge direction,
+                            // we need its center.
+                            // this will lie directly above (or below)
+                            // the point on the dual (original primal) edge line
+                            // that's deepest in the paraboloid.
+                            // the formula for this has to be
+                            // lerp(w0,w1,t) where t is some simple
+                            // multiple of w0.h-w1.h I bet.
+                            Mesh.Edge primalEdge = mesh.getEdge(iDualEdge);
+                            Mesh.Vertex w0 = primalEdge.initialVertex();
+                            Mesh.Vertex w1 = primalEdge.finalVertex();
+                            double t = .5 + (w0.h() - w1.h()) / (SQR(w1.x()-w0.x())+SQR(w1.y()-w0.y())); // XXX beware the zero divide
+                            double p[] = {LERP(w0.x(),w1.x(),t),
+                                          LERP(w0.y(),w1.y(),t),
+                                          LERP(w0.z(),w1.z(),t)};
+                            // whatever depth it was below the paraboloid, raise it to that height above it for the dual
+                            p[2] = LERP(p[2], -.5*(SQR(p[0])+SQR(p[1])), 2.);
+                            // -.5 instead of +.5 in the following is empirical... if we do it the other way, it ends up looking like an external edge
+                            VecMath.vpsxv(p, p, -.5, dualEdge.direction); // XXX TODO: should dualEdge.direction be homogeneous?
+                            p = Arrays.append(p, 1.);
+                            dualEdgeInitialCoords[iDualEdge][0] = p; // TODO: this always makes these positive. is that right?
                         }
                     }
                 }
@@ -6784,66 +6814,29 @@ public class ShephardsPlayApplet
                                     Mesh.Edge dualEdge = dualMesh.getEdge(iDualEdge);
                                     int oDualEdge = dualEdge.opposite().myIndex();
 
-                                    double from[] = dualEdgeInitialCoords[iDualEdge][0];
-                                    double to[] = dualEdgeInitialCoords[oDualEdge][0];
-
-                                    //
-                                    // Never draw dual edges between negative and positive dual verts
-                                    // (if anything, draw the external edge).
-                                    // Strategies for drawing dual edges:
-                                    // Strategy for drawing internal/external dual edges can be:
-                                    //     none
-                                    //     positive parts only
-                                    //     negative parts only
-                                    //     positive and negative parts
-                                    //
-                                    boolean drawFrontDualVertsFlag = true;
-                                    boolean drawBackDualVertsFlag = showInsideOutDualVertsFlagValue;
-
-                                    if (from[3]*to[3] > 0.)
+                                    int nParts = showInsideOutDualVertsFlagValue ? 2 : 1;
+                                    FORI (iPart, nParts)
                                     {
-                                        if (from[3]>0 ? drawFrontDualVertsFlag : drawBackDualVertsFlag)
+                                        double from[] = dualEdgeInitialCoords[iDualEdge][iPart];
+                                        double to[] = dualEdgeInitialCoords[oDualEdge][iPart];
+
+                                        assert((from==null)==(to==null));
+                                        if (from==null)
+                                            continue; // this part doesn't exist
+
+                                        mg.drawLine(from[0], from[1], from[2], from[3],
+                                                    to[0], to[1], to[2], to[3],
+                                                    doAntiAliasing);
+
+                                        if (showNetFlag.get()
+                                         && pointOutRedNetEdges
+                                         && mg.getColor() == java.awt.Color.red)
                                         {
-                                            // internal edge
-                                            mg.drawLine(from[0], from[1], from[2], from[3],
-                                                        to[0], to[1], to[2], to[3],
-                                                        doAntiAliasing);
+                                            mg.drawPoint((to[0]+from[0])*.5,
+                                                         (to[1]+from[1])*.5,
+                                                         (to[2]+from[2])*.5,
+                                                         7);
                                         }
-                                    }
-                                    else
-                                    {
-                                        // external edge -- draw two parts separately
-                                        double direction[] = dualEdge.direction;
-                                        assert(direction.length == 3);
-
-
-                                        if (from[3]>0 ? drawFrontDualVertsFlag : drawBackDualVertsFlag)
-                                        {
-                                            double other[] = VecMath.copyvec(from); // length 4
-                                            VecMath.vpsxv(3, other, other, other[3], direction); // other = from + direction   XXX isn't this backwards?
-                                            mg.drawLine(from[0], from[1], from[2], from[3],
-                                                        other[0], other[1], other[2], other[3],
-                                                        doAntiAliasing);
-                                        }
-
-                                        if (to[3]>0 ? drawFrontDualVertsFlag : drawBackDualVertsFlag)
-                                        {
-                                            double other[] = VecMath.copyvec(to); // length 4
-                                            VecMath.vpsxv(3, other, other, -other[3], direction); // other = to - direction   XXX isn't this backwards?
-                                            mg.drawLine(other[0], other[1], other[2], other[3],
-                                                        to[0], to[1], to[2], to[3],
-                                                        doAntiAliasing);
-                                        }
-                                    }
-
-                                    if (showNetFlag.get()
-                                     && pointOutRedNetEdges
-                                     && mg.getColor() == java.awt.Color.red)
-                                    {
-                                        mg.drawPoint((to[0]+from[0])*.5,
-                                                     (to[1]+from[1])*.5,
-                                                     (to[2]+from[2])*.5,
-                                                     7);
                                     }
                                 }
                             }
@@ -14830,7 +14823,7 @@ OFF
         private Listenable.Listener showNetFlowFlagListener = null;
         private Listenable.Listener netMethodListener = null;
 
-        private Listenable.Boolean doContinuouslyDelaunayize = new Listenable.Boolean(true);
+        private Listenable.Boolean doContinuouslyDelaunayize = new Listenable.Boolean(false); // has to be false, or it may alter stuff on load
         private Listenable.Boolean doOptimize = new Listenable.Boolean(false);
             private static final int OPTIMIZE_BARYCENTRICS_LEAST_SQUARES = 0;
             private static final int OPTIMIZE_BARYCENTRICS_INFINITY_NORM = 1;
