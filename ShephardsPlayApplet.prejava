@@ -4929,7 +4929,8 @@ public class ShephardsPlayApplet
                 private void drawLabels(MyGraphics3D mg,
                                         Mesh mesh,
                                         boolean isDualMesh,
-                                        double edgeInitialCoords[][]) // optional-- only used for dual... for primal, we just get from verts directly
+                                        boolean showInsideOutDualVertsFlag,
+                                        double edgeInitialCoords[/*nEdges*/][/*at most 2*/][/*4*/]) // optional-- only used for dual... for primal, we just get from verts directly
                 {
                     boolean trySmartVertexAngles = true;
 
@@ -5037,44 +5038,49 @@ public class ShephardsPlayApplet
                             Mesh.Vertex v0 = edge.initialVertex();
                             Mesh.Vertex v1 = edge.finalVertex();
 
-                            double x0,y0,z0, x1,y1,z1;
-                            if (edgeInitialCoords != null)
+                            int nParts = showInsideOutDualVertsFlag && edgeInitialCoords!=null && edgeInitialCoords[iEdge].length==2 && edgeInitialCoords[iEdge][1]!=null ? 2 : 1;
+                            FORI (iPart, nParts)
                             {
-                                int oEdge = edge.opposite().myIndex();
-                                x0 = edgeInitialCoords[iEdge][0]/edgeInitialCoords[iEdge][3];
-                                y0 = edgeInitialCoords[iEdge][1]/edgeInitialCoords[iEdge][3];
-                                z0 = edgeInitialCoords[iEdge][2]/edgeInitialCoords[iEdge][3];
-                                x1 = edgeInitialCoords[oEdge][0]/edgeInitialCoords[oEdge][3];
-                                y1 = edgeInitialCoords[oEdge][1]/edgeInitialCoords[oEdge][3];
-                                z1 = edgeInitialCoords[oEdge][2]/edgeInitialCoords[oEdge][3];
-                            }
-                            else
-                            {
-                                double rayLength = 1.;
-                                x0 = (v0!=null ? v0.x() : v1.x() - edge.direction[0]*rayLength);
-                                y0 = (v0!=null ? v0.y() : v1.y() - edge.direction[1]*rayLength);
-                                z0 = (v0!=null ? v0.z() : v1.z() - edge.direction[2]*rayLength);
-                                x1 = (v1!=null ? v1.x() : v0.x() + edge.direction[0]*rayLength);
-                                y1 = (v1!=null ? v1.y() : v0.y() + edge.direction[1]*rayLength);
-                                z1 = (v1!=null ? v1.z() : v0.z() + edge.direction[2]*rayLength);
-                            }
+                                assert(iPart==0); // XXX coverage-- remove when hit
+                                double x0,y0,z0, x1,y1,z1;
+                                if (edgeInitialCoords != null)
+                                {
+                                    int oEdge = edge.opposite().myIndex();
+                                    x0 = edgeInitialCoords[iEdge][iPart][0]/edgeInitialCoords[iEdge][iPart][3];
+                                    y0 = edgeInitialCoords[iEdge][iPart][1]/edgeInitialCoords[iEdge][iPart][3];
+                                    z0 = edgeInitialCoords[iEdge][iPart][2]/edgeInitialCoords[iEdge][iPart][3];
+                                    x1 = edgeInitialCoords[oEdge][iPart][0]/edgeInitialCoords[oEdge][iPart][3];
+                                    y1 = edgeInitialCoords[oEdge][iPart][1]/edgeInitialCoords[oEdge][iPart][3];
+                                    z1 = edgeInitialCoords[oEdge][iPart][2]/edgeInitialCoords[oEdge][iPart][3];
+                                }
+                                else
+                                {
+                                    double rayLength = 1.;
+                                    x0 = (v0!=null ? v0.x() : v1.x() - edge.direction[0]*rayLength);
+                                    y0 = (v0!=null ? v0.y() : v1.y() - edge.direction[1]*rayLength);
+                                    z0 = (v0!=null ? v0.z() : v1.z() - edge.direction[2]*rayLength);
+                                    x1 = (v1!=null ? v1.x() : v0.x() + edge.direction[0]*rayLength);
+                                    y1 = (v1!=null ? v1.y() : v0.y() + edge.direction[1]*rayLength);
+                                    z1 = (v1!=null ? v1.z() : v0.z() + edge.direction[2]*rayLength);
+                                }
 
-                            double x = (x0+x1)/2;
-                            double y = (y0+y1)/2;
-                            double z = (z0+z1)/2;
-                            double ang = Math.PI/2 + Math.atan2(y1-y0, x1-x0);
-                            if (isDualMesh)
-                                ang += Math.PI;
-                            double offr = 2/mg.getScaleX(); // pixels
-                            double offx = offr*Math.cos(ang);
-                            double offy = offr*Math.sin(ang);
-                            double offmax = MAX(ABS(offx),ABS(offy));
-                            mg.drawString("e"+iEdge,
-                                          x+offx,
-                                          y+offy,
-                                          z,
-                                          1.,
-                                          -offx/offmax, offy/offmax);
+                                double x = (x0+x1)/2;
+                                double y = (y0+y1)/2;
+                                double z = (z0+z1)/2;
+                                double ang = Math.PI/2 + Math.atan2(y1-y0, x1-x0);
+                                if (isDualMesh)
+                                    ang += Math.PI;
+                                double offr = 2/mg.getScaleX(); // pixels
+                                double offx = offr*Math.cos(ang);
+                                double offy = offr*Math.sin(ang);
+                                double offmax = MAX(ABS(offx),ABS(offy));
+                                mg.drawString("e"+iEdge,
+                                              x+offx,
+                                              y+offy,
+                                              z,
+                                              1.,
+                                              -offx/offmax, offy/offmax);
+                            }
                         }
                     }
                 } // drawLabels
@@ -5084,7 +5090,7 @@ public class ShephardsPlayApplet
                 // Experimental--
                 // show the net of the faces in 3d, flattened onto the xy plane
                 //
-                void drawFlattenedNet(MyGraphics3D mg, Mesh mesh, Mesh dualMesh, double dualEdgeInitialCoords[][], int nVerts, int nEdges, java.awt.Color dualEdgeColors[/*nEdges*/])
+                void drawFlattenedNet(MyGraphics3D mg, Mesh mesh, Mesh dualMesh, double dualEdgeInitialCoords[/*nDualEdges*/][/*1 or 2*/][/*4*/], int nVerts, int nEdges, java.awt.Color dualEdgeColors[/*nEdges*/])
                 {
                     // We want a rotate/translate matrix for each dual face
                     // (i.e. each primal vertex)
@@ -5259,8 +5265,8 @@ public class ShephardsPlayApplet
                         Mesh.Edge dualEdge = dualMesh.getEdge(iEdge);
                         double M[][] = dualFaceMats[v0.myIndex()];
                         double coords[][] = {
-                            dualEdgeInitialCoords[iEdge],
-                            dualEdgeInitialCoords[dualEdge.opposite().myIndex()],
+                            dualEdgeInitialCoords[iEdge][0],
+                            dualEdgeInitialCoords[dualEdge.opposite().myIndex()][0],
                         };
                         FORI (i, 2)
                             coords[i] = VecMath.vxm(coords[i], M);
@@ -5572,7 +5578,7 @@ public class ShephardsPlayApplet
                 // place to draw the edge from.
                 //
                 double dualVertCoords[][] = new double[nDualVerts][]; // TODO: wait a minute, there's also dualVertsHomoNormalized or something
-                double dualEdgeInitialCoords[][] = new double[nEdges][];
+                double dualEdgeInitialCoords[/*nEdges*/][/*1 or 2*/][/*4*/] = new double[nEdges][][];
                 {
                     FORI (iDualVert, nDualVerts)
                     {
@@ -5585,22 +5591,24 @@ public class ShephardsPlayApplet
                         Mesh.Vertex v0 = dualEdge.initialVertex();
                         if (v0 != null)
                         {
-                            dualEdgeInitialCoords[iDualEdge] = dualVertCoords[v0.myIndex()];
+                            dualEdgeInitialCoords[iDualEdge] = new double[][] {dualVertCoords[v0.myIndex()]};
                         }
                         else
                         {
+                            assert(false); // I think all dual verts exist, these days
                             Mesh.Vertex v1 = dualEdge.finalVertex();
                             if (v1 != null)
                             {
-                                dualEdgeInitialCoords[iDualEdge] = new double[] {
+                                dualEdgeInitialCoords[iDualEdge] = new double[][] {{
                                     v1.x() - dualEdge.direction[0],
                                     v1.y() - dualEdge.direction[1],
                                     v1.z() - dualEdge.direction[2],
                                     1.,
-                                };
+                                }};
                             }
                             else
                             {
+                                assert(false); // I think all dual verts exist, these days
                                 // Both ends infinite.
                                 // This edge is the dual of an isolated edge or whisker
                                 // in the primal.
@@ -5627,7 +5635,7 @@ public class ShephardsPlayApplet
                                 // -.5 instead of +.5 in the following is empirical... if we do it the other way, it ends up looking like an external edge
                                 VecMath.vpsxv(p, p, -.5, dualEdge.direction); // XXX TODO: should dualEdge.direction be homogeneous?
                                 p = Arrays.append(p, 1.);
-                                dualEdgeInitialCoords[iDualEdge] = p;
+                                dualEdgeInitialCoords[iDualEdge] = new double[][] {p};
                             }
                         }
                     }
@@ -6283,8 +6291,8 @@ public class ShephardsPlayApplet
                                     int oDualEdge = dualMesh.getEdge(iDualEdge).opposite().myIndex();
                                     if (iDualEdge < oDualEdge)
                                     {
-                                        double from[] = dualEdgeInitialCoords[iDualEdge];
-                                        double to[] = dualEdgeInitialCoords[oDualEdge];
+                                        double from[] = dualEdgeInitialCoords[iDualEdge][0];
+                                        double to[] = dualEdgeInitialCoords[oDualEdge][0];
                                         if (GT(VecMath.distsqrd(from,to), 0., SQR(1e-6)))
                                         {
                                             nNonZeroLengthWholeEdges++;
@@ -6713,8 +6721,8 @@ public class ShephardsPlayApplet
                                         mg.setColor(darkBlue);
 
 
-                                    double from[] = dualEdgeInitialCoords[beingDraggedNetEdgeIndex];
-                                    double to[] = dualEdgeInitialCoords[dualMesh.getEdge(beingDraggedNetEdgeIndex).opposite().myIndex()];
+                                    double from[] = dualEdgeInitialCoords[beingDraggedNetEdgeIndex][0];
+                                    double to[] = dualEdgeInitialCoords[dualMesh.getEdge(beingDraggedNetEdgeIndex).opposite().myIndex()][0];
                                     mg.drawLine(from[0]+beingDraggedNetEdgeDelta[0],
                                                 from[1]+beingDraggedNetEdgeDelta[1],
                                                 from[2],
@@ -6776,8 +6784,8 @@ public class ShephardsPlayApplet
                                     Mesh.Edge dualEdge = dualMesh.getEdge(iDualEdge);
                                     int oDualEdge = dualEdge.opposite().myIndex();
 
-                                    double from[] = dualEdgeInitialCoords[iDualEdge];
-                                    double to[] = dualEdgeInitialCoords[oDualEdge];
+                                    double from[] = dualEdgeInitialCoords[iDualEdge][0];
+                                    double to[] = dualEdgeInitialCoords[oDualEdge][0];
 
                                     //
                                     // Never draw dual edges between negative and positive dual verts
@@ -7122,11 +7130,11 @@ public class ShephardsPlayApplet
                     if (showTriangles >= 1) // 0=off, 1=verts, 2 = verts and tris
                     {
                         mg.setColor(java.awt.Color.white);
-                        drawLabels(mg, mesh, false, null); // primal
+                        drawLabels(mg, mesh, false, showInsideOutDualVertsFlag.get(), null); // primal
                     }
                     //mg.setColor(java.awt.Color.red);
                     mg.setColor(dualColor);
-                    drawLabels(mg, dualMesh, true, dualEdgeInitialCoords); // dual
+                    drawLabels(mg, dualMesh, true, showInsideOutDualVertsFlag.get(), dualEdgeInitialCoords); // dual
                 } // if (showLabelsFlag)
 
                 if (showOriginFlag)
