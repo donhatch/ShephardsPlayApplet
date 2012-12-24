@@ -57,6 +57,10 @@ BUGS:
     - labels inside out primal edges even if not drawing them
     - smart orientations not working for negative dual parts-- ends up opposite smallest instead of at largest, I think
 
+  Inside-outedness-related:
+    - I think I do need an option to exclude back faces, or combine them, when delaunayizing--
+      the backfacing edges are a nuisance.
+
   Misc:
     - don't swap diagonals I can't see (back facing)
     - 'f' button assert-fails
@@ -87,7 +91,7 @@ BUGS:
 
 TO DO:
     - highlight vert when close enough to pick it?
-    - get rid of all calcInsideOutDualVerts=false code, can always calculate them
+    - get rid of all calcInsideOutDualVertsFlag=false code, can always calculate them
     - really need a concept of separate viewing matrix,
       that can be changed without accumulating rounding error in the verts
     - thank about attaching a listener to a tuple of values, so they just get one callback when multiple values changed?
@@ -892,31 +896,34 @@ public class ShephardsPlayApplet
                 add(new JRow() {{
                     add(new JLabel("        ")); // indent a bit
                     add(new JCol() {{
-                        add(new JCheckBox("Delaunayize", applet.doContinuouslyDelaunayize.get()) {
-                            public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                            {
-                                setToolTipText("<html>Turning this on delaunayizes the triangulation and keeps it delaunayized on every applet.mesh editing operation.<br>To just delaunayize it once, turn this on and then off again.</html>");
-                                addItemListener(new java.awt.event.ItemListener() {
-                                    public void itemStateChanged(java.awt.event.ItemEvent e)
-                                    {
-                                        UndoItem.State before = new UndoItem.State(applet.mesh, applet.doContinuouslyDelaunayize.get(), applet.doOptimize.get(), applet.optimizationTypeIndex.get(), applet.selectedTris, applet.selectedDualVertIndices, applet.theNet);
-                                        applet.doContinuouslyDelaunayize.set(isSelected());
-                                        System.out.println("doContinuouslyDelaunayize -> "+applet.doContinuouslyDelaunayize.get());
-                                        if (applet.doContinuouslyDelaunayize.get()) applet.delaunayize();
-                                        UndoItem.State after = new UndoItem.State(applet.mesh, applet.doContinuouslyDelaunayize.get(), applet.doOptimize.get(), applet.optimizationTypeIndex.get(), applet.selectedTris, applet.selectedDualVertIndices, applet.theNet);
-                                        applet.undoTreeSquirrel.Do(new UndoItem(before, after));
-                                        applet.theCanvas.repaint();
-                                    }
-                                });
-                                applet.doContinuouslyDelaunayize.addListener(applet.doContinuouslyDelaunayizeListener = new Listenable.Listener() {
-                                    public void valueChanged()
-                                    {
-                                        setSelected(applet.doContinuouslyDelaunayize.get()); // of the checkbox
-                                        // XXX wait a minute, isn't this where we should delaunayize, rather than above?
-                                    }
-                                });
-                            }
-                        });
+                        add(new JRow() {{
+                            add(new JCheckBox("Keep delaunayized", applet.doContinuouslyDelaunayize.get()) {
+                                public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                                {
+                                    setToolTipText("<html>Turning this on delaunayizes the triangulation and keeps it delaunayized on every applet.mesh editing operation.<br>To just delaunayize it once, turn this on and then off again.</html>");
+                                    addItemListener(new java.awt.event.ItemListener() {
+                                        public void itemStateChanged(java.awt.event.ItemEvent e)
+                                        {
+                                            UndoItem.State before = new UndoItem.State(applet.mesh, applet.doContinuouslyDelaunayize.get(), applet.doOptimize.get(), applet.optimizationTypeIndex.get(), applet.selectedTris, applet.selectedDualVertIndices, applet.theNet);
+                                            applet.doContinuouslyDelaunayize.set(isSelected());
+                                            System.out.println("doContinuouslyDelaunayize -> "+applet.doContinuouslyDelaunayize.get());
+                                            if (applet.doContinuouslyDelaunayize.get()) applet.delaunayize();
+                                            UndoItem.State after = new UndoItem.State(applet.mesh, applet.doContinuouslyDelaunayize.get(), applet.doOptimize.get(), applet.optimizationTypeIndex.get(), applet.selectedTris, applet.selectedDualVertIndices, applet.theNet);
+                                            applet.undoTreeSquirrel.Do(new UndoItem(before, after));
+                                            applet.theCanvas.repaint();
+                                        }
+                                    });
+                                    applet.doContinuouslyDelaunayize.addListener(applet.doContinuouslyDelaunayizeListener = new Listenable.Listener() {
+                                        public void valueChanged()
+                                        {
+                                            setSelected(applet.doContinuouslyDelaunayize.get()); // of the checkbox
+                                            // XXX wait a minute, isn't this where we should delaunayize, rather than above?
+                                        }
+                                    });
+                                }
+                            });
+                            add(new JCheckBoxForBoolean("Calc back tris when delaunayizing", applet.calcInsideOutDualVertsFlag));
+                        }});
                     }});
                 }});
                 contentPane.add(new JSeparator(), stretchx);
@@ -1449,46 +1456,8 @@ public class ShephardsPlayApplet
                             }
                         });
                         add(new JRow() {{
-                            add(new JCheckBox("Show back faces and second dual sheet (if any)", applet.showInsideOutDualVertsFlag.get()) {
-                                private Listenable.Listener listener;
-                                public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                                {
-                                    addItemListener(new java.awt.event.ItemListener() {
-                                        public void itemStateChanged(java.awt.event.ItemEvent e)
-                                        {
-                                            applet.showInsideOutDualVertsFlag.set(isSelected());
-                                            System.out.println("showInsideOutDualVertsFlag -> "+applet.showInsideOutDualVertsFlag.get());
-                                            applet.theCanvas.repaint();
-                                        }
-                                    });
-                                    applet.showInsideOutDualVertsFlag.addListener(listener = new Listenable.Listener() {
-                                        public void valueChanged()
-                                        {
-                                            setSelected(applet.showInsideOutDualVertsFlag.get()); // of the checkbox
-                                        }
-                                    });
-                                }
-                            });
-                            add(new JCheckBox("Show flat edges", applet.showFlatEdgesFlag.get()) {
-                                private Listenable.Listener listener;
-                                public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                                {
-                                    addItemListener(new java.awt.event.ItemListener() {
-                                        public void itemStateChanged(java.awt.event.ItemEvent e)
-                                        {
-                                            applet.showFlatEdgesFlag.set(isSelected());
-                                            System.out.println("showFlatEdgesFlag -> "+applet.showFlatEdgesFlag.get());
-                                            applet.theCanvas.repaint();
-                                        }
-                                    });
-                                    applet.showFlatEdgesFlag.addListener(listener = new Listenable.Listener() {
-                                        public void valueChanged()
-                                        {
-                                            setSelected(applet.showFlatEdgesFlag.get()); // of the checkbox
-                                        }
-                                    });
-                                }
-                            });
+                            add(new JCheckBoxForBoolean("Show back faces and second dual sheet (if any)", applet.showInsideOutDualVertsFlag));
+                            add(new JCheckBoxForBoolean("Show flat edges", applet.showFlatEdgesFlag));
                         }});
                         add(new JTablePanel() {{
                             add(theGridBrightnessLabel);
@@ -2136,6 +2105,34 @@ public class ShephardsPlayApplet
 
                     previousValue = currentValue;
                     //System.out.println("    out wrapSphereCurvature valueChanged");
+                }
+            });
+            calcInsideOutDualVertsFlag.addListener(calcInsideOutDualVertsFlagListener = new Listenable.Listener() {
+                public void valueChanged()
+                {
+                    System.out.println("calcInsideOutDualVertsFlag -> "+calcInsideOutDualVertsFlag.get());
+                    if (doContinuouslyDelaunayize.get())
+                    {
+                        UndoItem.State before = new UndoItem.State(mesh, wrapAroundSphereFlag.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                        delaunayize();
+                        UndoItem.State after = new UndoItem.State(mesh, wrapAroundSphereFlag.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+                        undoTreeSquirrel.Do(new UndoItem(before, after));
+                        theCanvas.repaint();
+                    }
+                }
+            });
+            showInsideOutDualVertsFlag.addListener(showInsideOutDualVertsFlagListener = new Listenable.Listener() {
+                public void valueChanged()
+                {
+                    System.out.println("showInsideOutDualVertsFlag -> "+showInsideOutDualVertsFlag.get());
+                    theCanvas.repaint();
+                }
+            });
+            showFlatEdgesFlag.addListener(showFlatEdgesFlagListener = new Listenable.Listener() {
+                public void valueChanged()
+                {
+                    System.out.println("showFlatEdgesFlag -> "+showFlatEdgesFlag.get());
+                    theCanvas.repaint();
                 }
             });
         } // ShephardsPlayApplet ctor
@@ -7785,7 +7782,7 @@ public class ShephardsPlayApplet
                 // Analyze all the edges first before deleting any,
                 // so that we are only looking at triangle areas.
                 //
-                if (!calcInsideOutVertsFlag)
+                if (!calcInsideOutDualVertsFlag.get())
                 {
                     ArrayList edgesToDelete = new ArrayList();
                     int nEdges = mesh.edges.size();
@@ -12542,7 +12539,7 @@ OFF
                     // If we do this, then applying makeDualMesh twice
                     // will reverse all the edges,
                     // I think.
-                    // (assumimg calcInsideOutVertsFlag is true)
+                    // (assumimg calcInsideOutDualVertsFlag is true)
                     dualEdge._next = dual.getEdge(primalEdge._prev._opposite._myIndex);
                     dualEdge._prev = dual.getEdge(primalEdge._opposite._next._myIndex);
                 }
@@ -12553,7 +12550,7 @@ OFF
                     // If we do this, then makeDualMesh(makeDualMesh(mesh))
                     // should return something identical to the original,
                     // I think.
-                    // (assumimg calcInsideOutVertsFlag is true)
+                    // (assumimg calcInsideOutDualVertsFlag is true)
                     // XXX Odd, this seems to behave better all around (I expected rays to go in wrong direction,
                     // but it works better than the other way... should think about why)
                     dualEdge._next = dual.getEdge(primalEdge._next._opposite._myIndex);
@@ -14808,7 +14805,7 @@ OFF
             {
                 _dualMesh = makeDualMesh(mesh,
                                          false,  // includeNonArity3
-                                         calcInsideOutVertsFlag, // includeInsideOut
+                                         calcInsideOutDualVertsFlag.get(), // includeInsideOut
                                          wrapAroundSphereFlag.get(),
                                          wrapSphereCurvature.get());
                 _meshOfDualMesh = mesh;
@@ -14846,6 +14843,9 @@ OFF
         private Listenable.Listener showNetFlagListener2 = null;
         private Listenable.Listener showNetFlowFlagListener = null;
         private Listenable.Listener netMethodListener = null;
+        private Listenable.Listener calcInsideOutDualVertsFlagListener = null;
+        private Listenable.Listener showInsideOutDualVertsFlagListener = null;
+        private Listenable.Listener showFlatEdgesFlagListener = null;
 
         private Listenable.Boolean doContinuouslyDelaunayize = new Listenable.Boolean(false); // has to be false, or it may alter stuff on load
         private Listenable.Boolean doOptimize = new Listenable.Boolean(false);
@@ -14920,7 +14920,7 @@ OFF
         private boolean doArrowsTowardsSharpestDihedrals = false;
         private boolean doArrowsTowardsShortestEdges = false;
 
-        private boolean calcInsideOutVertsFlag = true; // moving towards always doing this
+        private Listenable.Boolean calcInsideOutDualVertsFlag = new Listenable.Boolean(true);
         private Listenable.Boolean showInsideOutDualVertsFlag = new Listenable.Boolean(false);
 
         private Listenable.Boolean showFlatEdgesFlag = new Listenable.Boolean(false);
@@ -15236,6 +15236,28 @@ OFF
     } // TextFieldForFloat
 
 
+    public static class JCheckBoxForBoolean extends JCheckBox
+    {
+        private Listenable.Listener listener; // need to keep a strong ref to it for as long as I'm alive
+        public JCheckBoxForBoolean(String name, final Listenable.Boolean b)
+        {
+            super(name);
+            setSelected(b.get());
+            addItemListener(new java.awt.event.ItemListener() {
+                public void itemStateChanged(java.awt.event.ItemEvent e)
+                {
+                    b.set(isSelected());
+                }
+            });
+            b.addListener(listener = new Listenable.Listener() {
+                public void valueChanged()
+                {
+                    setSelected(b.get());
+                }
+            });
+        }
+    } // JCheckBoxForBoolean
+
     // Stolen from MC4DControlPanel.java
     public static class SliderForFloat extends java.awt.Scrollbar
     {
@@ -15311,6 +15333,8 @@ OFF
 
     //
     // From Tom Davis's paper "Homogeneous Coordinates and Computer Graphics"
+    // Except it's of no use to us whatsoever.
+    // TODO: maybe move this to VecMath
     //
 
     //
