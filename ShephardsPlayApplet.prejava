@@ -48,6 +48,7 @@ BUGS:
         - snap closest image to exact image? hmm, not sure
         - mode to place new verts in kaleidescope? (draw dots at images of cursor?)
     - when increasing or decreasing rotational symmetry, show animation?
+    - wouldn't hurt to have {4,4}, {6,3}, {3,6} ... just show a few layers
 
   Snap-related:
     - snapping should work orthogonally to symmetry (should just snap original, not images, I think... and then make images be the images of the snapped?)
@@ -57,6 +58,7 @@ BUGS:
     - smart orientations not working for negative dual parts-- ends up opposite smallest instead of at largest, I think
 
   Misc:
+    - don't swap diagonals I can't see (back facing)
     - 'f' button assert-fails
     - think about whether current non-uniform scaling is more useful than keeping primal on sphere and re-computing dual, and/or whether both are useful
       and the horizon in between.  or else use zbuffer?
@@ -84,6 +86,7 @@ BUGS:
     - use exact group calculation rather than generateVertices when adding a point
 
 TO DO:
+    - highlight vert when close enough to pick it?
     - get rid of all calcInsideOutDualVerts=false code, can always calculate them
     - really need a concept of separate viewing matrix,
       that can be changed without accumulating rounding error in the verts
@@ -1445,26 +1448,48 @@ public class ShephardsPlayApplet
                                 });
                             }
                         });
-                        add(new JCheckBox("Show back faces and second dual sheet (if any)", applet.wrapAroundSphereFlag.get()) {
-                            private Listenable.Listener listener;
-                            public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
-                            {
-                                addItemListener(new java.awt.event.ItemListener() {
-                                    public void itemStateChanged(java.awt.event.ItemEvent e)
-                                    {
-                                        applet.showInsideOutDualVertsFlag.set(isSelected());
-                                        System.out.println("showInsideOutDualVertsFlag -> "+applet.showInsideOutDualVertsFlag.get());
-                                        applet.theCanvas.repaint();
-                                    }
-                                });
-                                applet.showInsideOutDualVertsFlag.addListener(listener = new Listenable.Listener() {
-                                    public void valueChanged()
-                                    {
-                                        setSelected(applet.showInsideOutDualVertsFlag.get()); // of the checkbox
-                                    }
-                                });
-                            }
-                        });
+                        add(new JRow() {{
+                            add(new JCheckBox("Show back faces and second dual sheet (if any)", applet.showInsideOutDualVertsFlag.get()) {
+                                private Listenable.Listener listener;
+                                public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                                {
+                                    addItemListener(new java.awt.event.ItemListener() {
+                                        public void itemStateChanged(java.awt.event.ItemEvent e)
+                                        {
+                                            applet.showInsideOutDualVertsFlag.set(isSelected());
+                                            System.out.println("showInsideOutDualVertsFlag -> "+applet.showInsideOutDualVertsFlag.get());
+                                            applet.theCanvas.repaint();
+                                        }
+                                    });
+                                    applet.showInsideOutDualVertsFlag.addListener(listener = new Listenable.Listener() {
+                                        public void valueChanged()
+                                        {
+                                            setSelected(applet.showInsideOutDualVertsFlag.get()); // of the checkbox
+                                        }
+                                    });
+                                }
+                            });
+                            add(new JCheckBox("Show flat edges", applet.showFlatEdgesFlag.get()) {
+                                private Listenable.Listener listener;
+                                public boolean isFocusTraversable() { return false; } // so doesn't steal from canvas
+                                {
+                                    addItemListener(new java.awt.event.ItemListener() {
+                                        public void itemStateChanged(java.awt.event.ItemEvent e)
+                                        {
+                                            applet.showFlatEdgesFlag.set(isSelected());
+                                            System.out.println("showFlatEdgesFlag -> "+applet.showFlatEdgesFlag.get());
+                                            applet.theCanvas.repaint();
+                                        }
+                                    });
+                                    applet.showFlatEdgesFlag.addListener(listener = new Listenable.Listener() {
+                                        public void valueChanged()
+                                        {
+                                            setSelected(applet.showFlatEdgesFlag.get()); // of the checkbox
+                                        }
+                                    });
+                                }
+                            });
+                        }});
                         add(new JTablePanel() {{
                             add(theGridBrightnessLabel);
                             add(theGridBrightnessTextField);
@@ -1703,7 +1728,6 @@ public class ShephardsPlayApplet
                                             public void valueChanged()
                                             {
                                                 setSelected(applet.showNetFlag.get()); // of the checkbox
-
 
                                                 // XXX TODO: arguably this should be in a different listener... it should happen even if we decided not to have this checkbox
                                                 if (applet.showNetFlag.get() && applet.showNetFlowFlag.get())
@@ -6383,7 +6407,7 @@ public class ShephardsPlayApplet
                             {
                                 // starts in the lagoon, ends outside it.
                                 // is it a good exit?
-                                double initialVertexCoords[] = {initialVertex.Xnaive(), initialVertex.Ynaive()};
+                                double initialVertexCoords[] = {initialVertex.x(), initialVertex.y()};
                                 double goodness = VecMath.dot(2, dualEdge.direction,
                                                               VecMath.vmv(2, initialVertexCoords, avg));
                                 boolean isGoodExit = GEQ(goodness, 0., SQR(1e-6));
@@ -6588,14 +6612,14 @@ public class ShephardsPlayApplet
 
                         if (showTriangles >= 2)
                         {
-
+                            boolean showFlatEdgesFlagValue = showFlatEdgesFlag.get();
                             FORIDOWN (iWholeEdge, edges.size()/2)
                             {
                                 if ((edgeFacings[iWholeEdge*2]!=FACING_BACK) == (iFacingPass==1))
                                 {
                                     Mesh.Edge edge = (Mesh.Edge)edges.get(iWholeEdge*2);
 
-                                    if (!showFlatEdgesFlag || !showInsideOutDualVertsFlagValue)
+                                    if (!showFlatEdgesFlagValue || !showInsideOutDualVertsFlagValue)
                                     {
                                         Mesh.Edge dualEdge = (Mesh.Edge)dualEdges.get(iWholeEdge*2);
                                         Mesh.Vertex vert0 = dualEdge.initialVertex();
@@ -6605,7 +6629,7 @@ public class ShephardsPlayApplet
                                             double v0[] = dualVertCoordsHomoNormalized[vert0.myIndex()];
                                             double v1[] = dualVertCoordsHomoNormalized[vert1.myIndex()];
 
-                                            if (!showFlatEdgesFlag)
+                                            if (!showFlatEdgesFlagValue)
                                             {
                                                 // Is it flat?  It's flat if the two dual verts
                                                 // are very close together.
@@ -14899,7 +14923,7 @@ OFF
         private boolean calcInsideOutVertsFlag = true; // moving towards always doing this
         private Listenable.Boolean showInsideOutDualVertsFlag = new Listenable.Boolean(false);
 
-        private boolean showFlatEdgesFlag = false; // hard-coded for now, seems to work well
+        private Listenable.Boolean showFlatEdgesFlag = new Listenable.Boolean(false);
 
         private boolean doShowPositiveOrthantnessVisualization = false; // XXX total hack-- it's cool but put it somewhere else!!
         private int showTriangles = 2; // 0: nothing, 1: verts, 2: and tris
