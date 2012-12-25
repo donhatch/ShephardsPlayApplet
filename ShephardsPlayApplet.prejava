@@ -217,6 +217,7 @@ import javax.swing.JTextArea;
 import javax.swing.JToggleButton;
 import javax.swing.JScrollPane;
 import javax.swing.JSeparator;
+import javax.swing.JSlider;
 import javax.swing.JMenuBar;
 import javax.swing.JMenu;
 import javax.swing.JMenuItem;
@@ -1923,60 +1924,6 @@ public class ShephardsPlayApplet
 
                 //randomlyColorize(this);
 
-                applet.gridBrightness.addListener(applet.gridBrightnessListener = new Listenable.Listener() {
-                    public void valueChanged()
-                    {
-                        System.out.println("in gridBrightness valueChanged");
-                        PRINT(applet.gridBrightness.get());
-                        applet.theCanvas.repaint();
-                        System.out.println("out gridBrightness valueChanged");
-                    }
-                });
-                applet.backfaceBrightness.addListener(applet.backfaceBrightnessListener = new Listenable.Listener() {
-                    public void valueChanged()
-                    {
-                        System.out.println("in backfaceBrightness valueChanged");
-                        PRINT(applet.backfaceBrightness.get());
-                        applet.theCanvas.repaint();
-                        System.out.println("out backfaceBrightness valueChanged");
-                    }
-                });
-                applet.wrapSphereSymbolicRadius.addListener(applet.wrapSphereSymbolicRadiusListener = new Listenable.Listener() {
-                    public void valueChanged()
-                    {
-                        //System.out.println("in wrapSphereSymbolicRadius valueChanged");
-                        // the widgets control this, not wrapSphereCurvature directly
-                        double value = applet.wrapSphereSymbolicRadius.get();
-                        if (value <= 1.)
-                            applet.wrapSphereCurvature.set(1./value);
-                        else
-                            applet.wrapSphereCurvature.set(2.-value);
-                        //System.out.println("out wrapSphereSymbolicRadius valueChanged");
-                    }
-                });
-                applet.wrapSphereCurvature.addListener(applet.wrapSphereCurvatureListener = new Listenable.Listener() {
-                    double previousValue = applet.wrapSphereCurvature.get(); // track value of the Listenable
-                    public void valueChanged()
-                    {
-                        //System.out.println("    in wrapSphereCurvature valueChanged");
-                        double currentValue = applet.wrapSphereCurvature.get();
-                        assert(currentValue != previousValue); // Listenable wouldn't notify us otherwise
-
-                        applet.theSphereSurface.radius = 1./currentValue;
-                        if (!centerSphere)
-                            applet.theSphereSurface.center[2] = -applet.theSphereSurface.radius;
-
-                        if (applet.wrapAroundSphereFlag.get())
-                        {
-                            applet.unwrapAroundSphere(previousValue);
-                            applet.wrapAroundSphere(currentValue);
-                            applet.theCanvas.repaint();
-                        }
-
-                        previousValue = currentValue;
-                        //System.out.println("    out wrapSphereCurvature valueChanged");
-                    }
-                });
             } // ShephardsPlayAppletControlPanel ctor
         } // class ShephardsPlayAppletControlPanel
 
@@ -15405,11 +15352,78 @@ OFF
         }
     } // JCheckBoxForBoolean
 
-    // Stolen from MC4DControlPanel.java
-    public static class SliderForFloat extends java.awt.Scrollbar
+    public static class JSliderForFloat extends JSlider
     {
         private Listenable.Listener listener; // need to keep a strong ref to it for as long as I'm alive
 
+        // private helper function
+        private void updateThumb(Listenable.Number f)
+        {
+            double value = f.getDouble();
+            double defaultValue = f.defaultDouble();
+            double frac = (value-f.minDouble())/(f.maxDouble()-f.minDouble());
+
+            //setValue((int)(getMinimum() + ((getMaximum()-getVisibleAmount())-getMinimum())*frac));
+            setValue((int)(getMinimum() + (getMaximum()-getMinimum())*frac));
+        }
+
+        public JSliderForFloat(final Listenable.Number f)
+        {
+            // 3 significant digits seems reasonable...
+            /*
+            super(JSlider.HORIZONTAL,
+                  (int)Math.round(f.minDouble()*1000),
+                  (int)Math.round(f.maxDouble()*1000),
+                  (int)Math.round(f.getDouble())*1000);
+            */
+            super(JSlider.HORIZONTAL, 0, 1000, 500);
+            PRINT(getMinimum());
+            PRINT(getMaximum());
+            PRINT(getValue());
+
+            setMinorTickSpacing(1);  // .001 units
+            setMajorTickSpacing(10); // .01 units
+            f.addListener(listener = new Listenable.Listener() {
+                public void valueChanged()
+                {
+                    updateThumb(f);
+                }
+            });
+            addChangeListener(new javax.swing.event.ChangeListener() {
+                public void stateChanged(javax.swing.event.ChangeEvent e)
+                {
+                    if (false)
+                    {
+                        System.out.println("==================");
+                        System.out.println("    min = "+getMinimum());
+                        System.out.println("    max = "+getMaximum());
+                        System.out.println("    max-min = "+(getMaximum()-getMinimum()));
+                        System.out.println("    getValue() = "+getValue());
+                        System.out.println("    getMinorTickSpacing() = "+getMinorTickSpacing());
+                        System.out.println("    getMajorTickSpacing() = "+getMajorTickSpacing());
+                        System.out.println("    getSize() = "+getSize());
+                        System.out.println("    getPreferredSize() = "+getPreferredSize());
+                    }
+                    // Doing the following in double precision makes a difference;
+                    // if we do it in float, we get ugly values in the textfield
+                    double frac = (double)(getValue()-getMinimum())
+                                / (double)(getMaximum()-getMinimum());
+                    f.setDouble(f.minDouble() + frac*(f.maxDouble()-f.minDouble()));
+                    // will trigger valueChanged()
+                    // which will call updateThumb()
+                }
+            });
+            updateThumb(f); // because we fucked it up in the contructor?
+        }
+    } // JSliderForFloat
+
+
+    // Stolen from MC4DControlPanel.java  TODO: replace with JSliderForFloat
+    public static class OldSliderForFloat extends java.awt.Scrollbar
+    {
+        private Listenable.Listener listener; // need to keep a strong ref to it for as long as I'm alive
+
+        // private helper function
         private void updateThumb(Listenable.Number f)
         {
             double value = f.getDouble();
@@ -15418,7 +15432,7 @@ OFF
             setValue((int)(getMinimum() + ((getMaximum()-getVisibleAmount())-getMinimum())*frac));
         }
 
-        public SliderForFloat(final Listenable.Number f)
+        public OldSliderForFloat(final Listenable.Number f)
         {
             super(java.awt.Scrollbar.HORIZONTAL);
 
@@ -15476,7 +15490,16 @@ OFF
             preferredSize.width = 200;
             return preferredSize;
         }
-    } // SliderForFloat
+    } // OldSliderForFloat
+
+    //public static class SliderForFloat extends OldSliderForFloat
+    public static class SliderForFloat extends JSliderForFloat
+    {
+        public SliderForFloat(final Listenable.Number f)
+        {
+            super(f);
+        }
+    }
 
     //
     // From Tom Davis's paper "Homogeneous Coordinates and Computer Graphics"
