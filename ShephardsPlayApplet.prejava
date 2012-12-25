@@ -1436,33 +1436,13 @@ public class ShephardsPlayApplet
                         final PrefixButtonGroup buttonGroup = new PrefixButtonGroup();
                         add(new JRow() {{
                             add(new JLabel("Show Primal:"));
-                                add(new JCheckBox("verts") {{
-                                    buttonGroup.add(this);
-                                    setSelected(applet.showTriangles.get() >= 1);
-                                    addActionListener(new java.awt.event.ActionListener() {
-                                        public void actionPerformed(java.awt.event.ActionEvent e)
-                                        {
-                                            if (!isSelected())
-                                                applet.showTriangles.set(0);
-                                            else
-                                                applet.showTriangles.set(MAX(applet.showTriangles.get(), 1));
-                                        }
-                                    });
+                                add(new JCheckBoxForBoolean("verts", applet.showPrimalVertsFlag) {{
+                                    // don't add to button group, it's independent now
                                 }});
-                                add(new JCheckBox("and edges") {{
+                                add(new JCheckBoxForBoolean("edges", applet.showPrimalEdgesFlag) {{
                                     buttonGroup.add(this);
-                                    setSelected(applet.showTriangles.get() >= 2);
-                                    addActionListener(new java.awt.event.ActionListener() {
-                                        public void actionPerformed(java.awt.event.ActionEvent e)
-                                        {
-                                            if (isSelected())
-                                                applet.showTriangles.set(2);
-                                            else
-                                                applet.showTriangles.set(MIN(applet.showTriangles.get(), 1));
-                                        }
-                                    });
                                 }});
-                                add(new JCheckBoxForBoolean("and flat edges", applet.showFlatEdgesFlag) {{
+                                add(new JCheckBoxForBoolean("and flat edges", applet.showFlatPrimalEdgesFlag) {{
                                     buttonGroup.add(this);
                                 }});
                         }});
@@ -2199,16 +2179,24 @@ public class ShephardsPlayApplet
                     theCanvas.repaint();
                 }
             });
-            showFlatEdgesFlag.addListener(showFlatEdgesFlagListener = new Listenable.Listener() {
+            showPrimalVertsFlag.addListener(showPrimalVertsFlagListener = new Listenable.Listener() {
                 public void valueChanged()
                 {
-                    System.out.println("showFlatEdgesFlag -> "+showFlatEdgesFlag.get());
+                    System.out.println("showPrimalVertsFlag -> "+showPrimalVertsFlag.get());
                     theCanvas.repaint();
                 }
             });
-            showTriangles.addListener(showTrianglesListener = new Listenable.Listener() {
+            showPrimalEdgesFlag.addListener(showPrimalEdgesFlagListener = new Listenable.Listener() {
                 public void valueChanged()
                 {
+                    System.out.println("showPrimalEdgesFlag -> "+showPrimalEdgesFlag.get());
+                    theCanvas.repaint();
+                }
+            });
+            showFlatPrimalEdgesFlag.addListener(showFlatPrimalEdgesFlagListener = new Listenable.Listener() {
+                public void valueChanged()
+                {
+                    System.out.println("showFlatPrimalEdgesFlag -> "+showFlatPrimalEdgesFlag.get());
                     theCanvas.repaint();
                 }
             });
@@ -4365,19 +4353,29 @@ public class ShephardsPlayApplet
                         theCanvas.repaint();
                         break;
 
-                    case 't': // cycle showTriangles
-                        System.out.print("showTriangles "+showTriangles.get());
-                        //showTriangles = MOD(showTriangles.get()-1, 4); // if showing barycentric experiment
-                        showTriangles.set(MOD(showTriangles.get()-1, 3));
-                        System.out.println(" -> "+showTriangles.get());
+                    case 't': // cycle showTriangles down
+                        if (showPrimalEdgesFlag.get())
+                            showPrimalEdgesFlag.set(false);
+                        else if (showPrimalVertsFlag.get())
+                            showPrimalVertsFlag.set(false);
+                        else
+                        {
+                            showPrimalVertsFlag.set(true);
+                            showPrimalEdgesFlag.set(true);
+                        }
                         theCanvas.repaint();
                         break;
 
-                    case 'T': // cycle showTriangles, backwards
-                        System.out.print("showTriangles "+showTriangles.get());
-                        //showTriangles = MOD(showTriangles.get()+1, 4);
-                        showTriangles.set(MOD(showTriangles.get()+1, 3));
-                        System.out.println(" -> "+showTriangles.get());
+                    case 'T': // cycle showTriangles up
+                        if (showPrimalEdgesFlag.get())
+                        {
+                            showPrimalVertsFlag.set(false);
+                            showPrimalEdgesFlag.set(false);
+                        }
+                        else if (showPrimalVertsFlag.get())
+                            showPrimalEdgesFlag.set(true);
+                        else
+                            showPrimalVertsFlag.set(true);
                         theCanvas.repaint();
                         break;
 
@@ -6574,7 +6572,7 @@ public class ShephardsPlayApplet
                     if (iFacingPass == 0 && backBrightness <= 0)
                         continue;
 
-                    if (showTriangles.get() >= 1) // 0=off, 1=verts, 2 = verts and tris
+                    if (showPrimalVertsFlag.get() || showPrimalEdgesFlag.get())
                     {
                         ArrayList verts = mesh.verts;
                         ArrayList edges = mesh.edges;
@@ -6586,19 +6584,21 @@ public class ShephardsPlayApplet
                             mg.setColor(new java.awt.Color(frontBrightness,frontBrightness,frontBrightness));
 
 
-                        FORI (iVert, nVerts)
-                        {
-                            if ((vertFacings[iVert]!=FACING_BACK||iVert==beingDraggedVertIndex) == (iFacingPass==1))
+                        if (showPrimalVertsFlag.get())
+                            FORI (iVert, nVerts)
                             {
-                                double vCoordHomo[] = vertCoordsHomo[iVert];
-                                mg.drawPoint(vCoordHomo[0],
-                                             vCoordHomo[1],
-                                             vCoordHomo[2],
-                                             vCoordHomo[3],
-                                             iVert==beingDraggedVertIndex ? 5 : 3);
+                                if ((vertFacings[iVert]!=FACING_BACK||iVert==beingDraggedVertIndex) == (iFacingPass==1))
+                                {
+                                    double vCoordHomo[] = vertCoordsHomo[iVert];
+                                    mg.drawPoint(vCoordHomo[0],
+                                                 vCoordHomo[1],
+                                                 vCoordHomo[2],
+                                                 vCoordHomo[3],
+                                                 iVert==beingDraggedVertIndex ? 5 : 3);
+                                }
                             }
-                        }
 
+#if 0
                         if (showTriangles.get() == 3) // spherical barycentrics experiment
                         {
                             double wrapSphereRadius = 1./wrapSphereCurvature.get();
@@ -6719,22 +6719,23 @@ public class ShephardsPlayApplet
 
                                         double point3[] = ???
                                     }
-#endif
+#endif // NOTYET
                                 }
                             }
                             continue;
                         }
+#endif // 0
 
-                        if (showTriangles.get() >= 2)
+                        if (showPrimalEdgesFlag.get())
                         {
-                            boolean showFlatEdgesFlagValue = showFlatEdgesFlag.get();
+                            boolean showFlatPrimalEdgesFlagValue = showFlatPrimalEdgesFlag.get();
                             FORIDOWN (iWholeEdge, edges.size()/2)
                             {
                                 if ((edgeFacings[iWholeEdge*2]!=FACING_BACK) == (iFacingPass==1))
                                 {
                                     Mesh.Edge edge = (Mesh.Edge)edges.get(iWholeEdge*2);
 
-                                    if (!showFlatEdgesFlagValue || !showInsideOutDualVertsFlagValue)
+                                    if (!showFlatPrimalEdgesFlagValue || !showInsideOutDualVertsFlagValue)
                                     {
                                         Mesh.Edge dualEdge = (Mesh.Edge)dualEdges.get(iWholeEdge*2);
                                         Mesh.Vertex vert0 = dualEdge.initialVertex();
@@ -6744,7 +6745,7 @@ public class ShephardsPlayApplet
                                             double v0[] = dualVertCoordsHomoNormalized[vert0.myIndex()];
                                             double v1[] = dualVertCoordsHomoNormalized[vert1.myIndex()];
 
-                                            if (!showFlatEdgesFlagValue)
+                                            if (!showFlatPrimalEdgesFlagValue)
                                             {
                                                 // Is it flat?  It's flat if the two dual verts
                                                 // are very close together.
@@ -6770,7 +6771,7 @@ public class ShephardsPlayApplet
                                 }
                             }
                         }
-                    } // if (showTriangles.get() >= 1)
+                    } // if showing primal verts or edges or both
 
 
                     if (drawDualDiagramFlag)
@@ -7259,7 +7260,7 @@ public class ShephardsPlayApplet
                 //
                 if (showLabelsFlag)
                 {
-                    if (showTriangles.get() >= 1) // 0=off, 1=verts, 2 = verts and tris
+                    if (showPrimalVertsFlag.get()) // TODO: don't label edges if not drawing them!
                     {
                         mg.setColor(java.awt.Color.white);
                         drawLabels(mg, mesh, false, showInsideOutDualVertsFlag.get(), null); // primal
@@ -14963,8 +14964,9 @@ OFF
         private Listenable.Listener netMethodListener = null;
         private Listenable.Listener calcInsideOutDualVertsFlagListener = null;
         private Listenable.Listener showInsideOutDualVertsFlagListener = null;
-        private Listenable.Listener showFlatEdgesFlagListener = null;
-        private Listenable.Listener showTrianglesListener = null;
+        private Listenable.Listener showFlatPrimalEdgesFlagListener = null;
+        private Listenable.Listener showPrimalVertsFlagListener = null;
+        private Listenable.Listener showPrimalEdgesFlagListener = null;
 
         private Listenable.Boolean doContinuouslyDelaunayize = new Listenable.Boolean(false); // has to be false, or it may alter stuff on load
         private Listenable.Boolean doOptimize = new Listenable.Boolean(false);
@@ -15042,10 +15044,11 @@ OFF
         private Listenable.Boolean calcInsideOutDualVertsFlag = new Listenable.Boolean(true);
         private Listenable.Boolean showInsideOutDualVertsFlag = new Listenable.Boolean(false);
 
-        private Listenable.Boolean showFlatEdgesFlag = new Listenable.Boolean(false);
+        private Listenable.Boolean showFlatPrimalEdgesFlag = new Listenable.Boolean(false);
 
         private boolean doShowPositiveOrthantnessVisualization = false; // XXX total hack-- it's cool but put it somewhere else!!
-        private Listenable.Int showTriangles = new Listenable.Int(0,2, 2); // 0: nothing, 1: verts, 2: and tris
+        private Listenable.Boolean showPrimalVertsFlag = new Listenable.Boolean(true);
+        private Listenable.Boolean showPrimalEdgesFlag = new Listenable.Boolean(true);
         private Listenable.Boolean showNetFlag = new Listenable.Boolean(false);
         private Listenable.Boolean showFlattenedNetFlag = new Listenable.Boolean(true);
         private Listenable.Boolean showNetFlowFlag = new Listenable.Boolean(true);
