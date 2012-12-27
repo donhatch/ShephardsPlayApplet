@@ -4,6 +4,9 @@ that will let me play with triangulations with heights,
 and produce the dual diagrams with heights.
 
 BUGS:
+  Single-lagoon-exit related:
+    - heights not right!
+
   Gui-related:
     - Show Dual verts/edges not right
     - what the hell is the crap being drawn on the borders of the flip buttons?
@@ -10105,12 +10108,13 @@ OFF
                 //    avgSlopeAtApex=1 quillLiftAngle=atan(1/1), equal distr
                 //    avgSlopeAtApex=1 quillLiftAngle=atan(1/4), all on one side
                 // Can we figure out one in terms of the other?
+                // Note, for small n, need small quill lift angle I think
 
-                int nBeforeApex = 50;
-                int nAfterApex = 50;
+                int nBeforeApex = 4;
+                int nAfterApex = 4;
                 int n = nBeforeApex + 1 + nAfterApex;
-                double quillLiftAngle = Math.atan(1/1.); // with avgSlopeAtApex=1. this is the threshold apparently, for large n equally distributed on both sides
-                //double quillLiftAngle = Math.atan(1/2.);
+                //double quillLiftAngle = Math.atan(1/1.); // with avgSlopeAtApex=1. this is the threshold apparently, for large n equally distributed on both sides
+                double quillLiftAngle = Math.atan(1/2.);
                 //double quillLiftAngle = Math.atan(1/3.);
                 //double quillLiftAngle = Math.atan(1/4.); // with avgSlopeAtApex=1, this is the threshold apparently, for large n all on one side
                 //double quillLiftAngle = Math.atan(1/5.);
@@ -10122,37 +10126,66 @@ OFF
 
                 if (true)
                 {
-                    double avgSlopeAtApex = 1.;
+                    double avgSlopeAtApex = 1;
                     double internalAngleAtApex = 2*Math.atan(1./avgSlopeAtApex);
                     double apexTurnAngle = Math.PI-internalAngleAtApex  +  2*Math.PI/n; // add 2*Math.PI/n guarantees uniform when avgSlopeAtApex=0, so apex always gets at LEAST its original share
                     VecMath.fillvec(vertTurns, (2*Math.PI-apexTurnAngle)/(n-1));
                     vertTurns[nBeforeApex] = apexTurnAngle;
                 }
 
-                // make *primal* look like a single exit lagoon polygon, for starters
-
                 double answer[][][] = SingleExitLagoonPolygonOptimizationStuff.constructSingleExitLagoonPolygon(nBeforeApex, quillLiftAngle, vertTurns);
                 double polyVerts[][] = answer[0];
-                double quillDirs[][] = answer[1];
+                double trisVerts[][] = answer[1];
+                double quillDirs[][] = answer[2];
 
-                double finalVerts[][] = new double[2*n][];
-                int finalFaces[][] = {new int[3*n], new int[n]};
-                FORI (i, n)
+
+                if (true)
                 {
-                    finalVerts[2*i] = polyVerts[i];
-                    finalVerts[2*i+1] = VecMath.vpv(polyVerts[i], quillDirs[i]);
-                    finalFaces[0][3*i+0] = 2*i;
-                    finalFaces[0][3*i+1] = 2*i+1;
-                    finalFaces[0][3*i+2] = 2*i;
-                    finalFaces[1][i] = 2*(n-1-i);
+                    double scale = 1./64;
+                    VecMath.mxs(polyVerts, polyVerts, scale);
+                    VecMath.mxs(trisVerts, trisVerts, scale);
                 }
 
-                //PRINTARRAY(finalVerts);
-                //PRINTARRAY(finalFaces);
 
-                VecMath.mxs(finalVerts, finalVerts, 1./8);
+                if (true)
+                {
+                    //
+                    // See if I got the tris right.
+                    //
+                    // TODO: heights are wrong!!
+                    int tris[][] = new int[n+1][];
+                    FORI (i, n)
+                        tris[i] = new int[] {0, i+1, (i+1)%n+1};
+                    tris[n] = new int[n];
+                    FORI (i, n)
+                        tris[n][i] = (n-1-i)+1;
+                    PRINTARRAY(trisVerts);
+                    PRINTARRAY(tris);
+                    mesh = new Mesh(trisVerts, tris);
+                }
+                if (true)
+                {
+                    // see if I got the polygon right
+                    // make *primal* look like a single exit lagoon polygon, for starters
+                    double finalVerts[][] = new double[2*n][];
+                    int finalFaces[][] = {new int[3*n], new int[n]};
+                    FORI (i, n)
+                    {
+                        finalVerts[2*i] = polyVerts[i];
+                        finalVerts[2*i+1] = VecMath.vpv(polyVerts[i], quillDirs[i]);
+                        finalFaces[0][3*i+0] = 2*i;
+                        finalFaces[0][3*i+1] = 2*i+1;
+                        finalFaces[0][3*i+2] = 2*i;
+                        finalFaces[1][i] = 2*(n-1-i);
+                    }
 
-                mesh = new Mesh(finalVerts, finalFaces);
+                    //PRINTARRAY(finalVerts);
+                    //PRINTARRAY(finalFaces);
+
+                    _dualMesh = new Mesh(finalVerts, finalFaces);
+                    _primalMeshOfDualMesh = mesh; // counter-counter-espionage
+                }
+
             } // doCannedThingSingleLagoonExitPolygon
 
             private static class SingleExitLagoonPolygonOptimizationStuff {
@@ -10175,6 +10208,13 @@ OFF
 
                     double answerVerts[][] = new double[n][2];
                     double answerQuillDirs[][] = new double[n][2];
+                    double answerTrisVerts[][] = new double[n+1][2]; // actually becomes primal... confusing
+
+                    answerTrisVerts[0][0] = 0.;
+                    answerTrisVerts[0][1] = 0.;
+                    answerTrisVerts[1][0] = 0.;
+                    answerTrisVerts[1][1] = -1.;
+
 
                     double beforeApexToApexDir[];
                     {
@@ -10197,6 +10237,14 @@ OFF
                             intersectLines(answerVerts[iVert],
                                            prevVert, prevEdgeDir,
                                            origin, originToVertDir);
+
+
+                            double originToDualVertDir[] = VecMath.xv2(nextEdgeDir); // actually reversed, but it doesn't matter
+                            double dualEdgeDir[] = VecMath.xv2(answerQuillDirs[iVert]); // actually reversed, but it doesn't matter
+                            intersectLines(answerTrisVerts[iVert+2],
+                                           answerTrisVerts[iVert+1], dualEdgeDir,
+                                           origin, originToDualVertDir);
+
 
                             // prepare for next iteration
                             prevVert = answerVerts[iVert];
@@ -10226,6 +10274,13 @@ OFF
                                            prevVert, prevEdgeDir,
                                            origin, originToVertDir);
 
+
+                            double originToDualVertDir[] = VecMath.xv2(nextEdgeDir);
+                            double dualEdgeDir[] = VecMath.xv2(answerQuillDirs[iVert]); // actually reversed, but it doesn't matter
+                            intersectLines(answerTrisVerts[iVert+1],
+                                           answerTrisVerts[((iVert+2)-1)%n+1], dualEdgeDir,
+                                           origin, originToDualVertDir);
+
                             // prepare for next iteration
                             prevVert = answerVerts[iVert];
                             prevEdgeDirAng = nextEdgeDirAng;
@@ -10239,12 +10294,13 @@ OFF
                                    answerVerts[MOD(apex-1,n)],beforeApexToApexDir,
                                    answerVerts[(apex+1)%n],afterApexToApexDir);
 
-                    // TODO: get this right!
-                    // ouch, apex quill dir is unknown-- set it arbitrarily (probably wrongly)
-                    answerQuillDirs[apex] = VecMath.normalize(answerVerts[apex]);
+                    // Since we have the dual,
+                    // we can now compute the apex quill direction
+                    // as the perpendicular of the final dual edge.
+                    answerQuillDirs[apex] = VecMath.normalize(VecMath.xv2(VecMath.vmv(answerTrisVerts[apex+1], answerTrisVerts[((apex+2)-1)%n+1])));
 
                     System.out.println("    out constructSingleExitLagoonPolygon");
-                    return new double[][][] {answerVerts, answerQuillDirs};
+                    return new double[][][] {answerVerts, answerTrisVerts, answerQuillDirs};
                 }
             } // SingleExitLagoonPolygonOptimizationStuff
 
@@ -15461,18 +15517,18 @@ OFF
         private Mesh mesh = new Mesh();
         private Net theNet = null; // computed on demand
         private Mesh _dualMesh = null; // computed on demand
-        private Mesh _meshOfDualMesh = null; // possibly ill-advised attempt to automatically invalidate dualMesh when mesh gets replaced in various ways
+        private Mesh _primalMeshOfDualMesh = null; // possibly ill-advised attempt to automatically invalidate dualMesh when mesh gets replaced in various ways
         public Mesh getDualMesh()
         {
             if (_dualMesh == null
-             || _meshOfDualMesh != mesh)
+             || _primalMeshOfDualMesh != mesh)
             {
                 _dualMesh = makeDualMesh(mesh,
                                          false,  // includeNonArity3
                                          calcInsideOutDualVertsFlag.get(), // includeInsideOut
                                          wrapAroundSphereFlag.get(),
                                          wrapSphereCurvature.get());
-                _meshOfDualMesh = mesh;
+                _primalMeshOfDualMesh = mesh;
                 theNet = null;
             }
             return _dualMesh;
@@ -15480,7 +15536,7 @@ OFF
         public void dirtyDualMesh()
         {
             _dualMesh = null;
-            _meshOfDualMesh = null; // no sense keeping a ref to it
+            _primalMeshOfDualMesh = null; // no sense keeping a ref to it
             theNet = null;
         }
         private int beingDraggedVertIndex = -1;
