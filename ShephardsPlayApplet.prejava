@@ -5,6 +5,7 @@ and produce the dual diagrams with heights.
 
 BUGS:
   Gui-related:
+    - Show Dual verts/edges not right
     - what the hell is the crap being drawn on the borders of the flip buttons?
     - don't use EXIT_ON_CLOSE if 1.2!! need to use reflection
     - maybe checkboxes next to the sliders for:
@@ -752,6 +753,21 @@ public class ShephardsPlayApplet
                                 UndoItem.State before = new UndoItem.State(applet.mesh, applet.doContinuouslyDelaunayize.get(), applet.doOptimize.get(), applet.optimizationTypeIndex.get(), applet.selectedTris, applet.selectedDualVertIndices, applet.theNet);
 
                                 applet.doCannedThingFarthestLagoonExitKillerAltB();
+
+                                UndoItem.State after = new UndoItem.State(applet.mesh, applet.doContinuouslyDelaunayize.get(), applet.doOptimize.get(), applet.optimizationTypeIndex.get(), applet.selectedTris, applet.selectedDualVertIndices, applet.theNet);
+                                applet.undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                applet.theCanvas.repaint();
+                            }
+                        });
+                    }},
+                    new JButton("Single-Exit Lagoon") {{
+                        addActionListener(new java.awt.event.ActionListener() {
+                            public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem.State before = new UndoItem.State(applet.mesh, applet.doContinuouslyDelaunayize.get(), applet.doOptimize.get(), applet.optimizationTypeIndex.get(), applet.selectedTris, applet.selectedDualVertIndices, applet.theNet);
+
+                                applet.doCannedThingSingleLagoonExitPolygon();
 
                                 UndoItem.State after = new UndoItem.State(applet.mesh, applet.doContinuouslyDelaunayize.get(), applet.doOptimize.get(), applet.optimizationTypeIndex.get(), applet.selectedTris, applet.selectedDualVertIndices, applet.theNet);
                                 applet.undoTreeSquirrel.Do(new UndoItem(before, after));
@@ -1836,6 +1852,11 @@ public class ShephardsPlayApplet
                                 buttonGroup.add(this);
                             }});
                         }});
+                        add(new JRow() {{
+                            add(new JLabel("Show Dual:"));
+                            add(new JCheckBoxForBoolean("verts", applet.showDualVertsFlag));
+                            add(new JCheckBoxForBoolean("edges", applet.showDualEdgesFlag));
+                        }});
                         add(new JCheckBoxForBoolean("Show primal underside and second dual sheet (if any)", applet.showInsideOutDualVertsFlag));
                         add(new JTablePanel() {{
                             add(theGridBrightnessLabel);
@@ -2493,6 +2514,20 @@ public class ShephardsPlayApplet
                 public void valueChanged()
                 {
                     System.out.println("showFlatPrimalEdgesFlag -> "+showFlatPrimalEdgesFlag.get());
+                    theCanvas.repaint();
+                }
+            });
+            showDualVertsFlag.addListener(showDualVertsFlagListener = new Listenable.Listener() {
+                public void valueChanged()
+                {
+                    System.out.println("showDualVertsFlag -> "+showDualVertsFlag.get());
+                    theCanvas.repaint();
+                }
+            });
+            showDualEdgesFlag.addListener(showDualEdgesFlagListener = new Listenable.Listener() {
+                public void valueChanged()
+                {
+                    System.out.println("showDualEdgesFlag -> "+showDualEdgesFlag.get());
                     theCanvas.repaint();
                 }
             });
@@ -3331,7 +3366,10 @@ public class ShephardsPlayApplet
             doCannedThingFarthestLagoonExitKillerAltB();
             //doCannedThingFarthestLagoonExitKillerOptimized();
             //doBlueNoiseThing(blueNoiseN.get());
+
             load("DUMP.off");
+
+            doCannedThingSingleLagoonExitPolygon();
 
             if (eventVerbose >= 1) System.out.println("out init");
         } // init
@@ -6199,7 +6237,8 @@ public class ShephardsPlayApplet
                 int nNonZeroLengthWholeEdges = -1;
                 int nNonZeroLengthOffBalanceCuts = -1;
 
-                boolean drawDualDiagramFlag = true; // hard-coded
+                boolean drawDualDiagramFlag = showDualVertsFlag.get()
+                                           || showDualEdgesFlag.get();
 
                 if (drawDualDiagramFlag)
                 {
@@ -7113,7 +7152,7 @@ public class ShephardsPlayApplet
                     } // if showing primal verts or edges or both
 
 
-                    if (drawDualDiagramFlag)
+                    if (showDualVertsFlag.get() || showDualEdgesFlag.get())
                     {
                         //
                         // Draw dual edges, in chosen colors
@@ -10059,6 +10098,155 @@ OFF
             } // class GeneralOptimizationStuff
 
 
+            private void doCannedThingSingleLagoonExitPolygon()
+            {
+
+                // Nice pictures (not sure why):
+                //    avgSlopeAtApex=1 quillLiftAngle=atan(1/1), equal distr
+                //    avgSlopeAtApex=1 quillLiftAngle=atan(1/4), all on one side
+                // Can we figure out one in terms of the other?
+
+                int nBeforeApex = 50;
+                int nAfterApex = 50;
+                int n = nBeforeApex + 1 + nAfterApex;
+                double quillLiftAngle = Math.atan(1/1.); // with avgSlopeAtApex=1. this is the threshold apparently, for large n equally distributed on both sides
+                //double quillLiftAngle = Math.atan(1/2.);
+                //double quillLiftAngle = Math.atan(1/3.);
+                //double quillLiftAngle = Math.atan(1/4.); // with avgSlopeAtApex=1, this is the threshold apparently, for large n all on one side
+                //double quillLiftAngle = Math.atan(1/5.);
+                //double quillLiftAngle = Math.atan(1/7.);
+                //double quillLiftAngle = Math.atan(1/20.);
+                //double quillLiftAngle = 0.;               // with avgSlopeAtApex = 0, this is the threshold apparently, for large n all on one side
+
+                double vertTurns[] = VecMath.fillvec(n, 2*Math.PI/n);
+
+                if (true)
+                {
+                    double avgSlopeAtApex = 1.;
+                    double internalAngleAtApex = 2*Math.atan(1./avgSlopeAtApex);
+                    double apexTurnAngle = Math.PI-internalAngleAtApex  +  2*Math.PI/n; // add 2*Math.PI/n guarantees uniform when avgSlopeAtApex=0, so apex always gets at LEAST its original share
+                    VecMath.fillvec(vertTurns, (2*Math.PI-apexTurnAngle)/(n-1));
+                    vertTurns[nBeforeApex] = apexTurnAngle;
+                }
+
+                // make *primal* look like a single exit lagoon polygon, for starters
+
+                double answer[][][] = SingleExitLagoonPolygonOptimizationStuff.constructSingleExitLagoonPolygon(nBeforeApex, quillLiftAngle, vertTurns);
+                double polyVerts[][] = answer[0];
+                double quillDirs[][] = answer[1];
+
+                double finalVerts[][] = new double[2*n][];
+                int finalFaces[][] = {new int[3*n], new int[n]};
+                FORI (i, n)
+                {
+                    finalVerts[2*i] = polyVerts[i];
+                    finalVerts[2*i+1] = VecMath.vpv(polyVerts[i], quillDirs[i]);
+                    finalFaces[0][3*i+0] = 2*i;
+                    finalFaces[0][3*i+1] = 2*i+1;
+                    finalFaces[0][3*i+2] = 2*i;
+                    finalFaces[1][i] = 2*(n-1-i);
+                }
+
+                //PRINTARRAY(finalVerts);
+                //PRINTARRAY(finalFaces);
+
+                VecMath.mxs(finalVerts, finalVerts, 1./8);
+
+                mesh = new Mesh(finalVerts, finalFaces);
+            } // doCannedThingSingleLagoonExitPolygon
+
+            private static class SingleExitLagoonPolygonOptimizationStuff {
+
+                // answer[0] is the vertex positions
+                // answer[1] is the quill directions (unit vectors)
+                public static double[/*2*/][][] constructSingleExitLagoonPolygon(int nBeforeApex,
+                                                                                 double quillLiftAngle,
+                                                                                 double vertTurns[]) // should sum to 2*pi, with each turn (other than apex) < pi/2.
+                {
+                    System.out.println("    in constructSingleExitLagoonPolygon");
+                    int n = vertTurns.length;
+                    int apex = nBeforeApex;
+
+                    PRINT(n);
+                    PRINT(apex);
+                    PRINT(quillLiftAngle);
+
+                    double origin[] = {0,0};
+
+                    double answerVerts[][] = new double[n][2];
+                    double answerQuillDirs[][] = new double[n][2];
+
+                    double beforeApexToApexDir[];
+                    {
+                        // compute the verts and quill dirs after the apex
+                        double prevEdgeDirAng = 0.;
+                        double prevEdgeDir[] = {1.,0.};
+                        double prevVert[] = {-1.,-1.}; // fake
+                        FORI (iVert, apex)
+                        {
+                            double nextEdgeDirAng = prevEdgeDirAng + vertTurns[iVert];
+                            double nextEdgeDir[] = {Math.cos(nextEdgeDirAng),Math.sin(nextEdgeDirAng)};
+                            double quillDirAng = nextEdgeDirAng - Math.PI + quillLiftAngle;
+                            answerQuillDirs[iVert][0] = Math.cos(quillDirAng);
+                            answerQuillDirs[iVert][1] = Math.sin(quillDirAng);
+                            double originToVertDirAng = quillDirAng + Math.PI/2;
+                            double originToVertDir[] = {Math.cos(originToVertDirAng),Math.sin(originToVertDirAng)};
+
+                            // want to intersect the line from origin to vert
+                            // with the previous edge line.
+                            intersectLines(answerVerts[iVert],
+                                           prevVert, prevEdgeDir,
+                                           origin, originToVertDir);
+
+                            // prepare for next iteration
+                            prevVert = answerVerts[iVert];
+                            prevEdgeDirAng = nextEdgeDirAng;
+                            prevEdgeDir = nextEdgeDir;
+                        }
+                        beforeApexToApexDir = prevEdgeDir;
+                    }
+
+                    double afterApexToApexDir[];
+                    {
+                        // compute the verts after the apex
+                        double prevEdgeDirAng = Math.PI;
+                        double prevEdgeDir[] = {-1.,0.};
+                        double prevVert[] = {1.,-1.}; // fake
+                        for (int iVert = n-1; iVert > apex; --iVert)
+                        {
+                            double nextEdgeDirAng = prevEdgeDirAng - vertTurns[iVert];
+                            double nextEdgeDir[] = {Math.cos(nextEdgeDirAng),Math.sin(nextEdgeDirAng)};
+                            double quillDirAng = nextEdgeDirAng + Math.PI - quillLiftAngle;
+                            answerQuillDirs[iVert][0] = Math.cos(quillDirAng);
+                            answerQuillDirs[iVert][1] = Math.sin(quillDirAng);
+                            double originToVertDirAng = quillDirAng - Math.PI/2;
+                            double originToVertDir[] = {Math.cos(originToVertDirAng),Math.sin(originToVertDirAng)};
+
+                            intersectLines(answerVerts[iVert],
+                                           prevVert, prevEdgeDir,
+                                           origin, originToVertDir);
+
+                            // prepare for next iteration
+                            prevVert = answerVerts[iVert];
+                            prevEdgeDirAng = nextEdgeDirAng;
+                            prevEdgeDir = nextEdgeDir;
+                        }
+                        afterApexToApexDir = prevEdgeDir;
+                    }
+
+                    // compute the apex
+                    intersectLines(answerVerts[apex],
+                                   answerVerts[MOD(apex-1,n)],beforeApexToApexDir,
+                                   answerVerts[(apex+1)%n],afterApexToApexDir);
+
+                    // TODO: get this right!
+                    // ouch, apex quill dir is unknown-- set it arbitrarily (probably wrongly)
+                    answerQuillDirs[apex] = VecMath.normalize(answerVerts[apex]);
+
+                    System.out.println("    out constructSingleExitLagoonPolygon");
+                    return new double[][][] {answerVerts, answerQuillDirs};
+                }
+            } // SingleExitLagoonPolygonOptimizationStuff
 
             private static class Netless8OptimizationStuff
             {
@@ -14936,6 +15124,24 @@ OFF
         } // getTheSymmetryGroupGenerators
 
 
+        // find intersection point of p0+t*v0
+        //                        and p1+t*v1
+        private static void intersectLines(double answer[/*2*/],
+                                           double p0[/*2*/], double v0[/*2*/],
+                                           double p1[/*2*/], double v1[/*2*/])
+        {
+            // want point p such that:
+            //     perpdot(v0) dot p = perpdot(v0) dot p0
+            //     perpdot(v1) dot p = perpdot(v1) dot p1
+            double M[][] = {
+                {-v0[1],v0[0]}, // perpdot(v0)
+                {-v1[1],v1[0]}, // perpdot(v1)
+            };
+            double v[] = {VecMath.dot(M[0],p0),
+                          VecMath.dot(M[1],p1)};
+            VecMath.invmxv(answer, M, v);
+        } // intersectLines
+
         // I seem to have set the bar too high on using VecMath for this... make private utility function instead
         private static double[] v3xm44(double v[/*3*/], double m[/*4*/][/*4*/])
         {
@@ -15306,6 +15512,8 @@ OFF
         private Listenable.Listener showFlatPrimalEdgesFlagListener = null;
         private Listenable.Listener showPrimalVertsFlagListener = null;
         private Listenable.Listener showPrimalEdgesFlagListener = null;
+        private Listenable.Listener showDualVertsFlagListener = null;
+        private Listenable.Listener showDualEdgesFlagListener = null;
 
         private Listenable.Boolean doContinuouslyDelaunayize = new Listenable.Boolean(false); // has to be false, or it may alter stuff on load
         private Listenable.Boolean doOptimize = new Listenable.Boolean(false);
@@ -15387,6 +15595,8 @@ OFF
         private Listenable.Boolean showFlatPrimalEdgesFlag = new Listenable.Boolean(false);
 
         private boolean doShowPositiveOrthantnessVisualization = false; // XXX total hack-- it's cool but put it somewhere else!!
+        private Listenable.Boolean showDualVertsFlag = new Listenable.Boolean(true);
+        private Listenable.Boolean showDualEdgesFlag = new Listenable.Boolean(true);
         private Listenable.Boolean showPrimalVertsFlag = new Listenable.Boolean(true);
         private Listenable.Boolean showPrimalEdgesFlag = new Listenable.Boolean(true);
         private Listenable.Boolean showNetFlag = new Listenable.Boolean(false);
