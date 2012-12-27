@@ -4,10 +4,12 @@ that will let me play with triangulations with heights,
 and produce the dual diagrams with heights.
 
 BUGS:
+
   Single-lagoon-exit related:
-    - heights not right!
+    - need gui for various params
 
   Gui-related:
+    - pan buttons for whole thing
     - Show Dual verts/edges not right
     - what the hell is the crap being drawn on the borders of the flip buttons?
     - don't use EXIT_ON_CLOSE if 1.2!! need to use reflection
@@ -546,12 +548,21 @@ public class ShephardsPlayApplet
                         }
                     });
                 }};
-                final JButton saveButton = new JButton("Save DUMP.off") {{
+                final JButton saveButton = new JButton("Save DUMP.off xyh") {{
                     setMargin(nomargin);
                     addActionListener(new java.awt.event.ActionListener() {
                         public void actionPerformed(java.awt.event.ActionEvent e)
                         {
-                            applet.save("DUMP.off");
+                            applet.save("DUMP.off", false);
+                        }
+                    });
+                }};
+                final JButton saveHomoButton = new JButton("Save DUMP.off XYZW") {{
+                    setMargin(nomargin);
+                    addActionListener(new java.awt.event.ActionListener() {
+                        public void actionPerformed(java.awt.event.ActionEvent e)
+                        {
+                            applet.save("DUMP.off", true);
                         }
                     });
                 }};
@@ -876,6 +887,7 @@ public class ShephardsPlayApplet
                         }});
                         add(loadButton);
                         add(saveButton);
+                        add(saveHomoButton);
                         add(saveDualButton);
                         // scale?
                     }});
@@ -1859,8 +1871,11 @@ public class ShephardsPlayApplet
                             add(new JLabel("Show Dual:"));
                             add(new JCheckBoxForBoolean("verts", applet.showDualVertsFlag));
                             add(new JCheckBoxForBoolean("edges", applet.showDualEdgesFlag));
+                            add(new JCheckBoxForBoolean("naive", applet.naiveDualEdgesFlag) {{
+                                setToolTipText("display all dual edges as internal");
+                            }});
                         }});
-                        add(new JCheckBoxForBoolean("Show primal underside and second dual sheet (if any)", applet.showInsideOutDualVertsFlag));
+                        add(new JCheckBoxForBoolean("Show primal underside and second dual sheet (if any) (if not naive)", applet.showInsideOutDualVertsFlag));
                         add(new JTablePanel() {{
                             add(theGridBrightnessLabel);
                             add(theGridBrightnessTextField);
@@ -2534,6 +2549,13 @@ public class ShephardsPlayApplet
                     theCanvas.repaint();
                 }
             });
+            naiveDualEdgesFlag.addListener(naiveDualEdgesFlagListener = new Listenable.Listener() {
+                public void valueChanged()
+                {
+                    System.out.println("naiveDualEdgesFlag -> "+naiveDualEdgesFlag.get());
+                    theCanvas.repaint();
+                }
+            });
         } // ShephardsPlayApplet ctor
 
         static final String helpMessage[] = {
@@ -2700,7 +2722,8 @@ public class ShephardsPlayApplet
             }
             System.out.println("done.");
         } // save
-        public void save(String fileName)
+        public void save(String fileName,
+                         boolean saveHomo)
         {
             System.out.println("Saving to "+fileName+"... ");
             System.out.flush();
@@ -2736,7 +2759,6 @@ public class ShephardsPlayApplet
                 FORI (iVert, mesh.verts.size())
                 {
                     Mesh.Vertex vert = mesh.getVert(iVert);
-                    boolean saveHomo = true;
                     if (saveHomo) // nonstandard .off file, 4 coords per vertex
                         writer.println("" + vert.X() + " " + vert.Y() + " " + vert.Z() + " " + vert.W());
                     else
@@ -6110,6 +6132,7 @@ public class ShephardsPlayApplet
                         Mesh.Vertex v = dualMesh.getVert(iDualVert);
                         dualVertCoords[iDualVert] = new double[]{v.X(), v.Y(), v.Z(), v.W()};
                     }
+                    boolean naiveDualEdgesFlagValue = naiveDualEdgesFlag.get();
                     FORI (iDualEdge, nDualEdges)
                     {
                         Mesh.Edge dualEdge = dualMesh.getEdge(iDualEdge);
@@ -6118,8 +6141,7 @@ public class ShephardsPlayApplet
                         double v0coords[] = v0!=null ? dualVertCoords[v0.myIndex()] : null;
                         double v1coords[] = v1!=null ? dualVertCoords[v1.myIndex()] : null;
 
-
-                        if (false)
+                        if (naiveDualEdgesFlagValue)
                         {
                             // naive way-- all internal edges
                             if (v0 != null)
@@ -10110,13 +10132,13 @@ OFF
                 // Can we figure out one in terms of the other?
                 // Note, for small n, need small quill lift angle I think
 
-                int nBeforeApex = 4;
-                int nAfterApex = 4;
+                int nBeforeApex = 5;
+                int nAfterApex = 5;
                 int n = nBeforeApex + 1 + nAfterApex;
                 //double quillLiftAngle = Math.atan(1/1.); // with avgSlopeAtApex=1. this is the threshold apparently, for large n equally distributed on both sides
-                double quillLiftAngle = Math.atan(1/2.);
+                //double quillLiftAngle = Math.atan(1/2.);
                 //double quillLiftAngle = Math.atan(1/3.);
-                //double quillLiftAngle = Math.atan(1/4.); // with avgSlopeAtApex=1, this is the threshold apparently, for large n all on one side
+                double quillLiftAngle = Math.atan(1/4.); // with avgSlopeAtApex=1, this is the threshold apparently, for large n all on one side
                 //double quillLiftAngle = Math.atan(1/5.);
                 //double quillLiftAngle = Math.atan(1/7.);
                 //double quillLiftAngle = Math.atan(1/20.);
@@ -10144,6 +10166,8 @@ OFF
                     double scale = 1./64;
                     VecMath.mxs(polyVerts, polyVerts, scale);
                     VecMath.mxs(trisVerts, trisVerts, scale);
+                    FORI (i, trisVerts.length)
+                        trisVerts[i][2] *= scale; // h gets scaled by scale*scale
                 }
 
 
@@ -10152,21 +10176,21 @@ OFF
                     //
                     // See if I got the tris right.
                     //
-                    // TODO: heights are wrong!!
                     int tris[][] = new int[n+1][];
                     FORI (i, n)
                         tris[i] = new int[] {0, i+1, (i+1)%n+1};
                     tris[n] = new int[n];
                     FORI (i, n)
                         tris[n][i] = (n-1-i)+1;
-                    PRINTARRAY(trisVerts);
-                    PRINTARRAY(tris);
+                    //PRINTARRAY(trisVerts);
+                    //PRINTARRAY(tris);
                     mesh = new Mesh(trisVerts, tris);
                 }
-                if (true)
+                if (false)
                 {
-                    // see if I got the polygon right
-                    // make *primal* look like a single exit lagoon polygon, for starters
+                    // see if I got the polygon right.
+                    // force our idea of what the polygon should look like
+                    // into the dual.
                     double finalVerts[][] = new double[2*n][];
                     int finalFaces[][] = {new int[3*n], new int[n]};
                     FORI (i, n)
@@ -10206,14 +10230,14 @@ OFF
 
                     double origin[] = {0,0};
 
-                    double answerVerts[][] = new double[n][2];
+                    double answerVerts[][] = new double[n][2]; // we'll expand to [3] at end
                     double answerQuillDirs[][] = new double[n][2];
-                    double answerTrisVerts[][] = new double[n+1][2]; // actually becomes primal... confusing
+                    double answerTriVerts[][] = new double[n+1][2]; // actually becomes primal... confusing
 
-                    answerTrisVerts[0][0] = 0.;
-                    answerTrisVerts[0][1] = 0.;
-                    answerTrisVerts[1][0] = 0.;
-                    answerTrisVerts[1][1] = -1.;
+                    answerTriVerts[0][0] = 0.;
+                    answerTriVerts[0][1] = 0.;
+                    answerTriVerts[1][0] = 0.;
+                    answerTriVerts[1][1] = -1.;
 
 
                     double beforeApexToApexDir[];
@@ -10241,8 +10265,8 @@ OFF
 
                             double originToDualVertDir[] = VecMath.xv2(nextEdgeDir); // actually reversed, but it doesn't matter
                             double dualEdgeDir[] = VecMath.xv2(answerQuillDirs[iVert]); // actually reversed, but it doesn't matter
-                            intersectLines(answerTrisVerts[iVert+2],
-                                           answerTrisVerts[iVert+1], dualEdgeDir,
+                            intersectLines(answerTriVerts[iVert+2],
+                                           answerTriVerts[iVert+1], dualEdgeDir,
                                            origin, originToDualVertDir);
 
 
@@ -10277,8 +10301,8 @@ OFF
 
                             double originToDualVertDir[] = VecMath.xv2(nextEdgeDir);
                             double dualEdgeDir[] = VecMath.xv2(answerQuillDirs[iVert]); // actually reversed, but it doesn't matter
-                            intersectLines(answerTrisVerts[iVert+1],
-                                           answerTrisVerts[((iVert+2)-1)%n+1], dualEdgeDir,
+                            intersectLines(answerTriVerts[iVert+1],
+                                           answerTriVerts[((iVert+2)-1)%n+1], dualEdgeDir,
                                            origin, originToDualVertDir);
 
                             // prepare for next iteration
@@ -10297,10 +10321,90 @@ OFF
                     // Since we have the dual,
                     // we can now compute the apex quill direction
                     // as the perpendicular of the final dual edge.
-                    answerQuillDirs[apex] = VecMath.normalize(VecMath.xv2(VecMath.vmv(answerTrisVerts[apex+1], answerTrisVerts[((apex+2)-1)%n+1])));
+                    answerQuillDirs[apex] = VecMath.normalize(VecMath.xv2(VecMath.vmv(answerTriVerts[apex+1], answerTriVerts[((apex+2)-1)%n+1])));
+
+
+                    //
+                    // Now reverse-engineer the heights of the tri verts
+                    // (other than [0]),
+                    // to give exactly the polygon verts.
+                    //
+                    if (true)
+                    {
+                        answerTriVerts[0] = Arrays.append(answerTriVerts[0], 0.);
+                        answerTriVerts[1] = Arrays.append(answerTriVerts[1], -.5); // magic value to make edge lie on the horizontal line y=-1
+                        FORI (iTriVertOrder, answerTriVerts.length-2) // == n-1
+                        {
+                            int iVert,iTriVert,jTriVert,kTriVert;
+                            if (iTriVertOrder < apex)
+                            {
+                                iVert = iTriVertOrder;
+                                iTriVert = 2+iTriVertOrder;
+                                jTriVert = 0;
+                                kTriVert = 1+iTriVertOrder;
+                            }
+                            else
+                            {
+                                iVert = n-1 - (iTriVertOrder-apex);
+                                iTriVert = n - (iTriVertOrder-apex);
+                                jTriVert = ((iTriVert+1)-1)%n+1;
+                                kTriVert = 0;
+                            }
+                            assert(answerTriVerts[iTriVert].length == 2); // not calculated yet
+                            assert(answerTriVerts[jTriVert].length == 3); // calculated already
+                            assert(answerTriVerts[kTriVert].length == 3); // calculated already
+
+                            // given:
+                            //     tri verts i,j,k (j,k already with heights assigned)
+                            //     target vert position v
+                            // figure out the proper height to give i.
+                            //     current vert v0
+                            //     tweaked vert v1
+                            double v[] = answerVerts[iVert];
+
+                            double v0[] = new double[2];
+                            double v1[] = new double[2];
+                            double xi = answerTriVerts[iTriVert][0];
+                            double yi = answerTriVerts[iTriVert][1];
+                            double xj = answerTriVerts[jTriVert][0];
+                            double yj = answerTriVerts[jTriVert][1];
+                            double hj = answerTriVerts[jTriVert][2];
+                            double xk = answerTriVerts[kTriVert][0];
+                            double yk = answerTriVerts[kTriVert][1];
+                            double hk = answerTriVerts[kTriVert][2];
+                            SolveForDualPoint(xi,yi,0.,
+                                              xj,yj,hj,
+                                              xk,yk,hk,
+                                              v0, // put answer here
+                                              false, // wrapAroundSphereFlag
+                                              0.); // wrapSphereCurvature
+                            SolveForDualPoint(xi,yi,1.,
+                                              xj,yj,hj,
+                                              xk,yk,hk,
+                                              v1, // put answer here
+                                              false, // wrapAroundSphereFlag
+                                              0.); // wrapSphereCurvature
+                            double dv_dh[] = VecMath.vmv(2,v1,v0);
+                            double dv[] = VecMath.vmv(v,v0);
+                            double h = VecMath.dot(dv,   dv_dh)
+                                     / VecMath.dot(dv_dh,dv_dh);
+                            answerTriVerts[iTriVert] = Arrays.append(answerTriVerts[iTriVert], h);
+                            // check that we got the desired answer
+                            double shouldBeV[] = new double[2];
+                            SolveForDualPoint(xi,yi,h,
+                                              xj,yj,hj,
+                                              xk,yk,hk,
+                                              shouldBeV, // put answer here
+                                              false, // wrapAroundSphereFlag
+                                              0.); // wrapSphereCurvature
+                            PRINTVEC(v);
+                            PRINTVEC(shouldBeV);
+                        }
+                    }
+
 
                     System.out.println("    out constructSingleExitLagoonPolygon");
-                    return new double[][][] {answerVerts, answerTrisVerts, answerQuillDirs};
+                    return new double[][][] {answerVerts, answerTriVerts, answerQuillDirs};
                 }
             } // SingleExitLagoonPolygonOptimizationStuff
 
@@ -15193,8 +15297,8 @@ OFF
                 {-v0[1],v0[0]}, // perpdot(v0)
                 {-v1[1],v1[0]}, // perpdot(v1)
             };
-            double v[] = {VecMath.dot(M[0],p0),
-                          VecMath.dot(M[1],p1)};
+            double v[] = {VecMath.dot(2,M[0],p0),
+                          VecMath.dot(2,M[1],p1)};
             VecMath.invmxv(answer, M, v);
         } // intersectLines
 
@@ -15570,6 +15674,7 @@ OFF
         private Listenable.Listener showPrimalEdgesFlagListener = null;
         private Listenable.Listener showDualVertsFlagListener = null;
         private Listenable.Listener showDualEdgesFlagListener = null;
+        private Listenable.Listener naiveDualEdgesFlagListener = null;
 
         private Listenable.Boolean doContinuouslyDelaunayize = new Listenable.Boolean(false); // has to be false, or it may alter stuff on load
         private Listenable.Boolean doOptimize = new Listenable.Boolean(false);
@@ -15651,10 +15756,11 @@ OFF
         private Listenable.Boolean showFlatPrimalEdgesFlag = new Listenable.Boolean(false);
 
         private boolean doShowPositiveOrthantnessVisualization = false; // XXX total hack-- it's cool but put it somewhere else!!
-        private Listenable.Boolean showDualVertsFlag = new Listenable.Boolean(true);
-        private Listenable.Boolean showDualEdgesFlag = new Listenable.Boolean(true);
         private Listenable.Boolean showPrimalVertsFlag = new Listenable.Boolean(true);
         private Listenable.Boolean showPrimalEdgesFlag = new Listenable.Boolean(true);
+        private Listenable.Boolean showDualVertsFlag = new Listenable.Boolean(true);
+        private Listenable.Boolean showDualEdgesFlag = new Listenable.Boolean(true);
+        private Listenable.Boolean naiveDualEdgesFlag = new Listenable.Boolean(false);
         private Listenable.Boolean showNetFlag = new Listenable.Boolean(false);
         private Listenable.Boolean showFlattenedNetFlag = new Listenable.Boolean(true);
         private Listenable.Boolean showNetFlowFlag = new Listenable.Boolean(true);
