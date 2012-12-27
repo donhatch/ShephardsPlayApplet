@@ -429,6 +429,211 @@ public class ShephardsPlayApplet
             }
         } // JRepeatingButton
 
+        private abstract static class JTableOfPanIcons extends JTablePanel
+        {
+            // concrete subclass must implement this
+            abstract public void buttonPressed(int iRow, int iCol);
+
+            private java.awt.Color asciiToColor;
+            JTableOfPanIcons(int nRows, int nCols, final java.awt.Color asciiToColor[])
+            {
+                // used as "fill" argument to add()
+                final java.awt.GridBagConstraints stretchxy = new java.awt.GridBagConstraints(){{fill=BOTH;weightx=weighty=1.;}};
+
+                final String panIcons[][][] = makePanIcons();
+                FORI (iRow, nRows)
+                {
+                    FORI (iCol, nCols)
+                    {
+                        // take center chunk out of icons array
+                        int iIconRow = iRow + (panIcons.length-nRows)/2;
+                        int iIconCol = iCol + (panIcons[iIconRow].length-nCols)/2;
+                        final String panIcon[] = panIcons[iIconRow][iIconCol];
+                        final int iRowFinal = iRow;
+                        final int iColFinal = iCol;
+                        add(new JRepeatingButton("") {
+                            public java.awt.Dimension getMinimumSize() { return new java.awt.Dimension(panIcon[0].length(), panIcon.length); }
+                            public java.awt.Dimension getPreferredSize() { return getMinimumSize(); }
+                            public void paint(java.awt.Graphics g)
+                            {
+                                drawPixmapCentered(g, getSize(), asciiToColor, panIcon);
+                            }
+                        {
+                            addActionListener(new java.awt.event.ActionListener() {
+                                public void actionPerformed(java.awt.event.ActionEvent e)
+                                {
+                                    buttonPressed(iColFinal, iRowFinal);
+                                }
+                            });
+                        }}, stretchxy);
+                    }
+                    advanceRow();
+                }
+            }
+
+            // utility function to make a 5x5 array of pan icons
+            private static String[][][] makePanIcons()
+            {
+                // Initialize with a fundamental region;
+                // will reflect to get all of them
+                String panIcons[][][] = {
+                    {
+                        {
+                            "             ",
+                            " *******     ",
+                            " ******      ",
+                            " *****       ",
+                            " **********  ",
+                            " *********   ",
+                            " ** *****    ",
+                            " *  ******   ",
+                            "    *******  ",
+                            "    ** ***** ",
+                            "    *   **** ",
+                            "         *** ",
+                            "             ",
+                        },
+                        {
+                            "           ",
+                            "  ***      ",
+                            "  ******   ",
+                            "  ******   ",
+                            " *****     ",
+                            " ******    ",
+                            " ** ****** ",
+                            "    ****** ",
+                            "   *****   ",
+                            "   ******  ",
+                            "   ** ***  ",
+                            "      ***  ",
+                            "           ",
+                        },
+                        {
+                            "         ",
+                            "    *    ",
+                            "   ***   ",
+                            "  *****  ",
+                            " ******* ",
+                            "   ***   ",
+                            "  *****  ",
+                            " ******* ",
+                            "   ***   ",
+                            "   ***   ",
+                            "   ***   ",
+                            "   ***   ",
+                            "         ",
+                        },
+                        null,
+                        null
+                    },
+                    {
+                        null,
+                        {
+                            "           ",
+                            "           ",
+                            "  *******  ",
+                            "  ******   ",
+                            "  *****    ",
+                            "  ******   ",
+                            "  *******  ",
+                            "  ** ****  ",
+                            "  *   ***  ",
+                            "           ",
+                            "           ",
+                        },
+                        {
+                            "         ",
+                            "         ",
+                            "    *    ",
+                            "   ***   ",
+                            "  *****  ",
+                            " ******* ",
+                            "   ***   ",
+                            "   ***   ",
+                            "   ***   ",
+                            "         ",
+                            "         ",
+                        },
+                        null,
+                        null
+                    },
+                    {
+                        null,
+                        null,
+                        {
+                            "         ",
+                            "         ",
+                            "         ",
+                            "         ",
+                            "         ",
+                            "         ",
+                            "         ",
+                            "         ",
+                            "         ",
+                        },
+                        null,
+                        null
+                    },
+                    {null,null,null,null,null},
+                    {null,null,null,null,null},
+                };
+                int mats[][][] = {
+                    {{0,1},{1,0}},  // transpose
+                    {{-1,0},{0,1}}, // left/right reflect
+                    {{1,0},{0,-1}}, // up/down reflect
+                };
+                FORI (iMat, mats.length)
+                {
+                    int mat[][] = mats[iMat];
+                    final int nRows = panIcons.length;
+                    final int nCols = panIcons[0].length;
+                    FORI (iRow, nRows)
+                    FORI (iCol, nCols)
+                    {
+                        String panIconIn[] = panIcons[iRow][iCol];
+                        if (panIconIn != null)
+                        {
+                            //System.out.println("            it's not null!");
+                            // transform by mat.
+                            // what's the destination row and column?
+                            int in[] = {1-nCols + 2*iCol,
+                                        1-nRows + 2*iRow};
+                            int out[] = VecMath.vxm(in, mat);
+                            int jCol = (out[0] - (1-nCols))/2;
+                            int jRow = (out[1] - (1-nRows))/2;
+                            if (panIcons[jRow][jCol] == null)
+                            {
+
+                                // xform panIconIn into panIcons[jRow][jCol]
+
+                                int widthIn = panIconIn[0].length();
+                                int heightIn = panIconIn.length;
+                                int widthOut = mat[0][0]==0. ? heightIn : widthIn;
+                                int heightOut = mat[0][0]==0. ? widthIn : heightIn;
+                                char charsOut[][] = new char[heightOut][widthOut];
+                                FORI (iiRow, heightIn)
+                                FORI (iiCol, widthIn)
+                                {
+                                    // reuse in,out
+                                    in[0] = 1-widthIn + 2*iiCol;
+                                    in[1] = 1-heightIn + 2*iiRow;
+                                    VecMath.vxm(out, in, mat);
+                                    int jjCol = (out[0] - (1-widthOut))/2;
+                                    int jjRow = (out[1] - (1-heightOut))/2;
+                                    charsOut[jjRow][jjCol] = panIconIn[iiRow].charAt(iiCol);
+                                }
+                                String panIconOut[] = new String[heightOut];
+                                FORI (jjRow, heightOut)
+                                    panIconOut[jjRow] = new String(charsOut[jjRow]);
+                                panIcons[jRow][jCol] = panIconOut;
+                            }
+                        }
+                    }
+                }
+                return panIcons;
+            } // makePanIcons
+        } // abstract class JTableOfPanIcons
+
 
         private static class ShephardsPlayAppletControlPanel
             extends JPanel
@@ -1332,6 +1537,26 @@ public class ShephardsPlayApplet
                                 }}); // table
                             }});
                             add(new JRow() {{
+                                add(new JLabel("<html>Pan: </html>"), rightjustify); // TODO: right justify isn't working here
+
+                                final java.awt.Color asciiToColor[] = new java.awt.Color[128];
+                                asciiToColor[' '] = java.awt.Color.black;
+                                asciiToColor['*'] = new java.awt.Color(224,224,255); // very light blue
+                                add(new JTableOfPanIcons(5,5,asciiToColor) {
+                                    // note, dup code in the two tables of pan icons
+                                    final double panIncr = 1./256;
+                                    final double PanIncr = 1./16;
+                                    final double panIncrs[] = {-PanIncr,-panIncr,0,panIncr,PanIncr};
+                                    // implement abstract superclass's
+                                    public void buttonPressed(int iCol, int iRow)
+                                    {
+                                        applet.pan(panIncrs[iCol],
+                                                   panIncrs[panIncrs.length-1-iRow]);
+
+                                    }
+                                });
+                            }});
+                            add(new JRow() {{
                                 add(new JLabel("Flip: "));
                                 add(new JTablePanel() {{
                                     add(new JButton("\\") {
@@ -1589,209 +1814,22 @@ public class ShephardsPlayApplet
                                 add(new JLabel("<html>Pan<br>dual<br>only: </html>"), rightjustify); // TODO: right justify isn't working here
 
                                 final java.awt.Color asciiToColor[] = new java.awt.Color[128];
-                                asciiToColor[' '] = java.awt.Color.white;
-                                asciiToColor['*'] = java.awt.Color.black;
                                 asciiToColor[' '] = java.awt.Color.black;
                                 asciiToColor['*'] = new java.awt.Color(64,64,255); // slightly light blue
-
-                                // Initialize with a fundamental region;
-                                // will reflect to get all of them
-                                final String panIcons[][][] = {
-                                    {
-                                        {
-                                            "             ",
-                                            " *******     ",
-                                            " ******      ",
-                                            " *****       ",
-                                            " **********  ",
-                                            " *********   ",
-                                            " ** *****    ",
-                                            " *  ******   ",
-                                            "    *******  ",
-                                            "    ** ***** ",
-                                            "    *   **** ",
-                                            "         *** ",
-                                            "             ",
-                                        },
-                                        {
-                                            "           ",
-                                            "  ***      ",
-                                            "  ******   ",
-                                            "  ******   ",
-                                            " *****     ",
-                                            " ******    ",
-                                            " ** ****** ",
-                                            "    ****** ",
-                                            "   *****   ",
-                                            "   ******  ",
-                                            "   ** ***  ",
-                                            "      ***  ",
-                                            "           ",
-                                        },
-                                        {
-                                            "         ",
-                                            "    *    ",
-                                            "   ***   ",
-                                            "  *****  ",
-                                            " ******* ",
-                                            "   ***   ",
-                                            "  *****  ",
-                                            " ******* ",
-                                            "   ***   ",
-                                            "   ***   ",
-                                            "   ***   ",
-                                            "   ***   ",
-                                            "         ",
-                                        },
-                                        null,
-                                        null
-                                    },
-                                    {
-                                        null,
-                                        {
-                                            "           ",
-                                            "           ",
-                                            "  *******  ",
-                                            "  ******   ",
-                                            "  *****    ",
-                                            "  ******   ",
-                                            "  *******  ",
-                                            "  ** ****  ",
-                                            "  *   ***  ",
-                                            "           ",
-                                            "           ",
-                                        },
-                                        {
-                                            "         ",
-                                            "         ",
-                                            "    *    ",
-                                            "   ***   ",
-                                            "  *****  ",
-                                            " ******* ",
-                                            "   ***   ",
-                                            "   ***   ",
-                                            "   ***   ",
-                                            "         ",
-                                            "         ",
-                                        },
-                                        null,
-                                        null
-                                    },
-                                    {
-                                        null,
-                                        null,
-                                        {
-                                            "         ",
-                                            "         ",
-                                            "         ",
-                                            "         ",
-                                            "         ",
-                                            "         ",
-                                            "         ",
-                                            "         ",
-                                            "         ",
-                                        },
-                                        null,
-                                        null
-                                    },
-                                    {null,null,null,null,null},
-                                    {null,null,null,null,null},
-                                };
-                                int mats[][][] = {
-                                    {{0,1},{1,0}},  // transpose
-                                    {{-1,0},{0,1}}, // left/right reflect
-                                    {{1,0},{0,-1}}, // up/down reflect
-                                };
-                                FORI (iMat, mats.length)
-                                {
-                                    int mat[][] = mats[iMat];
-                                    final int nRows = panIcons.length;
-                                    final int nCols = panIcons[0].length;
-                                    FORI (iRow, nRows)
-                                    FORI (iCol, nCols)
-                                    {
-                                        String panIconIn[] = panIcons[iRow][iCol];
-                                        if (panIconIn != null)
-                                        {
-                                            //System.out.println("            it's not null!");
-                                            // transform by mat.
-                                            // what's the destination row and column?
-                                            int in[] = {1-nCols + 2*iCol,
-                                                        1-nRows + 2*iRow};
-                                            int out[] = VecMath.vxm(in, mat);
-                                            int jCol = (out[0] - (1-nCols))/2;
-                                            int jRow = (out[1] - (1-nRows))/2;
-                                            if (panIcons[jRow][jCol] == null)
-                                            {
-
-                                                // xform panIconIn into panIcons[jRow][jCol]
-
-                                                int widthIn = panIconIn[0].length();
-                                                int heightIn = panIconIn.length;
-                                                int widthOut = mat[0][0]==0. ? heightIn : widthIn;
-                                                int heightOut = mat[0][0]==0. ? widthIn : heightIn;
-                                                char charsOut[][] = new char[heightOut][widthOut];
-                                                FORI (iiRow, heightIn)
-                                                FORI (iiCol, widthIn)
-                                                {
-                                                    // reuse in,out
-                                                    in[0] = 1-widthIn + 2*iiCol;
-                                                    in[1] = 1-heightIn + 2*iiRow;
-                                                    VecMath.vxm(out, in, mat);
-                                                    int jjCol = (out[0] - (1-widthOut))/2;
-                                                    int jjRow = (out[1] - (1-heightOut))/2;
-                                                    charsOut[jjRow][jjCol] = panIconIn[iiRow].charAt(iiCol);
-                                                }
-                                                String panIconOut[] = new String[heightOut];
-                                                FORI (jjRow, heightOut)
-                                                    panIconOut[jjRow] = new String(charsOut[jjRow]);
-                                                panIcons[jRow][jCol] = panIconOut;
-                                            }
-                                        }
-                                    }
-                                }
-
-                                add(new JTablePanel() {{
+                                add(new JTableOfPanIcons(5,5,asciiToColor) {
+                                    // note, dup code in the two tables of pan icons
                                     final double panIncr = 1./256;
                                     final double PanIncr = 1./16;
                                     final double panIncrs[] = {-PanIncr,-panIncr,0,panIncr,PanIncr};
-
-                                    final int nRows = panIcons.length;
-                                    final int nCols = panIcons[0].length;
-                                    FORI (iRow, nRows)
+                                    // implement abstract superclass's
+                                    public void buttonPressed(int iCol, int iRow)
                                     {
-                                        FORI (iCol, nCols)
-                                        {
-                                            final String panIcon[] = panIcons[iRow][iCol];
-                                            if (panIcon == null)
-                                            {
-                                                add(new JLabel(""));
-                                                continue;
-                                            }
-                                            final int iRowFinal = iRow;
-                                            final int iColFinal = iCol;
-                                            add(new JRepeatingButton("") {
-                                                public java.awt.Dimension getMinimumSize() { return new java.awt.Dimension(panIcon[0].length(), panIcon.length); }
-                                                public java.awt.Dimension getPreferredSize() { return getMinimumSize(); }
-                                                public void paint(java.awt.Graphics g)
-                                                {
-                                                    drawPixmapCentered(g, getSize(), asciiToColor, panIcon);
-                                                }
-                                            {
-                                                addActionListener(new java.awt.event.ActionListener() {
-                                                    public void actionPerformed(java.awt.event.ActionEvent e)
-                                                    {
-                                                        applet.panDualOnly(panIncrs[iColFinal],
-                                                                           panIncrs[nRows-1-iRowFinal]);
-                                                    }
-                                                });
-                                            }}, stretchxy);
-                                        }
-                                        advanceRow();
-                                    }
-                                }});
-                            }});
+                                        applet.panDualOnly(panIncrs[iCol],
+                                                           panIncrs[panIncrs.length-1-iRow]);
 
+                                    }
+                                });
+                            }});
                         }});
                         add(new JCheckBox("Wrap around sphere", applet.wrapAroundSphereFlag.get()) {{
                                 addItemListener(new java.awt.event.ItemListener() {
@@ -2963,6 +3001,30 @@ public class ShephardsPlayApplet
                 System.out.println("load from file "+fileName+" failed:" + exc);            }
             System.out.println("done.");
         } // load
+
+        public void pan(double dx, double dy)
+        {
+            UndoItem.State before = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+            FORIDOWN(iVert, mesh.verts.size())
+            {
+                Mesh.Vertex vert = mesh.getVert(iVert);
+                vert.setxyh(vert.x()+dx,
+                            vert.y()+dy,
+                            vert.h());
+                // TODO: do it in hom space
+                /*
+                vert.setXYZW(vert.X(),
+                             vert.Y(),
+                             vert.Z(),
+                             vert.W());
+                */
+                assert(vert.momentAndArea == null);
+            }
+            dirtyDualMesh();
+            UndoItem.State after = new UndoItem.State(mesh, doContinuouslyDelaunayize.get(), doOptimize.get(), optimizationTypeIndex.get(), selectedTris, selectedDualVertIndices, theNet);
+            undoTreeSquirrel.Do(new UndoItem(before, after));
+            theCanvas.repaint();
+        } // rescaleDualOnly
 
         public void panDualOnly(double dx, double dy)
         {
@@ -10357,9 +10419,7 @@ OFF
                             // given:
                             //     tri verts i,j,k (j,k already with heights assigned)
                             //     target vert position v
-                            // figure out the proper height to give i.
-                            //     current vert v0
-                            //     tweaked vert v1
+                            // figure out the proper height to give tri vert i.
                             double v[] = answerVerts[iVert];
 
                             double v0[] = new double[2];
@@ -10397,8 +10457,9 @@ OFF
                                               shouldBeV, // put answer here
                                               false, // wrapAroundSphereFlag
                                               0.); // wrapSphereCurvature
-                            PRINTVEC(v);
-                            PRINTVEC(shouldBeV);
+                            //PRINTVEC(v);
+                            //PRINTVEC(shouldBeV);
+                            assert(VecMath.distsqrd(v,shouldBeV) <= 1e-3*1e-3); // fairly loose
                         }
                     }
 
@@ -16498,6 +16559,7 @@ OFF
 
         frame.setLocation(10, 10);
         frame.setSize(720, 745);
+        frame.setSize(720, 100);
 
         frame.setVisible(true);
 
