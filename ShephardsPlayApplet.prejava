@@ -6,7 +6,10 @@ and produce the dual diagrams with heights.
 BUGS:
 
   Single-lagoon-exit related:
-    - need gui for various params
+    - need uniform nice gui for various params
+    - dual vert numbering isn't sane (maybe nothing can be done about that...
+      I think they come out in order based on tri order,
+      which is based on edge order (rather than original tri order; that gets lost).
 
   Gui-related:
     - rearrange gui to make room for single-exit lagoon controls, somehow
@@ -1010,11 +1013,17 @@ public class ShephardsPlayApplet
                                 add(new JTextFieldForNumber(applet.singleExitLagoonVirtualN));
                             }});
                             add(new JRow() {{
-                                add(new JLabel("<html>after<br>apex:</html>"));
+                                add(new JLabel("<html>after<br>apex:</html>") {{
+                                    setToolTipText("number of dual verts after (on left of) apex");
+                                }});
                                 add(new JTextFieldForNumber(applet.singleExitLagoonNAfterApex));
-                                add(new JLabel("<html>before<br>apex:</html>"));
+                                add(new JLabel("<html>before<br>apex:</html>") {{
+                                    setToolTipText("number of dual verts before (on right of) apex");
+                                }});
                                 add(new JTextFieldForNumber(applet.singleExitLagoonNBeforeApex));
-                                add(new JLabel("<html>quill<br>slope:</html>"));
+                                add(new JLabel("<html>quill<br>slope:</html>") {{
+                                    setToolTipText("slope of quills: 0 means laying flat");
+                                }});
                                 add(new JTextFieldForNumber(applet.singleExitLagoonQuillSlopeNumerator));
                                 add(new JLabel("/"));
                                 add(new JTextFieldForNumber(applet.singleExitLagoonQuillSlopeDenominator));
@@ -1092,7 +1101,7 @@ public class ShephardsPlayApplet
                 final java.awt.Component theGridBrightnessLabel = new JLabel("Grid brightness:");
                 final java.awt.Component theGridBrightnessTextField = new JTextFieldForNumber(applet.gridBrightness);
                 final java.awt.Component theGridBrightnessSlider = new SliderForFloat(applet.gridBrightness);
-                final java.awt.Component theBackfaceBrightnessLabel = new JLabel("Primal backface brightness:");
+                final java.awt.Component theBackfaceBrightnessLabel = new JLabel("Backface brightness:");
                 final java.awt.Component theBackfaceBrightnessTextField = new JTextFieldForNumber(applet.backfaceBrightness);
                 final java.awt.Component theBackfaceBrightnessSlider = new SliderForFloat(applet.backfaceBrightness);
                 final java.awt.Component theWrapRadiusLabel = new JLabel("Wrap radius:") {{setEnabled(false);}};
@@ -10222,6 +10231,8 @@ OFF
             } // class GeneralOptimizationStuff
 
 
+            // Solid example of cc having y<0:
+            //    n=13.7 after=0 before=10 slope=1/5 (looks same synth and not, so reliable)
             private void doCannedThingSingleExitLagoonPolygon(double nVirtual,
                                                               double nBeforeApexVirtual,
                                                               double nAfterApexVirtual,
@@ -10251,17 +10262,6 @@ OFF
                 }
 
                 double quillLiftAngle = Math.atan(quillSlope);
-
-                //double quillLiftAngle = Math.atan(1/1.); // with avgSlopeAtApex=1. this is the threshold apparently, for large n equally distributed on both sides
-                //double quillLiftAngle = Math.atan(1/2.);
-                //double quillLiftAngle = Math.atan(1/2.5);
-                //double quillLiftAngle = Math.atan(1/3.);
-                //double quillLiftAngle = Math.atan(1/4.); // with avgSlopeAtApex=1, this is the threshold apparently, for large n all on one side
-                //double quillLiftAngle = Math.atan(1/5.);
-                //double quillLiftAngle = Math.atan(1/7.);
-                //double quillLiftAngle = Math.atan(1/10.);
-                //double quillLiftAngle = Math.atan(1/20.);
-                //double quillLiftAngle = 0.;               // with avgSlopeAtApex = 0, this is the threshold apparently, for large n all on one side.  NOTE this requires synthetic construction of dual, since it makes the tris infinite
 
                 double answer[][][] = SingleExitLagoonPolygonOptimizationStuff.constructSingleExitLagoonPolygon(nBeforeApex, quillLiftAngle, vertTurns);
                 double polyVerts[][] = answer[0];
@@ -10320,6 +10320,24 @@ OFF
                         finalFaces[0][3*i+1] = 2*i+1;
                         finalFaces[0][3*i+2] = 2*i;
                         finalFaces[1][i] = 2*(n-1-i);
+                    }
+
+                    // if we just pass in the x,y's,
+                    // they will get interpreted as h=0,
+                    // i.e. projected onto paraboloid, which isn't what we want;
+                    // we want the polygon to lie completely in the xy (z=0) plane.
+                    // so change to X,Y,Z,W representation.
+                    // Note that the quill ends won't be right
+                    // (they shouldn't be in the xy plane) but whatever...
+                    // that's actually a good thing since the whole reason for doing this
+                    // is for the case when curvatures are growing too quickly
+                    // or infinitely, in which case all the quills will point straight down anyway so that's not interesting.
+                    FORI (i, finalVerts.length)
+                    {
+                        finalVerts[i] = new double[] {finalVerts[i][0],
+                                                      finalVerts[i][1],
+                                                      0.,
+                                                      1.};
                     }
 
                     //PRINTARRAY(finalVerts);
@@ -10530,7 +10548,7 @@ OFF
                             double h = VecMath.dot(dv,   dv_dh)
                                      / VecMath.dot(dv_dh,dv_dh);
                             answerTriVerts[iTriVert] = Arrays.append(answerTriVerts[iTriVert], h);
-                            // check that we got the desired answer
+                            // check that we got the desired answer.
                             double shouldBeV[] = new double[2];
                             SolveForDualPoint(xi,yi,h,
                                               xj,yj,hj,
@@ -10540,6 +10558,7 @@ OFF
                                               0.); // wrapSphereCurvature
                             PRINTVEC(v);
                             PRINTVEC(shouldBeV);
+                            // bleah, the following fails a lot... it gets pretty inaccurate when tris diagram grows fast
                             //assert(VecMath.distsqrd(v,shouldBeV) <= 1e-3*1e-3); // fairly loose
                         }
                     }
