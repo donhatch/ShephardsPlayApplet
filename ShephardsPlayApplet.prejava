@@ -3101,17 +3101,20 @@ public class ShephardsPlayApplet
                                      dualVert.Y() * scaleX, // converse
                                      dualVert.Z() * scaleX * scaleY,
                                      dualVert.W());
-                    assert(dualVert.momentAndArea.length == 4);
+                    if (dualVert.momentAndArea != null) // it will be null in strange cases such as when I created it by hand in cannedThingSingleLagoonExitPolygon
+                    {
+                        assert(dualVert.momentAndArea.length == 4);
 
-                    // holy hell this is incredibly hard to get right!!
-                    dualVert.momentAndArea[2] -= .5 * (SQR(dualVert.momentAndArea[0]) + SQR(dualVert.momentAndArea[1])); // convert to "actual"
+                        // holy hell this is incredibly hard to get right!!
+                        dualVert.momentAndArea[2] -= .5 * (SQR(dualVert.momentAndArea[0]) + SQR(dualVert.momentAndArea[1])); // convert to "actual"
 
-                    dualVert.momentAndArea[0] *= SQR(scaleX) * scaleY;
-                    dualVert.momentAndArea[1] *= scaleX * SQR(scaleY);
-                    dualVert.momentAndArea[2] *= CUB(scaleX*scaleY);
-                    dualVert.momentAndArea[3] *= scaleX*scaleY;
+                        dualVert.momentAndArea[0] *= SQR(scaleX) * scaleY;
+                        dualVert.momentAndArea[1] *= scaleX * SQR(scaleY);
+                        dualVert.momentAndArea[2] *= CUB(scaleX*scaleY);
+                        dualVert.momentAndArea[3] *= scaleX*scaleY;
 
-                    dualVert.momentAndArea[2] += .5 * (SQR(dualVert.momentAndArea[0]) + SQR(dualVert.momentAndArea[1])); // convert from "actual"
+                        dualVert.momentAndArea[2] += .5 * (SQR(dualVert.momentAndArea[0]) + SQR(dualVert.momentAndArea[1])); // convert from "actual"
+                    }
                 }
 
                 // dual directions are now totally messed up... fix them
@@ -10191,14 +10194,21 @@ OFF
                 // Nice pictures (not sure why):
                 //    avgSlopeAtApex=1 quillLiftAngle=atan(1/1), equal distr
                 //    avgSlopeAtApex=1 quillLiftAngle=atan(1/4), all on one side
+                //    avgSlopeAtApex=2 quillLiftAngle=atan(1/1), all on one side
                 // Can we figure out one in terms of the other?
                 // Note, for small n, need small quill lift angle I think
+
+                // Counterexample (I THINK-- not sure stuff is exact) to cc having y>0:
+                //    avgSlopeAtApex = .9, quillLiftAngle = atan(1/4.), nBefore=20,nAfter=0
+                // And another example of cc being off in a funny dir:
+                //    avgSlopeAtApex = 2., quillLiftAngle = atan(1/4.), nBefore=19, nAfter=1
 
                 int nBeforeApex = 10;
                 int nAfterApex = 10;
                 int n = nBeforeApex + 1 + nAfterApex;
                 //double quillLiftAngle = Math.atan(1/1.); // with avgSlopeAtApex=1. this is the threshold apparently, for large n equally distributed on both sides
                 //double quillLiftAngle = Math.atan(1/2.);
+                //double quillLiftAngle = Math.atan(1/2.5);
                 //double quillLiftAngle = Math.atan(1/3.);
                 double quillLiftAngle = Math.atan(1/4.); // with avgSlopeAtApex=1, this is the threshold apparently, for large n all on one side
                 //double quillLiftAngle = Math.atan(1/5.);
@@ -10210,9 +10220,17 @@ OFF
 
                 if (true)
                 {
-                    double avgSlopeAtApex = 1/2.;
-                    double internalAngleAtApex = 2*Math.atan(1./avgSlopeAtApex);
-                    double apexTurnAngle = Math.PI-internalAngleAtApex  +  2*Math.PI/n; // add 2*Math.PI/n guarantees uniform when avgSlopeAtApex=0, so apex always gets at LEAST its original share
+                    // TODO: really need to think about this
+                    // and come up with a way that allows control
+                    // over where the verts are placed!
+
+                    // start with the slope at a vertex of a regular n-gon:
+                    // this guarantees apex gets *at least* its original share
+                    double excessSlopeAtApex = 6.6;
+                    double minSlopeAtApex = Math.tan((Math.PI/2-(Math.PI-2*Math.PI/n)/2));
+                    PRINT(minSlopeAtApex);
+                    double internalAngleAtApex = 2*Math.atan(1./(minSlopeAtApex+excessSlopeAtApex));
+                    double apexTurnAngle = Math.PI-internalAngleAtApex;
                     VecMath.fillvec(vertTurns, (2*Math.PI-apexTurnAngle)/(n-1));
                     vertTurns[nBeforeApex] = apexTurnAngle;
                 }
@@ -10226,6 +10244,7 @@ OFF
                 if (true)
                 {
                     double scale = 1./64;
+                    //double scale = 1./16;
                     VecMath.mxs(polyVerts, polyVerts, scale);
                     VecMath.mxs(trisVerts, trisVerts, scale);
                     FORI (i, trisVerts.length)
@@ -10457,9 +10476,9 @@ OFF
                                               shouldBeV, // put answer here
                                               false, // wrapAroundSphereFlag
                                               0.); // wrapSphereCurvature
-                            //PRINTVEC(v);
-                            //PRINTVEC(shouldBeV);
-                            assert(VecMath.distsqrd(v,shouldBeV) <= 1e-3*1e-3); // fairly loose
+                            PRINTVEC(v);
+                            PRINTVEC(shouldBeV);
+                            //assert(VecMath.distsqrd(v,shouldBeV) <= 1e-3*1e-3); // fairly loose
                         }
                     }
 
@@ -16559,7 +16578,6 @@ OFF
 
         frame.setLocation(10, 10);
         frame.setSize(720, 745);
-        frame.setSize(720, 100);
 
         frame.setVisible(true);
 
