@@ -7,7 +7,6 @@ BUGS:
 
   Single-lagoon-exit related:
     - need gui for various params
-    - nVirtual=7, after=2,before=2,quillslope=1/7, don't synthesize dual... why is apex off by 1 pixel??  window size = 708x374   hmm, the actual value is -1.144131440556283E-14 which seems reasonable... OH I see, x=0 is exactly between 2 pixels... the grid line arbitrarily got drawn to right of center, but the vertex is very slightly negative so it gets drawn left-of-center.  bleah!  is there any solution to this?? maybe antialiased points so they aren't sensitive to this?
 
   Gui-related:
     - rearrange gui to make room for single-exit lagoon controls, somehow
@@ -10358,7 +10357,6 @@ OFF
                     answerTriVerts[1][0] = 0.;
                     answerTriVerts[1][1] = -1.;
 
-
                     double beforeApexToApexDir[];
                     {
                         // compute the verts and quill dirs after the apex
@@ -10399,19 +10397,29 @@ OFF
 
                     double afterApexToApexDir[];
                     {
-                        // compute the verts after the apex
-                        double prevEdgeDirAng = Math.PI;
+                        // compute the verts after the apex.
+                        // do it using left-right-flipped angles,
+                        // so that in the case of mirror symmetry we'll get *exactly*
+                        // mirror images on left and right.
+                        // (this actually matters for nice display,
+                        // since if the top triangle edge is ever so slightly non-horizontal,
+                        // its dual vertex can be ever-so-slightly negative,
+                        // which, if canvas size is odd,
+                        // can end up to left of center line while grid y axis
+                        // is to right of center line.
+
+                        double prevEdgeDirAngBackwards = 0.;
                         double prevEdgeDir[] = {-1.,0.};
                         double prevVert[] = {1.,-1.}; // fake
                         for (int iVert = n-1; iVert > apex; --iVert)
                         {
-                            double nextEdgeDirAng = prevEdgeDirAng - vertTurns[iVert];
-                            double nextEdgeDir[] = {Math.cos(nextEdgeDirAng),Math.sin(nextEdgeDirAng)};
-                            double quillDirAng = nextEdgeDirAng + Math.PI - quillLiftAngle;
-                            answerQuillDirs[iVert][0] = Math.cos(quillDirAng);
-                            answerQuillDirs[iVert][1] = Math.sin(quillDirAng);
-                            double originToVertDirAng = quillDirAng - Math.PI/2;
-                            double originToVertDir[] = {Math.cos(originToVertDirAng),Math.sin(originToVertDirAng)};
+                            double nextEdgeDirAngBackwards = prevEdgeDirAngBackwards + vertTurns[iVert]; // + instead of -, since backwards
+                            double nextEdgeDir[] = {-Math.cos(nextEdgeDirAngBackwards),Math.sin(nextEdgeDirAngBackwards)};
+                            double quillDirAngBackwards = nextEdgeDirAngBackwards - Math.PI + quillLiftAngle;
+                            answerQuillDirs[iVert][0] = -Math.cos(quillDirAngBackwards);
+                            answerQuillDirs[iVert][1] = Math.sin(quillDirAngBackwards);
+                            double originToVertDirAngBackwards = quillDirAngBackwards + Math.PI/2;
+                            double originToVertDir[] = {-Math.cos(originToVertDirAngBackwards),Math.sin(originToVertDirAngBackwards)};
 
                             intersectLines(answerVerts[iVert],
                                            prevVert, prevEdgeDir,
@@ -10426,7 +10434,7 @@ OFF
 
                             // prepare for next iteration
                             prevVert = answerVerts[iVert];
-                            prevEdgeDirAng = nextEdgeDirAng;
+                            prevEdgeDirAngBackwards = nextEdgeDirAngBackwards;
                             prevEdgeDir = nextEdgeDir;
                         }
                         afterApexToApexDir = prevEdgeDir;
