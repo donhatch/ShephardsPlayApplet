@@ -76,6 +76,7 @@ BUGS:
       the backfacing edges are a nuisance.
 
   Misc:
+    - multiple models/views/controlpanels, like gimp and magiccube4d?
     - on cygwin, can I make it listen for ctrl-z on console, and suspend, just like vim does?
     - don't swap diagonals I can't see (back facing)
     - 'f' button assert-fails
@@ -394,7 +395,8 @@ public class ShephardsPlayApplet
         } // PrefixButtonGroup
 
         // http://tech-eureka.blogspot.com/2010/12/how-to-implement-repeating-swing.html
-        private static class JRepeatingButton extends JButton {
+        private static class JRepeatingButton extends JButton
+        {
             public JRepeatingButton(String text)
             {
                 super(text);
@@ -433,6 +435,81 @@ public class ShephardsPlayApplet
                 });
             }
         } // JRepeatingButton
+
+        // A textfield that turns green or red when editing and not yet committed
+        private static class JValidatingTextField extends JTextField
+        {
+            // subclass can override this
+            public boolean validate(String text)
+            {
+                return true; // it's all good by default
+            }
+
+            private String committedText;
+            public JValidatingTextField(String text)
+            {
+                super(text);
+                committedText = getText();
+
+                getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
+                    private void anyUpdate(javax.swing.event.DocumentEvent e)
+                    {
+                        if (!getText().equals(committedText)) // TODO: == doesn't work here?  I forget the difference
+                        {
+                            if (validate(getText()))
+                            {
+                                // TODO: if value semantically equals committed value, turn white instead.  hmm, can build this into validate() by having it return a value (Object), maybe?
+                                setBackground(new java.awt.Color(192,255,192)); // light green
+                            }
+                            else
+                                setBackground(new java.awt.Color(255,192,192)); // pink
+                        }
+                        else
+                            setBackground(java.awt.Color.white);
+                    }
+                    public void insertUpdate(javax.swing.event.DocumentEvent e)  {anyUpdate(e);}
+                    public void removeUpdate(javax.swing.event.DocumentEvent e)  {anyUpdate(e);}
+                    public void changedUpdate(javax.swing.event.DocumentEvent e) {anyUpdate(e);}
+                });
+                addActionListener(new java.awt.event.ActionListener() {
+                    public void actionPerformed(java.awt.event.ActionEvent e)
+                    {
+                        if (validate(getText()))
+                        {
+                            committedText = getText();
+                            setBackground(java.awt.Color.white);
+                        }
+                    }
+                });
+            }
+            public void setText(String text)
+            {
+                super.setText(text);
+                if (validate(getText()))
+                {
+                    committedText = getText();
+                    setBackground(java.awt.Color.white);
+                }
+            }
+        } // JValidatingTextField
+        private static class JNumberValidatingTextField extends JValidatingTextField
+        {
+            // override super's
+            public boolean validate(String text)
+            {
+                try {
+                    // attempt to parse, ignore return value
+                    Double.parseDouble(text);
+                    return true;
+                } catch (Exception e) {
+                    return false;
+                }
+            }
+            JNumberValidatingTextField(String text)
+            {
+                super(text);
+            }
+        } // JNumberValidatingTextField
 
         private abstract static class JTableOfPanIcons extends JTablePanel
         {
@@ -2343,7 +2420,7 @@ public class ShephardsPlayApplet
                 contentPane.add(new JLabel("Debug"));
                 add(new JRow() {{
                     add(new JLabel("        ")); // indent a bit
-                    add(new JCol() {{
+                    add(new JRow() {{
                         add(new JButton("Dump window positions and sizes") {{
                             setMargin(nomargin);
                             addActionListener(new java.awt.event.ActionListener() {
@@ -2356,6 +2433,34 @@ public class ShephardsPlayApplet
                                     System.out.println("----------------");
                                 }
                             });
+                        }});
+                        add(new JLabel("    "));
+                        add(new JRow() {{
+
+
+                            add(new JLabel("Window title:"));
+                            add(new JValidatingTextField("Shephards Play Applet") { // TODO: should get it from the main applet window... unfortunately that hasn't been created yet! maybe re-order the main routine so main applet window comes before control panel?
+                                public java.awt.Dimension getPreferredSize()
+                                {
+                                    java.awt.Dimension superSize = super.getPreferredSize();
+                                    // TODO: who owns it? can I tweak it and return it?
+                                    return new java.awt.Dimension(200, superSize.height);
+                                }
+                                // weird, getPreferredSize seems adequate when returning 100... but when returning 200, it turns to zero!? unless we also provide getMinimumSize
+                                public java.awt.Dimension getMinimumSize()
+                                {
+                                    return getPreferredSize();
+                                }
+                            {
+                                addActionListener(new java.awt.event.ActionListener() {
+                                    public void actionPerformed(java.awt.event.ActionEvent e)
+                                    {
+                                        System.out.println("Changing main window title to "+getText());
+                                        applet.theMainAppletWindow.setTitle(getText());
+                                        applet.theControlPanelWindow.setTitle(getText()+" Control Panel");
+                                    }
+                                });
+                            }});
                         }});
                     }});
                 }});
@@ -10231,8 +10336,11 @@ OFF
             } // class GeneralOptimizationStuff
 
 
-            // Solid example of cc having y<0:
-            //    n=13.7 after=0 before=10 slope=1/5 (looks same synth and not, so reliable)
+            // Solid example symmetric:
+            //           n=36 after=12 before=12 slope=1/1
+            // Solid examples of cc having y<0:
+            //    (best) n=13.7 after=0 before=10 slope=1/5 (looks same synth and not, so reliable)
+            //           n=10.98 after=0 before=8 slope=1/5 (looks same synth and not, so reliable)
             private void doCannedThingSingleExitLagoonPolygon(double nVirtual,
                                                               double nBeforeApexVirtual,
                                                               double nAfterApexVirtual,
@@ -16195,7 +16303,7 @@ OFF
 
 
     // Stolen from MC4DControlPanel.java
-    public static class JTextFieldForNumber extends JTextField
+    public static class JTextFieldForNumber extends JNumberValidatingTextField
     {
         private Listenable.Listener listener; // need to keep a strong ref to it for as long as I'm alive
 
