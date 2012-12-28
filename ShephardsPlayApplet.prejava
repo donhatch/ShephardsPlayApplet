@@ -9,7 +9,8 @@ BUGS:
     - need gui for various params
 
   Gui-related:
-    - pan buttons for whole thing
+    - rearrange gui to make room for single-exit lagoon controls, somehow
+    - textfield numbers don't actually change til Enter, can be misleading
     - Show Dual verts/edges not right
     - what the hell is the crap being drawn on the borders of the flip buttons?
     - don't use EXIT_ON_CLOSE if 1.2!! need to use reflection
@@ -980,20 +981,42 @@ public class ShephardsPlayApplet
                             }
                         });
                     }},
-                    new JButton("Single-Exit Lagoon") {{
-                        addActionListener(new java.awt.event.ActionListener() {
-                            public void actionPerformed(java.awt.event.ActionEvent e)
-                            {
-                                UndoItem.State before = new UndoItem.State(applet.mesh, applet.doContinuouslyDelaunayize.get(), applet.doOptimize.get(), applet.optimizationTypeIndex.get(), applet.selectedTris, applet.selectedDualVertIndices, applet.theNet);
+                    new JRow() {{
+                        add(new JButton("Single-Exit Lagoon") {{
+                            addActionListener(new java.awt.event.ActionListener() {
+                                public void actionPerformed(java.awt.event.ActionEvent e)
+                                {
+                                    UndoItem.State before = new UndoItem.State(applet.mesh, applet.doContinuouslyDelaunayize.get(), applet.doOptimize.get(), applet.optimizationTypeIndex.get(), applet.selectedTris, applet.selectedDualVertIndices, applet.theNet);
 
-                                applet.doCannedThingSingleExitLagoonPolygon();
+                                    applet.doCannedThingSingleExitLagoonPolygon(
+                                        applet.singleExitLagoonVirtualN.get(),
+                                        applet.singleExitLagoonNBeforeApex.get(),
+                                        applet.singleExitLagoonNAfterApex.get(),
+                                        applet.singleExitLagoonQuillSlopeNumerator.get()/applet.singleExitLagoonQuillSlopeDenominator.get());
 
-                                UndoItem.State after = new UndoItem.State(applet.mesh, applet.doContinuouslyDelaunayize.get(), applet.doOptimize.get(), applet.optimizationTypeIndex.get(), applet.selectedTris, applet.selectedDualVertIndices, applet.theNet);
-                                applet.undoTreeSquirrel.Do(new UndoItem(before, after));
+                                    UndoItem.State after = new UndoItem.State(applet.mesh, applet.doContinuouslyDelaunayize.get(), applet.doOptimize.get(), applet.optimizationTypeIndex.get(), applet.selectedTris, applet.selectedDualVertIndices, applet.theNet);
+                                    applet.undoTreeSquirrel.Do(new UndoItem(before, after));
 
-                                applet.theCanvas.repaint();
-                            }
-                        });
+                                    applet.theCanvas.repaint();
+                                }
+                            });
+                        }});
+                        add(new JCol() {{
+                            add(new JRow() {{
+                                add(new JLabel("nVirtual:"));
+                                add(new TextFieldForFloat(applet.singleExitLagoonVirtualN));
+                            }});
+                            add(new JRow() {{
+                                add(new JLabel("<html>after<br>apex:</html>"));
+                                add(new TextFieldForFloat(applet.singleExitLagoonNAfterApex));
+                                add(new JLabel("<html>before<br>apex:</html>"));
+                                add(new TextFieldForFloat(applet.singleExitLagoonNBeforeApex));
+                                add(new JLabel("<html>quill<br>slope:</html>"));
+                                add(new TextFieldForFloat(applet.singleExitLagoonQuillSlopeNumerator));
+                                add(new JLabel("/"));
+                                add(new TextFieldForFloat(applet.singleExitLagoonQuillSlopeDenominator));
+                            }});
+                        }});
                     }},
                     new JRow() {{
                         add(new JButton("Grid") {{
@@ -3459,7 +3482,11 @@ public class ShephardsPlayApplet
 
             load("DUMP.off");
 
-            doCannedThingSingleExitLagoonPolygon();
+            doCannedThingSingleExitLagoonPolygon(
+                singleExitLagoonVirtualN.get(),
+                singleExitLagoonNBeforeApex.get(),
+                singleExitLagoonNAfterApex.get(),
+                singleExitLagoonQuillSlopeNumerator.get()/singleExitLagoonQuillSlopeDenominator.get());
 
             if (eventVerbose >= 1) System.out.println("out init");
         } // init
@@ -10188,52 +10215,45 @@ OFF
             } // class GeneralOptimizationStuff
 
 
-            private void doCannedThingSingleExitLagoonPolygon()
+            private void doCannedThingSingleExitLagoonPolygon(double nVirtual,
+                                                              double nBeforeApexVirtual,
+                                                              double nAfterApexVirtual,
+                                                              double quillSlope)
             {
+                int n, nBeforeApex, nAfterApex;
+                double vertTurns[];
+                if (true)
+                {
+                    // must be > sum of others (sum+1 is regular polygon)
+                    // and < twice sum of others (half polygon with sharp cap)
+                    // although, this becomes less right when tilted and with small numbers...
+                    // tilt seems to require bigger virtual, in order to allow room for the mismatched ends to meet.  need to work this out.  in the limit (0 on one side), nVirtual seems to need to be 1.5 times nBefore so so.  (11->14, 16->20, ... ? hmm this seems rather ad-hoc)
+                    // interesting fact: with nbefore=3,nafter=0, optimal nVirtual seems to be around 5.5 (makes apex closest to origin). 4 is too small, 6 is too big. Although, 5 isn't bad and seems subjectively like a nicer picture.  this is all with quill lift = 0.
+                    //double nVirtual = 5.75;
+                    //double nBeforeApexVirtual = 3;
+                    //double nAfterApexVirtual = 0;
+                    nBeforeApex = (int)nBeforeApexVirtual;
+                    nAfterApex = (int)nAfterApexVirtual;
+                    n = nBeforeApex + nAfterApex + 1;
 
-                // Nice pictures (not sure why):
-                //    avgSlopeAtApex=1 quillLiftAngle=atan(1/1), equal distr
-                //    avgSlopeAtApex=1 quillLiftAngle=atan(1/4), all on one side
-                //    avgSlopeAtApex=2 quillLiftAngle=atan(1/1), all on one side
-                // Can we figure out one in terms of the other?
-                // Note, for small n, need small quill lift angle I think
+                    double allButApexTurn = 2*Math.PI/nVirtual;
+                    double apexTurn = 2*Math.PI - (n-1)*allButApexTurn;
+                    vertTurns = VecMath.fillvec(n, allButApexTurn);
+                    vertTurns[nBeforeApex] = apexTurn;
+                }
 
-                // Counterexample (I THINK-- not sure stuff is exact) to cc having y>0:
-                //    avgSlopeAtApex = .9, quillLiftAngle = atan(1/4.), nBefore=20,nAfter=0
-                // And another example of cc being off in a funny dir:
-                //    avgSlopeAtApex = 2., quillLiftAngle = atan(1/4.), nBefore=19, nAfter=1
+                double quillLiftAngle = Math.atan(quillSlope);
 
-                int nBeforeApex = 10;
-                int nAfterApex = 10;
-                int n = nBeforeApex + 1 + nAfterApex;
                 //double quillLiftAngle = Math.atan(1/1.); // with avgSlopeAtApex=1. this is the threshold apparently, for large n equally distributed on both sides
                 //double quillLiftAngle = Math.atan(1/2.);
                 //double quillLiftAngle = Math.atan(1/2.5);
                 //double quillLiftAngle = Math.atan(1/3.);
-                double quillLiftAngle = Math.atan(1/4.); // with avgSlopeAtApex=1, this is the threshold apparently, for large n all on one side
+                //double quillLiftAngle = Math.atan(1/4.); // with avgSlopeAtApex=1, this is the threshold apparently, for large n all on one side
                 //double quillLiftAngle = Math.atan(1/5.);
                 //double quillLiftAngle = Math.atan(1/7.);
+                //double quillLiftAngle = Math.atan(1/10.);
                 //double quillLiftAngle = Math.atan(1/20.);
-                //double quillLiftAngle = 0.;               // with avgSlopeAtApex = 0, this is the threshold apparently, for large n all on one side
-
-                double vertTurns[] = VecMath.fillvec(n, 2*Math.PI/n);
-
-                if (true)
-                {
-                    // TODO: really need to think about this
-                    // and come up with a way that allows control
-                    // over where the verts are placed!
-
-                    // start with the slope at a vertex of a regular n-gon:
-                    // this guarantees apex gets *at least* its original share
-                    double excessSlopeAtApex = 6.6;
-                    double minSlopeAtApex = Math.tan((Math.PI/2-(Math.PI-2*Math.PI/n)/2));
-                    PRINT(minSlopeAtApex);
-                    double internalAngleAtApex = 2*Math.atan(1./(minSlopeAtApex+excessSlopeAtApex));
-                    double apexTurnAngle = Math.PI-internalAngleAtApex;
-                    VecMath.fillvec(vertTurns, (2*Math.PI-apexTurnAngle)/(n-1));
-                    vertTurns[nBeforeApex] = apexTurnAngle;
-                }
+                //double quillLiftAngle = 0.;               // with avgSlopeAtApex = 0, this is the threshold apparently, for large n all on one side.  NOTE this requires synthetic construction of dual, since it makes the tris infinite
 
                 double answer[][][] = SingleExitLagoonPolygonOptimizationStuff.constructSingleExitLagoonPolygon(nBeforeApex, quillLiftAngle, vertTurns);
                 double polyVerts[][] = answer[0];
@@ -10267,11 +10287,12 @@ OFF
                     //PRINTARRAY(tris);
                     mesh = new Mesh(trisVerts, tris);
                 }
-                if (false)
+                if (true)
                 {
                     // see if I got the polygon right.
                     // force our idea of what the polygon should look like
                     // into the dual.
+                    // NOTE, if experimenting with liftAngle=0, this is necessary-- dual becomes infinite!
                     double finalVerts[][] = new double[2*n][];
                     int finalFaces[][] = {new int[3*n], new int[n]};
                     FORI (i, n)
@@ -10303,6 +10324,7 @@ OFF
                 {
                     System.out.println("    in constructSingleExitLagoonPolygon");
                     int n = vertTurns.length;
+                    int nAfterApex = n-1-nBeforeApex;
                     int apex = nBeforeApex;
 
                     PRINT(n);
@@ -10381,7 +10403,7 @@ OFF
 
 
                             double originToDualVertDir[] = VecMath.xv2(nextEdgeDir);
-                            double dualEdgeDir[] = VecMath.xv2(answerQuillDirs[iVert]); // actually reversed, but it doesn't matter
+                            double dualEdgeDir[] = VecMath.xv2(answerQuillDirs[iVert]); // actually reversed, but it doesn't matter, we only use it for intersection
                             intersectLines(answerTriVerts[iVert+1],
                                            answerTriVerts[((iVert+2)-1)%n+1], dualEdgeDir,
                                            origin, originToDualVertDir);
@@ -10402,7 +10424,21 @@ OFF
                     // Since we have the dual,
                     // we can now compute the apex quill direction
                     // as the perpendicular of the final dual edge.
-                    answerQuillDirs[apex] = VecMath.normalize(VecMath.xv2(VecMath.vmv(answerTriVerts[apex+1], answerTriVerts[((apex+2)-1)%n+1])));
+                    if (quillLiftAngle != 0.)
+                    {
+                        answerQuillDirs[apex] = VecMath.normalize(VecMath.xv2(VecMath.vmv(answerTriVerts[apex+1], answerTriVerts[((apex+2)-1)%n+1])));
+                    }
+                    else
+                    {
+                        // dual is degenerate and useless,
+                        // but in this case we can just pull the answer out of our hat.
+                        if (nBeforeApex > nAfterApex)
+                            answerQuillDirs[apex] = beforeApexToApexDir;
+                        else if (nAfterApex > nBeforeApex)
+                            answerQuillDirs[apex] = afterApexToApexDir;
+                        else // nBeforeApex == nAfterApex
+                            answerQuillDirs[apex] = new double[] {0,1}; // straight up
+                    }
 
 
                     //
@@ -15870,6 +15906,11 @@ OFF
         private Listenable.Double backfaceBrightness = new Listenable.Double(0.,1., .25);
         private Listenable.Int gridN = new Listenable.Int(0,1000,10);
         private Listenable.Int blueNoiseN = new Listenable.Int(0,1000,10);
+        private Listenable.Double singleExitLagoonVirtualN = new Listenable.Double(0.,100.,5);
+        private Listenable.Double singleExitLagoonNBeforeApex = new Listenable.Double(0.,100.,2);
+        private Listenable.Double singleExitLagoonNAfterApex = new Listenable.Double(0.,100.,2);
+        private Listenable.Double singleExitLagoonQuillSlopeNumerator = new Listenable.Double(0.,1000.,1.);
+        private Listenable.Double singleExitLagoonQuillSlopeDenominator = new Listenable.Double(1.,1000.,1.);
 
         private Surface.Sphere theSphereSurface = new Surface.Sphere(new double[]{0,0,centerSphere ? 0. : -1./wrapSphereCurvature.get()}, 1./wrapSphereCurvature.get());
         private Surface.Paraboloid theParaboloidSurface = new Surface.Paraboloid(-.5);
@@ -16578,6 +16619,7 @@ OFF
 
         frame.setLocation(10, 10);
         frame.setSize(720, 745);
+        frame.setSize(300,300);
 
         frame.setVisible(true);
 
