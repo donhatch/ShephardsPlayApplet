@@ -1073,7 +1073,8 @@ public class ShephardsPlayApplet
                                         applet.singleExitLagoonVirtualN.get(),
                                         applet.singleExitLagoonNBeforeApex.get(),
                                         applet.singleExitLagoonNAfterApex.get(),
-                                        applet.singleExitLagoonQuillSlopeNumerator.get()/applet.singleExitLagoonQuillSlopeDenominator.get(),
+                                        applet.singleExitLagoonQuillSlopeNumerator.get(),
+                                        applet.singleExitLagoonQuillSlopeDenominator.get(),
                                         applet.singleExitLagoonSynthesizeExactDualFlag.get());
 
                                     UndoItem.State after = new UndoItem.State(applet.mesh, applet.doContinuouslyDelaunayize.get(), applet.doOptimize.get(), applet.optimizationTypeIndex.get(), applet.selectedTris, applet.selectedDualVertIndices, applet.theNet);
@@ -3605,7 +3606,8 @@ public class ShephardsPlayApplet
                 singleExitLagoonVirtualN.get(),
                 singleExitLagoonNBeforeApex.get(),
                 singleExitLagoonNAfterApex.get(),
-                singleExitLagoonQuillSlopeNumerator.get()/singleExitLagoonQuillSlopeDenominator.get(),
+                singleExitLagoonQuillSlopeNumerator.get(),
+                singleExitLagoonQuillSlopeDenominator.get(),
                 singleExitLagoonSynthesizeExactDualFlag.get());
 
             if (eventVerbose >= 1) System.out.println("out init");
@@ -10345,7 +10347,8 @@ OFF
             private void doCannedThingSingleExitLagoonPolygon(double nVirtual,
                                                               double nBeforeApexVirtual,
                                                               double nAfterApexVirtual,
-                                                              double quillSlope,
+                                                              double quillSlopeNumerator,
+                                                              double quillSlopeDenominator,
                                                               boolean synthesizeExactDual)
             {
                 int n, nBeforeApex, nAfterApex;
@@ -10370,7 +10373,14 @@ OFF
                     vertTurns[nBeforeApex] = apexTurn;
                 }
 
-                double quillLiftAngle = Math.atan(quillSlope);
+                // convert quill slope to angle in range [0,pi/2]
+                // and then rescale to range [(2pi/n)/2, pi/2 - (2pi/n)/2]
+                // and then subtract pi/2 - (2pi/n)/2...
+                // i.e. scale to [0, pi/2 - 2pi/n].
+                double quillLiftAngle = Math.atan2(quillSlopeNumerator,
+                                                   quillSlopeDenominator)
+                                      * (Math.PI/2-2*Math.PI/nVirtual)/(Math.PI/2);
+
 
                 double answer[][][] = SingleExitLagoonPolygonOptimizationStuff.constructSingleExitLagoonPolygon(nBeforeApex, quillLiftAngle, vertTurns);
                 double polyVerts[][] = answer[0];
@@ -10382,19 +10392,22 @@ OFF
                 {
                     // scale by a power of 2 til y range of primal fits in the window
                     double scale = 1.;
-                    double maxY = 1.;
+                    double maxY = 0.;
                     FORI (i, polyVerts.length)
                         maxY = MAX(maxY, ABS(polyVerts[i][1]));
                     PRINT(maxY);
-                    while (scale*maxY <= .5)
-                        scale *= 2;
-                    while (scale*maxY > 1.)
-                        scale *= .5;
-                    PRINT(scale);
-                    VecMath.mxs(polyVerts, polyVerts, scale);
-                    VecMath.mxs(trisVerts, trisVerts, scale);
-                    FORI (i, trisVerts.length)
-                        trisVerts[i][2] *= scale; // h gets scaled by scale*scale
+                    if (maxY != 0. && maxY != Double.POSITIVE_INFINITY)
+                    {
+                        while (scale*maxY <= .5)
+                            scale *= 2;
+                        while (scale*maxY > 1.)
+                            scale *= .5;
+                        PRINT(scale);
+                        VecMath.mxs(polyVerts, polyVerts, scale);
+                        VecMath.mxs(trisVerts, trisVerts, scale);
+                        FORI (i, trisVerts.length)
+                            trisVerts[i][2] *= scale; // h gets scaled by scale*scale
+                    }
                 }
 
 
