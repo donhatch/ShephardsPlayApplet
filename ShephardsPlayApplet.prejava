@@ -9252,12 +9252,25 @@ public class ShephardsPlayApplet
                 double magic = 1.6165;
                 double overlappingDiskRadiusX = magic/n;
                 double overlappingDiskRadiusY = magic/n;
-                double verts[][] = generateBlueNoiseOnUnitSquare(stubbornness,
-                                                                 overlappingDiskRadiusX,
-                                                                 overlappingDiskRadiusY);
-                VecMath.mmv(verts, verts, new double[]{.5,.5});
-                FORI (iVert, verts.length)
-                    verts[iVert] = (double[])Arrays.append(verts[iVert], 0.); // make room for heights
+                double verts[][];
+                if (wrapAroundSphereFlag.get())
+                {
+                    verts = generateBlueNoiseOnUnitSphere(stubbornness,
+                                                          overlappingDiskRadiusX);
+                    if (!centerSphere)
+                        VecMath.mmv(verts, verts, new double[]{0,0,1./wrapSphereCurvature.get()});
+                    FORI (iVert, verts.length)
+                        verts[iVert] = (double[])Arrays.append(verts[iVert], 1.); // X,Y,Z,W, not x,y,h
+                }
+                else
+                {
+                    verts = generateBlueNoiseOnUnitSquare(stubbornness,
+                                                          overlappingDiskRadiusX,
+                                                          overlappingDiskRadiusY);
+                    VecMath.mmv(verts, verts, new double[]{.5,.5});
+                    FORI (iVert, verts.length)
+                        verts[iVert] = (double[])Arrays.append(verts[iVert], 0.); // make room for heights
+                }
                 mesh = new Mesh(verts, new int[][]{});
             } // doBlueNoiseThing
 
@@ -14725,6 +14738,54 @@ OFF
 
 
 
+
+        private static java.util.Random randomNumberGenerator = new java.util.Random(0); // not good form to share this
+        private static double[][] generateBlueNoiseOnUnitSphere(double stubbornness,
+                                                                double overlappingDiskRadius) // radius of disks that half-overlap.  this is twice the radius of disks that don't overlap.
+        {
+            // disk radius is in radians, on surface of unit sphere.
+            // convert to linear separation.
+            double minSeparation = 2*Math.sin(.5*overlappingDiskRadius);
+            double minSeparationSqrd = SQR(minSeparation);
+
+            double samples[][] = new double[10][];
+            double sample[] = new double[3];
+            int nSuccesses = 0;
+            int nTries;
+            for (nTries = 0;
+                 nTries==0
+              || nTries < nSuccesses * stubbornness; // first one is guaranteed to be a success
+                 ++nTries)
+            {
+                do
+                    VecMath.random(sample, randomNumberGenerator);
+                while (VecMath.normsqrd(sample) > .5*.5);
+                VecMath.normalize(sample, sample);
+
+                // is it within minSeparation of any previous sample?
+                // TODO: use an octree instead of linear search!
+                int iSample;
+                FOR (iSample, nSuccesses)
+                {
+                    if (VecMath.distsqrd(sample, samples[iSample]) < minSeparationSqrd)
+                        break; // no good
+                }
+
+                if (iSample == nSuccesses)
+                {
+                    // it's good!
+                    if (samples.length == nSuccesses)
+                    {
+                        double newSamples[][] = new double[samples.length*2][];
+                        FORI (jSample, nSuccesses)
+                            newSamples[jSample] = samples[jSample];
+                        samples = newSamples;
+                    }
+                    samples[nSuccesses++] = VecMath.copyvec(sample);
+                }
+            }
+            return (double[][])Arrays.subarray(samples, 0, nSuccesses);
+        } // generateBlueNoiseOnUnitSphere
 
         private static double[][] generateBlueNoiseOnUnitSquare(double stubbornness,
                                                                 double overlappingDiskRadiusX,
