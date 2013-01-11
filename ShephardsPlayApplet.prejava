@@ -4449,6 +4449,8 @@ public class ShephardsPlayApplet
                             //
                             beingDraggedVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1],mostRecentGraphics);
                             PRINT(beingDraggedVertIndex);
+                            int oldToNew[] = VecMath.identityperm(mesh.verts.size());
+                            int newToOld[] = VecMath.identityperm(mesh.verts.size());
                             if (beingDraggedVertIndex != -1)
                             {
                                 Mesh.Vertex beingDraggedVert = mesh.getVert(beingDraggedVertIndex);
@@ -4456,17 +4458,19 @@ public class ShephardsPlayApplet
                                 double group[][][] = getTheSymmetryGroup();
                                 Mesh.Vertex vertsToDelete[] = findAllVertsThatAreImages(mesh, v, group, 1e-6);
                                 FORI (iVertToDelete, vertsToDelete.length)
-                                    mesh.deleteVertex(vertsToDelete[iVertToDelete]);
+                                    mesh.deleteVertex(vertsToDelete[iVertToDelete], oldToNew, newToOld);
                             }
                             beingDraggedVertIndex = -1;
 
-                            // vertices got re-ordered, so we must clear the selection (for now).
-                            // XXX this can be improved maybe
-                            if (true)
+                            // re-index selectedTris and invalidate selectedDualVertIndices
+                            if (!allDualVertsAreSelected)
                             {
-                                selectedTris = new int[][] {};
-                                selectedDualVertIndices = new int[] {};
-                                allDualVertsAreSelected = false;
+                                selectedDualVertIndices = new int[] {}; // TODO: maybe shouldn't even be a member var, it's too volatile
+                                // re-index selectedTris using oldToNew.
+                                // indices of verts that disappeared will turn into -1.
+
+                                //Arrays.getMany(selectedTris, oldToNew, selectedTris); // TODO: use this when it exists
+                                selectedTris = (int[][])Arrays.getMany(oldToNew, selectedTris);
                             }
 
                             // deleted something-- invalidate dual mesh
@@ -13023,7 +13027,7 @@ OFF
                 e.opposite()._initialVertex.arity--;
                 e.opposite()._initialVertex = null;
             }
-            public void deleteVertex(Vertex v)
+            public void deleteVertex(Vertex v, int oldToNew[], int newToOld[])
             {
                 FORI (iEdge, edges.size())
                 {
@@ -13039,8 +13043,26 @@ OFF
                 int iVert = v.myIndex();
                 verts.remove(iVert);
                 fixVertIndices(iVert);
+
                 // XXX should we do the fast remove, moving the last one into the slot?  well, is there an advantage to keeping the vertices in order?  Probably.
-            }
+
+                // adjust oldToNew and newToOld, assuming *not* fastRemove
+                if (oldToNew != null)
+                {
+                    assert(newToOld != null);
+                    int nVertsNew = verts.size();
+                    oldToNew[newToOld[iVert]] = -1; // using previous newToOld values
+                    for (int jVert = iVert; jVert < nVertsNew; ++jVert)
+                        oldToNew[newToOld[jVert+1]] = jVert; // using previous newToOld values
+                }
+                if (newToOld != null)
+                {
+                    int nVertsNew = verts.size();
+                    for (int jVert = iVert; jVert < nVertsNew; ++jVert)
+                        newToOld[jVert] = newToOld[jVert+1];
+                    newToOld[nVertsNew] = -1;
+                }
+            } // deleteVertex
 
             // XXX TODO: this shouldn't need graphics, just the xform
             public int indexOfClosestVert(double x, double y, MyGraphics3D mg)
@@ -15466,7 +15488,7 @@ OFF
                     this.selectedTris = (int[][])Arrays.copy(selectedTris, 2);
                     this.selectedDualVertIndices = VecMath.copyvec(selectedDualVertIndices);
                     allDualVertsAreSelected = false; // TODO: fix!
-                    System.out.println("WARNING! not restoring allDualVertsAreSelected");
+                    System.out.println("WARNING! not putting allDualVertsAreSelected in UndoItem properly!");
                     this.allDualVertsAreSelected = allDualVertsAreSelected;
                     this.netEdgeStatuses = (net==null ? null : VecMath.copyvec(net._edgeStatuses));
                 }
