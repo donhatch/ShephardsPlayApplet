@@ -72,6 +72,7 @@ BUGS:
     - smart orientations not working for negative dual parts-- ends up opposite smallest instead of at largest, I think
 
   Inside-outedness-related:
+    - net flow doesn't work when delaunayized with "calc underside when delaunayizing"
     - I think I do need an option to exclude back faces, or combine them, when delaunayizing--
       the backfacing edges are a nuisance.
 
@@ -7140,8 +7141,8 @@ public class ShephardsPlayApplet
                                         if (dualVertIndexToParentEdge[triCenterDualVert.myIndex()] != null)
                                             continue; // definitely already did this vertex  XXX but root vertex stays null so it will be done 3 times :-(
                                         double triCenterDualVertPos[] = {
-                                            triCenterDualVert.Xnaive(),
-                                            triCenterDualVert.Ynaive(),
+                                            triCenterDualVert.x(),
+                                            triCenterDualVert.y(),
                                         };
 
                                         Mesh.Edge e0 = mesh.getEdge(iEdge);
@@ -7228,9 +7229,10 @@ public class ShephardsPlayApplet
 
                                         if (false) // set this to true to debug
                                         {
+                                            PRINTARRAY(triCenterDualVert);
                                             double whereToDrawMark[] = {
-                                                triCenterDualVert.Xnaive() + .05 * threeDirections[bestSide][0],
-                                                triCenterDualVert.Ynaive() + .05 * threeDirections[bestSide][1],
+                                                triCenterDualVert.x() + .05 * threeDirections[bestSide][0],
+                                                triCenterDualVert.y() + .05 * threeDirections[bestSide][1],
                                             };
                                             mg.drawPoint(whereToDrawMark[0],
                                                          whereToDrawMark[1],
@@ -13096,16 +13098,16 @@ OFF
                     double thisDistSqrd =
                         edge.initialVertex() == null ? Double.POSITIVE_INFINITY : // no need to deal with edges whose initial vertex is NULL and final vertex isn't, since we'll encounter its opposite anyway
                         edge.finalVertex() == null ? distSqrdFromPointToRay(x,y,
-                                                                            edge.initialVertex().Xnaive(),
-                                                                            edge.initialVertex().Ynaive(),
+                                                                            edge.initialVertex().x(),
+                                                                            edge.initialVertex().y(),
                                                                             edge.direction[0],
                                                                             edge.direction[1]) :
                         edge.initialVertex().myIndex() > edge.finalVertex().myIndex() ? Double.POSITIVE_INFINITY
                                                     : distSqrdFromPointToSeg(x,y,
-                                                                             edge.initialVertex().Xnaive(),
-                                                                             edge.initialVertex().Ynaive(),
-                                                                             edge.finalVertex().Xnaive(),
-                                                                             edge.finalVertex().Ynaive());
+                                                                             edge.initialVertex().x(),
+                                                                             edge.initialVertex().y(),
+                                                                             edge.finalVertex().x(),
+                                                                             edge.finalVertex().y());
                     if (thisDistSqrd < closestDistSqrd)
                     {
                         closestDistSqrd = thisDistSqrd;
@@ -13122,11 +13124,11 @@ OFF
                     {
                         Vertex v0 = edge.initialVertex();
                         Vertex v1 = edge.finalVertex();
-                        edgeDirection = new double[]{v1.Xnaive()-v0.Xnaive(), v1.Ynaive()-v0.Ynaive()};
+                        edgeDirection = new double[]{v1.x()-v0.x(), v1.y()-v0.y()};
                     }
                     Vertex v = edge.initialVertex();
                     if (v == null) v = edge.finalVertex();
-                    double vToPoint[] = {point[0]-v.Xnaive(), point[1]-v.Ynaive()};
+                    double vToPoint[] = {point[0]-v.x(), point[1]-v.y()};
                     if (VecMath.vxv2(edgeDirection, vToPoint) * (isDualMesh ? -1. : 1.) < 0.)
                     {
                         closestEdgeIndex = edge.opposite().myIndex();
@@ -15479,7 +15481,7 @@ OFF
                 public int selectedDualVertIndices[];
                 public boolean allDualVertsAreSelected;
                 public int netEdgeStatuses[];
-                public State(Mesh mesh, boolean doContinuouslyDelaunayize, boolean doOptimize, int optimizationTypeIndex, int selectedTris[][], int selectedDualVertIndices[], Net net)
+                public State(Mesh mesh, boolean doContinuouslyDelaunayize, boolean doOptimize, int optimizationTypeIndex, int selectedTris[][], int selectedDualVertIndices[], boolean allDualVertsAreSelected, Net net)
                 {
                     this.mesh = new Mesh(mesh);
                     this.doContinuouslyDelaunayize = doContinuouslyDelaunayize;
@@ -15487,8 +15489,6 @@ OFF
                     this.optimizationTypeIndex = optimizationTypeIndex;
                     this.selectedTris = (int[][])Arrays.copy(selectedTris, 2);
                     this.selectedDualVertIndices = VecMath.copyvec(selectedDualVertIndices);
-                    allDualVertsAreSelected = false; // TODO: fix!
-                    System.out.println("WARNING! not putting allDualVertsAreSelected in UndoItem properly!");
                     this.allDualVertsAreSelected = allDualVertsAreSelected;
                     this.netEdgeStatuses = (net==null ? null : VecMath.copyvec(net._edgeStatuses));
                 }
@@ -15510,6 +15510,7 @@ OFF
                                       optimizationTypeIndex.get(),
                                       selectedTris,
                                       selectedDualVertIndices,
+                                      allDualVertsAreSelected,
                                       theNet);
         } // newUndoItemState
 
