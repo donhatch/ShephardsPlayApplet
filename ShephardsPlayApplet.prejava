@@ -109,8 +109,9 @@ BUGS:
     - use exact group calculation rather than generateVertices when adding a point
 
 TO DO:
+    - use vert.arity to determine arity, silly
     - highlight vert when close enough to pick it?
-    - get rid of all calcInsideOutDualVertsFlag=false code, can always calculate them
+    - get rid of all calcInsideOutDualVertsFlag=false code, just always calculate them (I think)
     - really need a concept of separate viewing matrix,
       that can be changed without accumulating rounding error in the verts
     - thank about attaching a listener to a tuple of values, so they just get one callback when multiple values changed?
@@ -129,7 +130,6 @@ TO DO:
     - need a way to ask where remaining bad lagoon exits are (finding them visually
       is a needle in a haystack sometimes)
     - change ambiguous doThis and doThat to this(), that(), thisFlag, thatFlag?
-    - time to show in 3d I think (project onto actual paraboloid)
     - I think I can get rid of the mesh x,y,h
       and have just have the momentAndArea
       (call it coords? not sure)
@@ -7030,6 +7030,7 @@ public class ShephardsPlayApplet
                                 int netMethodValue = netMethod.get();
                                 if (netMethodValue == NETMETHOD_RANDOM)
                                 {
+                                    // don't be verbose about net if animating, that would be too much
                                     boolean netVerboseFlag = !(showNetFlag.get() && showNetFlowFlag.get());
                                     if (netVerboseFlag)
                                         System.out.println("   computing random net");
@@ -7144,6 +7145,8 @@ public class ShephardsPlayApplet
                                         Mesh.Vertex triCenterDualVert = (dualMesh.getEdge(iEdge)).finalVertex();
                                         if (triCenterDualVert == null)
                                             continue; // primal face was not a triangle, or inside out
+                                        if (triCenterDualVert.weight < 0.)
+                                            continue; // primal face is on underside (if calculated underside), i.e. inside out
                                         if (dualVertIndexToParentEdge[triCenterDualVert.myIndex()] != null)
                                             continue; // definitely already did this vertex  XXX but root vertex stays null so it will be done 3 times :-(
                                         double triCenterDualVertPos[] = {
@@ -8091,8 +8094,8 @@ public class ShephardsPlayApplet
                                     if (parent != null)
                                     {
                                         int iParent = parent.myIndex();
-                                        double dx = child.Xnaive() - parent.Xnaive();
-                                        double dy = child.Ynaive() - parent.Ynaive();
+                                        double dx = child.x() - parent.x();
+                                        double dy = child.y() - parent.y();
                                         norm2s[iChild] = norm2s[iParent] + MyMath.hypot(dx,dy);
                                         normInfs[iChild] = normInfs[iParent] + MAX(dx,dy);
                                     }
@@ -8132,10 +8135,10 @@ public class ShephardsPlayApplet
                                         for (double pos = pos0; LEQ(pos, norm2s[iChild], 1e-6); pos += step)
                                         {
                                             double t = (pos-norm2s[iParent])/(norm2s[iChild]-norm2s[iParent]);
-                                            double x = LERP(parent.Xnaive(), child.Xnaive(), t);
-                                            double y = LERP(parent.Ynaive(), child.Ynaive(), t);
-                                            double h = LERP(parent.Znaive(), child.Znaive(), t);
-                                            mg.drawPoint(x, y, h, 3);
+                                            double x = LERP(parent.x(), child.x(), t);
+                                            double y = LERP(parent.y(), child.y(), t);
+                                            double z = LERP(parent.z(), child.z(), t);
+                                            mg.drawPoint(x, y, z, 3);
                                         }
                                     }
                                     else
@@ -8147,10 +8150,10 @@ public class ShephardsPlayApplet
                                             pos0 -= step;
                                         for (double pos = pos0; GEQ(pos, -rayLength, 1e-6); pos -= step)
                                         {
-                                            double x = child.Xnaive() - pos * parentEdge.direction[0];
-                                            double y = child.Ynaive() - pos * parentEdge.direction[1];
-                                            double h = child.Znaive() - pos * parentEdge.direction[2];
-                                            mg.drawPoint(x, y, h, 3);
+                                            double x = child.x() - pos * parentEdge.direction[0];
+                                            double y = child.y() - pos * parentEdge.direction[1];
+                                            double z = child.z() - pos * parentEdge.direction[2];
+                                            mg.drawPoint(x, y, z, 3);
                                         }
                                     }
                                 }
@@ -8203,6 +8206,8 @@ public class ShephardsPlayApplet
                                 Mesh.Vertex triCenterDualVert = (dualMesh.getEdge(iEdge)).finalVertex();
                                 if (triCenterDualVert == null)
                                     continue; // primary face was not a triangle, or inside out
+                                if (triCenterDualVert.weight < 0.)
+                                    continue; // primal face is on underside (if calculated underside), i.e. inside out
 
                                 Mesh.Edge e0 = mesh.getEdge(iEdge);
                                 Mesh.Edge e1 = e0.next();
@@ -8244,6 +8249,8 @@ public class ShephardsPlayApplet
                                 Mesh.Vertex triCenterDualVert = (dualMesh.getEdge(iEdge)).finalVertex();
                                 if (triCenterDualVert == null)
                                     continue; // primary face was not a triangle, or inside out
+                                if (triCenterDualVert.weight < 0.)
+                                    continue; // primal face is on underside (if calculated underside), i.e. inside out
 
                                 Mesh.Edge e0 = mesh.getEdge(iEdge);
                                 Mesh.Edge e1 = e0.next();
@@ -14510,10 +14517,13 @@ OFF
             // This can be called after all edges
             // have been cut or folded.
             // Sets and populates _vertToParentEdgeInd and _topSortedVertInds.
-            // _vertToParentEdgeInd[iVert] will point from iVert towards the root.
+            // _vertToParentEdgeInd[iVert] will point from iVert towards the root vertex.
             // _topSortedVertInds is in order from root to leafs.
+            // root==mesh.verts.size() means root is the infinite end of all the infinite edges.
             public void chooseDirections(int root)
             {
+                System.out.println("    in chooseDirections");
+                PRINT(root);
                 assert(_nUndecideds == 0);
 
                 int nEdges = _mesh.edges.size();
@@ -14526,7 +14536,7 @@ OFF
                         {
                             Mesh.Edge edge = _mesh.getEdge(iEdge);
                             Mesh.Vertex v0 = edge.initialVertex();
-                            int i0 = (v0!=null ? v0.myIndex() : nVerts);
+                            int i0 = (v0!=null&&v0.weight>0 ? v0.myIndex() : nVerts);
                             nCutsOut[i0]++;
                         }
                     FORI (iVert, cutsOut.length)
@@ -14539,7 +14549,7 @@ OFF
                         {
                             Mesh.Edge edge = _mesh.getEdge(iEdge);
                             Mesh.Vertex v0 = edge.initialVertex();
-                            int i0 = (v0!=null ? v0.myIndex() : nVerts);
+                            int i0 = (v0!=null&&v0.weight>0 ? v0.myIndex() : nVerts);
                             cutsOut[i0][nCutsOut[i0]++] = edge;
                         }
                     FORI (iVert, cutsOut.length)
@@ -14569,8 +14579,14 @@ OFF
                         }
                     }
                 }
+                PRINTARRAY(isSorted);
+                PRINTARRAY(_topSortedVertInds);
+                PRINTARRAY(_vertToParentEdgeInd);
+                PRINT(nVerts);
+                PRINT(nSorted);
                 assert(nSorted == nVerts+1);
 
+                System.out.println("    out chooseDirections");
             } // chooseDirections
 
             // Walk around the boundary of the tree,
