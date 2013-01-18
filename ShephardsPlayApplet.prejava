@@ -2198,7 +2198,7 @@ public class ShephardsPlayApplet
                                                     if (applet.wrapAroundSphereFlag.get())
                                                     {
                                                         applet.theSurface = applet.theSphereSurface;
-                                                        applet.wrapAroundSphere(applet.wrapSphereCurvature.get());
+                                                        applet.wrapAroundSphere(applet.wrapSphereCurvature.get(), applet.centerSphereFlag.get());
                                                         theWrapRadiusLabel.setEnabled(true);
                                                         theWrapRadiusTextField.setEnabled(true);
                                                         theWrapRadiusSlider.setEnabled(true);
@@ -2206,7 +2206,7 @@ public class ShephardsPlayApplet
                                                     else
                                                     {
                                                         applet.theSurface = applet.theParaboloidSurface;
-                                                        applet.unwrapAroundSphere(applet.wrapSphereCurvature.get());
+                                                        applet.unwrapAroundSphere(applet.wrapSphereCurvature.get(), applet.centerSphereFlag.get());
                                                         theWrapRadiusLabel.setEnabled(false);
                                                         theWrapRadiusTextField.setEnabled(false);
                                                         theWrapRadiusSlider.setEnabled(false);
@@ -2907,8 +2907,8 @@ public class ShephardsPlayApplet
 
                     if (wrapAroundSphereFlag.get())
                     {
-                        unwrapAroundSphere(previousValue);
-                        wrapAroundSphere(currentValue);
+                        unwrapAroundSphere(previousValue, centerSphereFlag.get());
+                        wrapAroundSphere(currentValue, centerSphereFlag.get());
                         theCanvas.repaint();
                     }
 
@@ -2934,6 +2934,8 @@ public class ShephardsPlayApplet
 
                     if (wrapAroundSphereFlag.get())
                     {
+                        unwrapAroundSphere(wrapSphereCurvature.get(), previousValue);
+                        wrapAroundSphere(wrapSphereCurvature.get(), currentValue);
                         theCanvas.repaint();
                     }
 
@@ -3725,16 +3727,16 @@ public class ShephardsPlayApplet
 
 
         // wrap from parabola to sphere
-        private void wrapAroundSphere(double wrapSphereCurvature)
+        private void wrapAroundSphere(double wrapSphereCurvature, boolean centerSphereFlag)
         {
-            xformTheMesh(getWrapAroundSphereMatrix(wrapSphereCurvature, centerSphereFlag.get()));
+            xformTheMesh(getWrapAroundSphereMatrix(wrapSphereCurvature, centerSphereFlag));
         } // wrapAroundSphere
 
 
         // unwrap from sphere to parabola
-        private void unwrapAroundSphere(double wrapSphereCurvature)
+        private void unwrapAroundSphere(double wrapSphereCurvature, boolean centerSphereFlag)
         {
-            xformTheMesh(getUnwrapAroundSphereMatrix(wrapSphereCurvature, centerSphereFlag.get()));
+            xformTheMesh(getUnwrapAroundSphereMatrix(wrapSphereCurvature, centerSphereFlag));
         } // unwrapAroundSphere
 
         private void xformTheMesh(double mat[/*4*/][/*4*/])
@@ -15769,7 +15771,7 @@ OFF
             double XA = -Y2*H1 + Y1*H2;
             double YA =  X2*H1 - X1*H2;
 
-            // to convert from local virtual coord space to global virtual coord space:
+            // to convert from local actual coord space to global actual coord space:
             //         x = x0 + X
             //           = x0 + XA/A
             //   so  x*A = (x0 + XA/A)*A
@@ -15932,11 +15934,11 @@ OFF
         private static void accumulateMomentAndArea(double accumulator[/*3 or 4*/],
                                                     double increment[/*3 or 4*/])
         {
-            accumulator[0] += increment[0]; // x/A
-            accumulator[1] += increment[1]; // y/A
+            accumulator[0] += increment[0]; // x*A
+            accumulator[1] += increment[1]; // y*A
             if (accumulator.length == 4
              && increment.length == 4)
-                accumulator[2] += increment[2]; // h/A^2
+                accumulator[2] += increment[2]; // h*A^2
             accumulator[accumulator.length-1] += increment[increment.length-1]; // A
         }
 
@@ -16099,7 +16101,7 @@ OFF
         {
             double group[][][] = computeSymmetryGroup3d(this.pRotationalSymmetry.get(), this.qRotationalSymmetry.get(), this.leftRightSymmetry.get(), this.centralSymmetry.get());
 
-            if (!centerSphereFlag.get())
+            if (!centerSphereFlag.get()) // XXX TODO: wait a minute, this test can't be right when not wrapped, can it?
             {
                 // un-center the symmetry group
                 double wrapSphereRadius = 1./wrapSphereCurvature.get();
