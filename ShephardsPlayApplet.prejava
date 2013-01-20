@@ -12,6 +12,7 @@ BUGS:
       which is based on edge order (rather than original tri order; that gets lost).
 
   Gui-related:
+    - in clone, set window title to "clone of <prev window title>"
     - scale/pan with ctrl down should do less, with shift down should do more
     - rearrange gui to make room for single-exit lagoon controls, somehow
     - Show Dual verts/edges not right
@@ -799,6 +800,15 @@ public class ShephardsPlayApplet
                         }
                     });
                 }};
+                final JButton cloneButton = new JButton("Clone") {{
+                    setMargin(nomargin);
+                    addActionListener(new java.awt.event.ActionListener() {
+                        public void actionPerformed(java.awt.event.ActionEvent e)
+                        {
+                            applet.cloneApplet();
+                        }
+                    });
+                }};
                 final JButton clearButton = new JButton("Clear") {{
                     setMargin(nomargin);
                     addActionListener(new java.awt.event.ActionListener() {
@@ -1207,6 +1217,7 @@ public class ShephardsPlayApplet
                 add(new JRow() {{
                     add(new JLabel("        ")); // indent a bit
                     add(new JPanel() {{ // flow layout
+                        add(cloneButton);
                         add(clearButton);
                         add(new JRow() {{ // so no space between this pair
                             add(undoButton);
@@ -2752,10 +2763,10 @@ public class ShephardsPlayApplet
 
                 JMenu editMenu = new JMenu("Edit", true);
                 menuBar.add(editMenu);
-                editMenu.add(new JMenuItem("Undo"));
-                editMenu.add(new JMenuItem("Redo"));
+                editMenu.add(new JMenuItem("Undo (not implemented here, use button in control panel)"));
+                editMenu.add(new JMenuItem("Redo (not implemented here, use button in control panel)"));
                 editMenu.addSeparator();
-                editMenu.add(new JMenuItem("Clear"));
+                editMenu.add(new JMenuItem("Clear (not implemented here, use button in control panel)"));
 
                 JMenu windowsMenu = new JMenu("Windows", true);
                 menuBar.add(windowsMenu);
@@ -17253,13 +17264,94 @@ OFF
 
 
 
+    //
+    // Half-assed clone.
+    // just runs main again,
+    // and copies the original mesh to the new one.
+    //
+    public void cloneApplet()
+    {
+        System.out.println("    in cloneApplet");
+        ShephardsPlayApplet clonedApplet = main0(new String[0]);
+        clonedApplet.mesh = new Mesh(this.mesh); // dup it
+
+        // Now try to copy as much state as possible.  Hack hack hack
+        java.lang.reflect.Field fields[] = this.getClass().getDeclaredFields();
+        System.out.println("        "+fields.length+" fields:");
+        FORI (iField, fields.length)
+        {
+            java.lang.reflect.Field field = fields[iField];
+            System.out.println("            "+field.getName());
+            int modifiers = field.getModifiers();
+            Class type = field.getType();
+            String typeName = type.getName();
+            System.out.println("                modifiers: "+field.getModifiers());
+            System.out.println("                string: "+field.toString());
+            System.out.println("                type: "+type);
+            if ((modifiers & java.lang.reflect.Modifier.FINAL) != 0)
+                continue; // it's final, can't set, and doesn't matter anyway
+            if ((modifiers & java.lang.reflect.Modifier.STATIC) != 0)
+                continue; // it's static, can't copy from one instance to another
+            try
+            {
+                if (type.isPrimitive())
+                {
+                    // clonedApplet.field = this.field;
+                    field.set(clonedApplet, field.get(this));
+                }
+                else if (type.isArray())
+                {
+                    Class ultimateComponentType = type.getComponentType();
+                    while (ultimateComponentType.isArray())
+                        ultimateComponentType = ultimateComponentType.getComponentType();
+                    if (ultimateComponentType.isPrimitive())
+                    {
+                        // clonedApplet.field = Arrays.copy(this.field, 100);
+                        //field.set(clonedApplet, field.get(this)); // no, want a deep copy
+                        //field.set(clonedApplet, Arrays.copy(field.get(this), 100)); // XXX wtf? doesn't work?
+                        //field.set(clonedApplet, Arrays.copy(field.get(this), 1)); // XXX wtf? doesn't work?
+                        field.set(clonedApplet, Arrays.copy(field.get(this), 0)); // XXX wtf? works?  but I want a deep copy!
+                    }
+                    else
+                    {
+                        assert(false);
+                        // good, there aren't any of these
+                    }
+                }
+                else if (Listenable.Boolean.class.isAssignableFrom(type))
+                {
+                    //clonedApplet.field.set(this.field.get())
+                    ((Listenable.Boolean)field.get(clonedApplet)).set(((Listenable.Boolean)field.get(this)).get());
+                }
+                else if (Listenable.Number.class.isAssignableFrom(type))
+                {
+                    //clonedApplet.field.setDouble(this.field.getDouble())
+                    ((Listenable.Number)field.get(clonedApplet)).setDouble(((Listenable.Number)field.get(this)).getDouble());
+                }
+                else
+                {
+                    // leave it alone (leave clonedApplet with initial field value)
+                }
+            }
+            catch (IllegalAccessException e)
+            {
+                System.out.println("Hey! wtf? IllegalAccessException!");
+            }
+
+        }
+        System.out.println("    out cloneApplet");
+
+    } // cloneApplet
+
+
+
 
     //
     // Main...
     //
-    public static void main(final String args[])
+    public static ShephardsPlayApplet main0(final String args[])
     {
-        System.out.println("in main");
+        System.out.println("in main0");
         System.out.println("    java "+System.getProperty("java.version"));
 
 
@@ -17375,7 +17467,7 @@ OFF
                     }
                 }
             }
-            return;
+            return null;
         } // test computeSymmetryGroup3d
 
         final JFrame frame = new JFrame("Shephards Play Applet");
@@ -17428,7 +17520,13 @@ OFF
 
 
         // why can't we get here in any toolkit ever?
-        System.out.println("out main");
+        System.out.println("out main0");
+        return applet;
+    } // main0
+
+    public static void main(final String args[])
+    {
+        ShephardsPlayApplet applet = main0(args);
     } // main
 
 } // class ShephardsPlayApplet
