@@ -7581,6 +7581,7 @@ public class ShephardsPlayApplet
                                 // starts in the lagoon, ends outside it.
                                 // is it a good exit?
                                 double initialVertexCoords[] = {initialVertex.x(), initialVertex.y()};
+                                assert(dualEdge.direction != null); // XXX TODO: remove when I get this debugged
                                 double goodness = VecMath.dot(2, dualEdge.direction,
                                                               VecMath.vmv(2, initialVertexCoords, avg));
                                 boolean isGoodExit = GEQ(goodness, 0., SQR(1e-6));
@@ -10895,12 +10896,13 @@ OFF
                 }
 
 
+                int tris[][];
                 if (true)
                 {
                     //
                     // See if I got the tris right.
                     //
-                    int tris[][] = new int[n+1][];
+                    tris = new int[n+1][];
                     FORI (i, n)
                         tris[i] = new int[] {0, i+1, (i+1)%n+1};
                     tris[n] = new int[n];
@@ -10938,18 +10940,51 @@ OFF
                     // that's actually a good thing since the whole reason for doing this
                     // is for the case when curvatures are growing too quickly
                     // or infinitely, in which case all the quills will point straight down anyway so that's not interesting.
-                    FORI (i, finalVerts.length)
+                    FORI (iDualVert, finalVerts.length)
                     {
-                        finalVerts[i] = new double[] {finalVerts[i][0],
-                                                      finalVerts[i][1],
-                                                      0.,
-                                                      1.};
+                        if (iDualVert % 2 == 0)
+                        {
+                            int i = iDualVert / 2;
+                            int tri[] = tris[i];
+                            double area = .5*twiceTriangleArea(trisVerts[tri[0]][0], trisVerts[tri[0]][1],
+                                                               trisVerts[tri[1]][0], trisVerts[tri[1]][1],
+                                                               trisVerts[tri[2]][0], trisVerts[tri[2]][1]);
+                            finalVerts[iDualVert] = new double[] {finalVerts[iDualVert][0]*area,
+                                                                  finalVerts[iDualVert][1]*area,
+                                                                  0.*area,
+                                                                  1.*area};
+                        }
+                        else
+                        {
+                            finalVerts[iDualVert] = new double[] {finalVerts[iDualVert][0],
+                                                                  finalVerts[iDualVert][1],
+                                                                  0.,
+                                                                  1.};
+                        }
                     }
 
                     //PRINTARRAY(finalVerts);
                     //PRINTARRAY(finalFaces);
 
                     _dualMesh = new Mesh(finalVerts, finalFaces);
+
+                    FORI (iDualVert, finalVerts.length)
+                    {
+                        // try to hack the dual vertex into something that looks as legit as possible.
+                        Mesh.Vertex dualVert = _dualMesh.getVert(iDualVert);
+                        assert(dualVert.weight == 1.);
+                        assert(dualVert.momentAndArea == null);
+                        if (iDualVert % 2 == 0)
+                        {
+                            dualVert.momentAndArea = VecMath.copyvec(finalVerts[iDualVert]);
+                        }
+                        else
+                        {
+                            dualVert.weight = 0.;
+                            dualVert.momentAndArea = new double[] {0., 0., 0., 0.};
+                        }
+                    }
+
                     _primalMeshOfDualMesh = mesh; // counter-counter-espionage, prevents dual from thinking it's dirty
                 }
 
