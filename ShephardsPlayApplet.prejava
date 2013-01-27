@@ -6881,7 +6881,7 @@ public class ShephardsPlayApplet
                         int dualVertToIndexInSelectedDualVerts[] = Arrays.fill(dualMesh.verts.size(), -1);
                         {
                             IntArrayList selectedDualVertIndicesArrayList = new IntArrayList();
-                            PRINT(allDualVertsAreSelected);
+                            //PRINT(allDualVertsAreSelected);
                             if (allDualVertsAreSelected)
                             {
                                 // select all dual verts of arity 3 with non-negative weight
@@ -10880,14 +10880,14 @@ OFF
                     double maxY = 0.;
                     FORI (i, polyVerts.length)
                         maxY = MAX(maxY, ABS(polyVerts[i][1]));
-                    PRINT(maxY);
+                    //PRINT(maxY);
                     if (maxY != 0. && maxY != Double.POSITIVE_INFINITY)
                     {
                         while (scale*maxY <= .5)
                             scale *= 2;
                         while (scale*maxY > 1.)
                             scale *= .5;
-                        PRINT(scale);
+                        //PRINT(scale);
                         VecMath.mxs(polyVerts, polyVerts, scale);
                         VecMath.mxs(trisVerts, trisVerts, scale);
                         FORI (i, trisVerts.length)
@@ -10993,7 +10993,8 @@ OFF
             private static class SingleExitLagoonPolygonOptimizationStuff {
 
                 // answer[0] is the vertex positions
-                // answer[1] is the quill directions (unit vectors)
+                // answer[1] is trisVerts
+                // answer[2] is the quill directions (unit vectors)
                 public static double[/*2*/][][] constructSingleExitLagoonPolygon(int nBeforeApex,
                                                                                  double quillLiftAngle,
                                                                                  double vertTurns[]) // should sum to 2*pi, with each turn (other than apex) < pi/2.
@@ -11190,20 +11191,33 @@ OFF
                             double dv[] = VecMath.vmv(v,v0);
                             double h = VecMath.dot(dv,   dv_dh)
                                      / VecMath.dot(dv_dh,dv_dh);
+                            //PRINT(h);
+
+                            // If h is very far from 0, then it probably sucks.
+                            // try again, using h instead of 1.
+                            // This actually improves things a lot!
+                            if (ABS(h) >= 2.)
+                            {
+                                FORI (iPass, 10) // probably severe overkill but whatever, this code doesn't need to be fast
+                                {
+                                    // re-estimate dv_dh based on bigger finite difference
+                                    double shouldBeV[] = new double[2];
+                                    SolveForDualPoint(xi,yi,h,
+                                                      xj,yj,hj,
+                                                      xk,yk,hk,
+                                                      shouldBeV, // put answer here
+                                                      false, // wrapAroundSphereFlag
+                                                      false, // centerSphereFlag
+                                                      0.); // wrapSphereCurvature
+                                    double dv_dh_again[] = VecMath.vmv(2,shouldBeV,v0); // and divide by h...
+                                        VecMath.vxs(dv_dh_again, dv_dh_again, 1./h);
+                                    double h_again = VecMath.dot(dv,          dv_dh_again)
+                                                   / VecMath.dot(dv_dh_again, dv_dh_again);
+                                    //PRINT(h_again);
+                                    h = h_again;
+                                }
+                            }
                             answerTriVerts[iTriVert] = Arrays.append(answerTriVerts[iTriVert], h);
-                            // check that we got the desired answer.
-                            double shouldBeV[] = new double[2];
-                            SolveForDualPoint(xi,yi,h,
-                                              xj,yj,hj,
-                                              xk,yk,hk,
-                                              shouldBeV, // put answer here
-                                              false, // wrapAroundSphereFlag
-                                              false, // centerSphereFlag
-                                              0.); // wrapSphereCurvature
-                            PRINTVEC(v);
-                            PRINTVEC(shouldBeV);
-                            // bleah, the following fails a lot... it gets pretty inaccurate when tris diagram grows fast
-                            //assert(VecMath.distsqrd(v,shouldBeV) <= 1e-3*1e-3); // fairly loose
                         }
                     }
 
@@ -11936,6 +11950,7 @@ OFF
             } // doCannedThingCrackKiller
 
                 // little private utility
+                // TODO: this is from the old days before I realized moments are the way to go
                 private static double getTriCenterAndArea(Mesh.Edge edge,
                                                           double triCenter[])
                 {
@@ -15665,6 +15680,7 @@ OFF
                 VecMath.copyvec(result, VecMath.invmxv(M,b));
         } // SolveForDualPointActual
 
+        // TODO: isn't this defunct at this point? maybe not, but shouldn't use SolveForDualPointActual, should always use the moment method?  hmm except when wrapped?  hmm.
         private static void SolveForDualPoint(double x0, double y0, double h0,
                                               double x1, double y1, double h1,
                                               double x2, double y2, double h2,
@@ -15678,13 +15694,15 @@ OFF
                                     x1, y1, h1 - .5 * (SQR(x1) + SQR(y1)),
                                     x2, y2, h2 - .5 * (SQR(x2) + SQR(y2)),
                                     result);
-            if (result.length == 3 && !wrapAroundSphereFlagValue)
+            if ((result.length == 2 || result.length == 3)
+             && !wrapAroundSphereFlagValue)
             {
-                result[2] += .5 * (SQR(result[0]) + SQR(result[1]));
+                if (result.length > 2)
+                    result[2] += .5 * (SQR(result[0]) + SQR(result[1]));
 
-                if (false)
+                if (true)
                 {
-                    System.out.println("checking SolveForDualMomentAndArea");
+                    //System.out.println("checking SolveForDualMomentAndArea");
                     double dualMomentAndArea[] = new double[4];
                     SolveForDualMomentAndArea(x0,y0,h0,
                                               x1,y1,h1,
@@ -15694,25 +15712,26 @@ OFF
                                               centerSphereFlagValue,
                                               wrapSphereCurvatureValue);
                     double A = dualMomentAndArea[3];
-                    PRINT(A);
+                    //PRINT(A);
                     double shouldBeResult[] = {
                         dualMomentAndArea[0] / A,
                         dualMomentAndArea[1] / A,
                         dualMomentAndArea[2] / (A*A),
                     };
-                    PRINTVEC(result);
-                    PRINTVEC(shouldBeResult);
-                    assert(VecMath.equals(shouldBeResult, result, 1e-6));
-                    System.out.println("done checking SolveForDualMomentAndArea");
+                    //PRINTVEC(result);
+                    //PRINTVEC(shouldBeResult);
+                    assert(VecMath.equals(result.length, shouldBeResult, result, 1e-6));
+                    //System.out.println("done checking SolveForDualMomentAndArea");
+                    if (true)
+                    {
+                        //System.out.println("    actually using the dualMomentAndArea method");
+                        VecMath.copyvec(result.length, result, shouldBeResult);
+                    }
                 }
             }
         } // SolveForDualPoint
 
 
-        // Optimized robust version of SolveForDualPoint.
-        // Moments can be used in robust center-of-mass calculations
-        // even if individual weights are tiny (or zero).
-        // Works in local *virtual* coord space of x0,y0,h0.
         private static void SolveForDualMomentAndArea(double x0, double y0, double h0,
                                                       double x1, double y1, double h1,
                                                       double x2, double y2, double h2,
@@ -15721,6 +15740,47 @@ OFF
                                                       boolean wrapAroundSphereFlagValue,
                                                       boolean centerSphereFlagValue,
                                                       double wrapSphereCurvatureValue)
+        {
+            double iSmallest = MINI3(SQR(x0)+SQR(y0),
+                                     SQR(x1)+SQR(y1),
+                                     SQR(x2)+SQR(y2));
+            if (iSmallest == 0)
+                _SolveForDualMomentAndArea(x0, y0, h0,
+                                           x1, y1, h1,
+                                           x2, y2, h2,
+                                           result,
+                                           wrapAroundSphereFlagValue,
+                                           centerSphereFlagValue,
+                                           wrapSphereCurvatureValue);
+            else if (iSmallest == 1)
+                _SolveForDualMomentAndArea(x1, y1, h1,
+                                           x2, y2, h2,
+                                           x0, y0, h0,
+                                           result,
+                                           wrapAroundSphereFlagValue,
+                                           centerSphereFlagValue,
+                                           wrapSphereCurvatureValue);
+            else
+                _SolveForDualMomentAndArea(x2, y2, h2,
+                                           x0, y0, h0,
+                                           x1, y1, h1,
+                                           result,
+                                           wrapAroundSphereFlagValue,
+                                           centerSphereFlagValue,
+                                           wrapSphereCurvatureValue);
+        }
+        // Optimized robust version of SolveForDualPoint.
+        // Moments can be used in robust center-of-mass calculations
+        // even if individual weights are tiny (or zero).
+        // Works in local *virtual* coord space of x0,y0,h0.
+        private static void _SolveForDualMomentAndArea(double x0, double y0, double h0,
+                                                       double x1, double y1, double h1,
+                                                       double x2, double y2, double h2,
+                                                       double result[], // x*A, y*A, A, or
+                                                                        // x*A, y*A, h*A^2, A
+                                                       boolean wrapAroundSphereFlagValue,
+                                                       boolean centerSphereFlagValue,
+                                                       double wrapSphereCurvatureValue)
         {
             if (wrapAroundSphereFlagValue)
             {
@@ -15785,6 +15845,8 @@ OFF
                 return;
             }
 
+            //System.out.println("            in SolveForDualMomentAndArea(wrap=false)");
+
 
             // convert from global virtual coord space to local virtual coord space...
             double X1 = x1 - x0;
@@ -15834,6 +15896,7 @@ OFF
                 result[2] = HAA - h0*(A*A);  // - instead of +, because raising features in the primal corresponds to lowering them in the dual (I think that's why)
                 result[3] = A;
             }
+            //System.out.println("            out SolveForDualMomentAndArea(wrap=false)");
         } // SolveForDualMomentAndArea
 
 
@@ -16746,11 +16809,11 @@ OFF
         private Listenable.Double backfaceBrightness = new Listenable.Double(0.,1., .25);
         private Listenable.Int gridN = new Listenable.Int(0,1000,10);
         private Listenable.Int blueNoiseN = new Listenable.Int(0,1000,10);
-        private Listenable.Double singleExitLagoonVirtualN = new Listenable.Double(0.,100.,5);
-        private Listenable.Double singleExitLagoonNBeforeApex = new Listenable.Double(0.,100.,2);
-        private Listenable.Double singleExitLagoonNAfterApex = new Listenable.Double(0.,100.,2);
+        private Listenable.Double singleExitLagoonVirtualN = new Listenable.Double(0.,100.,16);
+        private Listenable.Double singleExitLagoonNBeforeApex = new Listenable.Double(0.,100.,6);
+        private Listenable.Double singleExitLagoonNAfterApex = new Listenable.Double(0.,100.,6);
         private Listenable.Double singleExitLagoonQuillSlopeNumerator = new Listenable.Double(0.,1000.,1.);
-        private Listenable.Double singleExitLagoonQuillSlopeDenominator = new Listenable.Double(1.,1000.,7.);
+        private Listenable.Double singleExitLagoonQuillSlopeDenominator = new Listenable.Double(1.,1000.,15.);
         private Listenable.Boolean singleExitLagoonSynthesizeExactDualFlag = new Listenable.Boolean(false);
 
         private Surface.Sphere theSphereSurface = new Surface.Sphere(new double[]{0,0,centerSphereFlag.get() ? 0. : -1./wrapSphereCurvature.get()}, 1./wrapSphereCurvature.get());
