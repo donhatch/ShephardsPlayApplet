@@ -494,24 +494,6 @@ public class ShephardsPlayApplet
                 }
             }
         } // JValidatingTextField
-        private static class JNumberValidatingTextField extends JValidatingTextField
-        {
-            // override super's
-            public boolean validate(String text)
-            {
-                try {
-                    // attempt to parse, ignore return value
-                    Double.parseDouble(text);
-                    return true;
-                } catch (Exception e) {
-                    return false;
-                }
-            }
-            JNumberValidatingTextField(String text)
-            {
-                super(text);
-            }
-        } // JNumberValidatingTextField
 
         private abstract static class JTableOfPanIcons extends JTablePanel
         {
@@ -10859,40 +10841,22 @@ OFF
             //           n=10.9 after=0 before=8 slope=1/4 (looks *almost* same synth and not)
             private void doCannedThingSingleExitLagoonPolygon(double nVirtual,
 
-                                                              double nBeforeApexVirtual,
-                                                              double nAfterApexVirtual,
+                                                              int nBeforeApex,
+                                                              int nAfterApex,
                                                               double quillSlopeNumerator,
                                                               double quillSlopeDenominator,
-                                                              double nBeforeBeforeApexVirtual,
-                                                              double nAfterAfterApexVirtual,
+                                                              int nBeforeBeforeApex,
+                                                              int nAfterAfterApex,
                                                               double quillSlopeNumeratorNumerator,
                                                               double quillSlopeDenominatorDenominator,
 
                                                               boolean synthesizeExactDual)
             {
-                int n, nBeforeApex, nAfterApex, nBeforeBeforeApex, nAfterAfterApex;
-                double vertTurns[];
-                if (true)
-                {
-                    // must be > sum of others (sum+1 is regular polygon)
-                    // and < twice sum of others (half polygon with sharp cap)
-                    // although, this becomes less right when tilted and with small numbers...
-                    // tilt seems to require bigger virtual, in order to allow room for the mismatched ends to meet.  need to work this out.  in the limit (0 on one side), nVirtual seems to need to be 1.5 times nBefore so so.  (11->14, 16->20, ... ? hmm this seems rather ad-hoc)
-                    // interesting fact: with nbefore=3,nafter=0, optimal nVirtual seems to be around 5.5 (makes apex closest to origin). 4 is too small, 6 is too big. Although, 5 isn't bad and seems subjectively like a nicer picture.  this is all with quill lift = 0.
-                    //double nVirtual = 5.75;
-                    //double nBeforeApexVirtual = 3;
-                    //double nAfterApexVirtual = 0;
-                    nBeforeApex = (int)nBeforeApexVirtual;
-                    nAfterApex = (int)nAfterApexVirtual;
-                    nBeforeBeforeApex = (int)nBeforeBeforeApexVirtual;
-                    nAfterAfterApex = (int)nAfterAfterApexVirtual;
-                    n = nBeforeBeforeApex + nBeforeApex + 1 + nAfterApex + nAfterAfterApex;
-
-                    double allButApexTurn = 2*Math.PI/nVirtual;
-                    double apexTurn = 2*Math.PI - (n-1)*allButApexTurn;
-                    vertTurns = VecMath.fillvec(n, allButApexTurn);
-                    vertTurns[nBeforeBeforeApex+nBeforeApex] = apexTurn;
-                }
+                int n = nBeforeBeforeApex + nBeforeApex + 1 + nAfterApex + nAfterAfterApex;
+                double allButApexTurn = 2*Math.PI/nVirtual;
+                double apexTurn = 2*Math.PI - (n-1)*allButApexTurn;
+                double vertTurns[] = VecMath.fillvec(n, allButApexTurn);
+                vertTurns[nBeforeBeforeApex+nBeforeApex] = apexTurn;
 
                 // convert quill slope to angle in range [0,pi/2]
                 // and then rescale to range [(2pi/n)/2, pi/2 - (2pi/n)/2]
@@ -16878,10 +16842,10 @@ OFF
         private Listenable.Int gridN = new Listenable.Int(0,1000,10);
         private Listenable.Int blueNoiseN = new Listenable.Int(0,1000,10);
         private Listenable.Double singleExitLagoonVirtualN = new Listenable.Double(0.,100.,16);
-        private Listenable.Double singleExitLagoonNBeforeApex = new Listenable.Double(0.,100.,3);
-        private Listenable.Double singleExitLagoonNBeforeBeforeApex = new Listenable.Double(0.,100.,3);
-        private Listenable.Double singleExitLagoonNAfterApex = new Listenable.Double(0.,100.,3);
-        private Listenable.Double singleExitLagoonNAfterAfterApex = new Listenable.Double(0.,100.,3);
+        private Listenable.Int singleExitLagoonNBeforeApex = new Listenable.Int(0,100,3);
+        private Listenable.Int singleExitLagoonNBeforeBeforeApex = new Listenable.Int(0,100,3);
+        private Listenable.Int singleExitLagoonNAfterApex = new Listenable.Int(0,100,3);
+        private Listenable.Int singleExitLagoonNAfterAfterApex = new Listenable.Int(0,100,3);
         private Listenable.Double singleExitLagoonQuillSlopeNumerator = new Listenable.Double(0.,1000.,1.);
         private Listenable.Double singleExitLagoonQuillSlopeDenominator = new Listenable.Double(1.,1000.,1.);
         private Listenable.Double singleExitLagoonQuillSlopeNumeratorNumerator = new Listenable.Double(0.,1000.,1.);
@@ -17105,9 +17069,25 @@ OFF
         }
     } // JTextFieldForString
     // Stolen from MC4DControlPanel.java
-    public static class JTextFieldForNumber extends JNumberValidatingTextField
+    public static class JTextFieldForNumber extends JValidatingTextField
     {
         private Listenable.Listener listener; // need to keep a strong ref to it for as long as I'm alive
+        private Listenable.Number f;
+
+        // override super's
+        public boolean validate(String text)
+        {
+            try {
+                // attempt to parse, ignore return value
+                if (f instanceof Listenable.Int)
+                    Integer.parseInt(text);
+                else
+                    Double.parseDouble(text);
+                return true;
+            } catch (Exception e) {
+                return false;
+            }
+        }
 
         private void updateText(Listenable.Number f)
         {
@@ -17123,6 +17103,7 @@ OFF
         {
             super(f instanceof Listenable.Int ? ""+((Listenable.Int)f).max() // XXX not quite right, min may be longer string than max
                    : "99.99"); // give it enough space for 99.999 (on my computer, always seems to give an extra space, which we don't need)
+            this.f = f;
             updateText(f);
             f.addListener(listener = new Listenable.Listener() {
                 public void valueChanged()
