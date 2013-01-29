@@ -1085,10 +1085,17 @@ public class ShephardsPlayApplet
 
                                     applet.doCannedThingSingleExitLagoonPolygon(
                                         applet.singleExitLagoonVirtualN.get(),
+
                                         applet.singleExitLagoonNBeforeApex.get(),
                                         applet.singleExitLagoonNAfterApex.get(),
                                         applet.singleExitLagoonQuillSlopeNumerator.get(),
                                         applet.singleExitLagoonQuillSlopeDenominator.get(),
+
+                                        applet.singleExitLagoonNBeforeBeforeApex.get(),
+                                        applet.singleExitLagoonNAfterAfterApex.get(),
+                                        applet.singleExitLagoonQuillSlopeNumeratorNumerator.get(),
+                                        applet.singleExitLagoonQuillSlopeDenominatorDenominator.get(),
+
                                         applet.singleExitLagoonSynthesizeExactDualFlag.get());
 
                                     UndoItem.State after = applet.newUndoItemState();
@@ -1104,7 +1111,7 @@ public class ShephardsPlayApplet
                                 add(new JLabel("nVirtual:"));
                                 add(new JTextFieldForNumber(applet.singleExitLagoonVirtualN));
                             }});
-                            add(new JRow() {{
+                            add(new JTablePanel() {{
                                 add(new JLabel("<html>after<br>apex:</html>") {{
                                     setToolTipText("number of dual verts after (on left of) apex");
                                 }});
@@ -1122,6 +1129,21 @@ public class ShephardsPlayApplet
                                 add(new JCheckBoxForBoolean("synth exact primal", applet.singleExitLagoonSynthesizeExactDualFlag) {{
                                     setToolTipText("<html>when checked, the dual is computed directly<br>(but with parts missing, so certain operations like scaling will be broken).<br>this is necessary when quill slope is 0 or close to it,<br>since in that case the primal is not well defined<br>and the dual can't be computed accurately from it.<br>NOTE: undo/redo will foil this.</html>");
                                 }});
+                                advanceRow();
+                                add(new JLabel("<html>after<br>after:</html>") {{
+                                    setToolTipText("number of dual verts after (on left of) apex");
+                                }});
+                                add(new JTextFieldForNumber(applet.singleExitLagoonNAfterAfterApex));
+                                add(new JLabel("<html>before<br>before:</html>") {{
+                                    setToolTipText("number of dual verts before (on right of) apex");
+                                }});
+                                add(new JTextFieldForNumber(applet.singleExitLagoonNBeforeBeforeApex));
+                                add(new JLabel("<html>quill<br>slope:</html>") {{
+                                    setToolTipText("slope of quills: 0 means laying flat");
+                                }});
+                                add(new JTextFieldForNumber(applet.singleExitLagoonQuillSlopeNumeratorNumerator));
+                                add(new JLabel("/"));
+                                add(new JTextFieldForNumber(applet.singleExitLagoonQuillSlopeDenominatorDenominator));
                             }});
                         }});
                     }},
@@ -3937,10 +3959,16 @@ public class ShephardsPlayApplet
             if (false)
                 doCannedThingSingleExitLagoonPolygon(
                     singleExitLagoonVirtualN.get(),
+
                     singleExitLagoonNBeforeApex.get(),
                     singleExitLagoonNAfterApex.get(),
                     singleExitLagoonQuillSlopeNumerator.get(),
                     singleExitLagoonQuillSlopeDenominator.get(),
+                    singleExitLagoonNBeforeBeforeApex.get(),
+                    singleExitLagoonNAfterAfterApex.get(),
+                    singleExitLagoonQuillSlopeNumeratorNumerator.get(),
+                    singleExitLagoonQuillSlopeDenominatorDenominator.get(),
+
                     singleExitLagoonSynthesizeExactDualFlag.get());
 
             if (eventVerbose >= 1) System.out.println("out init");
@@ -10830,13 +10858,19 @@ OFF
             //           n=13.7 after=0 before=10 slope=1/4 (looks same synth and not, so reliable... woops no it doesn't)
             //           n=10.9 after=0 before=8 slope=1/4 (looks *almost* same synth and not)
             private void doCannedThingSingleExitLagoonPolygon(double nVirtual,
+
                                                               double nBeforeApexVirtual,
                                                               double nAfterApexVirtual,
                                                               double quillSlopeNumerator,
                                                               double quillSlopeDenominator,
+                                                              double nBeforeBeforeApexVirtual,
+                                                              double nAfterAfterApexVirtual,
+                                                              double quillSlopeNumeratorNumerator,
+                                                              double quillSlopeDenominatorDenominator,
+
                                                               boolean synthesizeExactDual)
             {
-                int n, nBeforeApex, nAfterApex;
+                int n, nBeforeApex, nAfterApex, nBeforeBeforeApex, nAfterAfterApex;
                 double vertTurns[];
                 if (true)
                 {
@@ -10850,12 +10884,14 @@ OFF
                     //double nAfterApexVirtual = 0;
                     nBeforeApex = (int)nBeforeApexVirtual;
                     nAfterApex = (int)nAfterApexVirtual;
-                    n = nBeforeApex + nAfterApex + 1;
+                    nBeforeBeforeApex = (int)nBeforeBeforeApexVirtual;
+                    nAfterAfterApex = (int)nAfterAfterApexVirtual;
+                    n = nBeforeBeforeApex + nBeforeApex + 1 + nAfterApex + nAfterAfterApex;
 
                     double allButApexTurn = 2*Math.PI/nVirtual;
                     double apexTurn = 2*Math.PI - (n-1)*allButApexTurn;
                     vertTurns = VecMath.fillvec(n, allButApexTurn);
-                    vertTurns[nBeforeApex] = apexTurn;
+                    vertTurns[nBeforeBeforeApex+nBeforeApex] = apexTurn;
                 }
 
                 // convert quill slope to angle in range [0,pi/2]
@@ -10865,12 +10901,53 @@ OFF
                 double quillLiftAngle = Math.atan2(quillSlopeNumerator,
                                                    quillSlopeDenominator)
                                       * (Math.PI/2-2*Math.PI/nVirtual)/(Math.PI/2);
+                PRINT(quillLiftAngle);
+                double quillLiftAngle0 = Math.atan2(quillSlopeNumeratorNumerator,
+                                                    quillSlopeDenominatorDenominator)
+                                      * (Math.PI/2-2*Math.PI/nVirtual)/(Math.PI/2);
+                PRINT(quillLiftAngle0);
+                double quillLiftAngles[] = new double[n];
+                PRINT(nBeforeBeforeApex);
+                PRINT(nBeforeApex);
+                PRINT(nAfterApex);
+                PRINT(nAfterAfterApex);
+                FORI (i, nBeforeBeforeApex)
+                    quillLiftAngles[i] = quillLiftAngle0;
+                FORI (i, nBeforeApex)
+                    quillLiftAngles[nBeforeBeforeApex+i] = quillLiftAngle;
+                // skip apex
+                FORI (i, nAfterApex)
+                    quillLiftAngles[nBeforeBeforeApex+nBeforeApex+1+i] = quillLiftAngle;
+                FORI (i, nAfterAfterApex)
+                    quillLiftAngles[nBeforeBeforeApex+nBeforeApex+1+nAfterApex+i] = quillLiftAngle0;
 
 
-                double answer[][][] = SingleExitLagoonPolygonOptimizationStuff.constructSingleExitLagoonPolygon(nBeforeApex, quillLiftAngle, vertTurns);
+                double answer[][][] = SingleExitLagoonPolygonOptimizationStuff.constructSingleExitLagoonPolygon(nBeforeBeforeApex+nBeforeApex, quillLiftAngles, vertTurns);
                 double polyVerts[][] = answer[0];
                 double trisVerts[][] = answer[1];
                 double quillDirs[][] = answer[2];
+                /*
+                PRINT(radiusScaleQuantum);
+                PRINTVEC(polyVerts[0]);
+                PRINTVEC(polyVerts[2]);
+                PRINTVEC(trisVerts[2]);
+                PRINTVEC(trisVerts[3]);
+                */
+                if (true)
+                {
+                    // worked this out on paper
+                    double predictedScale = Math.cos(quillLiftAngle)/Math.cos(2*Math.PI/nVirtual + quillLiftAngle);
+                    PRINT(predictedScale);
+                    // analagous thing for tris diagram should just be the mirror image of that
+                    // XXX TODO: argh, this is wrong for some reason
+                    double predictedTrisScale = Math.cos(Math.PI/4-(Math.PI/4-quillLiftAngle))
+                                              / Math.cos(2*Math.PI/nVirtual + Math.PI/4-(Math.PI/4-quillLiftAngle));
+                    PRINT(predictedTrisScale);
+                }
+                PRINT(VecMath.norm(2,polyVerts[1])/VecMath.norm(2,polyVerts[0]));
+                PRINT(VecMath.norm(2,trisVerts[3])/VecMath.norm(2,trisVerts[2]));
+                PRINT(Math.log(VecMath.norm(2,polyVerts[1])/VecMath.norm(2,polyVerts[0]))/(2*Math.PI/nVirtual));
+                PRINT(Math.log(VecMath.norm(2,trisVerts[3])/VecMath.norm(2,trisVerts[2]))/(2*Math.PI/nVirtual));
 
 
                 if (true)
@@ -10995,8 +11072,8 @@ OFF
                 // answer[0] is the vertex positions
                 // answer[1] is trisVerts
                 // answer[2] is the quill directions (unit vectors)
-                public static double[/*2*/][][] constructSingleExitLagoonPolygon(int nBeforeApex,
-                                                                                 double quillLiftAngle,
+                public static double[/*2*/][][] constructSingleExitLagoonPolygon(int nBeforeApex, // callers beforeBefore+before
+                                                                                 double quillLiftAngles[],
                                                                                  double vertTurns[]) // should sum to 2*pi, with each turn (other than apex) < pi/2.
                 {
                     System.out.println("    in constructSingleExitLagoonPolygon");
@@ -11006,12 +11083,13 @@ OFF
 
                     PRINT(n);
                     PRINT(apex);
-                    PRINT(quillLiftAngle);
+                    //PRINTARRAY(quillLiftAngles);
+                    //PRINTARRAY(vertTurns);
 
                     double origin[] = {0,0};
 
-                    double answerVerts[][] = new double[n][2]; // we'll expand to [3] at end
-                    double answerQuillDirs[][] = new double[n][2];
+                    double answerVerts[][] = new double[n][2];
+                    double answerQuillDirs[][] = new double[n][2]; // we'll expand to [3] at end
                     double answerTriVerts[][] = new double[n+1][2]; // actually becomes primal... confusing
 
                     answerTriVerts[0][0] = 0.;
@@ -11021,7 +11099,7 @@ OFF
 
                     double beforeApexToApexDir[];
                     {
-                        // compute the verts and quill dirs after the apex
+                        // compute the verts and quill dirs before the apex
                         double prevEdgeDirAng = 0.;
                         double prevEdgeDir[] = {1.,0.};
                         double prevVert[] = {-1.,-1.}; // fake
@@ -11029,7 +11107,7 @@ OFF
                         {
                             double nextEdgeDirAng = prevEdgeDirAng + vertTurns[iVert];
                             double nextEdgeDir[] = {Math.cos(nextEdgeDirAng),Math.sin(nextEdgeDirAng)};
-                            double quillDirAng = nextEdgeDirAng - Math.PI + quillLiftAngle;
+                            double quillDirAng = nextEdgeDirAng - Math.PI + quillLiftAngles[iVert];
                             answerQuillDirs[iVert][0] = Math.cos(quillDirAng);
                             answerQuillDirs[iVert][1] = Math.sin(quillDirAng);
                             double originToVertDirAng = quillDirAng + Math.PI/2;
@@ -11077,7 +11155,7 @@ OFF
                         {
                             double nextEdgeDirAngBackwards = prevEdgeDirAngBackwards + vertTurns[iVert]; // + instead of -, since backwards
                             double nextEdgeDir[] = {-Math.cos(nextEdgeDirAngBackwards),Math.sin(nextEdgeDirAngBackwards)};
-                            double quillDirAngBackwards = nextEdgeDirAngBackwards - Math.PI + quillLiftAngle;
+                            double quillDirAngBackwards = nextEdgeDirAngBackwards - Math.PI + quillLiftAngles[iVert];
                             answerQuillDirs[iVert][0] = -Math.cos(quillDirAngBackwards);
                             answerQuillDirs[iVert][1] = Math.sin(quillDirAngBackwards);
                             double originToVertDirAngBackwards = quillDirAngBackwards + Math.PI/2;
@@ -11110,7 +11188,7 @@ OFF
                     // Since we have the dual,
                     // we can now compute the apex quill direction
                     // as the perpendicular of the final dual edge.
-                    if (quillLiftAngle != 0.)
+                    if (quillLiftAngles[0] != 0. || quillLiftAngles[quillLiftAngles.length-1] != 0.) // TODO: not sure this is quite right
                     {
                         answerQuillDirs[apex] = VecMath.normalize(VecMath.xv2(VecMath.vmv(answerTriVerts[apex+1], answerTriVerts[((apex+2)-1)%n+1])));
                     }
@@ -15689,45 +15767,35 @@ OFF
                                               boolean centerSphereFlagValue,
                                               double wrapSphereCurvatureValue)
         {
-            // paraboloid
-            SolveForDualPointActual(x0, y0, h0 - .5 * (SQR(x0) + SQR(y0)),
-                                    x1, y1, h1 - .5 * (SQR(x1) + SQR(y1)),
-                                    x2, y2, h2 - .5 * (SQR(x2) + SQR(y2)),
-                                    result);
             if ((result.length == 2 || result.length == 3)
              && !wrapAroundSphereFlagValue)
             {
                 if (result.length > 2)
                     result[2] += .5 * (SQR(result[0]) + SQR(result[1]));
 
-                if (true)
-                {
-                    //System.out.println("checking SolveForDualMomentAndArea");
-                    double dualMomentAndArea[] = new double[4];
-                    SolveForDualMomentAndArea(x0,y0,h0,
-                                              x1,y1,h1,
-                                              x2,y2,h2,
-                                              dualMomentAndArea,
-                                              wrapAroundSphereFlagValue,
-                                              centerSphereFlagValue,
-                                              wrapSphereCurvatureValue);
-                    double A = dualMomentAndArea[3];
-                    //PRINT(A);
-                    double shouldBeResult[] = {
-                        dualMomentAndArea[0] / A,
-                        dualMomentAndArea[1] / A,
-                        dualMomentAndArea[2] / (A*A),
-                    };
-                    //PRINTVEC(result);
-                    //PRINTVEC(shouldBeResult);
-                    assert(VecMath.equals(result.length, shouldBeResult, result, 1e-6));
-                    //System.out.println("done checking SolveForDualMomentAndArea");
-                    if (true)
-                    {
-                        //System.out.println("    actually using the dualMomentAndArea method");
-                        VecMath.copyvec(result.length, result, shouldBeResult);
-                    }
-                }
+                double dualMomentAndArea[] = new double[4];
+                SolveForDualMomentAndArea(x0,y0,h0,
+                                          x1,y1,h1,
+                                          x2,y2,h2,
+                                          dualMomentAndArea,
+                                          wrapAroundSphereFlagValue,
+                                          centerSphereFlagValue,
+                                          wrapSphereCurvatureValue);
+                double A = dualMomentAndArea[3];
+                double shouldBeResult[] = {
+                    dualMomentAndArea[0] / A,
+                    dualMomentAndArea[1] / A,
+                    dualMomentAndArea[2] / (A*A),
+                };
+                VecMath.copyvec(result.length, result, shouldBeResult);
+            }
+            else
+            {
+                // paraboloid
+                SolveForDualPointActual(x0, y0, h0 - .5 * (SQR(x0) + SQR(y0)),
+                                        x1, y1, h1 - .5 * (SQR(x1) + SQR(y1)),
+                                        x2, y2, h2 - .5 * (SQR(x2) + SQR(y2)),
+                                        result);
             }
         } // SolveForDualPoint
 
@@ -16810,10 +16878,14 @@ OFF
         private Listenable.Int gridN = new Listenable.Int(0,1000,10);
         private Listenable.Int blueNoiseN = new Listenable.Int(0,1000,10);
         private Listenable.Double singleExitLagoonVirtualN = new Listenable.Double(0.,100.,16);
-        private Listenable.Double singleExitLagoonNBeforeApex = new Listenable.Double(0.,100.,6);
-        private Listenable.Double singleExitLagoonNAfterApex = new Listenable.Double(0.,100.,6);
+        private Listenable.Double singleExitLagoonNBeforeApex = new Listenable.Double(0.,100.,3);
+        private Listenable.Double singleExitLagoonNBeforeBeforeApex = new Listenable.Double(0.,100.,3);
+        private Listenable.Double singleExitLagoonNAfterApex = new Listenable.Double(0.,100.,3);
+        private Listenable.Double singleExitLagoonNAfterAfterApex = new Listenable.Double(0.,100.,3);
         private Listenable.Double singleExitLagoonQuillSlopeNumerator = new Listenable.Double(0.,1000.,1.);
-        private Listenable.Double singleExitLagoonQuillSlopeDenominator = new Listenable.Double(1.,1000.,15.);
+        private Listenable.Double singleExitLagoonQuillSlopeDenominator = new Listenable.Double(1.,1000.,1.);
+        private Listenable.Double singleExitLagoonQuillSlopeNumeratorNumerator = new Listenable.Double(0.,1000.,1.);
+        private Listenable.Double singleExitLagoonQuillSlopeDenominatorDenominator = new Listenable.Double(1.,1000.,1.);
         private Listenable.Boolean singleExitLagoonSynthesizeExactDualFlag = new Listenable.Boolean(false);
 
         private Surface.Sphere theSphereSurface = new Surface.Sphere(new double[]{0,0,centerSphereFlag.get() ? 0. : -1./wrapSphereCurvature.get()}, 1./wrapSphereCurvature.get());
