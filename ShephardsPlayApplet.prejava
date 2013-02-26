@@ -6757,6 +6757,7 @@ public class ShephardsPlayApplet
                         Mesh.Vertex v1 = dualEdge.finalVertex();
                         double v0coords[] = v0!=null ? dualVertCoords[v0.myIndex()] : null;
                         double v1coords[] = v1!=null ? dualVertCoords[v1.myIndex()] : null;
+                        // TODO REGARDING NEGATIVE WEIGHTS: don't test for [3]<0, test for weight<0.  I think?  not sure.
 
                         if (naiveDualEdgesFlagValue)
                         {
@@ -7845,9 +7846,15 @@ public class ShephardsPlayApplet
                                                 // are very close together.
                                                 // This works even for a triangular dihedron,
                                                 // since in that case we negated the whole homogeneous coords of one of them.
+                                                // TODO REGARDING NEGATIVE WEIGHTS: except I'm going to stop doing that I think?
                                                 double flatThreshold = 1e-6;
                                                 if (VecMath.distsqrd(v0,v1) < SQR(flatThreshold))
+                                                {
+                                                    PRINTVEC(v0);
+                                                    PRINTVEC(v1);
+                                                    PRINT(VecMath.distsqrd(v0,v1));
                                                     continue;
+                                                }
                                             }
                                             if (!showInsideOutDualVertsFlagValue)
                                             {
@@ -12469,6 +12476,12 @@ OFF
                     verts.add(this);
                     fixVertIndices(verts.size()-1);
                 }
+                public Vertex(double X, double Y, double Zignored, double W, double H) // Zignored is just to distinguish prototype from others
+                {
+                    this.setXYHW(X,Y,H,W);
+                    verts.add(this);
+                    fixVertIndices(verts.size()-1);
+                }
 
                 // A Vertex can belong to only one Mesh.
                 // myIndex() returns the index into the Mesh's edges.
@@ -12570,6 +12583,14 @@ OFF
                     _Z = Z;
                     _W = W;
                     _H = _Z*_W + .5 * (_X*_X+_Y*_Y);
+                }
+                public void setXYHW(double X, double Y, double H, double W) // calculate Z; unfortunate divide
+                {
+                    _X = X;
+                    _Y = Y;
+                    _H = H;
+                    _W = W;
+                    _Z = (_H - .5 * (_X*_X+_Y*_Y)) / _W;
                 }
 
                 //
@@ -14254,6 +14275,10 @@ OFF
             {
                 return new Vertex(X, Y, Z, W);
             }
+            Vertex newVertex(double X, double Y, double Zignored, double W, double H)
+            {
+                return new Vertex(X, Y, Zignored, W);
+            }
 
 
         } // class Mesh
@@ -14442,7 +14467,12 @@ OFF
                         Mesh.Vertex v1 = primalEdge.initialVertex();
                         Mesh.Vertex v2 = primalEdge.finalVertex();
 
-                        // XXX TODO: do this in homogeneous coords!  or not? hmm
+                        // We intentionally use 3d primal verts
+                        // rather than homo coords--
+                        // this is because the homo coords may have come from
+                        // unwrapping around sphere,
+                        // in which case the interpretation of the w coord isn't really
+                        // relevant to us here.
                         SolveForDualMomentAndArea(v0.x(), v0.y(), v0.h(),
                                                   v1.x(), v1.y(), v1.h(),
                                                   v2.x(), v2.y(), v2.h(),
@@ -14453,28 +14483,32 @@ OFF
                         accumulateMomentAndArea(totalMomentAndArea, triMomentAndArea);
                     }
 
-                    double twiceTotalArea = totalMomentAndArea[3];
-
-                    double totalCenter[] = new double[3]; // zero arbitrarily XXX should set it to center of edge? not sure
-                    if (twiceTotalArea != 0.)
                     {
-                        totalCenter[0] = totalMomentAndArea[0] / twiceTotalArea;
-                        totalCenter[1] = totalMomentAndArea[1] / twiceTotalArea;
-                        totalCenter[2] = totalMomentAndArea[2] / (wrapAroundSphereFlagValue ? twiceTotalArea : SQR(twiceTotalArea));
+                        double xa = totalMomentAndArea[0];
+                        double ya = totalMomentAndArea[1];
+                        double haa = totalMomentAndArea[2];
+                        double a = totalMomentAndArea[3];
+                        dualVert = dual.newVertex(xa,
+                                                  ya,
+                                                  0., // ignored
+                                                  a,
+                                                  haa);
                     }
 
-                    dualVert = dual.newVertex(totalCenter[0],
-                                              totalCenter[1],
-                                              totalCenter[2]);
+                    double twiceTotalArea = totalMomentAndArea[3]; // TODO: fix up
                     dualVert.weight = .5 * twiceTotalArea;
                     dualVert.momentAndArea = totalMomentAndArea;
 
+                    // TODO REGARDING NEGATIVE WEIGHTS: don't do this, I don't think. at this point I think maybe i should be making all W's non-negative, retaining inside-outedness in weight?  not sure
                     // haphazard fixup
-                    if (dualVert.weight < 0.)
+                    if ((dualVert.weight < 0.) != (dualVert.W() < 0.))
+                    {
+                        assert(false); // doesn't happen any more... should maybe be making W positive instead
                         dualVert.setXYZW(-dualVert.X(),
                                          -dualVert.Y(),
                                          -dualVert.Z(),
                                          -dualVert.W());
+                    }
 
                 }
 
@@ -15828,6 +15862,11 @@ OFF
         } // SolveForDualPoint
 
 
+        // Optimized robust version of SolveForDualPoint.
+        // Moments can be used in robust center-of-mass calculations
+        // even if individual weights are tiny (or zero).
+        // Works in local *virtual* coord space of x0,y0,h0.
+        // That is, the h's are heights above parabola.
         private static void SolveForDualMomentAndArea(double x0, double y0, double h0,
                                                       double x1, double y1, double h1,
                                                       double x2, double y2, double h2,
@@ -15865,10 +15904,6 @@ OFF
                                            centerSphereFlagValue,
                                            wrapSphereCurvatureValue);
         }
-        // Optimized robust version of SolveForDualPoint.
-        // Moments can be used in robust center-of-mass calculations
-        // even if individual weights are tiny (or zero).
-        // Works in local *virtual* coord space of x0,y0,h0.
         private static void _SolveForDualMomentAndArea(double x0, double y0, double h0,
                                                        double x1, double y1, double h1,
                                                        double x2, double y2, double h2,
@@ -15925,6 +15960,7 @@ OFF
                         // return x*A, y*A, A
                         // XXX wait a minute, we're not doing this right! shouldn't divide, I don't think?
                         // XXX I think this is done in GeneralOptimizationStuff
+                        // XXX probably should not offer length=3, it confuses things... maybe
                         assert(false);
                         result[0] /= A;
                         result[1] /= A;
@@ -15944,7 +15980,8 @@ OFF
             //System.out.println("            in SolveForDualMomentAndArea(wrap=false)");
 
 
-            // convert from global virtual coord space to local virtual coord space...
+            // convert from global virtual coord space to local virtual coord space
+            // (local relative to v0)
             double X1 = x1 - x0;
             double Y1 = y1 - y0;
             double H1 = h1 - h0;
@@ -16141,7 +16178,7 @@ OFF
             accumulator[1] += increment[1]; // y*A
             if (accumulator.length == 4
              && increment.length == 4)
-                accumulator[2] += increment[2]; // h*A^2
+                accumulator[2] += increment[2]; // h*A^2, or z*A
             accumulator[accumulator.length-1] += increment[increment.length-1]; // A
         }
 
