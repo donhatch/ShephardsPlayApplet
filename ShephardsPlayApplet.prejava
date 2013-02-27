@@ -54,6 +54,7 @@ BUGS:
     - respect symmetry:
         - rubberbanding
     - collapse to-add verts via symmetries (e.g. so we don't add multiple verts at origin)
+          (I think this works correctly on mouse down, but not when dragging new vert from non-origin to origin)
     - improve kaleidescope:
         - detect and use center
         - detect and use complete symmetry group
@@ -71,10 +72,10 @@ BUGS:
   Inside-outedness-related:
     - I think I do need an option to exclude back faces, or combine them, when delaunayizing--
       the backfacing edges are a nuisance.
+      (XXX what was I saying here?  is this done now?)
 
   Misc:
-    - re-think whole pipeline so no negative weights?  or get VERY clear on what they mean
-    - multiple models/views/controlpanels, like gimp and magiccube4d?
+    - get VERY clear on what negative weights/W's mean through the pipeline
     - on cygwin, can I make it listen for ctrl-z on console, and suspend, just like vim does?
     - don't swap diagonals I can't see (back facing)
     - 'f' button assert-fails
@@ -85,7 +86,7 @@ BUGS:
     - ctrl-d to swap primal with dual never seems to produce anything good any more
     - dragging edges doesn't work yet when not ortho
     - 'd' to delete edge not working in non-ortho
-    - when non-ortho, snap-to-grid produces coords with some round-off error, e.g. 0.12500000000000003
+    - when non-ortho, snap-to-grid produces coords with some round-off error, e.g. 0.12500000000000003  (I think this is fixed)
     - clear and click with shift down-- creates a zero-length edge, I think it shouldn't.
       just make it so the rubberbanding won't create a new vert to exact same place.
     - tri grid, '+' 3 times, tilt 180 degrees -> assert fail in IsMiniBall
@@ -100,10 +101,10 @@ BUGS:
         radius 1/2:
             left is too right by 1 pixel
     - why do I need that extendAndOrthogonalize?  it shouldn't be getting non-orthogonal so quickly! (that was when using trackball... maybe a moot issue now)
-    - can't run it with donhatchsw.jar?? can build it though! (using ; instead of :)
     - use exact group calculation rather than generateVertices when adding a point
 
 TO DO:
+    - change ambiguous doThis and doThat to this(), that(), thisFlag, thatFlag?
     - use vert.arity to determine arity, silly
     - highlight vert when close enough to pick it?
     - get rid of all calcInsideOutDualVertsFlag=false code, just always calculate them (I think)
@@ -121,10 +122,8 @@ TO DO:
     - actually merge vertices when edge super small? (or guarantee cut?)
     - think about how user can express grid params
     - uniform hyperbolic grid? hmm
-    - add a bit of symbolic fuzzy fudge to convex hull, to make it think flat edges are a bit convex? oh wait, is this just a question of sidedness testing afterwards? hmm. I did it, it seems to work for small things but it doesn't keep me from needing to add those extra verts to the grids?? (MAY BE DEFUNCT SINCE COPLANAR CONVEX HULL IS FIXED)
     - need a way to ask where remaining bad lagoon exits are (finding them visually
       is a needle in a haystack sometimes)
-    - change ambiguous doThis and doThat to this(), that(), thisFlag, thatFlag?
     - I think I can get rid of the mesh x,y,h
       and have just have the momentAndArea
       (call it coords? not sure)
@@ -12449,21 +12448,18 @@ OFF
             public class Vertex
             {
                 /*
-                   TODO: 
-                           X,Y,Z,W homo
-                           x,y,z actual
+                   X,Y,Z,W homo
+                   x,y,z actual
+                   h = z + (x^2+y^2)/2 = height above paraboloid z=-(x^2+y^2)/2 which has curvature 1 at origin
 
-                           x = X/W
-                           y = Y/W
-                           z = Z/W
-                           h = H/W^2  (I think? not sure)
-                           X = x*W
-                           Y = y*W
-                           Z = z*W
-                           H = h*W^2  (I think? not sure)
-                   blech, then we can't just use x() and setXnaive(),
-                   have to use maybe x(), setx(), X(), setXnaive()    YES, THIS
-                   or, maybe, Xnaive(), x(newx), X(), X(newX)  (blech, obscure)
+                   x = X/W
+                   y = Y/W
+                   z = Z/W
+                   h = H/W^2
+                   X = x*W
+                   Y = y*W
+                   Z = z*W
+                   H = h*W^2
 
                    migration strategy:
                    a zillion callers assumed w=1 before and not clear
@@ -12479,9 +12475,9 @@ OFF
                 private double _Y;
                 private double _Z;
                 private double _W; // homogeneous "thing to divide by"
-                private double _H; // height above the paraboloid z = -(x^2+y^2)/2 (has curvature 1 at origin)
+                private double _H; // height above the paraboloid z = -(x^2+y^2)/2 (has curvature 1 at origin). not all that meaningful when reference surface is sphere instead of that paraboloid.
 
-                // TODO: I think weight can be merged with w, and should be storing moment instead of position when weight is non-1 ... except I'm not sure if there's confusion when w is also being used to convey infinite position
+                // TODO: can weight be merged with w?  I think currently they are always the same for dual verts, but maybe not for primals sometimes, when unwrapped/unwrapped from sphere. in that case w can convey infinite position
                 public double weight = 1.; // optional, if this is a computed dual vertex, this should be the original triangle area (projected to xy plane I think)
                 public double momentAndArea[/*4*/] = null; // optional... similar to weight. x*A,y*A,h*A^2,A where A is twice tri area (projected to xy plane I think)
                 public int arity = 0; // number of edges having this vertex as initial vertex
