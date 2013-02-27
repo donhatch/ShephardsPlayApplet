@@ -71,7 +71,8 @@ BUGS:
 
   Labels-related:
     - labels inside out primal edges even if not drawing them
-    - smart orientations not working for negative dual parts-- ends up opposite smallest instead of at largest, I think
+    - smart orientations not working for negative dual parts-- ends up opposite smallest instead of at largest, I think?
+    - smart orientations a bit flakey around boundary too (probably same problem)
 
   Net-related:
     - net flow doesn't work when delaunayized with "calc underside when delaunayizing"
@@ -4547,6 +4548,7 @@ public class ShephardsPlayApplet
                     (double)Math.round(projectedThisPeffective[1]/gridSnapQuantum)*gridSnapQuantum,
                     0., // we'll fix this in a moment
                 };
+                // XXX TODO: this doesn't seem right... if not snapToGrid, then we're modifying projectedThisPeffective.  confused
                 snappedProjectedThisPeffective[2] = 0. - .5 * (SQR(snappedProjectedThisPeffective[0]) + SQR(snappedProjectedThisPeffective[1]));
 
                 int whichButton = getButton(e);
@@ -4745,6 +4747,7 @@ public class ShephardsPlayApplet
                                 (double)Math.round(projectedThisPeffective[1]/gridSnapQuantum)*gridSnapQuantum,
                                 0., // we'll fix this in a moment
                             };
+                            projectedThisPeffective = null; // done with it, transferred ownership
                             snappedProjectedThisPeffective[2] = 0. - .5 * (SQR(snappedProjectedThisPeffective[0]) + SQR(snappedProjectedThisPeffective[1]));
 
                             // now what??? project back to screen and set prevP to it.
@@ -4752,7 +4755,11 @@ public class ShephardsPlayApplet
                             // oh, set *thisP* to it, so prevP will get set to that! hacky
 
                             double scratch[] = new double[3];
-                            mostRecentGraphics.xform(snappedProjectedThisPeffective[0], snappedProjectedThisPeffective[1], snappedProjectedThisPeffective[2], 1., scratch);
+                            mostRecentGraphics.xform(snappedProjectedThisPeffective[0],
+                                                     snappedProjectedThisPeffective[1],
+                                                     snappedProjectedThisPeffective[2],
+                                                     1.,
+                                                     scratch);
                             VecMath.copyvec(2, thisP, scratch);
                         }
                     }
@@ -4801,7 +4808,7 @@ public class ShephardsPlayApplet
 
                             /*
                                 All right, how should this look?
-                                    1. Find closest vert, in pixels, to the mouse cursor (already found, if dragging)
+                                    1. Find closest vert, in pixels, to the mouse cursor (already found, since dragging)
                                     2. determine its surface offset and whether it's front-facing or back-facing
                                     3. project it to screen space
                                     4. apply delta to it in screen space
@@ -4823,10 +4830,20 @@ public class ShephardsPlayApplet
                             pickPointOnSurface(thisPeffective, offset, beingDraggedVertNewCoords, mousePressWasBackFacing);
                             beingDraggedVertNewCoords = (double[])Arrays.append(beingDraggedVertNewCoords, 1.); // TODO: just make this homogeneous throughout
 
-                            // TODO: snap!
+                            beingDraggedVertUnsnappedXY = new double[] {beingDraggedVertNewCoords[0],beingDraggedVertNewCoords[1]};
+
+                            double beingDraggedVertNewCoordsSnapped[] = !snapToGrid ? beingDraggedVertNewCoords : new double[] {
+                                (double)Math.round(beingDraggedVertNewCoords[0]/gridSnapQuantum)*gridSnapQuantum,
+                                (double)Math.round(beingDraggedVertNewCoords[1]/gridSnapQuantum)*gridSnapQuantum,
+                                beingDraggedVertNewCoords[0], // we'll fix this in a moment
+                                1.,
+                            };
+                            beingDraggedVertNewCoords = null; // done with it, transferred ownership
+                            if (snapToGrid)
+                                beingDraggedVertNewCoordsSnapped[2] -= .5 * (SQR(beingDraggedVertNewCoordsSnapped[0]) + SQR(beingDraggedVertNewCoordsSnapped[1]));
 
                             // we're going to change the position of beingDraggedVert
-                            // to beingDraggedVertNewCoords.
+                            // to beingDraggedVertNewCoordsSnapped.
 
                             if (pRotationalSymmetry.get() > 1
                              || qRotationalSymmetry.get() > 1
@@ -4872,7 +4889,7 @@ public class ShephardsPlayApplet
                                          && EQ(oldImage[3], scratch[3], 1e-6))
                                         {
                                             if (newImage == null)
-                                                newImage = VecMath.vxm(beingDraggedVertNewCoords, group[iGroup]);
+                                                newImage = VecMath.vxm(beingDraggedVertNewCoordsSnapped, group[iGroup]);
                                             if (newVertexPositionSums[iVert] == null)
                                                 newVertexPositionSums[iVert] = new double[4]; // zeros
                                             // XXX TODO: wow this is totally wrong now, can't just add in homogeneous space
@@ -4914,16 +4931,16 @@ public class ShephardsPlayApplet
                             {
                                 if (wrapAroundSphereFlag.get())
                                 {
-                                    beingDraggedVert.setXYZW(beingDraggedVertNewCoords[0],
-                                                             beingDraggedVertNewCoords[1],
-                                                             beingDraggedVertNewCoords[2],
-                                                             beingDraggedVertNewCoords[3]);
+                                    beingDraggedVert.setXYZW(beingDraggedVertNewCoordsSnapped[0],
+                                                             beingDraggedVertNewCoordsSnapped[1],
+                                                             beingDraggedVertNewCoordsSnapped[2],
+                                                             beingDraggedVertNewCoordsSnapped[3]);
                                 }
                                 else
                                 {
                                     // on paraboloid; h doesn't change
-                                    beingDraggedVert.setxyh(beingDraggedVertNewCoords[0]/beingDraggedVertNewCoords[3],
-                                                            beingDraggedVertNewCoords[1]/beingDraggedVertNewCoords[3],
+                                    beingDraggedVert.setxyh(beingDraggedVertNewCoordsSnapped[0]/beingDraggedVertNewCoordsSnapped[3],
+                                                            beingDraggedVertNewCoordsSnapped[1]/beingDraggedVertNewCoordsSnapped[3],
                                                             beingDraggedVert.h());
                                 }
                             }
@@ -5199,11 +5216,10 @@ public class ShephardsPlayApplet
                                 Mesh.Vertex beingDraggedVert = mesh.getVert(beingDraggedVertIndex);
 
                                 double oldCoords[] = {beingDraggedVert.x(), beingDraggedVert.y()};
-
                                 // only difference between ctrl-newly-down and ctrl-newly-up...
                                 double newCoords[] = {
-                                    (double)Math.round(beingDraggedVertUnsnappedXY[0]/gridSnapQuantum)*gridSnapQuantum,
-                                    (double)Math.round(beingDraggedVertUnsnappedXY[1]/gridSnapQuantum)*gridSnapQuantum,
+                                    (double)Math.round(oldCoords[0]/gridSnapQuantum)*gridSnapQuantum,
+                                    (double)Math.round(oldCoords[1]/gridSnapQuantum)*gridSnapQuantum,
                                 };
 
                                 double group[][][] = getTheSymmetryGroup();
@@ -5220,7 +5236,7 @@ public class ShephardsPlayApplet
                                             double newImage[] = VecMath.vxm(newCoords,group[iGroup]);
                                             System.out.println("Snapping vertex "+iVert+" from "+vertI.x()+" "+vertI.y()+" "+vertI.h()+"");
                                             vertI.setXYnaive(newImage[0],
-                                                        newImage[1]);
+                                                             newImage[1]);
                                             System.out.println("Dragging vertex "+iVert+" from "+vertI.x()+" "+vertI.y()+" "+vertI.h()+"");
                                         }
                                     }
@@ -17150,7 +17166,7 @@ OFF
 
         private double prevP[] = null;
         private double origP[] = null;
-        // "effective" position is position of the thing being dragged. might be a few pixels away from actual position.
+        // "effective" position is position of the thing being dragged. might be a few pixels away from actual position of mouse cursor.
         private double prevPeffective[] = null;
         private double origPeffective[] = null;
 
