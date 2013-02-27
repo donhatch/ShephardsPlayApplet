@@ -5,7 +5,6 @@ and produce the dual diagrams with heights.
 
 BUGS:
   Single-lagoon-exit related:
-    - need uniform nice gui for various params
     - dual vert numbering isn't sane (maybe nothing can be done about that...
       I think they come out in order based on tri order,
       which is based on edge order (rather than original tri order; that gets lost).
@@ -70,9 +69,7 @@ BUGS:
     - snapping should work orthogonally to symmetry (should just snap original, not images, I think... and then make images be the images of the snapped?)
 
   Labels-related:
-    - labels inside out primal edges even if not drawing them
-    - smart orientations not working for negative dual parts-- ends up opposite smallest instead of at largest, I think?
-    - smart orientations a bit flakey around boundary too (probably same problem)
+    - labels inside out primal edges (underside) even if not drawing them
 
   Net-related:
     - net flow doesn't work when delaunayized with "calc underside when delaunayizing"
@@ -6106,51 +6103,50 @@ public class ShephardsPlayApplet
                     {
                         int nVerts = mesh.verts.size();
                         int nEdges = mesh.edges.size();
+                        boolean didVert[] = new boolean[nVerts]; // initialized to false
                         smartVertexAngles = new double[nVerts]; // initialized to 0
+                        double angsAroundThisVert[] = new double[nEdges]; // scratch, worst case arity
 
                         FORI (iEdge0, nEdges)
                         {
                             Mesh.Edge edge0 = mesh.getEdge(iEdge0);
                             Mesh.Vertex vert = edge0.initialVertex();
-                            if (vert == null)
+                            if (vert == null || didVert[vert.myIndex()])
                                 continue;
-                            if (smartVertexAngles[vert.myIndex()] != 0.)
-                                continue; // already saw this one for sure
+                            didVert[vert.myIndex()] = true;
 
-                            double biggestGap = -1.;
-                            double angOfBiggestGap = 0.;
                             // walk CCW around vertex
                             Mesh.Edge thisEdge = edge0;
-                            Mesh.Edge nextEdge;
+                            int nAngsAroundThisVert = 0;
                             do {
                                 assert(thisEdge.initialVertex() == vert);
-                                nextEdge = thisEdge.prev().opposite();
-                                double nextAng =
-                                    nextEdge.direction != null
-                                  ? Math.atan2(nextEdge.direction[1],
-                                               nextEdge.direction[0])
-                                  : Math.atan2(nextEdge.finalVertex().y()-nextEdge.initialVertex().y(),
-                                               nextEdge.finalVertex().x()-nextEdge.initialVertex().x());
                                 double thisAng =
                                     thisEdge.direction != null
                                   ? Math.atan2(thisEdge.direction[1],
                                                thisEdge.direction[0])
                                   : Math.atan2(thisEdge.finalVertex().y()-thisEdge.initialVertex().y(),
                                                thisEdge.finalVertex().x()-thisEdge.initialVertex().x());
+                                angsAroundThisVert[nAngsAroundThisVert++] = thisAng;
+                            } while ((thisEdge = thisEdge.prev().opposite()) != edge0);
+
+                            SortStuff.sort(angsAroundThisVert, 0, nAngsAroundThisVert);
+                            double biggestGap = -1.;
+                            double angOfBiggestGap = 0.;
+                            FORI (iAng, nAngsAroundThisVert)
+                            {
+                                double thisAng = angsAroundThisVert[iAng];
+                                double nextAng = angsAroundThisVert[(iAng+1)%nAngsAroundThisVert];
                                 double thisGap = nextAng - thisAng;
-                                if (isDualMesh)
-                                    thisGap = -thisGap;
-                                if (thisGap < 0)
+                                if (thisGap < 0.)
+                                {
                                     thisGap += 2*Math.PI;
+                                }
                                 if (thisGap > biggestGap)
                                 {
                                     biggestGap = thisGap;
-                                    if (isDualMesh)
-                                        angOfBiggestGap = thisAng - thisGap/2;
-                                    else
-                                        angOfBiggestGap = thisAng + thisGap/2;
+                                    angOfBiggestGap = thisAng + thisGap/2.;
                                 }
-                            } while ((thisEdge = nextEdge) != edge0);
+                            }
                             smartVertexAngles[vert.myIndex()] = angOfBiggestGap;
                         }
                     }
