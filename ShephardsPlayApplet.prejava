@@ -104,7 +104,6 @@ BUGS:
     - use exact group calculation rather than generateVertices when adding a point
 
 TO DO:
-    - change ambiguous doThis and doThat to this(), that(), thisFlag, thatFlag?
     - use vert.arity to determine arity, silly
     - highlight vert when close enough to pick it?
     - get rid of all calcInsideOutDualVertsFlag=false code, just always calculate them (I think)
@@ -136,7 +135,7 @@ TO DO:
       (then again it would allow higher dimensions
       or alternate interpretations)
 
-    - when dragging a point with doContinuouslyDelaunayize true,
+    - when dragging a point with continuouslyDelaunayizeFlag true,
       show the nearest-neighbor-interpolation thing
       (i.e. use the DT of all but the dragged point,
       and show the new cell stealing area from others, in a diff color)
@@ -729,8 +728,8 @@ public class ShephardsPlayApplet
                             {
                                 applet.mesh = new Mesh(item.before.mesh);
                                 applet.meshOfSelectedTris = applet.mesh; // hackish
-                                applet.doContinuouslyDelaunayize.set(item.before.doContinuouslyDelaunayize);
-                                applet.doOptimize.set(item.before.doOptimize);
+                                applet.continuouslyDelaunayizeFlag.set(item.before.continuouslyDelaunayizeFlag);
+                                applet.optimizeFlag.set(item.before.optimizeFlag);
                                 applet.optimizationTypeIndex.set(item.before.optimizationTypeIndex);
                                 applet.optimizationType = applet.availableOptimizationTypes[applet.optimizationTypeIndex.get()];
                                 applet.selectedTris = (int[][])Arrays.copy(item.before.selectedTris, 2);
@@ -757,8 +756,8 @@ public class ShephardsPlayApplet
                             {
                                 applet.mesh = new Mesh(item.after.mesh);
                                 applet.meshOfSelectedTris = applet.mesh; // hackish
-                                applet.doContinuouslyDelaunayize.set(item.after.doContinuouslyDelaunayize);
-                                applet.doOptimize.set(item.after.doOptimize);
+                                applet.continuouslyDelaunayizeFlag.set(item.after.continuouslyDelaunayizeFlag);
+                                applet.optimizeFlag.set(item.after.optimizeFlag);
                                 applet.optimizationTypeIndex.set(item.after.optimizationTypeIndex);
                                 applet.optimizationType = availableOptimizationTypes[applet.optimizationTypeIndex.get()];
                                 applet.selectedTris = (int[][])Arrays.copy(item.after.selectedTris, 2);
@@ -800,7 +799,7 @@ public class ShephardsPlayApplet
                             applet.selectedDualVertIndices = new int[] {};
                             applet.allDualVertsAreSelected = false;
                             applet.resetLocalToWorld();
-                            if (applet.doContinuouslyDelaunayize.get()) applet.delaunayize();
+                            if (applet.continuouslyDelaunayizeFlag.get()) applet.delaunayize();
                             applet.dirtyDualMesh(); // before snapping after state, so applet.theNet will be cleared XXX aren't there a zillion places we're neglecting to take this into account?
 
                             UndoItem.State after = applet.newUndoItemState();
@@ -1149,7 +1148,7 @@ public class ShephardsPlayApplet
 
                                     applet.doUniformGridThing(applet.gridN.get());
 
-                                    if (applet.doContinuouslyDelaunayize.get()) applet.delaunayize();
+                                    if (applet.continuouslyDelaunayizeFlag.get()) applet.delaunayize();
                                     UndoItem.State after = applet.newUndoItemState();
                                     applet.undoTreeSquirrel.Do(new UndoItem(before, after));
 
@@ -1180,7 +1179,7 @@ public class ShephardsPlayApplet
 
                                     applet.doBlueNoiseThing(applet.blueNoiseN.get());
 
-                                    if (applet.doContinuouslyDelaunayize.get()) applet.delaunayize();
+                                    if (applet.continuouslyDelaunayizeFlag.get()) applet.delaunayize();
                                     UndoItem.State after = applet.newUndoItemState();
                                     applet.undoTreeSquirrel.Do(new UndoItem(before, after));
 
@@ -1249,24 +1248,24 @@ public class ShephardsPlayApplet
                     add(new JLabel("        ")); // indent a bit
                     add(new JCol() {{
                         add(new JRow() {{
-                            add(new JCheckBox("Optimize", applet.doOptimize.get()) {{
+                            add(new JCheckBox("Optimize", applet.optimizeFlag.get()) {{
                                     addItemListener(new java.awt.event.ItemListener() {
                                         public void itemStateChanged(java.awt.event.ItemEvent e)
                                         {
                                             UndoItem.State before = applet.newUndoItemState();
-                                            applet.doOptimize.set(isSelected());
-                                            System.out.println("doOptimize -> "+applet.doOptimize.get());
-                                            if (applet.doContinuouslyDelaunayize.get()) applet.delaunayize();
+                                            applet.optimizeFlag.set(isSelected());
+                                            System.out.println("optimizeFlag -> "+applet.optimizeFlag.get());
+                                            if (applet.continuouslyDelaunayizeFlag.get()) applet.delaunayize();
                                             UndoItem.State after = applet.newUndoItemState();
                                             applet.undoTreeSquirrel.Do(new UndoItem(before, after));
                                             applet.dirtyDualMesh(); // XXX why is this necessary here, and not, for example, for Delaunayize? I'm confused
                                             applet.theCanvas.repaint();
                                         }
                                     });
-                                    applet.doOptimize.addListener(applet.doOptimizeListener = new Listenable.Listener() {
+                                    applet.optimizeFlag.addListener(applet.optimizeFlagListener = new Listenable.Listener() {
                                         public void valueChanged()
                                         {
-                                            setSelected(applet.doOptimize.get()); // of the checkbox
+                                            setSelected(applet.optimizeFlag.get()); // of the checkbox
                                         }
                                     });
                                 }
@@ -1293,7 +1292,7 @@ public class ShephardsPlayApplet
                                             System.out.println("optimizationType -> "+applet.optimizationTypeNames[applet.optimizationType]);
 
 
-                                            if (applet.doContinuouslyDelaunayize.get()) applet.delaunayize();
+                                            if (applet.continuouslyDelaunayizeFlag.get()) applet.delaunayize();
                                             UndoItem.State after = applet.newUndoItemState();
                                             applet.undoTreeSquirrel.Do(new UndoItem(before, after));
                                             applet.dirtyDualMesh(); // XXX why is this necessary here, and not, for example, for Delaunayize? I'm confused
@@ -1325,24 +1324,24 @@ public class ShephardsPlayApplet
                     add(new JLabel("        ")); // indent a bit
                     add(new JCol() {{
                         add(new JRow() {{
-                            add(new JCheckBox("Keep delaunayized", applet.doContinuouslyDelaunayize.get()) {{
+                            add(new JCheckBox("Keep delaunayized", applet.continuouslyDelaunayizeFlag.get()) {{
                                     setToolTipText("<html>Turning this on delaunayizes the triangulation and keeps it delaunayized on every applet.mesh editing operation.<br>To just delaunayize it once, turn this on and then off again.</html>");
                                     addItemListener(new java.awt.event.ItemListener() {
                                         public void itemStateChanged(java.awt.event.ItemEvent e)
                                         {
                                             UndoItem.State before = applet.newUndoItemState();
-                                            applet.doContinuouslyDelaunayize.set(isSelected());
-                                            System.out.println("doContinuouslyDelaunayize -> "+applet.doContinuouslyDelaunayize.get());
-                                            if (applet.doContinuouslyDelaunayize.get()) applet.delaunayize();
+                                            applet.continuouslyDelaunayizeFlag.set(isSelected());
+                                            System.out.println("continuouslyDelaunayizeFlag -> "+applet.continuouslyDelaunayizeFlag.get());
+                                            if (applet.continuouslyDelaunayizeFlag.get()) applet.delaunayize();
                                             UndoItem.State after = applet.newUndoItemState();
                                             applet.undoTreeSquirrel.Do(new UndoItem(before, after));
                                             applet.theCanvas.repaint();
                                         }
                                     });
-                                    applet.doContinuouslyDelaunayize.addListener(applet.doContinuouslyDelaunayizeListener = new Listenable.Listener() {
+                                    applet.continuouslyDelaunayizeFlag.addListener(applet.continuouslyDelaunayizeFlagListener = new Listenable.Listener() {
                                         public void valueChanged()
                                         {
-                                            setSelected(applet.doContinuouslyDelaunayize.get()); // of the checkbox
+                                            setSelected(applet.continuouslyDelaunayizeFlag.get()); // of the checkbox
                                             // XXX wait a minute, isn't this where we should delaunayize, rather than above?
                                         }
                                     });
@@ -2660,8 +2659,8 @@ public class ShephardsPlayApplet
                                         applet.showMagFlag.set(isSelected());
                                         System.out.println("showMagFlag -> "+applet.showMagFlag.get());
                                         // need to double buffer iff magnifying
-                                        applet.doDoubleBuffer = applet.showMagFlag.get();
-                                        System.out.println("    doDoubleBuffer -> "+applet.doDoubleBuffer);
+                                        applet.doubleBufferFlag = applet.showMagFlag.get();
+                                        System.out.println("    doubleBufferFlag -> "+applet.doubleBufferFlag);
                                         applet.theCanvas.repaint();
                                     }
                                 });
@@ -2957,7 +2956,7 @@ public class ShephardsPlayApplet
                 public void valueChanged()
                 {
                     System.out.println("calcInsideOutDualVertsFlag -> "+calcInsideOutDualVertsFlag.get());
-                    if (doContinuouslyDelaunayize.get())
+                    if (continuouslyDelaunayizeFlag.get())
                     {
                         UndoItem.State before = newUndoItemState();
                         delaunayize();
@@ -3070,7 +3069,7 @@ public class ShephardsPlayApplet
             "    shift-'0' - set left-right mirror and rotational symmetry to 10",
             "    'V' - cycle verbosity (to java console or system output)",
             "    ' ' - just repaint",
-            "    'A' - toggle doAntiAliasing",
+            "    'A' - toggle antiAliasingFlag",
             "    't'/'T' - toggle primary (triangle) mesh",
             "    'i'/'+'/'=' - zoom in",
             "    'o'/'-' - zoom out",
@@ -3083,15 +3082,15 @@ public class ShephardsPlayApplet
             "    ctrl-'s' - swap a diagonal if the result is more Delaunay",
             "    'D' - Delaunay triangulate",
             "    'w' - add or remove closest dual vertex from list of points to show curvature center of",
-            "    'O' - toggle doOptimize",
+            "    'O' - toggle optimizeFlag",
             "    'l' - toggle showLabels",
             "    '0' - toggle showOrigin",
             "    'g' - toggle showGrid",
             "    'M'/'m' - increase/decrease magnification focus region",
             "    'P'/'p' - increase/decrease magnified pixel size",
             "    ctrl-'m' - toggle magnifying glass",
-            "    'a' - toggle doArrowsTowardsSharpestDihedrals (green)",
-            "    alt-'a' - toggle doArrowsTowardsShortestEdges (cyan)",
+            "    'a' - toggle arrowsTowardsSharpestDihedralsFlag (green)",
+            "    alt-'a' - toggle arrowsTowardsShortestEdgesFlag (cyan)",
             "    'n' - toggle showNet",
             "    Left/Right arrow - rotate closest cut or fold CCW or CW around its lagoon in the net",
             "    'S' - turn off optimize, and re-spherize",
@@ -3451,7 +3450,7 @@ public class ShephardsPlayApplet
                 if (edgeStatuses != null) // if there was Cut and/or Fold info at the end...
                     theNet = new Net(getDualMesh(), mesh, edgeStatuses);
 
-                if (doContinuouslyDelaunayize.get()) delaunayize();
+                if (continuouslyDelaunayizeFlag.get()) delaunayize();
             }
             catch (Exception exc)
             {
@@ -3557,7 +3556,7 @@ public class ShephardsPlayApplet
                 assert(vert.momentAndArea == null);
             }
 
-            if (scaleX != scaleY && doContinuouslyDelaunayize.get()) // no need to re-delaunayize if uniform scale   TODO: actually if everything's working right, shouldn't have to do this anyway!?
+            if (scaleX != scaleY && continuouslyDelaunayizeFlag.get()) // no need to re-delaunayize if uniform scale   TODO: actually if everything's working right, shouldn't have to do this anyway!?
             {
                 delaunayize();
                 dirtyDualMesh();
@@ -3777,7 +3776,7 @@ public class ShephardsPlayApplet
             }
 
             dirtyDualMesh();
-            if (doContinuouslyDelaunayize.get()) delaunayize();
+            if (continuouslyDelaunayizeFlag.get()) delaunayize();
         } // xformTheMesh
 
 
@@ -3805,7 +3804,7 @@ public class ShephardsPlayApplet
             qRotationalSymmetry.set(q);
             leftRightSymmetry.set(leftRight);
             centralSymmetry.set(central);
-            if (doContinuouslyDelaunayize.get()) delaunayize();
+            if (continuouslyDelaunayizeFlag.get()) delaunayize();
             UndoItem.State after = newUndoItemState();
             undoTreeSquirrel.Do(new UndoItem(before, after));
 
@@ -3916,9 +3915,9 @@ public class ShephardsPlayApplet
 
             // These (and eventVerbose) can be specified on the command line as, e.g. showLabelsFlag=true
             // TODO: just automatically get any public member
-            doContinuouslyDelaunayize.set(getParameterBoolean("doContinuouslyDelaunayize", doContinuouslyDelaunayize.get()));
-            doOptimize.set(getParameterBoolean("doOptimize", doOptimize.get()));
-            doShowPositiveOrthantnessVisualization = getParameterBoolean("doShowPositiveOrthantnessVisualization", doShowPositiveOrthantnessVisualization);
+            continuouslyDelaunayizeFlag.set(getParameterBoolean("continuouslyDelaunayizeFlag", continuouslyDelaunayizeFlag.get()));
+            optimizeFlag.set(getParameterBoolean("optimizeFlag", optimizeFlag.get()));
+            showPositiveOrthantnessVisualizationFlag = getParameterBoolean("showPositiveOrthantnessVisualizationFlag", showPositiveOrthantnessVisualizationFlag);
             // XXX this is kind of messed up, we don't get to know whether the user misspelled something
 
 
@@ -4104,7 +4103,7 @@ public class ShephardsPlayApplet
 
                             // added something-- invalidate dual mesh
                             dirtyDualMesh();
-                            if (doContinuouslyDelaunayize.get()) delaunayize();
+                            if (continuouslyDelaunayizeFlag.get()) delaunayize();
                         }
 
                         //
@@ -4236,7 +4235,7 @@ public class ShephardsPlayApplet
                                         }
                                     }
 
-                                    if (doContinuouslyDelaunayize.get()) delaunayize();
+                                    if (continuouslyDelaunayizeFlag.get()) delaunayize();
                                 }
                             }
                             else // closest was too far-- add a new vert
@@ -4416,7 +4415,7 @@ public class ShephardsPlayApplet
 
                                 // added something-- invalidate dual mesh
                                 dirtyDualMesh();
-                                if (doContinuouslyDelaunayize.get()) delaunayize();
+                                if (continuouslyDelaunayizeFlag.get()) delaunayize();
                             }
                         } // !showNetFlag
                     } // shift not down
@@ -4445,7 +4444,7 @@ public class ShephardsPlayApplet
                                                 (double)Math.round(vert.y()/gridSnapQuantum)*gridSnapQuantum,
                                                 vert.h());
                                 }
-                                if (doContinuouslyDelaunayize.get()) delaunayize();
+                                if (continuouslyDelaunayizeFlag.get()) delaunayize();
                             }
                         }
                     }
@@ -4512,7 +4511,7 @@ public class ShephardsPlayApplet
 
                             mesh.sanityCheck();
 
-                            if (doContinuouslyDelaunayize.get()) delaunayize();
+                            if (continuouslyDelaunayizeFlag.get()) delaunayize();
                         }
                     }
 
@@ -4566,7 +4565,7 @@ public class ShephardsPlayApplet
                             // added something-- invalidate dual mesh
                             dirtyDualMesh();
                         }
-                        if (doContinuouslyDelaunayize.get()) delaunayize();
+                        if (continuouslyDelaunayizeFlag.get()) delaunayize();
                     }
                     rubberBandingNewEdge = false;
 
@@ -4935,7 +4934,7 @@ public class ShephardsPlayApplet
                                 }
                             }
 
-                            if (doContinuouslyDelaunayize.get()) delaunayize();
+                            if (continuouslyDelaunayizeFlag.get()) delaunayize();
                             if (nonEventVerbose >= 1)
                             {
                                 double verts[][] = new double[mesh.verts.size()][];
@@ -5010,10 +5009,10 @@ public class ShephardsPlayApplet
                     case java.awt.event.KeyEvent.VK_UP:
                     {
                         UndoItem.State before = newUndoItemState();
-                        if (doOptimize.get())
+                        if (optimizeFlag.get())
                         {
-                            doOptimize.set(false);
-                            System.out.println("doOptimize -> "+doOptimize.get()+" ('O' to turn back on)");
+                            optimizeFlag.set(false);
+                            System.out.println("optimizeFlag -> "+optimizeFlag.get()+" ('O' to turn back on)");
                         }
                         System.out.print("Up");
                         System.out.flush();
@@ -5057,7 +5056,7 @@ public class ShephardsPlayApplet
                                     System.out.println("    verts["+vert.myIndex()+"].Hnaive() -> "+vert.Hnaive());
                                 }
                             }
-                            if (doContinuouslyDelaunayize.get()) delaunayize();
+                            if (continuouslyDelaunayizeFlag.get()) delaunayize();
                         }
                         UndoItem.State after = newUndoItemState();
                         undoTreeSquirrel.Do(new UndoItem(before, after));
@@ -5068,10 +5067,10 @@ public class ShephardsPlayApplet
                     case java.awt.event.KeyEvent.VK_DOWN:
                     {
                         UndoItem.State before = newUndoItemState();
-                        if (doOptimize.get())
+                        if (optimizeFlag.get())
                         {
-                            doOptimize.set(false);
-                            System.out.println("doOptimize -> "+doOptimize.get()+" ('O' to turn back on)");
+                            optimizeFlag.set(false);
+                            System.out.println("optimizeFlag -> "+optimizeFlag.get()+" ('O' to turn back on)");
                         }
                         System.out.print("Down");
                         System.out.flush();
@@ -5112,7 +5111,7 @@ public class ShephardsPlayApplet
                                     System.out.println("    verts["+vert.myIndex()+"].Hnaive() -> "+vert.Hnaive());
                                 }
                             }
-                            if (doContinuouslyDelaunayize.get()) delaunayize();
+                            if (continuouslyDelaunayizeFlag.get()) delaunayize();
                         }
                         UndoItem.State after = newUndoItemState();
                         undoTreeSquirrel.Do(new UndoItem(before, after));
@@ -5232,7 +5231,7 @@ public class ShephardsPlayApplet
                                     }
                                 }
 
-                                if (doContinuouslyDelaunayize.get()) delaunayize();
+                                if (continuouslyDelaunayizeFlag.get()) delaunayize();
 
                                 theCanvas.repaint();
                             }
@@ -5292,7 +5291,7 @@ public class ShephardsPlayApplet
                                     }
                                 }
 
-                                if (doContinuouslyDelaunayize.get()) delaunayize();
+                                if (continuouslyDelaunayizeFlag.get()) delaunayize();
 
                                 theCanvas.repaint();
                             }
@@ -5332,9 +5331,9 @@ public class ShephardsPlayApplet
                     case ' ': // just repaint (i.e. mark dirty)
                         theCanvas.repaint();
                         break;
-                    case 'A': // toggle doAntiAliasing
-                        doAntiAliasing ^= true;
-                        System.out.println("doAntiAliasing -> "+doAntiAliasing+" (if this platform supports it)");
+                    case 'A': // toggle antiAliasingFlag
+                        antiAliasingFlag ^= true;
+                        System.out.println("antiAliasingFlag -> "+antiAliasingFlag+" (if this platform supports it)");
                         theCanvas.repaint();
                         break;
 
@@ -5458,7 +5457,7 @@ public class ShephardsPlayApplet
                         if (closestEdgeIndex != -1)
                         {
                             System.out.println("Swapping diagonal edge e"+closestEdgeIndex);
-                            doContinuouslyDelaunayize.set(false); // otherwise it's not obvious what the hell happened
+                            continuouslyDelaunayizeFlag.set(false); // otherwise it's not obvious what the hell happened
                             mesh.swapDiagonal(mesh.getEdge(closestEdgeIndex), /*onlyIfMoreDelaunay=*/false, /*verbose=*/true);
                             mesh.sanityCheck();
                             dirtyDualMesh();
@@ -5478,7 +5477,7 @@ public class ShephardsPlayApplet
                         if (closestEdgeIndex != -1)
                         {
                             System.out.println("Swapping diagonal edge e"+closestEdgeIndex);
-                            doContinuouslyDelaunayize.set(false); // otherwise it's not obvious what the hell happened
+                            continuouslyDelaunayizeFlag.set(false); // otherwise it's not obvious what the hell happened
                             mesh.swapDiagonal(mesh.getEdge(closestEdgeIndex), /*onlyIfMoreDelaunay=*/true, /*verbose=*/true);
                             mesh.sanityCheck();
                             dirtyDualMesh();
@@ -5651,7 +5650,7 @@ public class ShephardsPlayApplet
                             // deleted something-- invalidate dual mesh
                             dirtyDualMesh();
                         }
-                        doContinuouslyDelaunayize.set(false); // otherwise it will mysteriously come back!
+                        continuouslyDelaunayizeFlag.set(false); // otherwise it will mysteriously come back!
                         UndoItem.State after = newUndoItemState();
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
@@ -5660,10 +5659,10 @@ public class ShephardsPlayApplet
                     case 'S': // turn off optimize, and re-sphereize
                     {
                         UndoItem.State before = newUndoItemState();
-                        if (doOptimize.get())
+                        if (optimizeFlag.get())
                         {
-                            doOptimize.set(false);
-                            System.out.println("doOptimize -> "+doOptimize.get()+" ('O' to turn back on)");
+                            optimizeFlag.set(false);
+                            System.out.println("optimizeFlag -> "+optimizeFlag.get()+" ('O' to turn back on)");
                         }
                         if (wrapAroundSphereFlag.get())
                         {
@@ -5699,7 +5698,7 @@ public class ShephardsPlayApplet
                             }
                         }
                         dirtyDualMesh();
-                        if (doContinuouslyDelaunayize.get()) delaunayize();
+                        if (continuouslyDelaunayizeFlag.get()) delaunayize();
                         UndoItem.State after = newUndoItemState();
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
@@ -5770,29 +5769,29 @@ public class ShephardsPlayApplet
                         break;
 #endif
 
-                    case 'O': // toggle doOptimize
+                    case 'O': // toggle optimizeFlag
                     {
                         UndoItem.State before = newUndoItemState();
-                        doOptimize.set(!doOptimize.get());
-                        System.out.println("doOptimize -> "+doOptimize.get());
-                        if (doContinuouslyDelaunayize.get()) delaunayize();
+                        optimizeFlag.set(!optimizeFlag.get());
+                        System.out.println("optimizeFlag -> "+optimizeFlag.get());
+                        if (continuouslyDelaunayizeFlag.get()) delaunayize();
                         UndoItem.State after = newUndoItemState();
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
                         break;
                     }
 
-                    case 'a': // toggle doArrowsTowardsSharpestDihedrals or doArrowsTowardsShortestEdges
+                    case 'a': // toggle arrowsTowardsSharpestDihedralsFlag or arrowsTowardsShortestEdgesFlag
                     {
                         if (e.isAltDown())
                         {
-                            doArrowsTowardsShortestEdges ^= true;
-                            System.out.println("doArrowsTowardsShortestEdges -> "+doArrowsTowardsShortestEdges);
+                            arrowsTowardsShortestEdgesFlag ^= true;
+                            System.out.println("arrowsTowardsShortestEdgesFlag -> "+arrowsTowardsShortestEdgesFlag);
                         }
                         else
                         {
-                            doArrowsTowardsSharpestDihedrals ^= true;
-                            System.out.println("doArrowsTowardsSharpestDihedrals -> "+doArrowsTowardsSharpestDihedrals);
+                            arrowsTowardsSharpestDihedralsFlag ^= true;
+                            System.out.println("arrowsTowardsSharpestDihedralsFlag -> "+arrowsTowardsSharpestDihedralsFlag);
                         }
                         theCanvas.repaint();
                         break;
@@ -5827,7 +5826,7 @@ public class ShephardsPlayApplet
                         selectedTris = new int[][] {};
                         selectedDualVertIndices = new int[] {};
                         allDualVertsAreSelected = false;
-                        if (doContinuouslyDelaunayize.get()) delaunayize();
+                        if (continuouslyDelaunayizeFlag.get()) delaunayize();
                         UndoItem.State after = newUndoItemState();
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
@@ -5841,8 +5840,8 @@ public class ShephardsPlayApplet
                         {
                             mesh = new Mesh(item.before.mesh);
                             meshOfSelectedTris = mesh; // hackish
-                            doContinuouslyDelaunayize.set(item.before.doContinuouslyDelaunayize);
-                            doOptimize.set(item.before.doOptimize);
+                            continuouslyDelaunayizeFlag.set(item.before.continuouslyDelaunayizeFlag);
+                            optimizeFlag.set(item.before.optimizeFlag);
                             optimizationTypeIndex.set(item.before.optimizationTypeIndex);
                             optimizationType = availableOptimizationTypes[optimizationTypeIndex.get()];
                             selectedTris = (int[][])Arrays.copy(item.before.selectedTris, 2);
@@ -5865,8 +5864,8 @@ public class ShephardsPlayApplet
                         {
                             mesh = new Mesh(item.after.mesh);
                             meshOfSelectedTris = mesh; // hackish
-                            doContinuouslyDelaunayize.set(item.after.doContinuouslyDelaunayize);
-                            doOptimize.set(item.after.doOptimize);
+                            continuouslyDelaunayizeFlag.set(item.after.continuouslyDelaunayizeFlag);
+                            optimizeFlag.set(item.after.optimizeFlag);
                             optimizationTypeIndex.set(item.after.optimizationTypeIndex);
                             optimizationType = availableOptimizationTypes[optimizationTypeIndex.get()];
                             selectedTris = (int[][])Arrays.copy(item.after.selectedTris, 2);
@@ -5895,7 +5894,7 @@ public class ShephardsPlayApplet
                         selectedTris = new int[][] {};
                         selectedDualVertIndices = new int[] {};
                         allDualVertsAreSelected = false;
-                        if (doContinuouslyDelaunayize.get()) delaunayize();
+                        if (continuouslyDelaunayizeFlag.get()) delaunayize();
                         dirtyDualMesh(); // before snapping after state, so theNet will be cleared XXX aren't there a zillion places we're neglecting to take this into account?
                         UndoItem.State after = newUndoItemState();
                         undoTreeSquirrel.Do(new UndoItem(before, after));
@@ -5982,7 +5981,7 @@ public class ShephardsPlayApplet
 
                         doBlueNoiseThing(blueNoiseN.get());
 
-                        if (doContinuouslyDelaunayize.get()) delaunayize();
+                        if (continuouslyDelaunayizeFlag.get()) delaunayize();
                         UndoItem.State after = newUndoItemState();
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
@@ -5994,7 +5993,7 @@ public class ShephardsPlayApplet
 
                         doUniformGridThing(gridN.get());
 
-                        if (doContinuouslyDelaunayize.get()) delaunayize();
+                        if (continuouslyDelaunayizeFlag.get()) delaunayize();
                         UndoItem.State after = newUndoItemState();
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
@@ -6010,7 +6009,7 @@ public class ShephardsPlayApplet
                         else
                             doCannedThingNetless9();
 
-                        if (doContinuouslyDelaunayize.get()) delaunayize();
+                        if (continuouslyDelaunayizeFlag.get()) delaunayize();
                         UndoItem.State after = newUndoItemState();
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
@@ -6020,7 +6019,7 @@ public class ShephardsPlayApplet
                     {
                         UndoItem.State before = newUndoItemState();
                         doCannedThingEyeball();
-                        if (doContinuouslyDelaunayize.get()) delaunayize();
+                        if (continuouslyDelaunayizeFlag.get()) delaunayize();
                         UndoItem.State after = newUndoItemState();
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
@@ -6031,7 +6030,7 @@ public class ShephardsPlayApplet
                     {
                         UndoItem.State before = newUndoItemState();
                         optimizeFarthestLagoonExitKiller();
-                        if (doContinuouslyDelaunayize.get()) delaunayize();
+                        if (continuouslyDelaunayizeFlag.get()) delaunayize();
                         UndoItem.State after = newUndoItemState();
                         undoTreeSquirrel.Do(new UndoItem(before, after));
                         theCanvas.repaint();
@@ -6460,7 +6459,7 @@ public class ShephardsPlayApplet
                                     coords[1][0],
                                     coords[1][1],
                                     coords[1][2],
-                                    doAntiAliasing);
+                                    antiAliasingFlag);
                     }
                 } // drawFlattenedNet
 
@@ -6526,7 +6525,7 @@ public class ShephardsPlayApplet
                 makeSureBackBufferIsRight();
                 java.awt.Graphics g;
                 java.awt.Dimension size;
-                if (doDoubleBuffer)
+                if (doubleBufferFlag)
                 {
                     g = backBufferImage.getGraphics();
                     size = new java.awt.Dimension(backBufferImage.getWidth(null),
@@ -6550,7 +6549,7 @@ public class ShephardsPlayApplet
                 if (implementAntiAliasingInHardware)
                 {
                     graphicsAntiAliasingSetter.setAntiAliasing(g,
-                                                               doAntiAliasing,
+                                                               antiAliasingFlag,
                                                                //1
                                                                eventVerbose
                                                                );
@@ -6598,10 +6597,10 @@ public class ShephardsPlayApplet
                                 double x = iGridLine / (double)gridLinesPerUnit;
                                 mg.drawLine(x, -ymax, 0.,
                                             x,  ymax, 0.,
-                                            doAntiAliasing);
+                                            antiAliasingFlag);
                                 mg.drawLine(-x, -ymax, 0.,
                                             -x,  ymax, 0.,
-                                             doAntiAliasing);
+                                             antiAliasingFlag);
                             }
                         }
                         FORI (iGridLine, gridLinesPerUnit * ymax)
@@ -6612,10 +6611,10 @@ public class ShephardsPlayApplet
                                 double y = iGridLine / (double)gridLinesPerUnit;
                                 mg.drawLine(-xmax, y, 0.,
                                              xmax, y, 0.,
-                                             doAntiAliasing);
+                                             antiAliasingFlag);
                                 mg.drawLine(-xmax, -y, 0.,
                                              xmax, -y, 0.,
-                                             doAntiAliasing);
+                                             antiAliasingFlag);
                             }
                         }
 
@@ -6678,7 +6677,7 @@ public class ShephardsPlayApplet
                                             2*radius, 2*radius,
                                             0., Math.PI*2,
                                             1., // thicknessInPixels,
-                                            doAntiAliasing);
+                                            antiAliasingFlag);
                     }
                 }
 
@@ -6690,11 +6689,11 @@ public class ShephardsPlayApplet
                 // Try optimizing the heights...
                 // XXX paint is a funky place for this
                 //
-                if (doOptimize.get())
+                if (optimizeFlag.get())
                     mesh.findAndApplyOptimalVertexHeights(optimizationType);
 
-                boolean doMakeVert0CoplanarWith145 = false;
-                if (doMakeVert0CoplanarWith145)
+                boolean makeVert0CoplanarWith145Flag = false;
+                if (makeVert0CoplanarWith145Flag)
                 {
                     // XXX total hack
                     Mesh.Vertex v0 = mesh.getVert(0);
@@ -7655,7 +7654,7 @@ public class ShephardsPlayApplet
                                                     initialVertex.x() + rayLength * dualEdge.direction[1],
                                                     initialVertex.y() - rayLength * dualEdge.direction[0],
                                                     0,
-                                                    doAntiAliasing);
+                                                    antiAliasingFlag);
                                     }
                                 }
 
@@ -7761,7 +7760,7 @@ public class ShephardsPlayApplet
                                                 VecMath.vpsxvpsxv(to, circleCenter, r*Math.cos(ang1), basis[1], r*Math.sin(ang1), basis[2]);
                                                 mg.drawLine(from[0],from[1],from[2]-wrapSphereRadius,
                                                             to[0],to[1],to[2]-wrapSphereRadius,
-                                                            doAntiAliasing);
+                                                            antiAliasingFlag);
                                             }
 
 
@@ -7769,10 +7768,10 @@ public class ShephardsPlayApplet
                                             {
                                                 mg.drawLine(midpoint[0],midpoint[1],midpoint[2]-wrapSphereRadius,
                                                             point1[0],point1[1],point1[2]-wrapSphereRadius,
-                                                            doAntiAliasing);
+                                                            antiAliasingFlag);
                                                 mg.drawLine(midpoint[0],midpoint[1],midpoint[2]-wrapSphereRadius,
                                                             point2[0],point2[1],point2[2]-wrapSphereRadius,
-                                                            doAntiAliasing);
+                                                            antiAliasingFlag);
                                             }
                                         }
                                     }
@@ -7886,7 +7885,7 @@ public class ShephardsPlayApplet
                                     double v1[] = vertCoordsHomo[edge.finalVertex().myIndex()];
                                     mg.drawLine(v0[0],v0[1],v0[2],v0[3],
                                                 v1[0],v1[1],v1[2],v1[3],
-                                                doAntiAliasing);
+                                                antiAliasingFlag);
 
                                     whichPrimalEdgesGotDrawn[iWholeEdge*2+0] = true;
                                     whichPrimalEdgesGotDrawn[iWholeEdge*2+1] = true;
@@ -8021,7 +8020,7 @@ public class ShephardsPlayApplet
                                                 to[0]+beingDraggedNetEdgeDelta[0],
                                                 to[1]+beingDraggedNetEdgeDelta[1],
                                                 to[2],
-                                                doAntiAliasing);
+                                                antiAliasingFlag);
                                 }
                             }
                         }
@@ -8088,7 +8087,7 @@ public class ShephardsPlayApplet
 
                                         mg.drawLine(from[0], from[1], from[2], from[3],
                                                     to[0], to[1], to[2], to[3],
-                                                    doAntiAliasing);
+                                                    antiAliasingFlag);
 
                                         if (showNetFlag.get()
                                          && pointOutRedNetEdges
@@ -8271,7 +8270,7 @@ public class ShephardsPlayApplet
                         // triangle sides.
                         // We draw it 3 times, to make sure we get the same logic from each direction. If there are ties, it will get drawn in each place I think.
                         //
-                        if (doArrowsTowardsSharpestDihedrals)
+                        if (arrowsTowardsSharpestDihedralsFlag)
                         {
                             if (showNetFlag.get())
                                 mg.setColor(dualColor);
@@ -8315,8 +8314,8 @@ public class ShephardsPlayApplet
                                              whereToDrawMark[2],
                                              5);
                             }
-                        } // doArrowsTowardsSharpestDihedrals
-                        if (doArrowsTowardsShortestEdges)
+                        } // arowsTowardsSharpestDihedralsFlag
+                        if (arrowsTowardsShortestEdgesFlag)
                         {
                             // XXX we do this in 3 ways, possibly getting different answer each time, in case of a tie... should fix that
                             mg.setColor(java.awt.Color.cyan);
@@ -8371,7 +8370,7 @@ public class ShephardsPlayApplet
                                              5);
 
                             }
-                        } // doArrowsTowardsShortestEdges
+                        } // arrowsTowardsShortestEdgesFlag
 
 
                         if (showNetFlag.get()
@@ -8511,17 +8510,17 @@ public class ShephardsPlayApplet
                     double projectedPrevP[] = new double[3];
                     pickPointOnSurface(prevP, vertOffset(v0, wrapAroundSphereFlag.get()), projectedPrevP, mousePressWasBackFacing);
                     //mg.drawLine(v0.Xnaive(), v0.Ynaive(),
-                                //prevP[0], prevP[1], doAntiAliasing);
+                                //prevP[0], prevP[1], antiAliasingFlag);
                     mg.drawLine(v0.Xnaive(), v0.Ynaive(), v0.Znaive(),
                                 projectedPrevP[0], projectedPrevP[1], projectedPrevP[2],
-                                doAntiAliasing);
+                                antiAliasingFlag);
                 } // if (rubberBandingNewEdge)
 
 
 
 
 
-                if (doShowPositiveOrthantnessVisualization)
+                if (showPositiveOrthantnessVisualizationFlag)
                 {
                     int nPoints = 5000;
                     int nLabels = 100;
@@ -8727,7 +8726,7 @@ public class ShephardsPlayApplet
 
             private void makeSureBackBufferIsRight()
             {
-                if (doDoubleBuffer)
+                if (doubleBufferFlag)
                 {
                     java.awt.Dimension size = getSize();
                     int shouldBeWidth = (int)Math.ceil((double)size.width);
@@ -13888,8 +13887,8 @@ OFF
                         double gotLengths[] = VecMath.vxm(leastSquaresSolution, A);
                         //PRINTVEC(gotLengths);
 
-                        boolean doCheckLeastSquaresSolution = false; // I'm convinced it works
-                        if (doCheckLeastSquaresSolution)
+                        boolean checkLeastSquaresSolutionFlag = false; // I'm convinced it works
+                        if (checkLeastSquaresSolutionFlag)
                         {
                             System.out.print("    Checking");
                             System.out.flush();
@@ -15730,18 +15729,18 @@ OFF
             public static class State
             {
                 public Mesh mesh;
-                public boolean doContinuouslyDelaunayize;
-                public boolean doOptimize;
+                public boolean continuouslyDelaunayizeFlag;
+                public boolean optimizeFlag;
                 public int optimizationTypeIndex;
                 public int selectedTris[][];
                 public int selectedDualVertIndices[];
                 public boolean allDualVertsAreSelected;
                 public int netEdgeStatuses[];
-                public State(Mesh mesh, boolean doContinuouslyDelaunayize, boolean doOptimize, int optimizationTypeIndex, int selectedTris[][], int selectedDualVertIndices[], boolean allDualVertsAreSelected, Net net)
+                public State(Mesh mesh, boolean continuouslyDelaunayizeFlag, boolean optimizeFlag, int optimizationTypeIndex, int selectedTris[][], int selectedDualVertIndices[], boolean allDualVertsAreSelected, Net net)
                 {
                     this.mesh = new Mesh(mesh);
-                    this.doContinuouslyDelaunayize = doContinuouslyDelaunayize;
-                    this.doOptimize = doOptimize;
+                    this.continuouslyDelaunayizeFlag = continuouslyDelaunayizeFlag;
+                    this.optimizeFlag = optimizeFlag;
                     this.optimizationTypeIndex = optimizationTypeIndex;
                     this.selectedTris = (int[][])Arrays.copy(selectedTris, 2);
                     this.selectedDualVertIndices = VecMath.copyvec(selectedDualVertIndices);
@@ -15761,8 +15760,8 @@ OFF
         private UndoItem.State newUndoItemState()
         {
             return new UndoItem.State(mesh,
-                                      doContinuouslyDelaunayize.get(),
-                                      doOptimize.get(),
+                                      continuouslyDelaunayizeFlag.get(),
+                                      optimizeFlag.get(),
                                       optimizationTypeIndex.get(),
                                       selectedTris,
                                       selectedDualVertIndices,
@@ -16828,14 +16827,14 @@ OFF
         private Mesh meshOfSelectedTris = mesh; // possibly ill-advised attempt to invalidate selectedTris and selectedDualVertIndices automatically so people can just reset mesh without having to remember
 
         // XXX is there an easier way to associate that stuff with a certain object? maybe be able to just pass this object to addListener, and make it automatically remove the listener when I go away?  OH, just add it as a member variable in the object, I think?
-        private Listenable.Listener doContinuouslyDelaunayizeListener = null;
+        private Listenable.Listener continuouslyDelaunayizeFlagListener = null;
         private Listenable.Listener wrapAroundSphereFlagListener = null;
         private Listenable.Listener centerSphereFlagListener = null;
         private Listenable.Listener wrapSphereCurvatureListener = null;
         private Listenable.Listener wrapSphereSymbolicRadiusListener = null;
         private Listenable.Listener gridBrightnessListener = null;
         private Listenable.Listener backfaceBrightnessListener = null;
-        private Listenable.Listener doOptimizeListener = null;
+        private Listenable.Listener optimizeFlagListener = null;
         private Listenable.Listener optimizationTypeIndexListener = null;
         private Listenable.Listener showMagFlagListener = null;
         private Listenable.Listener showNetFlagListener = null;
@@ -16856,8 +16855,8 @@ OFF
         private Listenable.Listener naiveDualEdgesFlagListener = null;
         private Listenable.Listener windowTitleListener = null;
 
-        private Listenable.Boolean doContinuouslyDelaunayize = new Listenable.Boolean(false); // has to be false, or it may alter stuff on load
-        private Listenable.Boolean doOptimize = new Listenable.Boolean(false);
+        private Listenable.Boolean continuouslyDelaunayizeFlag = new Listenable.Boolean(false); // has to be false, or it may alter stuff on load
+        private Listenable.Boolean optimizeFlag = new Listenable.Boolean(false);
             private static final int OPTIMIZE_BARYCENTRICS_LEAST_SQUARES = 0;
             private static final int OPTIMIZE_BARYCENTRICS_INFINITY_NORM = 1;
             private static final int OPTIMIZE_BARYCENTRICS_MAX_MIN = 2;
@@ -16927,8 +16926,8 @@ OFF
         private double netless8OptimizationPath[][][] = null;
         private double netless8OptimizationPathGoodnesses[] = null;
 
-        private boolean doArrowsTowardsSharpestDihedrals = false;
-        private boolean doArrowsTowardsShortestEdges = false;
+        private boolean arrowsTowardsSharpestDihedralsFlag = false;
+        private boolean arrowsTowardsShortestEdgesFlag = false;
 
         private Listenable.Boolean labelPrimalVertsFlag = new Listenable.Boolean(false);
         private Listenable.Boolean labelPrimalEdgesFlag = new Listenable.Boolean(false);
@@ -16939,7 +16938,7 @@ OFF
 
         private Listenable.Boolean showFlatPrimalEdgesFlag = new Listenable.Boolean(false);
 
-        private boolean doShowPositiveOrthantnessVisualization = false; // XXX total hack-- it's cool but put it somewhere else!!
+        private boolean showPositiveOrthantnessVisualizationFlag = false; // XXX total hack-- it's cool but put it somewhere else!!
         private Listenable.Boolean showPrimalVertsFlag = new Listenable.Boolean(true);
         private Listenable.Boolean showPrimalEdgesFlag = new Listenable.Boolean(true);
         private Listenable.Boolean showDualVertsFlag = new Listenable.Boolean(true);
@@ -17150,9 +17149,9 @@ OFF
         private GraphicsAntiAliasingSetter graphicsAntiAliasingSetter;
         private int eventVerbose = 0; // can set with eventVerbose=1 on command line
         private static int nonEventVerbose = 0; // so static classes can refer to it
-        private boolean doAntiAliasing = false;
+        private boolean antiAliasingFlag = false;
         private boolean implementAntiAliasingInHardware = true; // XXX should have a better name for this-- really mean let java runtime do it
-        private boolean doDoubleBuffer = false; // TODO: swing does this for us... can get rid of it, as soon as I figure out how to do the magnifying glass without it
+        private boolean doubleBufferFlag = false; // TODO: swing does this for us... can get rid of it, as soon as I figure out how to do the magnifying glass without it
         private java.awt.Image backBufferImage = null;
         private MyGraphics3D mostRecentGraphics = null;
         private Listenable.Boolean showMagFlag = new Listenable.Boolean(false);
