@@ -68,9 +68,6 @@ BUGS:
   Snap-related:
     - snapping should work orthogonally to symmetry (should just snap original, not images, I think... and then make images be the images of the snapped?)
 
-  Labels-related:
-    - labels inside out primal edges (underside) even if not drawing them
-
   Net-related:
     - net flow doesn't work when delaunayized with "calc underside when delaunayizing"
 
@@ -6094,7 +6091,8 @@ public class ShephardsPlayApplet
                                         boolean showInsideOutParts,
                                         boolean labelVertsFlag,
                                         boolean labelEdgesFlag,
-                                        double edgeInitialCoords[/*nEdges*/][/*at most 2*/][/*4*/]) // optional-- only used for dual... for primal, we just get from verts directly
+                                        double edgeInitialCoords[/*nEdges*/][/*at most 2*/][/*4*/], // optional-- only used for dual... for primal, we just get from verts directly
+                                        boolean whichEdgesGotDrawn[])
                 {
                     boolean trySmartVertexAngles = true;
 
@@ -6170,7 +6168,7 @@ public class ShephardsPlayApplet
                             double W = vert.W();
 
                             // TODO: re-think the whole damn pipeline, should not be any negative W's at this point I don't think.
-                            // TODO: and why isn't this succeeding? I thought when we generated dual verts we did it properly so w is equal to weight?
+                            // TODO: and why isn't this succeeding? I thought when we generated dual verts we did it properly so w is equal to weight? oh it's because primal verts W sometimes come from unwrapping from sphere
                             //assert(W == vert.weight);
                             if (W < 0.)
                             {
@@ -6212,6 +6210,10 @@ public class ShephardsPlayApplet
                         ArrayList edges = mesh.edges;
                         FORIDOWN (iEdge, edges.size())
                         {
+                            if (whichEdgesGotDrawn != null
+                             && !whichEdgesGotDrawn[iEdge])
+                                continue;
+
                             Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
                             Mesh.Vertex v0 = edge.initialVertex();
                             Mesh.Vertex v1 = edge.finalVertex();
@@ -7677,6 +7679,7 @@ public class ShephardsPlayApplet
                     } // if (!showNetFlag)
                 } // if (drawDualDiagramFlag)
 
+                boolean whichPrimalEdgesGotDrawn[] = showPrimalEdgesFlag.get() ? new boolean[nEdges] : null; // all false initially
                 boolean showInsideOutDualVertsFlagValue = showInsideOutDualVertsFlag.get();
 
                 FORI (iFacingPass, 2) // back, then front
@@ -7888,6 +7891,9 @@ public class ShephardsPlayApplet
                                     mg.drawLine(v0[0],v0[1],v0[2],v0[3],
                                                 v1[0],v1[1],v1[2],v1[3],
                                                 doAntiAliasing);
+
+                                    whichPrimalEdgesGotDrawn[iWholeEdge*2+0] = true;
+                                    whichPrimalEdgesGotDrawn[iWholeEdge*2+1] = true;
                                 }
                             }
                         }
@@ -8392,7 +8398,8 @@ public class ShephardsPlayApplet
                     drawLabels(mg, mesh, false, showInsideOutDualVertsFlag.get(),
                             showPrimalVertsFlag.get()&&labelPrimalVertsFlag.get(),
                             showPrimalEdgesFlag.get()&&labelPrimalEdgesFlag.get(),
-                            null); // primal
+                            null, // primal
+                            whichPrimalEdgesGotDrawn);
                 }
                 if ((showDualVertsFlag.get()&&labelDualVertsFlag.get())
                  || (showDualEdgesFlag.get()&&labelDualEdgesFlag.get()))
@@ -8402,7 +8409,8 @@ public class ShephardsPlayApplet
                     drawLabels(mg, dualMesh, true, showInsideOutDualVertsFlag.get(),
                         showDualVertsFlag.get()&&labelDualVertsFlag.get(),
                         showDualEdgesFlag.get()&&labelDualEdgesFlag.get(),
-                        dualEdgeInitialCoords); // dual
+                        dualEdgeInitialCoords, // dual
+                        null);
                 } // if (showLabelsFlag)
 
                 if (showOriginFlag)
