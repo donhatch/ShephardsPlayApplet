@@ -1054,34 +1054,39 @@ public class ShephardsPlayApplet
                         });
                     }},
                     new JRow() {{
-                        add(new JButton("Single-Exit Lagoon") {{
-                            addActionListener(new java.awt.event.ActionListener() {
-                                public void actionPerformed(java.awt.event.ActionEvent e)
-                                {
-                                    UndoItem.State before = applet.newUndoItemState();
+                        add(new JCol() {{
+                            add(new JButton("Single-Exit Lagoon") {{
+                                addActionListener(new java.awt.event.ActionListener() {
+                                    public void actionPerformed(java.awt.event.ActionEvent e)
+                                    {
+                                        UndoItem.State before = applet.newUndoItemState();
 
-                                    applet.doCannedThingSingleExitLagoonPolygon(
-                                        applet.singleExitLagoonVirtualN.get(),
+                                        applet.doCannedThingSingleExitLagoonPolygon(
+                                            applet.singleExitLagoonVirtualN.get(),
 
-                                        applet.singleExitLagoonNBeforeApex.get(),
-                                        applet.singleExitLagoonNAfterApex.get(),
-                                        applet.singleExitLagoonQuillSlopeNumerator.get(),
-                                        applet.singleExitLagoonQuillSlopeDenominator.get(),
+                                            applet.singleExitLagoonNBeforeApex.get(),
+                                            applet.singleExitLagoonNAfterApex.get(),
+                                            applet.singleExitLagoonQuillSlopeNumerator.get(),
+                                            applet.singleExitLagoonQuillSlopeDenominator.get(),
 
-                                        applet.singleExitLagoonNBeforeBeforeApex.get(),
-                                        applet.singleExitLagoonNAfterAfterApex.get(),
-                                        applet.singleExitLagoonQuillSlopeNumeratorNumerator.get(),
-                                        applet.singleExitLagoonQuillSlopeDenominatorDenominator.get(),
+                                            applet.singleExitLagoonNBeforeBeforeApex.get(),
+                                            applet.singleExitLagoonNAfterAfterApex.get(),
+                                            applet.singleExitLagoonQuillSlopeNumeratorNumerator.get(),
+                                            applet.singleExitLagoonQuillSlopeDenominatorDenominator.get(),
 
-                                        applet.singleExitLagoonPointApexUpFlag.get(),
-                                        applet.singleExitLagoonSynthesizeExactDualFlag.get());
+                                            applet.singleExitLagoonPointApexUpFlag.get(),
+                                            applet.singleExitLagoonSynthesizeExactDualFlag.get());
 
-                                    UndoItem.State after = applet.newUndoItemState();
-                                    applet.undoTreeSquirrel.Do(new UndoItem(before, after));
+                                        UndoItem.State after = applet.newUndoItemState();
+                                        applet.undoTreeSquirrel.Do(new UndoItem(before, after));
 
-                                    applet.theCanvas.repaint();
-                                }
-                            });
+                                        applet.theCanvas.repaint();
+                                    }
+                                });
+                            }});
+                            add(new JCheckBoxForBoolean("<html>Highlight<br>primal/dual<br>feature</html>", applet.primalDualVisFlag) {{
+                                setToolTipText("<html>continuously highlight closest primal/dual feature<br>to mouse cursor angle</html>");
+                            }});
                         }});
                         add(new JCol() {{
                             add(new JRow() {{
@@ -3044,6 +3049,13 @@ public class ShephardsPlayApplet
                     theCanvas.repaint();
                 }
             });
+            primalDualVisFlag.addListener(primalDualVisFlagListener = new Listenable.Listener() {
+                public void valueChanged()
+                {
+                    System.out.println("primalDualVisFlag -> "+primalDualVisFlag.get());
+                    theCanvas.repaint();
+                }
+            });
             windowTitle.addListener(windowTitleListener = new Listenable.Listener() {
                 public void valueChanged()
                 {
@@ -4988,6 +5000,12 @@ public class ShephardsPlayApplet
                     prevP = thisP;
 
                     if (showMagFlag.get())
+                        theCanvas.repaint();
+
+                    if (primalDualVisFlag.get()
+                     && primalDualVisAngles != null
+                     && primalDualVisPrimalVertInds != null
+                     && primalDualVisDualVertInds != null)
                         theCanvas.repaint();
                 }
 
@@ -8384,6 +8402,56 @@ public class ShephardsPlayApplet
 
                 } // for iFacingPass
 
+
+                if (primalDualVisFlag.get()
+                 && primalDualVisAngles != null
+                 && primalDualVisPrimalVertInds != null
+                 && primalDualVisDualVertInds != null
+                 && prevP != null)
+                {
+                    // not sure prevP is the right thing to use when rotated but whatever
+                    double ang = Math.atan2(prevP[1], prevP[0]);
+                    
+                    // locate ang among primalDualVisAngles.
+                    // could do binary search, but whatever.
+                    int n = primalDualVisAngles.length;
+                    while (ang > primalDualVisAngles[n-1])
+                        ang -= 2*Math.PI;
+                    while (ang < primalDualVisAngles[0])
+                        ang += 2*Math.PI;
+                    int i0 = 0;
+                    while (i0+1 < n && primalDualVisAngles[i0+1] <= ang)
+                        i0++;
+                    int i1 = (i0+1) % n;
+                    double ang0 = primalDualVisAngles[i0];
+                    double ang1 = primalDualVisAngles[i1];
+                    if (ang1 < ang0)
+                        ang1 += 2*Math.PI; // wrap around
+                    double frac = (ang-ang0)/(ang1-ang0);
+                    try {
+                        Mesh.Vertex p0vert = mesh.getVert(primalDualVisPrimalVertInds[i0]);
+                        Mesh.Vertex p1vert = mesh.getVert(primalDualVisPrimalVertInds[i1]);
+                        Mesh.Vertex d0vert = dualMesh.getVert(primalDualVisDualVertInds[i0]);
+                        Mesh.Vertex d1vert = dualMesh.getVert(primalDualVisDualVertInds[i1]);
+                        double p0[] = {p0vert.x(), p0vert.y(), p0vert.z()};
+                        double p1[] = {p1vert.x(), p1vert.y(), p1vert.z()};
+                        double d0[] = {d0vert.x(), d0vert.y(), d0vert.z()};
+                        double d1[] = {d1vert.x(), d1vert.y(), d1vert.z()};
+                        double p[] = VecMath.lerp(p0,p1,frac);
+                        double d[] = VecMath.lerp(d0,d1,frac);
+
+                        mg.setColor(java.awt.Color.white);
+                        mg.drawPoint(p[0], p[1], p[2], 7);
+                        mg.setColor(lightBlue);
+                        mg.drawPoint(d[0], d[1], d[2], 7);
+                    } catch (IndexOutOfBoundsException e) {
+                        System.out.println("Oops! primal-dual visualization apparently no longer valid, throwing it away");
+                        primalDualVisAngles = null;
+                        primalDualVisPrimalVertInds = null;
+                        primalDualVisDualVertInds = null;
+                    }
+                }
+
                 //
                 // Draw the labels last...
                 //
@@ -11124,6 +11192,61 @@ OFF
                     _primalMeshOfDualMesh = mesh; // counter-counter-espionage, prevents dual from thinking it's dirty
                 }
 
+                if (true)
+                {
+                    // Figure out visualization of primal-dual correspondence.
+                    // This will be a map from angle
+                    // to a point on primal and point on dual.
+                    // What we store is a list of tiepoints:
+                    // angles, and corresponding indices into primal verts and dual verts.
+                    primalDualVisAngles = new double[2*n];
+                    primalDualVisPrimalVertInds = new int[2*n];
+                    primalDualVisDualVertInds = new int[2*n];
+
+                    Mesh dualMesh = getDualMesh();
+                    // First, get our bearings in the dual mesh--
+                    // we're going to walk CCW around the big polygon.
+                    // Find an edge of that polygon.
+                    // Note however that, in the dual mesh, edges walk CW instead of CCW,
+                    // so we'll be following prev instead of next.
+                    Mesh.Edge dualEdge;
+                    {
+                        int nEdges = dualMesh.edges.size();
+                        int iDualEdge = 0;
+                        dualEdge = dualMesh.getEdge(iDualEdge);
+                        while (dualEdge.next().next().next() == dualEdge)
+                        {
+                            iDualEdge++;
+                            dualEdge = dualMesh.getEdge(iDualEdge);
+                        }
+                        //PRINT(iDualEdge);
+                    }
+
+                    Mesh.Edge primalEdge = mesh.getEdge(dualEdge.myIndex());
+
+                    FORI (i, n)
+                    {
+                        // emit dualEdge.initialVertex(), primalEdge.initialVertex()
+
+                        primalDualVisAngles[2*i+0] = 2*Math.PI/(2*n) * (.5+2*i+0) - Math.PI/2;
+                        primalDualVisDualVertInds[2*i+0] = dualEdge.initialVertex().myIndex(); // the CW-most of the two verts of dualEdge
+                        primalDualVisPrimalVertInds[2*i+0] = primalEdge.initialVertex().myIndex();
+
+                        // advance dualEdge and primalEdge
+                        dualEdge = dualEdge.prev();
+                        primalEdge = mesh.getEdge(dualEdge.myIndex());
+
+                        // emit dualEdge.finalVertex() (same as previous dualEdge.initialVertex()),
+                        // primalEdge.initialVertex()
+
+                        primalDualVisAngles[2*i+1] = 2*Math.PI/(2*n) * (.5+2*i+1) - Math.PI/2;
+                        primalDualVisDualVertInds[2*i+1] = dualEdge.finalVertex().myIndex();
+                        primalDualVisPrimalVertInds[2*i+1] = primalEdge.initialVertex().myIndex();
+                    }
+                    //PRINTVEC(primalDualVisAngles);
+                    //PRINTVEC(primalDualVisDualVertInds);
+                    //PRINTVEC(primalDualVisPrimalVertInds);
+                }
             } // doCannedThingSingleExitLagoonPolygon
 
             private static class SingleExitLagoonPolygonOptimizationStuff {
@@ -16854,6 +16977,7 @@ OFF
         private Listenable.Listener labelPrimalEdgesFlagListener = null;
         private Listenable.Listener labelDualVertsFlagListener = null;
         private Listenable.Listener labelDualEdgesFlagListener = null;
+        private Listenable.Listener primalDualVisFlagListener = null;
         private Listenable.Listener naiveDualEdgesFlagListener = null;
         private Listenable.Listener windowTitleListener = null;
 
@@ -16992,6 +17116,15 @@ OFF
         private Surface.Paraboloid theParaboloidSurface = new Surface.Paraboloid(-.5);
         private Surface theSurface = (wrapAroundSphereFlag.get() ? (Surface)theSphereSurface
                                                                  : (Surface)theParaboloidSurface);
+
+
+        // very special case visualization... if these are set,
+        // highlight the primal/dual feature corresponding to the mouse angle.
+        private double primalDualVisAngles[] = null;
+        private int primalDualVisPrimalVertInds[] = null;
+        private int primalDualVisDualVertInds[] = null;
+        private Listenable.Boolean primalDualVisFlag = new Listenable.Boolean(true);
+
 
         // when middle-mouse is emulated by alt-left-mouse,
         // releasing alt in the middle of the drag looks like releasing middle, which is unfriendly...
