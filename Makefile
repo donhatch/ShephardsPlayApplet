@@ -3,35 +3,46 @@
 
 #JAVAROOT=/usr/java/jdk1.5.0
 #JAVAC=${JAVAROOT}/bin/javac
+#JAR=${JAVAROOT}/bin/jar
 
 #JAVAROOT=/usr/java/j2sdk1.4.2
 #JAVAC=${JAVAROOT}/bin/javac
+#JAR=${JAVAROOT}/bin/jar
 
 #JAVAROOT=/usr/java/j2sdk1.4.2
 #JAVAC=jikes +P -source 1.4 -classpath ${JAVAROOT}/jre/lib/rt.jar
         # ARGH, doesn't work any more, conflicts with -classpath now used in individual rule
+#JAR=${JAVAROOT}/bin/jar
 
 #JAVAROOT=/opt/blackdown-jdk-1.4.2.03
 #JAVAC=${JAVAROOT}/bin/javac
+#JAR=${JAVAROOT}/bin/jar
 
 # doesn't work for this project--- JFrame.EXIT_ON_CLOSE not defined
 #JAVAC=javac1.2
 #JAVAROOT=c:/jdk1.2.2
+#JAR=${JAVAROOT}/bin/jar
 
-JAVAC=javac1.3
-JAVAROOT=c:/jdk1.3.1_20
+#JAVAC=javac1.3
+#JAVAROOT=c:/jdk1.3.1_20
+#JAR=${JAVAROOT}/bin/jar
 
 #JAVAC=javac1.6
 #JAVAROOT="c:/Program Files (x86)/Java/jdk1.6.0_17"
+#JAR=${JAVAROOT}/bin/jar
+
+JAVAC=/usr/bin/javac
+JAR=/usr/bin/jar
 
 
-uname := $(shell uname -o)
+# On linux and cygwin, use uname -o; on darwin, use uname
+uname := $(shell uname -o > /dev/null 2>&1 && uname -o || uname)
 #dummy := $(warning uname = $(uname))
 ifeq ($(uname),Cygwin)
     # on cygwin, apparently it's this
     CLASSPATHSEP = ;
 else
-    # on linux, it's this
+    # on linux and darwin, it's this
     CLASSPATHSEP = :
 endif
 
@@ -61,7 +72,7 @@ all: jar
 
 ${JARFILE}: Makefile META-INF/MANIFEST.MF ${JAR_DEPENDS_ON}
         # XXX argh, exits with status 0 even if missing something
-	${JAVAROOT}/bin/jar -cfm ${JARFILE} META-INF/MANIFEST.MF ${JAR_CONTAINS}
+	${JAR} -cfm ${JARFILE} META-INF/MANIFEST.MF ${JAR_CONTAINS}
 
 CPPFLAGS += -Wall -Werror
 # The following seems to work but clutters up output and may be less portable
@@ -88,7 +99,7 @@ endif
 
 ${JARFILE}.is_renumbered: $(JAR_DEPENDS_ON)
 	javarenumber -v -1 *.class
-	${JAVAROOT}/bin/jar -cfm $(JARFILE).is_renumbered META-INF/MANIFEST.MF ${JAR_CONTAINS}
+	${JAR} -cfm $(JARFILE).is_renumbered META-INF/MANIFEST.MF ${JAR_CONTAINS}
 	touch $@
 .PHONY: renumber
 renumber: $(JARFILE).is_renumbered
