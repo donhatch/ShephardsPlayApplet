@@ -2,6 +2,7 @@
 
 #
 # Spit out an image of the surface of {3,3,7}
+# XXX TODO: is this obsoleted by pqr.py?
 #
 
 import sys
