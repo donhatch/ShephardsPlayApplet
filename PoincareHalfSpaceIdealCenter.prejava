@@ -116,9 +116,9 @@ public class PoincareHalfSpaceIdealCenter
             logInitialGuess = initialGuess;
 
         final double eps = 1e-6; // for finite difference
-        NewtonSolver.Fun fun = new NewtonSolver.Fun() {
+        NewtonSolver.Fun fun = new NewtonSolver.Fun(nDims+1) {
 
-            public double[] f(double logGuess[])
+            public void f(double logGuess[], double answerImagesSum[])
             {
                 //System.out.println("            in f");
                 //System.out.print("                "); PRINTARRAY(logGuess);
@@ -144,7 +144,6 @@ public class PoincareHalfSpaceIdealCenter
                 // will get mapped to a disk of radius 1/2 centered at 0,0,...,1/2.
                 // To turn that into a disk centered at 0,
                 // we then subtract 0,0,...,1/2.
-                double imagesSum[] = new double[nDims+1];
                 double image[] = new double[nDims+1]; // scratch
                 FORI (i, n)
                 {
@@ -154,11 +153,10 @@ public class PoincareHalfSpaceIdealCenter
                     // image is now on circle of radius 1/2 centered at 0,0,...,1/2
                     image[nDims] -= .5;
                     // image is now on circle of radius 1/2 centered at origin
-                    VecMath.vpv(imagesSum, imagesSum, image);
+                    VecMath.vpv(answerImagesSum, answerImagesSum, image);
                 }
-                //System.out.print("                "); PRINTARRAY(imagesSum);
+                //System.out.print("                "); PRINTARRAY(answerImagesSum);
                 //System.out.print("            out f");
-                return imagesSum;
             } // f()
             // used in finite difference computation of jacobian
             public double eps()
@@ -171,6 +169,7 @@ public class PoincareHalfSpaceIdealCenter
 
 
 
+        int minIterations = 10; // probably not needed, but used to be the default and I haven't tested this since it was made explicit
         int maxIterations = 20;
         double logAnswer[] = VecMath.copyvec(logInitialGuess);
         PRINT(logAnswer.length);
@@ -179,7 +178,9 @@ public class PoincareHalfSpaceIdealCenter
         NewtonSolver.solve(logAnswer,
                            new double[nDims+1], // target is zero
                            fun,
-                           maxIterations);
+                           minIterations,
+                           maxIterations,
+                           false); // adaptiveFlag XXX could experiment with this if needed
         double answer[] = VecMath.copyvec(logAnswer);
         answer[nDims] = Math.exp(logAnswer[nDims]);
         if (!doItInLogSpace)

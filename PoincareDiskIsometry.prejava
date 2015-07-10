@@ -185,8 +185,9 @@ public class PoincareDiskIsometry
     }
     public static void find_p_that_centers_points(double result[], final double[][] z)
     {
-        NewtonSolver.Fun fun = new NewtonSolver.Fun() {
-            public double[] f(double x[])
+        int n = z[0].length;
+        NewtonSolver.Fun fun = new NewtonSolver.Fun(n) {
+            @Override public void f(double x[], double answer[])
             {
                 boolean debug = false;
                 if (debug) System.out.println("    in f");
@@ -206,25 +207,21 @@ public class PoincareDiskIsometry
                 }
                 if (debug) PRINTVEC(p);
 
-                double result[] = new double[x.length];
-                computeCentroidOfXformedPoints(result, z, p);
+                computeCentroidOfXformedPoints(answer, z, p);
 
                 {
                     double enorm = VecMath.norm(p);
                     if (enorm != 0.)
                     {
                         double hnorm = 2*MyMath.atanh(enorm);
-                        VecMath.sxv(result, hnorm/enorm, result);
+                        VecMath.sxv(answer, hnorm/enorm, answer);
                     }
                 }
 
-
-                if (debug) PRINTVEC(result);
+                if (debug) PRINTVEC(answer);
                 if (debug) System.out.println("    out f");
-                return result;
             }
         };
-        int n = z[0].length;
         double zero[] = new double[n];
 
         double initialGuess[] = computePoincareCentroid(z);
@@ -247,7 +244,11 @@ public class PoincareDiskIsometry
         }
         System.out.println("expanded out to whole plane:");
         PRINTVEC(initialGuess);
-        PRINTVEC(fun.f(initialGuess));
+        {
+            double fOfInitialGuess[] = new double[n];
+            fun.f(initialGuess, fOfInitialGuess);
+            PRINTVEC(fOfInitialGuess);
+        }
 
         FORI (max, 15)
         {
@@ -260,10 +261,13 @@ public class PoincareDiskIsometry
 
 
 
+            int min = 10; // probably not needed but used to be default and I haven't tested since making it explicit
             NewtonSolver.solve(result,
                                zero,
                                fun,
-                               max);
+                               min,
+                               max,
+                               false); // adaptiveFlag XXX could experiment with this if needed
             {
                 // contract whole plane to disk
                 double hnorm = VecMath.norm(result);
