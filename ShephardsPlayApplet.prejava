@@ -1247,6 +1247,7 @@ public class ShephardsPlayApplet
                 }});
                 contentPane.add(new JSeparator(), stretchx);
                 contentPane.add(new JLabel("Canned Things"));
+
                 add(new JRow() {{
                     add(new JLabel("        ")); // indent a bit
                     add(new JPanel() {{ // flow layout
@@ -1256,6 +1257,13 @@ public class ShephardsPlayApplet
                                 ((JButton)cannedThingButtons[i]).setMargin(nomargin);
                             add(cannedThingButtons[i], stretchx);
                         }
+                        int prefWidth = calcMaxChildPreferredWidth(this);
+                        prefWidth += 18; // fudge for known current items: to get two slightly longer first rows instead of short third row
+                        int prefHeight = calcFlowLayoutPreferredHeightGivenPreferredWidth(this, prefWidth);
+                        // Experts advise don't ever use this, override getMinimumSize and getPreferredSize instead...
+                        // whatever, this is far simpler.
+                        setPreferredSize(new java.awt.Dimension(prefWidth, prefHeight));
+                        setMinimumSize(new java.awt.Dimension(prefWidth, prefHeight));
                     }}, stretchxy);
                 }}, stretchxy);
                 contentPane.add(new JSeparator(), stretchx);
@@ -2813,21 +2821,10 @@ public class ShephardsPlayApplet
                 // since the default is HIDE_ON_CLOSE which is what we want
 
 
-                final int preferredWidth = 683;
-                final int preferredHeight = 822;
-                theControlPanelWindow.getContentPane().add(new JScrollPane(new ShephardsPlayAppletControlPanel(this) {
-                    public java.awt.Dimension getPreferredSize()
-                    {
-                        return new java.awt.Dimension(preferredWidth, preferredHeight);
-                    }
-                    public java.awt.Dimension getMinimumSize()
-                    {
-                        return getPreferredSize();
-                    }
-                }));
+                theControlPanelWindow.getContentPane().add(new JScrollPane(new ShephardsPlayAppletControlPanel(this)));
 
                 theControlPanelWindow.setLocation(730, 10);
-                theControlPanelWindow.setSize(preferredWidth+34, preferredHeight); // empirical-- will be wrong on another machine, no doubt XXX TODO: can we compute a good preferred size? pack() or something? just want to pack width, not height, I think?
+                theControlPanelWindow.pack();
                 theControlPanelWindow.setVisible(true);
             }
 
@@ -3202,6 +3199,47 @@ public class ShephardsPlayApplet
                     randomlyColorize(C.getComponent(i));
             }
         } // randomlyColorize
+
+        // This is a bit ridiculous, but... figure out the height a flowLayout wants to be, given a width.
+        // Maybe ask on stackOverflow?
+        private static int calcFlowLayoutPreferredHeightGivenPreferredWidth(java.awt.Container container, int width) {
+            // Strategy:
+            //    - set size to given width and large height
+            //    - do layout
+            //    - traverse children and see what the bottom is
+            java.awt.FlowLayout flowLayout = (java.awt.FlowLayout)container.getLayout();
+            int hgap = flowLayout.getHgap();
+            int vgap = flowLayout.getVgap();
+            int n = container.getComponentCount();
+
+            // height upper bound is the height we'd get if every child on different row
+            int heightUpperBound = vgap;
+            for (int i = 0; i < n; ++i)
+            {
+                int childPreferredHeight = container.getComponent(i).getPreferredSize().height;
+                heightUpperBound += childPreferredHeight + vgap;
+            }
+            container.setSize(width, heightUpperBound);
+            container.doLayout();  // validate() doesn't seem to do it
+            int maxBottom = 0;
+            for (int i = 0; i < n; ++i) {
+                java.awt.Component child = container.getComponent(i);
+                int childBottom = child.getY() + child.getHeight();
+                maxBottom = MAX(maxBottom, childBottom);
+            }
+            return maxBottom + vgap;
+        }  // calcFlowLayoutPreferredHeightGivenPreferredWidth
+        private static int calcMaxChildPreferredWidth(java.awt.Container container)
+        {
+            int n = container.getComponentCount();
+            int answer = 0;
+            for (int i = 0; i < n; ++i)
+            {
+                int childPreferredWidth = container.getComponent(i).getPreferredSize().width;
+                answer = MAX(answer, childPreferredWidth);
+            }
+            return answer;
+        } // calcMaxChildPreferredWidth
 
         public void dualSave(String fileName)
         {
@@ -4664,7 +4702,7 @@ public class ShephardsPlayApplet
             {
                 if (eventVerbose >= 1) System.out.println("in mouseEntered: "+e);
                 // steal keyboard focus!
-                requestFocus(); // hey it works! (javac 1.3, runtime 1.6)
+                requestFocus(); // hey it works! (javac 1.3, runtime 1.6) so overriding isFocusTraversable() no longer necessary
                 if (eventVerbose >= 1) System.out.println("out mouseEntered: "+e);
             }
             public void mouseExited(java.awt.event.MouseEvent e)
