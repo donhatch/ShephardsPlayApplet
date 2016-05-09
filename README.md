@@ -619,20 +619,20 @@ they become evident from playing with planar tilings:
          => every convex lagoon as at least two good exits
                 (where "convex" means it includes every vertex in its convex hull)
          => every lagoon that's a *subset* of the verts of one polygon has at least two good exits
-         => every lagoon consisting of the verts of one polygon has at least two good exits
-                (WORKING ON A PROOF OF THIS ONE)
-         -> every left-right symmetric lagoon consisting of the verts of one polygon has at least two good exits
          => true
+        <=> every lagoon consisting of the verts of one polygon has at least two good exits
+                (This is the dudley/priscilla proof, done but needs polishing in SpiralApplet/README.html)
+        <=> every left-right symmetric lagoon consisting of the verts of one polygon has at least two good exits
         <=> every lagoon has at least one good exit
-                (true, since there's a good exit out of any vertex at maximum distance from center)
+                (easily true, since there's a good exit out of any vertex at maximum distance from center)
         WEAKEST (known true)
     or, to phrase the series in reverse:
         STRONGEST (known false)
         there's a lagoon with no good exit
-                (false, since there's a good exit out of any vertex at maximum distance from center)
+                (easily false, since there's a good exit out of any vertex at maximum distance from center)
+        <=> there's a left-right symmetric lagoon consisting of the verts of one polygon with at most one good exit
+        <=> there's a lagoon consisting of the verts of one polygon with at most one good exit
         <=> false
-         => there's a left-right symmetric lagoon consisting of the verts of one polygon with at most one good exit
-         => there's a lagoon consisting of the verts of one polygon with at most one good exit
          => there's a lagoon that's a subset of the verts of one polygon with at most one good exit
          => there's a convex lagoon with at most one good exit
          => there's a lagoon with at most one good exit  (NEGATION OF MAIN CONJECTURE)
@@ -642,17 +642,19 @@ they become evident from playing with planar tilings:
 
     Related statements (might fit into the above heirarchies somehow,
     or might be helpful in proving them):
-        for every polygon, for every point in interior, there's at least two
+        - for every polygon, for every point in interior, there's at least two
             verts at local maximum distance (FALSE)
-        for every polygon, there's at least two verts at local maximum distance from cc
+        - for every polygon, there's at least two verts at local maximum distance from cc
             (UNKNOWN, implies every polygon has at least two good exits)
         ...
-        for every lagoon, there's at least two verts at local maximum dist from cc
+        - for every lagoon, there's at least two verts at local maximum dist from cc
             (UNKNOWN, implies previous)
-        add "all faces tangent to sphere" to any/all of above conjectures (weaker)
-        replace "lagoon/polygon" with "left-right symmetric lagoon/polygon" in any/all of above conjectures (weaker)
-
-
+        - add "all faces tangent to sphere" to any/all of above conjectures (weaker)
+        - replace "lagoon/polygon" with "left-right symmetric lagoon/polygon" in any/all of above conjectures (weaker)
+        - call an edge within a lagoon "reversible" or "doublegood" if it's good from the point of view
+          of both sublagoons.  Various conjectures possible, e.g.
+          - there's an unfolding such that, for every lagoon in it, every edge in the lagoon is reversible?
+          - maybe even a stronger condition such as: every connected subgraph has the same property
 
 -----------------------------------------------
 Required reading:
@@ -666,5 +668,5 @@ Feb 4, 2008 Benton/O'Rourke "A Class of Convex Polyhedra with Few Edge Unfolding
 Sep 7 2008 Alex Benton's dissertation "Unfolding Polyhedra" http://bentonian.com/Papers/Dissertation/Dissertation.pdf
 
 Q: I noticed a mistake in one of the papers by benton&orourke-- it claimed to have proved something
-which isn't true.  What was it?  Doesn't seem to be any of the ones above, so far.  Bleah!  Was it a paper that also said "this proves there's no proof of shephard's conjecture based on a random argument"
+which isn't true.  Something about volcano unfoldings?  What was it?  Doesn't seem to be any of the ones above, so far.  Bleah!  Was it a paper that also said "this proves there's no proof of shephard's conjecture based on a random argument"
 
