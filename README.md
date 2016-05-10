@@ -668,6 +668,7 @@ Feb 4, 2008 Benton/O'Rourke "A Class of Convex Polyhedra with Few Edge Unfolding
 Sep 7 2008 Alex Benton's dissertation "Unfolding Polyhedra" http://bentonian.com/Papers/Dissertation/Dissertation.pdf
 6 Oct 2008  Alexey S Tarasov "Existence of a polyhedron which does not have a non-overlapping pseudo-edge unfolding" http://arxiv.org/abs/0806.2360 http://arxiv.org/pdf/0806.2360v3.pdf
 21 Apr 2014 Mohammad Ghomi "Affine unfoldings of convex polyhedra" http://arxiv.org/abs/1305.3231 http://arxiv.org/pdf/1305.3231v2.pdf
+31 Jan 2015 Mohammad Ghomi "Affine unfoldings of convex polyhedra: progress on Durer’s problem¨ http://people.math.gatech.edu/~ghomi/Papers/durerPF.pdf
 
 Q: I noticed a mistake in one of the papers by benton&orourke-- it claimed to have proved something
 which isn't true.  Something about volcano unfoldings?  What was it?  Doesn't seem to be any of the ones above, so far.  Bleah!  Was it a paper that also said "this proves there's no proof of shephard's conjecture based on a random argument"
