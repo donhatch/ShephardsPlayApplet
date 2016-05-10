@@ -43,6 +43,9 @@ CONJECTURES ABOUT SPECIFIC STRONGER UNFOLDINGS THAT FOLLOW A PATTERN:
   and intersect it with a half-space that retains about half of it.
   the edges around the big face can't all be cuts]
 
+* Every trivalent convex polyhedron has an unfolding in which
+  every edge with only two good exits is a fold.
+
 [similar conjectures about unfoldings which cut dullest edges
 or fold sharpest edges omitted, since they seem unlikely]
 
@@ -103,6 +106,9 @@ CONJECTURES ABOUT REFINEMENTS:
    all previously chosen unfoldings doesn't work,
    since it leads to a dead end, as shown in previous conjecture]
 
+* There is an algorithm for producing a good unfolding cut tree
+  that proceeds at each step by merging a pair of nodes into a supernode
+  by adding a cut between them.
 
 CONJECTURES ABOUT ALGORITHMS:
 
@@ -582,7 +588,7 @@ they become evident from playing with planar tilings:
     a planar tiling such that every cut tree
     has an unbalanced v,e (such a counterexample leads easily to
     an actual nondegenerate polyhedral counterexample, by projecting
-    onto the surface of a large sphere or paraboloid).
+    onto the surface of a large enough sphere or paraboloid).
     And, if Shephard's conjecture is true, then I think it can be proved
     by first proving that every planar tiling has a completely balanced
     cut tree, and by then using the same technique to come up with
@@ -659,17 +665,21 @@ they become evident from playing with planar tilings:
 -----------------------------------------------
 Required reading:
 
+28 Jul 2004 / v3: 11 Mar 2015 (but originally 2004) Nadia Benbernou, Patricia Cahn, Joseph O'Rourke "Unfolding Smooth Prismatoids" http://arxiv.org/abs/cs/0407063 http://arxiv.org/pdf/cs/0407063.pdf
 2006 Brendan Lucier's master's dissertion "Unfolding and Reconstructing Polyhedra"
 Aug 20 2007 Benton/O'Rourke "Unfolding Polyhedra via Cut-Tree Truncation" http://www.dremel.com/en-us/tools/Pages/ToolDetail.aspx?pid=1100-N%2f25
         also http://cs.smith.edu/~orourke/Papers/trunc.pdf
-Feb 5, 2008 O'Rourke "Band Unfoldings and Prismatoids: A Counterexample" http://arxiv.org/pdf/0710.0811.pdf
-Feb 4, 2008 Benton/O'Rourke "A Class of Convex Polyhedra with Few Edge Unfoldings" http://arxiv.org/pdf/0801.4019.pdf
+3 Oct 2007 / v2: 4 Oct 2007 / Feb 5, 2008? Feb 8 2013? O'Rourke "Band Unfoldings and Prismatoids: A Counterexample" http://arxiv.org/pdf/0710.0811.pdf
+25 Jan 2008 / Feb 4, 2008? / Jan 3 2014? Benton/O'Rourke "A Class of Convex Polyhedra with Few Edge Unfoldings" http://arxiv.org/abs/0801.4019 http://arxiv.org/pdf/0801.4019.pdf 
         also shorter (?) version later, august: http://cs.smith.edu/~orourke/Papers/geodome.pdf
 Sep 7 2008 Alex Benton's dissertation "Unfolding Polyhedra" http://bentonian.com/Papers/Dissertation/Dissertation.pdf
-6 Oct 2008  Alexey S Tarasov "Existence of a polyhedron which does not have a non-overlapping pseudo-edge unfolding" http://arxiv.org/abs/0806.2360 http://arxiv.org/pdf/0806.2360v3.pdf
-21 Apr 2014 Mohammad Ghomi "Affine unfoldings of convex polyhedra" http://arxiv.org/abs/1305.3231 http://arxiv.org/pdf/1305.3231v2.pdf
+6 Oct 2008 / v3: 6 Oct 2008 Alexey S Tarasov "Existence of a polyhedron which does not have a non-overlapping pseudo-edge unfolding" http://arxiv.org/abs/0806.2360 http://arxiv.org/pdf/0806.2360v3.pdf
+9 May 2012 O'Rourke "Unfolding Prismatoids as Convex Patches: Counterexamples and Positive Results" http://arxiv.org/abs/1205.2048 http://arxiv.org/pdf/1205.2048v1.pdf
+14 May 2013 / v2: 21 Apr 2014 Mohammad Ghomi "Affine unfoldings of convex polyhedra" http://arxiv.org/abs/1305.3231 http://arxiv.org/pdf/1305.3231v2.pdf
 31 Jan 2015 Mohammad Ghomi "Affine unfoldings of convex polyhedra: progress on Durer’s problem¨ http://people.math.gatech.edu/~ghomi/Papers/durerPF.pdf
+1 Sep 2015 / v2: 19 Oct 2015 O'Rourke "Spiral Unfoldings of Convex Polyhedra" http://arxiv.org/abs/1509.00321 http://arxiv.org/pdf/1509.00321v2.pdf
 
 Q: I noticed a mistake in one of the papers by benton&orourke-- it claimed to have proved something
-which isn't true.  Something about volcano unfoldings?  What was it?  Doesn't seem to be any of the ones above, so far.  Bleah!  Was it a paper that also said "this proves there's no proof of shephard's conjecture based on a random argument"
+which isn't true.  Something about volcano unfoldings?  What was it?  Doesn't seem to be any of the ones above, so far (although I added some after I said this).  Bleah!  Was it a paper that also said "this proves there's no proof of shephard's conjecture based on a random argument"
+Q: I seem to remember also noticing that some result (on volcanos or prismoids or prismatoids or something) could be made stronger. what was that?
 
