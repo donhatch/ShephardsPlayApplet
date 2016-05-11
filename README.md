@@ -666,7 +666,7 @@ they become evident from playing with planar tilings:
 Required reading:
 
 28 Jul 2004 / v3: 11 Mar 2015 (but originally 2004) Nadia Benbernou, Patricia Cahn, Joseph O'Rourke "Unfolding Smooth Prismatoids" http://arxiv.org/abs/cs/0407063 http://arxiv.org/pdf/cs/0407063.pdf
-2006 Brendan Lucier's master's dissertion "Unfolding and Reconstructing Polyhedra"
+2006 Brendan Lucier's master's dissertion "Unfolding and Reconstructing Polyhedra" http://research.microsoft.com/en-us/um/people/brlucier/misc/thesis.pdf
 Aug 20 2007 Benton/O'Rourke "Unfolding Polyhedra via Cut-Tree Truncation" http://www.dremel.com/en-us/tools/Pages/ToolDetail.aspx?pid=1100-N%2f25
         also http://cs.smith.edu/~orourke/Papers/trunc.pdf
 3 Oct 2007 / v2: 4 Oct 2007 / Feb 5, 2008? Feb 8 2013? O'Rourke "Band Unfoldings and Prismatoids: A Counterexample" http://arxiv.org/pdf/0710.0811.pdf
@@ -676,10 +676,11 @@ Sep 7 2008 Alex Benton's dissertation "Unfolding Polyhedra" http://bentonian.com
 6 Oct 2008 / v3: 6 Oct 2008 Alexey S Tarasov "Existence of a polyhedron which does not have a non-overlapping pseudo-edge unfolding" http://arxiv.org/abs/0806.2360 http://arxiv.org/pdf/0806.2360v3.pdf
 9 May 2012 O'Rourke "Unfolding Prismatoids as Convex Patches: Counterexamples and Positive Results" http://arxiv.org/abs/1205.2048 http://arxiv.org/pdf/1205.2048v1.pdf
 14 May 2013 / v2: 21 Apr 2014 Mohammad Ghomi "Affine unfoldings of convex polyhedra" http://arxiv.org/abs/1305.3231 http://arxiv.org/pdf/1305.3231v2.pdf
+Aug 8-10, 2013 Demaine, Demaine, Uehara "Zipper Unfolding of Domes and Prismoids" https://dspace.mit.edu/openaccess-disseminate/1721.1/100407
 31 Jan 2015 Mohammad Ghomi "Affine unfoldings of convex polyhedra: progress on Durer’s problem¨ http://people.math.gatech.edu/~ghomi/Papers/durerPF.pdf
 1 Sep 2015 / v2: 19 Oct 2015 O'Rourke "Spiral Unfoldings of Convex Polyhedra" http://arxiv.org/abs/1509.00321 http://arxiv.org/pdf/1509.00321v2.pdf
 
 Q: I noticed a mistake in one of the papers by benton&orourke-- it claimed to have proved something
-which isn't true.  Something about volcano unfoldings?  What was it?  Doesn't seem to be any of the ones above, so far (although I added some after I said this).  Bleah!  Was it a paper that also said "this proves there's no proof of shephard's conjecture based on a random argument"
+which isn't true.  Something about volcano unfoldings?  What was it?  Doesn't seem to be any of the ones above, so far (although I added some after I said this).  Bleah!  Was it a paper that also said "this proves there's no proof of shephard's conjecture based on a random argument?"
 Q: I seem to remember also noticing that some result (on volcanos or prismoids or prismatoids or something) could be made stronger. what was that?
 
