@@ -59,8 +59,8 @@ CLASSES = \
         PoincareDiskIsometry.class \
         PoincareHalfSpaceIdealCenter.class \
         ${NULL}
-JAR_DEPENDS_ON = ${CLASSES}      macros.h Makefile javacpp javarenumber README
-JAR_CONTAINS = *.class *.prejava macros.h Makefile javacpp javarenumber README
+JAR_DEPENDS_ON = ${CLASSES}      macros.h Makefile javacpp javarenumber README.md
+JAR_CONTAINS = *.class *.prejava macros.h Makefile javacpp javarenumber README.md
 
 # If we want to be able to run it as java -jar ShephardsPlayApplet.jar, then need to do this:
 JAR_CONTAINS += com
