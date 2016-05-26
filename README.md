@@ -625,9 +625,11 @@ they become evident from playing with planar tilings:
          => every convex lagoon as at least two good exits
                 (where "convex" means it includes every vertex in its convex hull)
          => every lagoon that's a *subset* of the verts of one polygon has at least two good exits
+         => every lagoon that's a *connected subset* of the verts of one polygon has at least two good exits
+                (may be fairly easily equivalent to next, need to think about this)
          => true
         <=> every lagoon consisting of the verts of one polygon has at least two good exits
-                (This is the dudley/priscilla proof, done but needs polishing in SpiralApplet/README.html)
+                (This is the dudley/priscilla proof, essentially done but needs polishing in SpiralApplet/README.html)
         <=> every left-right symmetric lagoon consisting of the verts of one polygon has at least two good exits
         <=> every lagoon has at least one good exit
                 (easily true, since there's a good exit out of any vertex at maximum distance from center)
@@ -639,6 +641,7 @@ they become evident from playing with planar tilings:
         <=> there's a left-right symmetric lagoon consisting of the verts of one polygon with at most one good exit
         <=> there's a lagoon consisting of the verts of one polygon with at most one good exit
         <=> false
+         => there's a lagoon that's a connected subset of the verts of one polygon with at most one good exit
          => there's a lagoon that's a subset of the verts of one polygon with at most one good exit
          => there's a convex lagoon with at most one good exit
          => there's a lagoon with at most one good exit  (NEGATION OF MAIN CONJECTURE)
