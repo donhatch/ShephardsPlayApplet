@@ -674,6 +674,7 @@ Aug 20 2007 Benton/O'Rourke "Unfolding Polyhedra via Cut-Tree Truncation" http:/
         also shorter (?) version later, august: http://cs.smith.edu/~orourke/Papers/geodome.pdf
 Sep 7 2008 Alex Benton's dissertation "Unfolding Polyhedra" http://bentonian.com/Papers/Dissertation/Dissertation.pdf
 6 Oct 2008 / v3: 6 Oct 2008 Alexey S Tarasov "Existence of a polyhedron which does not have a non-overlapping pseudo-edge unfolding" http://arxiv.org/abs/0806.2360 http://arxiv.org/pdf/0806.2360v3.pdf
+Aug 9-11, 2010 Demaine,Demaine,Lubiq,Shallit,Shallit "Zipper Unfoldings of Polyhedral Complexes" http://cccg.ca/proceedings/2010/paper58.pdf (other one named "short.pdf" is older version with mistakes)
 9 May 2012 O'Rourke "Unfolding Prismatoids as Convex Patches: Counterexamples and Positive Results" http://arxiv.org/abs/1205.2048 http://arxiv.org/pdf/1205.2048v1.pdf
 14 May 2013 / v2: 21 Apr 2014 Mohammad Ghomi "Affine unfoldings of convex polyhedra" http://arxiv.org/abs/1305.3231 http://arxiv.org/pdf/1305.3231v2.pdf
 Aug 8-10, 2013 Demaine, Demaine, Uehara "Zipper Unfolding of Domes and Prismoids" https://dspace.mit.edu/openaccess-disseminate/1721.1/100407
