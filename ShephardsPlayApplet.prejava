@@ -198,6 +198,7 @@ TO DO:
 #define java_awt_event_MouseEvent_BUTTON3 3
 
 import com.donhatchsw.util.Arrays;
+import com.donhatchsw.util.Complex;
 import com.donhatchsw.util.MyMath;
 import com.donhatchsw.util.VecMath;
 import com.donhatchsw.util.SortStuff;
@@ -967,6 +968,21 @@ public class ShephardsPlayApplet
                                 UndoItem.State before = applet.newUndoItemState();
 
                                 applet.doCannedThingCrackKiller();
+
+                                UndoItem.State after = applet.newUndoItemState();
+                                applet.undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                applet.theCanvas.repaint();
+                            }
+                        });
+                    }},
+                    new JButton("Crack Goes In Spiral") {{
+                        addActionListener(new java.awt.event.ActionListener() {
+                            public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem.State before = applet.newUndoItemState();
+
+                                applet.doCannedThingCrackGoesInSpiral();
 
                                 UndoItem.State after = applet.newUndoItemState();
                                 applet.undoTreeSquirrel.Do(new UndoItem(before, after));
@@ -2850,7 +2866,8 @@ public class ShephardsPlayApplet
 
                 theControlPanelWindow.getContentPane().add(new JScrollPane(new ShephardsPlayAppletControlPanel(this)));
 
-                theControlPanelWindow.setLocation(730, 10);
+                //theControlPanelWindow.setLocation(730, 10);
+                theControlPanelWindow.setLocation(800, 10);
                 theControlPanelWindow.pack();
                 theControlPanelWindow.setVisible(true);
             }
@@ -4016,6 +4033,7 @@ public class ShephardsPlayApplet
             //doCannedThingEyeball();
             //doCannedThingNetless8();
             //doCannedThingCrackKiller();
+            doCannedThingCrackGoesInSpiral();
             //doCannedThingHexesSpiralOther();
             //doCannedThingNetless8Symmetric();
             //doCannedThingNetless8Optimized();
@@ -4024,7 +4042,7 @@ public class ShephardsPlayApplet
             //doCannedThingAlgorithm5Killer0();
             //doCannedThingAlgorithm5Killer1();
             //doCannedThingFarthestLagoonExitKiller();
-            doCannedThingFarthestLagoonExitKillerAltB();
+            //doCannedThingFarthestLagoonExitKillerAltB();
             //doCannedThingFarthestLagoonExitKillerOptimized();
             //doBlueNoiseThing(blueNoiseN.get());
 
@@ -9066,6 +9084,10 @@ public class ShephardsPlayApplet
 
             private void delaunayize()
             {
+                this.mesh = delaunayized(this.mesh);
+            }
+            private Mesh delaunayized(Mesh mesh)
+            {
                 //
                 // Discard the mesh edges and replace it with
                 // the Delaunay triangulation of the vertex set,
@@ -9181,6 +9203,7 @@ public class ShephardsPlayApplet
                         mesh.deleteEdge(edge);
                     }
                 }
+                return mesh;
 
                 // XXX should get rid of unreferenced vertices? NO! But should get rid of dups maybe
             } // delaunayize
@@ -12189,6 +12212,7 @@ OFF
                 mesh = new Mesh(verts, faces);
             } // doCannedThingEyeball
 
+            // XXX unused?
             private static double[] triangleApex(double v0[], double ang0,
                                                  double v1[], double ang1)
             {
@@ -12210,13 +12234,72 @@ OFF
                 return VecMath.invmxv(A, b);
             } // triangleApex
 
+            // Starting in middle and following crack, there's only one legal way to go
+            // and it goes in a spiral.
+            private void doCannedThingCrackGoesInSpiral()
+            {
+                OUT("    in doCannedThingCrackGoesInSpiral");
+
+
+                // magPerCircle has to be big enough so that the big triangles are substantially obtuse.
+
+                #if 0
+                double gonality = 6.;
+                double magPerCircle = 256.;
+                //double magPerCircle = 128.; // too small
+                #endif
+
+                #if 1
+                double gonality = 8.;
+                //double magPerCircle = 100;
+                double magPerCircle = 90; // barely
+                //double magPerCircle = 80; // too small
+                // huh, can I arrange it so the two edge lengths are equal?  would be nice. 90 is pretty close.
+                // oh hmm, maybe even nicer would be if quills become aligned with opposites.
+                #endif
+
+                #if 0
+                double gonality = 16.;
+                double magPerCircle = 64.;
+                #endif
+
+                double angleIncrDegrees = 360./gonality;
+                double angleIncr = DTOR(angleIncrDegrees);
+                double magIncr = Math.pow(magPerCircle, 1./gonality);
+                Complex incr = new Complex(magIncr*Math.cos(angleIncr), magIncr*Math.sin(angleIncr));
+                Complex decr = incr.inverse();
+
+                int nVerts = (int)(gonality * 3);
+                Complex cverts[] = new Complex[nVerts];
+
+                //cverts[0] = Complex.ONE;
+                cverts[0] = new Complex(Math.sqrt(.5),Math.sqrt(.5));
+
+                for (int i = 1; i < nVerts; ++i)
+                    cverts[i] = cverts[i-1].times(decr);
+
+                double verts[][] = new double[nVerts][2];
+                for (int i = 0; i < nVerts; ++i)
+                    verts[i] = new double[]{cverts[i].x, cverts[i].y};
+
+                int faces[][] = new int[0][];
+                this.mesh = new Mesh(verts, faces);
+                this.delaunayize();
+
+                //PRINT(this.mesh);
+                // TODO: Remove edges from vert 0 til it has arity 3.
+                OUT("    out doCannedThingCrackGoesInSpiral");
+            }
+
+            // I *think* this was supposed to be an example where exploring a crack
+            // didn't lead to infinity... but ultimately not sure this is interesting
             private void doCannedThingCrackKiller()
             {
                 // any of the following sets of choices work
 
                 int nSpokes = 9;
                 double angle0 = DTOR(180.);
-                double angleIncr = DTOR(-(360/(nSpokes-1) - .01));
+                double angleIncr = DTOR(-(360./(nSpokes-1) - .01));
                 double length0 = .1;
                 double lengthMultiplier = 2; // would be nice to be more scientific
 
@@ -18038,7 +18121,7 @@ OFF
 
         frame.setLocation(10, 10);
         frame.setSize(720, 745);
-        frame.setSize(300,300);
+        //frame.setSize(300,300);
 
         frame.setVisible(true);
 
