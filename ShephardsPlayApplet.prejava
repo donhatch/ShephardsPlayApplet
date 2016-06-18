@@ -2867,7 +2867,7 @@ public class ShephardsPlayApplet
                 theControlPanelWindow.getContentPane().add(new JScrollPane(new ShephardsPlayAppletControlPanel(this)));
 
                 //theControlPanelWindow.setLocation(730, 10);
-                theControlPanelWindow.setLocation(800, 10);
+                theControlPanelWindow.setLocation(810, 10);
                 theControlPanelWindow.pack();
                 theControlPanelWindow.setVisible(true);
             }
@@ -6346,7 +6346,7 @@ public class ShephardsPlayApplet
                         FORI(iVert, nVerts)
                         {
                             Mesh.Vertex vert = mesh.getVert(iVert);
-                            double dist2 = SQR(vert.Xnaive()) + SQR(vert.Ynaive());
+                            double dist2 = SQR(vert.x()) + SQR(vert.x());
                             if (dist2 < closestDist2)
                             {
                                 iClosest = iVert;
@@ -6367,8 +6367,8 @@ public class ShephardsPlayApplet
 
                         //   p dot (x,y,1) == offset
                         //  px,py,scaleZ*pz dot scaleZ*x,scaleZ*y,1 == scaleZ * offset
-                        double startDualFacePlaneNormal[] = {localScaleZ*startVert.Xnaive(), localScaleZ*startVert.Ynaive(), 1}; // not unit length
-                        double startDualFacePlaneOffset = -localScaleZ*startVert.Znaive(); // magic!  I don't know why, but this is the correct value
+                        double startDualFacePlaneNormal[] = {localScaleZ*startVert.x(), localScaleZ*startVert.y(), 1}; // not unit length
+                        double startDualFacePlaneOffset = -localScaleZ*startVert.z(); // magic!  I don't know why, but this is the correct value
 
                         // what translation by a multiple of startDualFacePlaneNormal
                         // will take the dual face plane to the origin?
@@ -6442,7 +6442,7 @@ public class ShephardsPlayApplet
                             // to the +z axis, while keeping (dual edge times M0) fixed.
 
                             // XXX correct for scale!
-                            double jDualFacePlaneNormal[] = {localScaleZ*vertJ.Xnaive(), localScaleZ*vertJ.Ynaive(), 1}; // not unit length
+                            double jDualFacePlaneNormal[] = {localScaleZ*vertJ.x(), localScaleZ*vertJ.y(), 1}; // not unit length
                             jDualFacePlaneNormal = VecMath.vxm(jDualFacePlaneNormal, M0rotPart);
 
 
@@ -6451,9 +6451,9 @@ public class ShephardsPlayApplet
                             if (someVertOnDualEdge == null)
                                 someVertOnDualEdge = dualEdge.finalVertex();
                             // XXX correct for scale!
-                            double thisDualVertCoords[] = {someVertOnDualEdge.Xnaive(),
-                                                           someVertOnDualEdge.Ynaive(),
-                                                           someVertOnDualEdge.Znaive()};
+                            double thisDualVertCoords[] = {someVertOnDualEdge.x(),
+                                                           someVertOnDualEdge.y(),
+                                                           someVertOnDualEdge.z()};
                             thisDualVertCoords = VecMath.vxm(thisDualVertCoords, M0);
 
 
@@ -6826,7 +6826,16 @@ public class ShephardsPlayApplet
                 // place to draw the edge from.
                 // The coord will be negated if necessary so that the w coord is nonnegative
                 // (even if the vert coord's w is negative-- need to get rid of that)
-                //
+                // What are the "parts" of a dual edge?  Well, part 0 is the part of it on the primal sheet,
+                // and part 1 is the part of it on the dual sheet.
+                //     - an edge connecting two dual verts on first sheet has only part 0.
+                //     - an edge connecting two dual verts on second sheet has only part 1.
+                //     - an edge from initial vert on first sheet to final vert on second:
+                //        - part 0 is from initial vertex to ray display end, on primal sheet
+                //        - part 1 is from ray display beginning to final vertex, on dual sheet
+                //     - an edge from initial vert on second sheet to final vert on first:
+                //        - part 0 is from ray display beginning to final vert, on first sheet
+                //        - part 1 is from initial vert to ray display end, on second sheet
                 double dualVertCoords[][] = new double[nDualVerts][]; // TODO: wait a minute, there's also dualVertsHomoNormalized or something
                 double dualEdgeInitialCoords[/*nEdges*/][/*2*/][/*4*/] = new double[nEdges][2][];
                 {
@@ -7611,9 +7620,8 @@ public class ShephardsPlayApplet
 
                                         double centerX = momentAndWeightStrictlyBelowDualVertex[0] / weightStrictlyBelowDualVertex;
                                         double centerY = momentAndWeightStrictlyBelowDualVertex[1] / weightStrictlyBelowDualVertex;
-                                        // if dualEdge.direction dot (center - dualVert) > 0.
-                                        if (GT(dualEdge.direction[0] * (centerX - dualVert.Xnaive())
-                                             + dualEdge.direction[1] * (centerY - dualVert.Ynaive()), 0., 1e-6))
+                                        if (GT(dualEdge.direction[0] * (centerX - dualVert.x())
+                                             + dualEdge.direction[1] * (centerY - dualVert.y()), 0., 1e-6))
                                         {
                                             dualEdgeIsOffBalanceCut[dualEdge.myIndex()] = true;
                                             dualEdgeIsOffBalanceCut[dualEdge.opposite().myIndex()] = true;
@@ -7640,6 +7648,11 @@ public class ShephardsPlayApplet
                                     {
                                         double from[] = dualEdgeInitialCoords[iDualEdge][0];
                                         double to[] = dualEdgeInitialCoords[oDualEdge][0];
+
+                                        assert((from==null)==(to==null));
+                                        if (from==null)
+                                            continue; // this part doesn't exist-- edge is wholely on second sheet
+
                                         if (GT(VecMath.distsqrd(from,to), 0., SQR(1e-6)))
                                         {
                                             nNonZeroLengthWholeEdges++;
@@ -8153,7 +8166,7 @@ public class ShephardsPlayApplet
 
                                         assert((from==null)==(to==null));
                                         if (from==null)
-                                            continue; // this part doesn't exist
+                                            continue; // this part doesn't exist-- edge is wholely on other sheet
 
                                         mg.drawLine(from[0], from[1], from[2], from[3],
                                                     to[0], to[1], to[2], to[3],
@@ -12303,7 +12316,6 @@ OFF
                   // then walk round the vertex til we find the most CCW edge,
                   // then retain it and the 2 previous.
                   Mesh.Vertex v0 = mesh.getVert(0);
-                  PRINT(v0);
                   int v0arity = 0; // and counting
                   Mesh.Edge someEdgeStartingAtV0 = null;
                   FORI (iEdge, mesh.edges.size())
