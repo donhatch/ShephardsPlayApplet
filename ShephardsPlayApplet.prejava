@@ -12277,10 +12277,8 @@ OFF
                 int nVerts = (int)(gonality * 3);
                 Complex cverts[] = new Complex[nVerts];
 
-                //cverts[0] = Complex.ONE;
-                cverts[0] = new Complex(Math.sqrt(.5),Math.sqrt(.5));
-
-                for (int i = 1; i < nVerts; ++i)
+                cverts[0] = Complex.ONE;
+                for (int i = 1; i < nVerts; ++i) // skip 0
                     cverts[i] = cverts[i-1].times(decr);
 
                 double verts[][] = new double[nVerts][2];
@@ -12357,6 +12355,29 @@ OFF
                             mesh.swapDiagonal(edgeToKill, false, false);
                             --v0arity;
                         }
+                    }
+
+                    if (true)
+                    {
+                        // Tweak rotation so that the most interesting edges are vertical.
+                        // That is, the highest remaining spoke out of v0 is horizontal.
+                        Mesh.Edge edgeToMakeHorizontal = mostCCWedge.opposite().next()
+                                                                    .opposite().next();
+                        assert(v0 == edgeToMakeHorizontal.initialVertex());
+                        Mesh.Vertex v1 = edgeToMakeHorizontal.finalVertex();
+                        double ang = Math.atan2(v0.Ynaive()-v1.Ynaive(),
+                                                v0.Xnaive()-v1.Xnaive());
+                        PRINT(RTOD(ang));
+                        double c = Math.cos(ang);
+                        double s = Math.sin(ang);
+                        // Take ang to 0
+                        double xform[][] = {
+                            {c,-s,0,0},
+                            {s,c,0,0},
+                            {0,0,1,0},
+                            {0,0,0,1},
+                        };
+                        mesh.transformRowOrientedInPlace(xform);
                     }
                 }
                 OUT("    out doCannedThingCrackGoesInSpiral");
@@ -14156,6 +14177,25 @@ OFF
                     ((Mesh.Vertex)verts.get(iVert)).setHnaive(optimalVertexHeights[iVert]);
                 }
             } // findAndApplyOptimalVertexHeights
+
+            private void transformRowOrientedInPlace(double xform[/*4*/][/*4*/])
+            {
+                double coordsIn[] = new double[4];
+                double coordsOut[] = new double[4];
+                FORIDOWN(iVert, verts.size())
+                {
+                    Mesh.Vertex vert = (Mesh.Vertex)verts.get(iVert);
+                    coordsIn[0] = vert.X();
+                    coordsIn[1] = vert.Y();
+                    coordsIn[2] = vert.Z();
+                    coordsIn[3] = vert.W();
+                    VecMath.vxm(coordsOut, coordsIn, xform);
+                    vert.setXYZW(coordsOut[0],
+                                 coordsOut[1],
+                                 coordsOut[2],
+                                 coordsOut[3]);
+                }
+            } // transformRowOriented
 
             private void flipLeftRight()
             {
