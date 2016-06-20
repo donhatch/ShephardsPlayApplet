@@ -63,7 +63,8 @@ JAR_DEPENDS_ON = ${CLASSES}      macros.h Makefile javacpp javarenumber README.m
 JAR_CONTAINS = *.class *.prejava macros.h Makefile javacpp javarenumber README.md
 
 # If we want to be able to run it as java -jar ShephardsPlayApplet.jar, then need to do this:
-JAR_CONTAINS += com
+# XXX ouch, but this makes "make renumber" fail
+#JAR_CONTAINS += com
 
 .PHONY: all default jar
 default: Makefile ${JAR_DEPENDS_ON}
