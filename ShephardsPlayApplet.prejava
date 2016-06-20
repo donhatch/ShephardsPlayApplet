@@ -108,6 +108,10 @@ BUGS:
 
 TO DO:
     - idea: actually infinite figures?  E.g. CrackGoesInSpiral could be recursive, it could go outward to infinity and/or inward to infinity
+        - special-case less ambitious sub-idea:
+          certain figures such as CrackGoesInSpiral could be annotated with such knowledge,
+          that it's self-similar on magnification.
+          Hmm, magPerCircle would have to be a power of 2.
     - use vert.arity to determine arity, silly
     - highlight vert when close enough to pick it?
     - get rid of all calcInsideOutDualVertsFlag=false code, just always calculate them (I think)
@@ -961,13 +965,28 @@ public class ShephardsPlayApplet
                             }
                         });
                     }},
-                    new JButton("Crack Goes In Spiral") {{
+                    new JButton("Crack Goes In Spiral Small") {{
                         addActionListener(new java.awt.event.ActionListener() {
                             public void actionPerformed(java.awt.event.ActionEvent e)
                             {
                                 UndoItem.State before = applet.newUndoItemState();
 
-                                applet.doCannedThingCrackGoesInSpiral();
+                                applet.doCannedThingCrackGoesInSpiralSmall();
+
+                                UndoItem.State after = applet.newUndoItemState();
+                                applet.undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                applet.theCanvas.repaint();
+                            }
+                        });
+                    }},
+                    new JButton("Crack Goes In Spiral Big") {{
+                        addActionListener(new java.awt.event.ActionListener() {
+                            public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem.State before = applet.newUndoItemState();
+
+                                applet.doCannedThingCrackGoesInSpiralBig();
 
                                 UndoItem.State after = applet.newUndoItemState();
                                 applet.undoTreeSquirrel.Do(new UndoItem(before, after));
@@ -4016,7 +4035,7 @@ public class ShephardsPlayApplet
             //doCannedThingNetless9();
             //doCannedThingEyeball();
             //doCannedThingNetless8();
-            doCannedThingCrackGoesInSpiral();
+            doCannedThingCrackGoesInSpiralSmall();
             //doCannedThingHexesSpiralOther();
             //doCannedThingNetless8Symmetric();
             //doCannedThingNetless8Optimized();
@@ -7935,6 +7954,7 @@ public class ShephardsPlayApplet
                                                 double flatThreshold = 1e-6;
                                                 if (VecMath.distsqrd(v0,v1) < SQR(flatThreshold))
                                                 {
+                                                    System.out.println("flat, not showing:");
                                                     PRINTVEC(v0);
                                                     PRINTVEC(v1);
                                                     PRINT(VecMath.distsqrd(v0,v1));
@@ -12241,7 +12261,7 @@ OFF
 
             // Starting in middle and following crack, there's only one legal way to go
             // and it goes in a spiral.
-            private void doCannedThingCrackGoesInSpiral()
+            private void doCannedThingCrackGoesInSpiral(int nTurns)
             {
                 OUT("    in doCannedThingCrackGoesInSpiral");
 
@@ -12274,11 +12294,10 @@ OFF
                 Complex incr = new Complex(magIncr*Math.cos(angleIncr), magIncr*Math.sin(angleIncr));
                 Complex decr = incr.inverse();
 
-                int nVerts = (int)(gonality * 6);
+                int nVerts = (int)(gonality * nTurns);
                 Complex cverts[] = new Complex[nVerts];
 
                 cverts[0] = Complex.ONE;
-                cverts[0].timesEquals(1e2); // if too big, gets weird double-edges on outer part of dual. if too small, can't do as many turns
                 for (int i = 1; i < nVerts; ++i) // skip 0
                     cverts[i] = cverts[i-1].times(decr);
 
@@ -12354,6 +12373,107 @@ OFF
                 }
                 OUT("    out doCannedThingCrackGoesInSpiral");
             }
+
+            private void doCannedThingCrackGoesInSpiralSmall()
+            {
+                doCannedThingCrackGoesInSpiral(4); // can't go too high here; use big for that
+            }
+            private void doCannedThingCrackGoesInSpiralBig()
+            {
+                int nTurns = 32; // perhaps excessive, but it works, hooray!
+
+                // Do it with relatively small number of verts,
+                // analyze the pattern,
+                // then apply the pattern to larger number of verts.
+                doCannedThingCrackGoesInSpiral(4);
+
+                int nLittleVerts = mesh.verts.size();
+                int nLittleEdges = mesh.edges.size();
+                assert(nLittleEdges % 3 == 0);
+                int nLittleTris = nLittleEdges / 3;
+                int littleTris[][] = new int[nLittleTris][3];
+                // grab the tris
+                nLittleTris = 0;
+                for (int iEdge = 0; iEdge < mesh.edges.size(); ++iEdge)
+                {
+                    Mesh.Edge e = mesh.getEdge(iEdge);
+                    assert(e.next().next().next() == e); // it's a tri
+                    int i0 = e.initialVertex().myIndex();
+                    int i1 = e.next().initialVertex().myIndex();
+                    int i2 = e.next().next().initialVertex().myIndex();
+                    if (i0 < i1 && i0 < i2)
+                    {
+                        littleTris[nLittleTris][0] = i0;
+                        littleTris[nLittleTris][1] = i1;
+                        littleTris[nLittleTris][2] = i2;
+                        nLittleTris++;
+                    }
+                }
+                assert(nLittleTris == littleTris.length);
+                // sort them
+                SortStuff.sort(littleTris, new SortStuff.Comparator() {
+                    public int compare(Object a, Object b)
+                    {
+                        int aTri[] = (int[])a;
+                        int bTri[] = (int[])b;
+                        for (int i = 0; i < 3; ++i)
+                        {
+                            if (aTri[i] < bTri[i]) return -1;
+                            if (aTri[i] > bTri[i]) return 1;
+                        }
+                        return 0;
+                    }
+                });
+
+
+                doCannedThingCrackGoesInSpiral(nTurns);
+
+                // extract the verts
+                int nBigVerts = mesh.verts.size();
+                double bigVerts[][] = new double[nBigVerts][2];
+                for (int iVert = 0; iVert < nBigVerts; ++iVert)
+                {
+                    bigVerts[iVert][0] = mesh.getVert(iVert).Xnaive();
+                    bigVerts[iVert][1] = mesh.getVert(iVert).Ynaive();
+                }
+
+                // don't use mesh.edges.size(); it can be completely bogus at this point
+                // since convex hull might have said some verts are inside.
+                int nBigTris = nLittleTris + (nBigVerts-nLittleVerts)*2;
+                int bigTris[][] = new int[nBigTris][3];
+
+                // Assume:
+                // first half of littleTris accurately depicts its relationship to first few verts
+                // second half of littleTris accurately depicts its relationship to last few verts
+                // in the middle part, tris come in pairs
+                int iLittleTriThreshold = nLittleTris/2;
+                assert(littleTris[iLittleTriThreshold][0] == littleTris[iLittleTriThreshold-2][0] + 1);
+                assert(littleTris[iLittleTriThreshold][1] == littleTris[iLittleTriThreshold-2][1] + 1);
+                assert(littleTris[iLittleTriThreshold][2] == littleTris[iLittleTriThreshold-2][2] + 1);
+                for (int iBigTri = 0; iBigTri < nBigTris; ++iBigTri)
+                {
+                    if (iBigTri < iLittleTriThreshold)
+                    {
+                        int iLittleTri = iBigTri;
+                        bigTris[iBigTri][0] = littleTris[iLittleTri][0];
+                        bigTris[iBigTri][1] = littleTris[iLittleTri][1];
+                        bigTris[iBigTri][2] = littleTris[iLittleTri][2];
+                    } else if (nBigTris-1-iBigTri < iLittleTriThreshold) {
+                        int iLittleTri = nLittleTris-1 - (nBigTris-1-iBigTri);
+                        bigTris[iBigTri][0] = nBigVerts-1-(nLittleVerts-1-littleTris[iLittleTri][0]);
+                        bigTris[iBigTri][1] = nBigVerts-1-(nLittleVerts-1-littleTris[iLittleTri][1]);
+                        bigTris[iBigTri][2] = nBigVerts-1-(nLittleVerts-1-littleTris[iLittleTri][2]);
+                    } else {
+                        bigTris[iBigTri][0] = bigTris[iBigTri-2][0] + 1;
+                        bigTris[iBigTri][1] = bigTris[iBigTri-2][1] + 1;
+                        bigTris[iBigTri][2] = bigTris[iBigTri-2][2] + 1;
+                    }
+                }
+
+                // extract the verts,
+                // and apply the tries from smaller.
+                this.mesh = new Mesh(bigVerts, bigTris);
+            } // doCannedThingCrackGoesInSpiralBig
 
             // Generalization of netless9.
             // counterexample to "there is an unfolding
