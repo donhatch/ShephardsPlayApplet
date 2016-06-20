@@ -107,6 +107,7 @@ BUGS:
     - use exact group calculation rather than generateVertices when adding a point
 
 TO DO:
+    - idea: actually infinite figures?  E.g. CrackGoesInSpiral could be recursive, it could go outward to infinity and/or inward to infinity
     - use vert.arity to determine arity, silly
     - highlight vert when close enough to pick it?
     - get rid of all calcInsideOutDualVertsFlag=false code, just always calculate them (I think)
@@ -179,11 +180,10 @@ TO DO:
     - other mesh editing operations (split face by edge, split edge by vertex, join adjacent vertices, separate a vertex into two (but how to assign the neighbors?))  (idea: same interface as split face by edge... but only works if on two different faces... maybe connec dual verts?)
     - BUG: figure out how to make it not repaint continuously when resizing (my other appets too) (is this just a canvas problem?)
     - BUG: when only part of window gets exposed, only the exposed part gets painted?  hmm, not sure I have control over this
-    - BUG: can't reconnect an isolated vertex to the rest
     - look at this, maybe clues about positive octant penalty functions...
         http://www.cs.indiana.edu/~yingfeng/ABSURDIST/javadoc/penalty/PenaltyMinimizer.html
       something about "translating into a positive orthant problem" and "optimizing over the positive orthant"
-      intersection of a linear subspace witht the positive orthant
+      intersection of a linear subspace with the positive orthant
       http://projecteuclid.org/Dienst/UI/1.0/Summarize/euclid.mmj/1028988894
       The knee-jerk mapping:
       http://www.math.dartmouth.edu/~doyle/docs/jerk/jerk.pdf
@@ -12274,10 +12274,11 @@ OFF
                 Complex incr = new Complex(magIncr*Math.cos(angleIncr), magIncr*Math.sin(angleIncr));
                 Complex decr = incr.inverse();
 
-                int nVerts = (int)(gonality * 3);
+                int nVerts = (int)(gonality * 6);
                 Complex cverts[] = new Complex[nVerts];
 
                 cverts[0] = Complex.ONE;
+                cverts[0].timesEquals(1e2); // if too big, gets weird double-edges on outer part of dual. if too small, can't do as many turns
                 for (int i = 1; i < nVerts; ++i) // skip 0
                     cverts[i] = cverts[i-1].times(decr);
 
@@ -12294,59 +12295,38 @@ OFF
                     // Doesn't look so great because vert 0 has too many edges out of it.
                     // Get rid of them til it has apparent arity 3 (i.e. 3 frontface edges).
                     // How do we find the ones to keep?
-                    // Well, first find any edge out of it,
-                    // then walk round the vertex til we find the most CCW edge,
-                    // then retain it and the 2 previous.
-                    Mesh.Vertex v0 = mesh.getVert(0);
+                    // Well, first find the edge from v0 to v1,
+                    // then retain it and the 2 adjacent ones walking in the CW direction around v0.
+
+                    Mesh.Edge e01 = null;
                     int v0arity = 0; // and counting
-                    Mesh.Edge someEdgeStartingAtV0 = null;
                     FORI (iEdge, mesh.edges.size())
                     {
                         Mesh.Edge e = mesh.getEdge(iEdge);
-                        if (e.initialVertex() == v0)
+                        if (e.initialVertex().myIndex() == 0)
                         {
-                          someEdgeStartingAtV0 = e;
-                          v0arity++;
+                            v0arity++;
+                            if (e.finalVertex().myIndex() == 1)
+                            {
+                                assert(e01 == null);
+                                e01 = e;
+                            }
                         }
                     }
-                    assert(someEdgeStartingAtV0 != null);
-
-                    // walk around edges, logically CCW (but CW when backfacing),
-                    // looking for the most actually CCW one
-                    Mesh.Edge mostCCWedge = null;
-                    for (Mesh.Edge e = someEdgeStartingAtV0;; e = e.prev().opposite())
-                    {
-                        assert(e.initialVertex() == v0);
-                        Mesh.Vertex vPrev = e.opposite().next().finalVertex();
-                        Mesh.Vertex vThis = e.finalVertex();
-                        Mesh.Vertex vNext = e.prev().opposite().finalVertex();
-                        double prevArea = twiceTriangleArea(v0.Xnaive(), v0.Ynaive(),
-                                                            vPrev.Xnaive(), vPrev.Ynaive(),
-                                                            vThis.Xnaive(), vThis.Ynaive());
-                        double nextArea = twiceTriangleArea(v0.Xnaive(), v0.Ynaive(),
-                                                            vThis.Xnaive(), vThis.Ynaive(),
-                                                            vNext.Xnaive(), vNext.Ynaive());
-                        if (prevArea > 0. && nextArea <= 0.)
-                        {
-                            mostCCWedge = e;
-                            break;
-                        }
-                    }
-                    assert(mostCCWedge != null);
 
                     if (false)
                     {
                         // Delete edges until we've only got the three remaining ones left.
                         while (v0arity > 3)
                         {
-                           mesh.deleteEdge(mostCCWedge.prev().opposite());
+                           mesh.deleteEdge(e01.prev().opposite());
                            --v0arity;
                         }
                     }
                     else
                     {
                         // Do diagonal swaps on the others until we've only got the three remaining ones left.
-                        Mesh.Edge firstEdgeToKeep = mostCCWedge;
+                        Mesh.Edge firstEdgeToKeep = e01;
                         Mesh.Edge secondEdgeToKeep = firstEdgeToKeep.opposite().next();
                         Mesh.Edge thirdEdgeToKeep = secondEdgeToKeep.opposite().next();
                         while (v0arity > 3)
@@ -12361,12 +12341,13 @@ OFF
                     {
                         // Tweak rotation so that the most interesting edges are vertical.
                         // That is, the highest remaining spoke out of v0 is horizontal.
-                        Mesh.Edge edgeToMakeHorizontal = mostCCWedge.opposite().next()
-                                                                    .opposite().next();
-                        assert(v0 == edgeToMakeHorizontal.initialVertex());
-                        Mesh.Vertex v1 = edgeToMakeHorizontal.finalVertex();
-                        double ang = Math.atan2(v0.Ynaive()-v1.Ynaive(),
-                                                v0.Xnaive()-v1.Xnaive());
+                        Mesh.Edge edgeToMakeHorizontal = e01.opposite().next()
+                                                            .opposite().next();
+                        Mesh.Vertex v0 = edgeToMakeHorizontal.initialVertex();
+                        assert(v0.myIndex() == 0);
+                        Mesh.Vertex v = edgeToMakeHorizontal.finalVertex();
+                        double ang = Math.atan2(v0.Ynaive()-v.Ynaive(),
+                                                v0.Xnaive()-v.Xnaive());
                         // take ang to 0
                         xformTheMesh(VecMath.makeRowRotMat(4, 0, 1, -ang));
                     }
@@ -12685,70 +12666,6 @@ OFF
                 public double z() { return _Z/_W; }
                 public double h() { return _H/SQR(_W); } // seems to work, not quite sure of the logic
 
-
-#ifdef NEVER
-                //
-                // Accessors for adjusting physical coords
-                // even when W might not be 1.
-                // TODO: not sure these are needed at all
-                //       but I'm not sure...
-                //       what if we just unwrapped from sphere (so some w's are not 1)
-                //       and we then scale? that shouldn't require normalization, should it?
-                //
-                // in physical space:
-                //      h = z + (x^2+y^2)/2
-                //      z = h - (x^2+y^2)/2
-                // in hom space:
-                //      H = h*W^2
-                //        = (z + (x^2+y^2)/2) * W^2
-                //        = Z*W + (X^2+Y^2)/2
-                //      Z = z*W
-                //        = (h - (x^2+y^2)/2)*W
-                //        = (h*W - (x^2*W+y^2*W)/2)
-                //        = (H/W - (X^2/W+Y^2/W)/2)
-                //        = (H - (X^2+Y^2)/2)/W
-                // idea: when manipulating stuff in physical space, we *know* W can't be 0,
-                //       so maybe setx can start by just normalizing so W=1?
-                public void setx(double x) // y,h fixed, adjust z
-                {
-                    assert(_W == 1.);
-                    _X = x*_W;
-                    _Z = _H/_W - .5 * (x*x*_W + _Y*_Y/_W);
-                }
-                public void sety(double y) // x,h fixed, adjust z
-                {
-                    assert(_W == 1.);
-                    _Y = y*_W;
-                    _Z = _H/_W - .5 * (_X*_X/_W + y*y*_W);
-                }
-                public void setz(double z) // leave x,y fixed, adjust h
-                {
-                    assert(_W == 1.);
-                    _Z = z*_W;
-                    _H = _Z*_W + (_X*_X+_Y*_Y)/2;
-                }
-                public void seth(double h) // leave x,y fixed, adjust z
-                {
-                    assert(_W == 1.);
-                    _H = h * (_W*_W);
-                    _Z = (h*_W - .5 * (_X*_X + _Y*_Y)/_W);
-                }
-                public void setxy(double x, double y) // h fixed, adjust z
-                {
-                    assert(_W == 1.);
-                    _X = x*_W;
-                    _Y = y*_W;
-                    _Z = (_H/_W - .5 * (x*x + y*y)*_W)
-                }
-                public void setxyz(double x, double y, double z) // calculate h
-                {
-                    _W = 1.;
-                    _X = x;
-                    _Y = y;
-                    _Z = z;
-                    _H = z + .5 * (x*x + y*y);
-                }
-#endif // NEVER
                 public void setxyh(double x, double y, double h) // calculate z
                 {
                     _W = 1.;
