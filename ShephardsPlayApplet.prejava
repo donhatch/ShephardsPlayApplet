@@ -4035,14 +4035,14 @@ public class ShephardsPlayApplet
             //doCannedThingCrackGoesInSpiral();
             //doCannedThingHexesSpiralOther();
             //doCannedThingNetless8Symmetric();
-            //doCannedThingNetless8Optimized();
+            doCannedThingNetless8Optimized();
             //doCannedThingSweepKiller0();
             //doCannedThingSweepKiller1();
             //doCannedThingAlgorithm5Killer0();
             //doCannedThingAlgorithm5Killer1();
             //doCannedThingFarthestLagoonExitKiller();
             //doCannedThingFarthestLagoonExitKillerAltB();
-            doCannedThingFarthestLagoonExitKillerOptimized();
+            //doCannedThingFarthestLagoonExitKillerOptimized();
             //doBlueNoiseThing(blueNoiseN.get());
 
             //load("DUMP.off");
@@ -8568,19 +8568,9 @@ public class ShephardsPlayApplet
                 if (theOptimizationIndex != -1)
                 {
                     mg.setColor(java.awt.Color.white);
-                    // I think lagoon optimization uses goodnesses but netless8 optimization doesn't
-                    if (theOptimizationPathGoodnesses == null)
-                    {
-                        mg.drawString("Optimization step "+theOptimizationIndex+"/"+(theOptimizationPath.length-1),
-                                      -1., -1.,
-                                      -1., 1.1);
-                    }
-                    else
-                    {
-                        mg.drawString("Optimization step "+theOptimizationIndex+"/"+(theOptimizationPath.length-1)+":  goodness = "+theOptimizationPathGoodnesses[theOptimizationIndex],
-                                      -1., -1.,
-                                      -1., 1.1);
-                    }
+                    mg.drawString("Optimization step "+theOptimizationIndex+"/"+(theOptimizationPath.length-1)+":  goodness = "+theOptimizationPathGoodnesses[theOptimizationIndex],
+                                  -1., -1.,
+                                  -1., 1.1);
                 }
 
 
@@ -11598,7 +11588,7 @@ OFF
             private static class Netless8OptimizationStuff
             {
                 // Returns the optimization path, better and better verts
-                public static double[][][] optimizeNetless8Verts(
+                public static Object[/*2*/] optimizeNetless8Verts(
                     double initialGuessVerts[][])
                 {
                     System.out.println("    in optimizeNetless8Verts");
@@ -11622,6 +11612,7 @@ OFF
                     final double saveBestParams[] = new double[5];
                     final double saveBestValue[] = {Double.POSITIVE_INFINITY};
                     final ArrayList optimizationPathList = new ArrayList();
+                    final DoubleArrayList optimizationPathGoodnessesList = new DoubleArrayList();
 
                     Minimizer.VectorFunction fun = new Minimizer.VectorFunction() {
                         // VectorFunction interface
@@ -11692,6 +11683,7 @@ OFF
                             {
                                 saveBestValue[0] = answer;
                                 optimizationPathList.add(paramsToVerts(params)); // XXX TODO: um, why aren't we just adding verts?
+                                optimizationPathGoodnessesList.add(-answer); // answer is thing we're trying to minimize, so goodness is in the opposite direction
                             }
                             return answer;
                         }
@@ -11713,8 +11705,10 @@ OFF
                     // we don't really use that
                     double optimizationPath[][][] = new double[optimizationPathList.size()][][];
                     optimizationPathList.toArray(optimizationPath);
+                    double optimizationPathGoodnesses[] = new double[optimizationPathGoodnessesList.size()];
+                    optimizationPathGoodnessesList.toArray(optimizationPathGoodnesses);
                     System.out.println("    out optimizeNetless8Verts");
-                    return optimizationPath;
+                    return new Object[] {optimizationPath, optimizationPathGoodnesses};
                 } // optimizeNetless8Verts
 
                 private static double[] vertsToParams(double verts[][])
@@ -11917,9 +11911,10 @@ OFF
 
                 double initialGuessDualVerts[][] = Netless8OptimizationStuff.vertsToDualVertsInNetless8(initialGuessVerts);
 
-
-                double optimizationPathVerts[][][] = Netless8OptimizationStuff.optimizeNetless8Verts(
+                Object optimizationPathVertsAndGoodnesses[/*2*/] = Netless8OptimizationStuff.optimizeNetless8Verts(
                     initialGuessVerts);
+                double optimizationPathVerts[][][] = (double[][][])optimizationPathVertsAndGoodnesses[0];
+                double optimizationPathGoodnesses[] = (double[])optimizationPathVertsAndGoodnesses[1];
                 double verts[][] = optimizationPathVerts[optimizationPathVerts.length-1];
                 FORI (iVert, 6)
                 {
@@ -11932,7 +11927,7 @@ OFF
 
                 theOptimizationPath = optimizationPathVerts;
                 theOptimizationIndex = optimizationPathVerts.length-1;
-                theOptimizationPathGoodnesses = null;
+                theOptimizationPathGoodnesses = optimizationPathGoodnesses;
             } // doCannedThingNetless8Optimized
 
             private static double[][] generateVertices(double vertGenerators[][],
