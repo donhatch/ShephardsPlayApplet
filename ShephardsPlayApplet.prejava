@@ -7432,12 +7432,16 @@ public class ShephardsPlayApplet
                                      || netMethodValue == NETMETHOD_CUT_LONGEST
                                      || netMethodValue == NETMETHOD_CUT_SHORTEST)
                                     {
+                                        // In this case we want to cut the something-est edge at each vertex
+                                        // of the dual, so we'll be walking around each dual vert, i.e. around each primal face.
                                         //System.out.println("USING PRIMAL MESH");
                                         meshToUse = mesh;
                                         dualMeshToUse = dualMesh;
                                     }
                                     else
                                     {
+                                        // In this case we want to fold the something-est edge at each face
+                                        // of the dual, so we'll be walking around each dual face.
                                         //System.out.println("USING DUAL MESH");
                                         meshToUse = dualMesh;
                                         dualMeshToUse = mesh;
@@ -12392,6 +12396,7 @@ OFF
             {
                 doCannedThingCrackGoesInSpiral(4); // can't go too high here; use big for that
             }
+
             private void doCannedThingCrackGoesInSpiralBig()
             {
                 int nTurns = 32; // perhaps excessive, but it works, hooray!
@@ -12403,42 +12408,11 @@ OFF
 
                 int nLittleVerts = mesh.verts.size();
                 int nLittleEdges = mesh.edges.size();
-                assert(nLittleEdges % 3 == 0);
-                int nLittleTris = nLittleEdges / 3;
-                int littleTris[][] = new int[nLittleTris][3];
-                // grab the tris
-                nLittleTris = 0;
-                for (int iEdge = 0; iEdge < mesh.edges.size(); ++iEdge)
-                {
-                    Mesh.Edge e = mesh.getEdge(iEdge);
-                    assert(e.next().next().next() == e); // it's a tri
-                    int i0 = e.initialVertex().myIndex();
-                    int i1 = e.next().initialVertex().myIndex();
-                    int i2 = e.next().next().initialVertex().myIndex();
-                    if (i0 < i1 && i0 < i2)
-                    {
-                        littleTris[nLittleTris][0] = i0;
-                        littleTris[nLittleTris][1] = i1;
-                        littleTris[nLittleTris][2] = i2;
-                        nLittleTris++;
-                    }
-                }
-                assert(nLittleTris == littleTris.length);
-                // sort them
-                SortStuff.sort(littleTris, new SortStuff.Comparator() {
-                    public int compare(Object a, Object b)
-                    {
-                        int aTri[] = (int[])a;
-                        int bTri[] = (int[])b;
-                        for (int i = 0; i < 3; ++i)
-                        {
-                            if (aTri[i] < bTri[i]) return -1;
-                            if (aTri[i] > bTri[i]) return 1;
-                        }
-                        return 0;
-                    }
-                });
-
+                int littleTris[][] = getMeshFaces(mesh, true);
+                int nLittleTris = littleTris.length;
+                PRINT(nLittleTris);
+                PRINT(nLittleEdges);
+                assert(3*nLittleTris == nLittleEdges);
 
                 doCannedThingCrackGoesInSpiral(nTurns);
 
@@ -14904,6 +14878,62 @@ OFF
                 dualEdge._opposite.direction = VecMath.sxv(-1., dualEdge.direction);
             }
         } // fixDualDirections
+
+        // If canonicalOrder flag, order each face so that least-index vertex is first,
+        // and then sort faces by increasing size and then increasing contents.
+        // and then sort faces by increasing size and then contents.
+        private static int[][] getMeshFaces(Mesh mesh, boolean canonicalOrderFlag)
+        {
+            boolean seenEdge[] = new boolean[mesh.edges.size()]; // all false initially
+            int[][] faces = new int[mesh.edges.size()][];
+            int[] scratchFace = new int[mesh.verts.size()];
+            int nFaces = 0;
+            FORIDOWN(iEdge, mesh.edges.size())
+            {
+                if (seenEdge[iEdge]) continue;
+                Mesh.Edge edge0 = mesh.getEdge(iEdge);
+                if (canonicalOrderFlag)
+                {
+                    // Advance edge0 til its initial vertex is the one with smallest index on the face
+                    int minVertIndex = edge0.initialVertex().myIndex();
+                    for (Mesh.Edge edge = edge0.next(); edge != edge0; edge = edge.next())
+                    {
+                        int iVert = edge.initialVertex().myIndex();
+                        minVertIndex = MIN(minVertIndex, iVert);
+                    }
+                    while (edge0.initialVertex().myIndex() != minVertIndex)
+                        edge0 = edge0.next();
+                }
+                int faceSize = 0;
+                Mesh.Edge edge = edge0;
+                do {
+                    seenEdge[edge.myIndex()] = true;
+                    scratchFace[faceSize++] = edge.initialVertex().myIndex();
+                } while ((edge = edge.next()) != edge0);
+                faces[nFaces++] = (int[])Arrays.subarray(scratchFace, 0, faceSize);
+            }
+            faces = (int[][])Arrays.subarray(faces, 0, nFaces);
+            if (canonicalOrderFlag)
+            {
+                SortStuff.sort(faces, new SortStuff.Comparator() {
+                    public int compare(Object a, Object b)
+                    {
+                        int aTri[] = (int[])a;
+                        int bTri[] = (int[])b;
+                        if (aTri.length < bTri.length) return -1;
+                        if (aTri.length > bTri.length) return 1;
+                        for (int i = 0; i < aTri.length; ++i)
+                        {
+                            if (aTri[i] < bTri[i]) return -1;
+                            if (aTri[i] > bTri[i]) return 1;
+                        }
+                        return 0;
+                    }
+                });
+            }
+            return faces;
+        } // getMeshFaces
+
 
         // XXX move this somewhere else
         double vertOffset(Mesh.Vertex vert, boolean wrapAroundSphereFlagValue)
