@@ -3794,17 +3794,6 @@ public class ShephardsPlayApplet
             OUT("    out rescale");
         } // rescale
 
-        // Actually there are conceptually lots of different options:
-        //   - frame primal without moving dual  <- left 'f' button should do this
-        //   - frame dual without moving primal  <- right 'f' button should do this
-        //   - frame primal and xform dual along with it   (current true,false behavior)
-        //   - frame dual and xform primal along with it   (current false,true behavior)
-        //   - frame both independently  <- middle 'f' button should do this
-        //   - frame union keeping them in same relation to each other (current true,true behavior)
-        // Or, if that's deemed too dangerous:
-        //   - un-ctrled should keep them in same relation to each other
-        //   - ctrled should just frame one and keep the other fixed
-
         // Think about what I really want here.
         // I think it's:
         //   - "scale primal only" 'f' -> frame primal without moving dual
@@ -3814,136 +3803,137 @@ public class ShephardsPlayApplet
         //   - "scale primal only" 'f' -> frame primal and take dual along with it
         //   - "scale" 'f' ->          -> frame the union
         //   - "scale dual only" 'f'   -> frame dual and take primal along with it
-
-        public void frame(boolean framePrimalFlag, boolean frameDualFlag)
+        //
+        public void frame(boolean framePrimalFlag, boolean frameDualFlag, boolean gang)
         {
             assert(framePrimalFlag || frameDualFlag);
             UndoItem.State before = newUndoItemState();
-
             {
                 // XXX do I want this?
                 resetLocalToWorld();
             }
-            {
-                double minx = Double.POSITIVE_INFINITY;
-                double miny = Double.POSITIVE_INFINITY;
-                double maxx = Double.NEGATIVE_INFINITY;
-                double maxy = Double.NEGATIVE_INFINITY;
-                if (framePrimalFlag)
-                    FORIDOWN(iVert, mesh.verts.size())
-                    {
-                        Mesh.Vertex vert = mesh.getVert(iVert);
-                        minx = MIN(minx, vert.x());
-                        maxx = MAX(maxx, vert.x());
-                        miny = MIN(miny, vert.y());
-                        maxy = MAX(maxy, vert.y());
-                    }
-                if (frameDualFlag)
-                {
-                    Mesh dualMesh = getDualMesh();
-                    FORIDOWN(iDualVert, dualMesh.verts.size())
-                    {
-                        Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
-                        minx = MIN(minx, dualVert.x());
-                        maxx = MAX(maxx, dualVert.x());
-                        miny = MIN(miny, dualVert.y());
-                        maxy = MAX(maxy, dualVert.y());
-                    }
-                }
-                double center[] = {(minx+maxx)*.5, (miny+maxy)*.5};
-                if (pRotationalSymmetry.get() > 1)
-                    VecMath.zerovec(center);
-
-                double maxRadius = MAX4(maxx-center[0], center[0]-minx,
-                                        maxy-center[1], center[1]-miny);
-                double scale = 1./maxRadius;
-                if (maxRadius > 0.)  // don't do anything when inside out? not sure what my reasoning was here. I guess it would get even more messed up.
-                {
-                    FORIDOWN(iVert, mesh.verts.size())
-                    {
-                        Mesh.Vertex vert = mesh.getVert(iVert);
-                        vert.setXYHnaive((vert.Xnaive() - center[0]) * scale,
-                                         (vert.Ynaive() - center[1]) * scale,
-                                         vert.Hnaive() * (scale*scale));
-                    }
-                    Mesh dualMesh = getDualMesh();
-                    PRINT(dualMesh);
-                    FORIDOWN(iDualVert, dualMesh.verts.size())
-                    {
-                        Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
-                        assert_eq(dualVert.weight*2, dualVert.W());
-                        if (iDualVert == 0.) PRINT(dualVert.weight);
-                        if (iDualVert == 0.) PRINT(dualVert.W());
-                        // dualVert doesn't necessarily have W=1,
-                        // so we can't call the "naive" get/set functions.
-                        // Do it in homogeneous space.
-                        // We're scaling both primal and dual by same amount...
-                        // since scaling primal, the dual W (which is proportional to primal tri area)
-                        // should get multiplied by scale^2.
-                        if (false)
-                        {
-                            // This works but changes W to 1,
-                            // which actually messes things up (it ends up changing -1's to 1's
-                            // which makes it draw back verts when it shouldn't).
-                            dualVert.setXYHW((dualVert.x() - center[0]) * scale,
-                                             (dualVert.y() - center[1]) * scale,
-                                             dualVert.h() * (scale*scale),
-                                             1.);
-                        }
-                        else if (false)
-                        {
-                            // This works and changes W to its proper new value,
-                            // but math isn't as direct as it could be
-                            double oldW = dualVert.W();
-                            double newW = oldW * (scale*scale);
-                            dualVert.setXYHW((dualVert.x() - center[0]) * scale * newW,
-                                             (dualVert.y() - center[1]) * scale * newW,
-                                             dualVert.h() * (scale*scale) * newW,
-                                             newW);
-                        }
-                        else if (false)
-                        {
-                            // Make previous more explicit
-                            double oldW = dualVert.W();
-                            double newW = oldW * (scale*scale);
-                            dualVert.setXYHW((dualVert.X()/oldW - center[0]) * scale * newW,
-                                             (dualVert.Y()/oldW - center[1]) * scale * newW,
-                                             dualVert.H()/oldW * (scale*scale) * newW,
-                                             newW);
-                        }
-                        else if (false)
-                        {
-                            // start to rearrange the math
-                            double oldW = dualVert.W();
-                            double newW = oldW * (scale*scale);
-                            dualVert.setXYHW((dualVert.X() - center[0]*oldW) * scale * newW/oldW,
-                                             (dualVert.Y() - center[1]*oldW) * scale * newW/oldW,
-                                             dualVert.H() * (scale*scale) * newW/oldW,
-                                             newW);
-                        }
-                        else if (true)
-                        {
-                            // rearranged.
-                            double oldW = dualVert.W();
-                            double newW = oldW * (scale*scale);
-                            dualVert.setXYHW((dualVert.X() - center[0]*oldW) * (scale*scale*scale),
-                                             (dualVert.Y() - center[1]*oldW) * (scale*scale*scale),
-                                             dualVert.H() * (scale*scale*scale*scale*scale), // holy moly!
-                                             newW);
-                        }
-                        dualVert.weight *= scale*scale; // I think this is right, since weight is tri area I think, currently
-                        assert_eq(dualVert.weight*2, dualVert.W());
-                        if (iDualVert == 0.) PRINT(dualVert.weight);
-                        if (iDualVert == 0.) PRINT(dualVert.W());
-                    }
-                }
-            }
-
+            frameNoUndoRedo(framePrimalFlag, frameDualFlag, gang);
             // should be no need to re-delaunayize, since uniform scale
             UndoItem.State after = newUndoItemState();
             undoTreeSquirrel.Do(new UndoItem(before, after));
             theCanvas.repaint();
-        } // frame
+        }
+
+        public void frameNoUndoRedo(boolean framePrimalFlag, boolean frameDualFlag, gang)
+        {
+            double minx = Double.POSITIVE_INFINITY;
+            double miny = Double.POSITIVE_INFINITY;
+            double maxx = Double.NEGATIVE_INFINITY;
+            double maxy = Double.NEGATIVE_INFINITY;
+            if (framePrimalFlag)
+                FORIDOWN(iVert, mesh.verts.size())
+                {
+                    Mesh.Vertex vert = mesh.getVert(iVert);
+                    minx = MIN(minx, vert.x());
+                    maxx = MAX(maxx, vert.x());
+                    miny = MIN(miny, vert.y());
+                    maxy = MAX(maxy, vert.y());
+                }
+            if (frameDualFlag)
+            {
+                Mesh dualMesh = getDualMesh();
+                FORIDOWN(iDualVert, dualMesh.verts.size())
+                {
+                    Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
+                    minx = MIN(minx, dualVert.x());
+                    maxx = MAX(maxx, dualVert.x());
+                    miny = MIN(miny, dualVert.y());
+                    maxy = MAX(maxy, dualVert.y());
+                }
+            }
+            double center[] = {(minx+maxx)*.5, (miny+maxy)*.5};
+            if (pRotationalSymmetry.get() > 1)
+                VecMath.zerovec(center);
+
+            double maxRadius = MAX4(maxx-center[0], center[0]-minx,
+                                    maxy-center[1], center[1]-miny);
+            double scale = 1./maxRadius;
+            if (maxRadius > 0.)  // don't do anything when inside out? not sure what my reasoning was here. I guess it would get even more messed up.
+            {
+                FORIDOWN(iVert, mesh.verts.size())
+                {
+                    Mesh.Vertex vert = mesh.getVert(iVert);
+                    vert.setXYHnaive((vert.Xnaive() - center[0]) * scale,
+                                     (vert.Ynaive() - center[1]) * scale,
+                                     vert.Hnaive() * (scale*scale));
+                }
+                Mesh dualMesh = getDualMesh();
+                PRINT(dualMesh);
+                FORIDOWN(iDualVert, dualMesh.verts.size())
+                {
+                    Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
+                    assert_eq(dualVert.weight*2, dualVert.W());
+                    if (iDualVert == 0.) PRINT(dualVert.weight);
+                    if (iDualVert == 0.) PRINT(dualVert.W());
+                    // dualVert doesn't necessarily have W=1,
+                    // so we can't call the "naive" get/set functions.
+                    // Do it in homogeneous space.
+                    // We're scaling both primal and dual by same amount...
+                    // since scaling primal, the dual W (which is proportional to primal tri area)
+                    // should get multiplied by scale^2.
+                    if (false)
+                    {
+                        // This works but changes W to 1,
+                        // which actually messes things up (it ends up changing -1's to 1's
+                        // which makes it draw back verts when it shouldn't).
+                        dualVert.setXYHW((dualVert.x() - center[0]) * scale,
+                                         (dualVert.y() - center[1]) * scale,
+                                         dualVert.h() * (scale*scale),
+                                         1.);
+                    }
+                    else if (false)
+                    {
+                        // This works and changes W to its proper new value,
+                        // but math isn't as direct as it could be
+                        double oldW = dualVert.W();
+                        double newW = oldW * (scale*scale);
+                        dualVert.setXYHW((dualVert.x() - center[0]) * scale * newW,
+                                         (dualVert.y() - center[1]) * scale * newW,
+                                         dualVert.h() * (scale*scale) * newW,
+                                         newW);
+                    }
+                    else if (false)
+                    {
+                        // Make previous more explicit
+                        double oldW = dualVert.W();
+                        double newW = oldW * (scale*scale);
+                        dualVert.setXYHW((dualVert.X()/oldW - center[0]) * scale * newW,
+                                         (dualVert.Y()/oldW - center[1]) * scale * newW,
+                                         dualVert.H()/oldW * (scale*scale) * newW,
+                                         newW);
+                    }
+                    else if (false)
+                    {
+                        // start to rearrange the math
+                        double oldW = dualVert.W();
+                        double newW = oldW * (scale*scale);
+                        dualVert.setXYHW((dualVert.X() - center[0]*oldW) * scale * newW/oldW,
+                                         (dualVert.Y() - center[1]*oldW) * scale * newW/oldW,
+                                         dualVert.H() * (scale*scale) * newW/oldW,
+                                         newW);
+                    }
+                    else if (true)
+                    {
+                        // rearranged.
+                        double oldW = dualVert.W();
+                        double newW = oldW * (scale*scale);
+                        dualVert.setXYHW((dualVert.X() - center[0]*oldW) * (scale*scale*scale),
+                                         (dualVert.Y() - center[1]*oldW) * (scale*scale*scale),
+                                         dualVert.H() * (scale*scale*scale*scale*scale), // holy moly!
+                                         newW);
+                    }
+                    dualVert.weight *= scale*scale; // I think this is right, since weight is tri area I think, currently
+                    assert_eq(dualVert.weight*2, dualVert.W());
+                    if (iDualVert == 0.) PRINT(dualVert.weight);
+                    if (iDualVert == 0.) PRINT(dualVert.W());
+                }
+            }
+        } // frameNoUndoRedo
 
 
         private static double[][] getWrapAroundSphereMatrix(double wrapSphereCurvature, boolean centerSphereFlag)
