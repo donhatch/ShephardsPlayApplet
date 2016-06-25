@@ -10,6 +10,8 @@ BUGS:
       which is based on edge order (rather than original tri order; that gets lost).
 
   Gui-related:
+    - knight's-move pan only goes orthogonally!
+    - shift-middle (pan everything) destroys inside-out edges
     - scale/pan with ctrl down should do less, with shift down should do more
     - rearrange gui to make room for single-exit lagoon controls, somehow
     - Show Dual verts/edges not right
@@ -1238,8 +1240,8 @@ public class ShephardsPlayApplet
                                 add(new JTextFieldForNumber(applet.singleExitLagoonQuillSlopeNumerator));
                                 add(new JLabel("/"));
                                 add(new JTextFieldForNumber(applet.singleExitLagoonQuillSlopeDenominator));
-                                add(new JCheckBoxForBoolean("synth exact primal", applet.singleExitLagoonSynthesizeExactDualFlag) {{
-                                    setToolTipText("<html>when checked, the dual is computed directly<br>(but with parts missing, so certain operations like scaling will be broken).<br>this is necessary when quill slope is 0 or close to it,<br>since in that case the primal is not well defined<br>and the dual can't be computed accurately from it.<br>NOTE: undo/redo will foil this.</html>");
+                                add(new JCheckBoxForBoolean("synth exact dual", applet.singleExitLagoonSynthesizeExactDualFlag) {{
+                                    setToolTipText("<html>when checked, the dual (blur) is computed directly<br>(but with parts missing, so certain operations like scaling will be broken).<br>this is necessary when quill slope is 0 or close to it,<br>since in that case the primal is not well defined<br>and the dual can't be computed accurately from it.<br>NOTE: undo/redo will foil this.</html>");
                                 }});
                                 advanceRow();
                                 add(new JLabel("<html>after<br>after:</html>") {{
@@ -3590,23 +3592,16 @@ public class ShephardsPlayApplet
             FORIDOWN(iVert, mesh.verts.size())
             {
                 Mesh.Vertex vert = mesh.getVert(iVert);
-                vert.setxyh(vert.x()+dx,
-                            vert.y()+dy,
-                            vert.h());
-                // TODO: do it in hom space
-                /*
-                vert.setXYZW(vert.X(),
-                             vert.Y(),
-                             vert.Z(),
-                             vert.W());
-                */
+                vert.setXYHnaive(vert.Xnaive() + dx,
+                                 vert.Ynaive() + dy,
+                                 vert.Hnaive());
                 assert(vert.momentAndArea == null);
             }
-            dirtyDualMesh();
+            dirtyDualMesh(); // TODO: do it explicitly instead!
             UndoItem.State after = newUndoItemState();
             undoTreeSquirrel.Do(new UndoItem(before, after));
             theCanvas.repaint();
-        } // rescaleDualOnly
+        } // pan
 
         public void panDualOnly(double dx, double dy)
         {
@@ -3614,20 +3609,12 @@ public class ShephardsPlayApplet
             FORIDOWN(iVert, mesh.verts.size())
             {
                 Mesh.Vertex vert = mesh.getVert(iVert);
-                vert.setXYZW(vert.x(),
-                             vert.y(),
-                             vert.z() - dx*vert.x() - dy*vert.y(),
-                             1.);
-                // TODO: do it in hom space
-                /*
-                vert.setXYZW(vert.X(),
-                             vert.Y(),
-                             vert.Z(),
-                             vert.W());
-                */
+                vert.setXYZnaive(vert.Xnaive(),
+                                 vert.Ynaive(),
+                                 vert.Znaive() - dx*vert.Xnaive() - dy*vert.Ynaive());
                 assert(vert.momentAndArea == null);
             }
-            dirtyDualMesh();
+            dirtyDualMesh(); // TODO: do it explicitly instead!
             UndoItem.State after = newUndoItemState();
             undoTreeSquirrel.Do(new UndoItem(before, after));
             theCanvas.repaint();
@@ -3646,10 +3633,9 @@ public class ShephardsPlayApplet
             FORIDOWN(iVert, mesh.verts.size())
             {
                 Mesh.Vertex vert = mesh.getVert(iVert);
-                vert.setXYZW(vert.X(),
-                             vert.Y(),
-                             vert.Z() * scale,
-                             vert.W());
+                vert.setXYZnaive(vert.Xnaive(),
+                                 vert.Ynaive(),
+                                 vert.Znaive() * scale);
                 assert(vert.momentAndArea == null);
             }
             dirtyDualMesh();
@@ -3667,18 +3653,17 @@ public class ShephardsPlayApplet
 
         public void rescale(double scaleX, double scaleY)
         {
+            OUT("    in rescale");
             UndoItem.State before = newUndoItemState();
             Mesh dualMesh = getDualMesh(); // before scaling mesh!
             double scale = Math.sqrt(.5);
             FORIDOWN (iVert, mesh.verts.size())
             {
                 Mesh.Vertex vert = mesh.getVert(iVert);
-
-                vert.setXYZW(vert.X() * scaleX,
-                             vert.Y() * scaleY,
-                             vert.Z() * scaleX * scaleY,
-                             vert.W());
-                assert(vert.momentAndArea == null);
+                vert.setXYZnaive(vert.X() * scaleX,
+                                 vert.Y() * scaleY,
+                                 vert.Z() * scaleX * scaleY);
+                assert(vert.momentAndArea == null); // moments and areas aren't maintained for primal (triangles) mesh
             }
 
             if (scaleX != scaleY && continuouslyDelaunayizeFlag.get()) // no need to re-delaunayize if uniform scale   TODO: actually if everything's working right, shouldn't have to do this anyway!?
@@ -3689,14 +3674,25 @@ public class ShephardsPlayApplet
             else
             {
                 // don't recalculate dual mesh, rather, just rescale its points accordingly.
-                // this makes it so we don't have to blow away the net.
+                // this makes it so we don't have to blow away the net,
+                // and possibly retains better accuracy if dual mesh was created explicitly rather than automatically from primal.
                 FORIDOWN(iDualVert, dualMesh.verts.size())
                 {
                     Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
-                    dualVert.setXYZW(dualVert.X() * scaleY, // converse
-                                     dualVert.Y() * scaleX, // converse
-                                     dualVert.Z() * scaleX * scaleY,
-                                     dualVert.W());
+                    if (iDualVert == 0.) PRINT(dualVert.weight);
+                    if (iDualVert == 0.) PRINT(dualVert.W());
+                    {
+                        double scaleW = scaleX*scaleY;
+                        assert(dualVert.weight*2 == dualVert.W());
+                        dualVert.setXYZW(dualVert.X() * scaleY * scaleW, // converse
+                                         dualVert.Y() * scaleX * scaleW, // converse
+                                         dualVert.Z() * scaleW * scaleW,
+                                         dualVert.W() * scaleW);
+                        dualVert.weight *= scaleW;
+                        assert(dualVert.weight*2 == dualVert.W());
+                    }
+                    if (iDualVert == 0.) PRINT(dualVert.weight);
+                    if (iDualVert == 0.) PRINT(dualVert.W());
                     if (dualVert.momentAndArea != null) // it will be null in strange cases such as when I created it by hand in cannedThingSingleExitLagoonPolygon
                     {
                         assert(dualVert.momentAndArea.length == 4);
@@ -3720,8 +3716,20 @@ public class ShephardsPlayApplet
             UndoItem.State after = newUndoItemState();
             undoTreeSquirrel.Do(new UndoItem(before, after));
             theCanvas.repaint();
+            OUT("    out rescale");
         } // rescale
 
+        // Actually there are conceptually lots of different options:
+        //   - frame primal without moving dual  <- left 'f' button should do this
+        //   - frame dual without moving primal  <- right 'f' button should do this
+        //   - frame primal and xform dual along with it   (current true,false behavior)
+        //   - frame dual and xform primal along with it   (current false,true behavior)
+        //   - frame both independently  <- middle 'f' button should do this
+        //   - frame union keeping them in same relation to each other (current true,true behavior)
+        // Or, if that's deemed too dangerous:
+        //   - un-ctrled should keep them in same relation to each other
+        //   - ctrled should just frame one and keep the other fixed
+        // Think about what I really want here.
         public void frame(boolean framePrimalFlag, boolean frameDualFlag)
         {
             assert(framePrimalFlag || frameDualFlag);
@@ -3779,6 +3787,8 @@ public class ShephardsPlayApplet
                     {
                         Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
                         assert(dualVert.weight*2 == dualVert.W());
+                        if (iDualVert == 0.) PRINT(dualVert.weight);
+                        if (iDualVert == 0.) PRINT(dualVert.W());
                         // dualVert doesn't necessarily have W=1,
                         // so we can't call the "naive" get/set functions.
                         // Do it in homogeneous space.
@@ -3828,6 +3838,7 @@ public class ShephardsPlayApplet
                         }
                         else if (true)
                         {
+                            OUT("THE NEW FRAME");
                             // rearranged.
                             double oldW = dualVert.W();
                             double newW = oldW * (scale*scale);
@@ -3838,6 +3849,8 @@ public class ShephardsPlayApplet
                         }
                         dualVert.weight *= scale*scale; // I think this is right, since weight is tri area I think, currently
                         assert(dualVert.weight*2 == dualVert.W());
+                        if (iDualVert == 0.) PRINT(dualVert.weight);
+                        if (iDualVert == 0.) PRINT(dualVert.W());
                     }
                 }
             }
@@ -3944,6 +3957,11 @@ public class ShephardsPlayApplet
             double in[] = new double[4];
             double out[] = new double[4];
 
+            // Note: something screwy here.  We apparently allow an arbitrary 4x4 matrix,
+            // however we use the "naive" setters/getters all over the place
+            // which assert W=1, so setting W!=1 here will cause assertion failures.
+            // On the other hand, wrapAroundSphere and unwrapAroundSphere do set W!=1 I think... yeah,
+            // checking "wrap around sphere" and then trying to pan gives an assert failure.
             FORIDOWN(iVert, mesh.verts.size())
             {
                 Mesh.Vertex vert = mesh.getVert(iVert);
@@ -3957,7 +3975,8 @@ public class ShephardsPlayApplet
                              out[2],
                              out[3]);
             }
-
+            // TODO: can we explicitly xform the dual instead of dirtying it and recomputing it from scratch?  Would be tricky since
+            // each dual vert's W has to be the corresponding primal tri area, and it's different for each one, I think.
             dirtyDualMesh();
             if (continuouslyDelaunayizeFlag.get()) delaunayize();
         } // xformTheMesh
@@ -4959,26 +4978,33 @@ public class ShephardsPlayApplet
                         {
                             // Drag all the verts and dual verts.
                             // No need to invalidate anything.
+                            // XXX use pan()! I think (but do NOT put it in the undo state!).  oh woops, that dirties dual mesh, currently.  too expensive, and destroys explicit accurate coords if any!
+
                             FORIDOWN (iVert, mesh.verts.size())
                             {
                                 Mesh.Vertex vert = mesh.getVert(iVert);
-                                vert.setxyh(vert.x() + thisP[0]-prevP[0],
-                                            vert.y() + thisP[1]-prevP[1],
-                                            vert.h());
+                                vert.setXYHnaive(vert.Xnaive() + thisP[0]-prevP[0],
+                                                 vert.Ynaive() + thisP[1]-prevP[1],
+                                                 vert.Hnaive());
                             }
-                            Mesh dualMesh = getDualMesh();
-                            FORIDOWN (iDualVert, dualMesh.verts.size())
+                            if (false) // screw this, it doesn't properly use homo and messes up. should all use common mechanism eventually anyay.
                             {
-                                Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
-                                dualVert.setxyh(dualVert.x() + thisP[0]-prevP[0],
-                                                dualVert.y() + thisP[1]-prevP[1],
-                                                dualVert.h());
-                                double momentAndArea[] = dualVert.momentAndArea;
-                                assert(momentAndArea.length == 4);
-                                momentAndArea[0] += (thisP[0]-prevP[0]) * momentAndArea[3];
-                                momentAndArea[1] += (thisP[1]-prevP[1]) * momentAndArea[3];
-                                // height doesn't change
+                                Mesh dualMesh = getDualMesh();
+                                FORIDOWN (iDualVert, dualMesh.verts.size())
+                                {
+                                    Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
+                                    dualVert.setxyh(dualVert.x() + thisP[0]-prevP[0],
+                                                    dualVert.y() + thisP[1]-prevP[1],
+                                                    dualVert.h());
+                                    // TODO: do this in homo!  pan() gets it right although it dirties dual mesh, that sucks
+                                    double momentAndArea[] = dualVert.momentAndArea;
+                                    assert(momentAndArea.length == 4);
+                                    momentAndArea[0] += (thisP[0]-prevP[0]) * momentAndArea[3];
+                                    momentAndArea[1] += (thisP[1]-prevP[1]) * momentAndArea[3];
+                                    // height doesn't change
+                                }
                             }
+                            dirtyDualMesh(); // XXX don't do this! but have to currently because above math is wrong
                         }
                         else if (beingDraggedVertIndex != -1)
                         {
@@ -15034,7 +15060,7 @@ OFF
                                         boolean centerSphereFlagValue,
                                         double wrapSphereCurvatureValue)
         {
-            //System.out.println("    in makeDualMesh(wrapAroundSphereFlagValue="+wrapAroundSphereFlagValue+")");
+            System.out.println("    in makeDualMesh(wrapAroundSphereFlagValue="+wrapAroundSphereFlagValue+")");
             Mesh dual = new Mesh();
             int nEdges = primal.edges.size();
             FORI (iEdge, nEdges)
@@ -15309,7 +15335,7 @@ OFF
             // Give each dual edge a direction.
             //
             fixDualDirections(primal, dual, wrapAroundSphereFlagValue, centerSphereFlagValue, wrapSphereCurvatureValue);
-            //System.out.println("    out makeDualMesh(wrapAroundSphereFlagValue="+wrapAroundSphereFlagValue+")");
+            System.out.println("    out makeDualMesh(wrapAroundSphereFlagValue="+wrapAroundSphereFlagValue+")");
             return dual;
         } // makeDualMesh()
 
