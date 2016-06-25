@@ -27,8 +27,59 @@ BUGS:
     - use swing sliders instead of scrollbars
 
   Wrap-sphere related:
-    - isn't centering correctly, for example when I create blue noise on the sphere and try to rotate it (assuming shift-middle is the way to rotate?) (oh! it's not!  just use middle button for rotate, I think.  not sure what shift-middle does or should do in that case, need to think about it)
-    - blue noise on unit sphere is cool but something funky with the xform
+    - I'm just frickin confused. Need to write up a clear design plan.
+      I have a vague idea that:
+          - there's a surface:
+            - by default it's the xy plane, i.e. a sphere or paraboloid with infinitesimal curvature
+            - when rotated out of initial orientation, it becomes a paraboloid (but I think that's just a viewing xform)
+            - when in "wrap around sphere" mode, it's a sphere of some curvature
+              - if "center sphere" is off, it's tangent to the xy plane at the origin
+              - if "center sphere" is on, it's centered at the origin
+              - switching from "center sphere" to not makes verts that were on the surface
+                stay on the surface-- that is, their h coord stays 0 if it was 0 (and maybe even stays completely the same)
+                whereas their z coord changes since x/w,y/w,z/w is position in space which is changing.
+          - there's a primal polyhedron (the tris)
+              - verts that are on the surface stay on the surface even through global xforms
+          - there's a viewing xform... maybe?
+          - maybe can manipulate the three parts independently and/or together?
+              - what kinds of manipulations are there?
+                - well, definitely toggling "center sphere" moves the verts... and see below "manipulation is all confusing".
+              - what kinds *could* there be?
+                - change only the surface
+                   - e.g. between plane, paraboloid, different curvatures, different centers or tangents
+                - change only the verts
+                   - freely move them in space
+                   - constrain them to be in "surface" space, i.e. they naturally stay at same height above surface (or whatever)
+                - change only the viewing xform
+                   - just look at the whole thing from a different view
+                   - especially, shrink or expand or pan the whole picture in 2d without actually changing anything--
+                     it's really clunky without that!
+                - change surface and verts together while leaving view fixed
+                   - including homo xforms that xform between plane,paraboloid,ellipsoid,sphere,hyperboloid
+    - manipulation is all confusing.
+      - non-sphere mode:
+        - middle rotates about origin, changing surface from plane to paraboloid when not top down
+          (idea: would it make sense not to rotate around the surface point, but around a point 1 unit below it, instead?
+           that might give a better transition to/from sphere mode, where it's naturally centered. maybe.)
+        - shift-middle pans the primal around in the plane
+      - sphere mode, not centered:
+        - middle still rotates about origin, but doesn't do any of that curvature changing when not top down
+        - shift-middle does something bizarro, wtf
+            (*should* slide the figure around on the surface, I think?)
+      - sphere mode, centered
+        - middle rotates around origin still, but since sphere is centered at origin
+          this has the effect of sliding the verts around on the sphere.
+        - shift-middle still does something bizarro, wtf
+          (not sure what it should do-- same as without shift in this case, probably)
+    - it's crazy to be adjusting every vertex on every manipulation-- roundoff error will accumulate.
+      maybe should accumulate a global xform, then either:
+        - never change initial verts, but always introduce and move verts through the global xform,
+          i.e. always change the verts in model space
+          - pro: existing verts always stay the same
+          - con: new verts will not have consistent kinds of roundoff errors
+                 since introduced through different global xform
+        - whenever about to move a vert or introduce a new one, that's the time to bake the accumulated
+          viewing xform into the model.
     - for Surface, most important thing is that offset is right-- should adjust final result to make it right
     - backfaces now completely nonfunctional
     - backface culling is flakey (or, need a coherent scheme, not keying on show-inside-out)
