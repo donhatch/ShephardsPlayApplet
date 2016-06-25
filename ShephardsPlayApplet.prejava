@@ -28,6 +28,7 @@ BUGS:
     - use swing sliders instead of scrollbars
 
   Wrap-sphere related:
+    - blue noise on unit sphere is cool but something funky with the xform
     - for Surface, most important thing is that offset is right-- should adjust final result to make it right
     - backfaces now completely nonfunctional
     - backface culling is flakey (or, need a coherent scheme, not keying on show-inside-out)
@@ -4978,31 +4979,20 @@ public class ShephardsPlayApplet
                         {
                             // Drag all the verts and dual verts.
                             // No need to invalidate anything.
-                            // XXX use pan()! I think (but do NOT put it in the undo state!).  oh woops, that dirties dual mesh, currently.  too expensive, and destroys explicit accurate coords if any!
-
+                            // XXX use pan()! I think (but do NOT put it in the undo state!).  although currently it dirties dual mesh just like we do here
                             FORIDOWN (iVert, mesh.verts.size())
                             {
                                 Mesh.Vertex vert = mesh.getVert(iVert);
+                                // When non-naive needed: when "wrapped around sphere"
+                                // However, this isn't right!  Should retain the same kind of W
+                                /*
                                 vert.setXYHnaive(vert.Xnaive() + thisP[0]-prevP[0],
                                                  vert.Ynaive() + thisP[1]-prevP[1],
                                                  vert.Hnaive());
-                            }
-                            if (false) // screw this, it doesn't properly use homo and messes up. should all use common mechanism eventually anyay.
-                            {
-                                Mesh dualMesh = getDualMesh();
-                                FORIDOWN (iDualVert, dualMesh.verts.size())
-                                {
-                                    Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
-                                    dualVert.setxyh(dualVert.x() + thisP[0]-prevP[0],
-                                                    dualVert.y() + thisP[1]-prevP[1],
-                                                    dualVert.h());
-                                    // TODO: do this in homo!  pan() gets it right although it dirties dual mesh, that sucks
-                                    double momentAndArea[] = dualVert.momentAndArea;
-                                    assert_eq(momentAndArea.length, 4);
-                                    momentAndArea[0] += (thisP[0]-prevP[0]) * momentAndArea[3];
-                                    momentAndArea[1] += (thisP[1]-prevP[1]) * momentAndArea[3];
-                                    // height doesn't change
-                                }
+                                */
+                                vert.setxyh(vert.x() + thisP[0]-prevP[0],
+                                            vert.y() + thisP[1]-prevP[1],
+                                            vert.h());
                             }
                             dirtyDualMesh(); // XXX don't do this! but have to currently because above math is wrong
                         }
@@ -13326,6 +13316,7 @@ OFF
                 public double z() { return _Z/_W; }
                 public double h() { return _H/SQR(_W); } // seems to work, not quite sure of the logic
 
+                // TODO: maybe get rid of this?, it's just setXYHW(x,y,h,1.)
                 public void setxyh(double x, double y, double h) // calculate z
                 {
                     _W = 1.;
