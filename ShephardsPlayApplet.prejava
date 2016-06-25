@@ -937,6 +937,21 @@ public class ShephardsPlayApplet
                             }
                         });
                     }},
+                    new JButton("netless8 slope opt") {{
+                        addActionListener(new java.awt.event.ActionListener() {
+                            public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem.State before = applet.newUndoItemState();
+
+                                applet.doCannedThingNetless8SlopeOptimized();
+
+                                UndoItem.State after = applet.newUndoItemState();
+                                applet.undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                applet.theCanvas.repaint();
+                            }
+                        });
+                    }},
                     new JButton("netless9") {{
                         addActionListener(new java.awt.event.ActionListener() {
                             public void actionPerformed(java.awt.event.ActionEvent e)
@@ -4040,7 +4055,8 @@ public class ShephardsPlayApplet
             //doCannedThingCrackGoesInSpiralSmall();
             //doCannedThingHexesSpiralOther();
             //doCannedThingNetless8Symmetric();
-            doCannedThingNetless8Optimized();
+            //doCannedThingNetless8Optimized();
+            doCannedThingNetless8SlopeOptimized();
             //doCannedThingSweepKiller0();
             //doCannedThingSweepKiller1();
             //doCannedThingAlgorithm5Killer0();
@@ -4294,7 +4310,8 @@ public class ShephardsPlayApplet
                                 int maxPixelDist = MAX(ABS(e.getX()-(int)Math.round(vertPixelCoords[0]-.5)),
                                                        ABS(e.getY()-(int)Math.round(vertPixelCoords[1]-.5)));
                                 //PRINT(maxPixelDist);
-                                if (maxPixelDist > 3*hidpimag)
+                                //if (maxPixelDist > 3*hidpimag)
+                                if (maxPixelDist > 6*hidpimag)
                                     closestVertIndex = -1; // too far
                             }
                             if (closestVertIndex != -1) // if it wasn't too far
@@ -11604,6 +11621,424 @@ OFF
                 }
             } // SingleExitLagoonPolygonOptimizationStuff
 
+            // Try to answer the question: what's the steepest slope possible for the legs of netless8?
+            private static class Netless8SlopeOptimizationStuff
+            {
+                // Returns the optimization path, better and better verts
+                public static Object[/*2*/] optimize(Mesh initialGuessMesh)
+                {
+                    System.out.println("    in Netless8SlopeOptimizationStuff.optimize");
+
+                    // I guess I'm doing some sort of annealing thing.
+
+                    final ArrayList optimizationPathList = new ArrayList();
+                    final DoubleArrayList optimizationPathGoodnessesList = new DoubleArrayList();
+
+                    int i[] = new int[4]; // scratch for loop
+                    double params[] = new double[4]; // scratch for loop
+                    double verts[][] = new double[6][3]; // scratch for loop
+                    double dualVerts[][] = new double[7][3]; // scratch for loop
+                    double bestParams[] = new double[4];
+
+                    double paramsCenter[] = {.5, .5, .5, .5};
+                    double radius = .5;
+
+                    if (false)
+                    {
+                        // Optional: make sure we start at something sane.
+                        // Note, if we *don't* do this, the very first entry in the optimization path
+                        // will not be feasible, resulting in scrambled looking dual verts.
+                        double one = initialGuessMesh.getVert(2).Ynaive()-initialGuessMesh.getVert(0).Ynaive();
+                        double x2 = initialGuessMesh.getVert(2).Xnaive() / one;
+                        PRINT(x2);
+                        double y1 = (initialGuessMesh.getVert(1).Ynaive()-initialGuessMesh.getVert(0).Ynaive()) / one;
+                        PRINT(y1);
+                        double y4 = (initialGuessMesh.getVert(4).Ynaive()-initialGuessMesh.getVert(0).Ynaive()) / one;
+                        PRINT(y4);
+                        double x4 = initialGuessMesh.getVert(4).Xnaive() / one;
+                        PRINT(x4);
+                        paramsCenter[0] = x2;
+                        paramsCenter[1] = y1;
+                        paramsCenter[2] = y4/y1;
+                        paramsCenter[3] = x4/(y4*x2);
+                    }
+
+                    /*
+                        Ok what's the problem here?
+                        Seems like if I choose target middleDualEdgeLength=0 and goodness=0
+                        Then it just makes all dual verts coincidental, which sucks!
+                        So the moral is...
+                        can't make them both 0.
+                        But maybe can make them tiny.
+                    */
+
+                    // Best results (always blows up though):
+                    //     n=25 targetMiddleDualEdgeLength=0 targetGoodness=1e-4 -> 0.3533521112275946 at iter=15 (slow)
+                    //     n=21 targetMiddleDualEdgeLength=0 targetGoodness=1e-4 -> 0.3530897955767722 at iter=16 (sorta slow)
+                    //     n=19 targetMiddleDualEdgeLength=0 targetGoodness=1e-4 -> 0.35324928375054376 at iter=18 (reasonably fast)
+                    //     n=18 targetMiddleDualEdgeLength=0 targetGoodness=1e-4 -> 0.3534435678635619 at iter=21 (reasonably faster)  <--
+                    //                  same if reverse targets! hmm!
+                    //                  or even for 1e-4,1e-4
+                    //     n=10 targetMiddleDualEdgeLength=0 targetGoodness=1e-4 -> 0.35245685072690114 at iter=20 (fast)
+                    //     n=5 targetMiddleDualEdgeLength=0 targetGoodness=1e-4 -> 0.34977091847631414 at iter=23 radius=1.66e-6
+                    //
+                    //     n=19 1e-5,1e-5 -> 0.35324928375054376 at iter=18
+                    //     n=18 1e-5,1e-5 -> 0.35344427943017076 at iter=23  <-- best!
+                    //
+                    //     n=19 1e-6,1e-6 -> 0.35324928375054376 at iter=21
+                    //     n=18 1e-6,1e-6 -> 0.35344427943017076 at iter=23
+                    //
+                    // Weird though; fewer subdivs means consistently worse results (though much faster)... not sure why that would be so.
+                    //
+                    // Conclusion: max slope is approx 0.35344427943017076, i.e. 19.46566 degrees or so.
+                    // So the 3 angles of dual at closest-to-regular are: 109.46566345804531 109.46566345804531 141.06867308390937
+                    // And 3 angles of primal at closest-to-regular are: 70.53433654195469 70.53433654195469 38.93132691609062
+                    //
+                    // So what gonality is 141.06867308390937 ?
+                    //     ang = 180*(p-2)/p
+                    //     p = 360/(180-ang) = 1/(2-ang/360))
+                    //       = 9.247051886413077
+                    //
+                    //int n = 25; // 25**4 = 390625 samples per pass, and odd so we always put one in the center
+                    //int n = 21;
+                    //int n = 20;  // fails immediately!? with el=0 g=1e-4, or 1e-5,1e-5
+                    //int n = 19;
+                    int n = 18;
+                    //int n = 10;
+                    //int n = 5;
+                    int maxPathSize = 100; // never gets nearly this far
+
+
+                    while (true)
+                    {
+                        // doesn't work: makes all dual verts coincidental
+                        //double targetMiddleDualEdgeLength = 0;
+                        //double targetGoodness = 0;
+
+                        double targetMiddleDualEdgeLength = 1e-2;
+                        double targetGoodness = 0;
+
+                        //double targetMiddleDualEdgeLength = 0;
+                        //double targetGoodness = 1e-4;
+
+                        //double targetMiddleDualEdgeLength = 1e-4;
+                        //double targetGoodness = 0;
+
+                        //double targetMiddleDualEdgeLength = 1e-4;
+                        //double targetGoodness = 1e-4;
+
+                        //double targetMiddleDualEdgeLength = 1e-5;
+                        //double targetGoodness = 1e-5;
+
+                        //double targetMiddleDualEdgeLength = 1e-6;
+                        //double targetGoodness = 1e-6;
+
+                        paramsToVertsAndDualVerts(paramsCenter, targetMiddleDualEdgeLength, targetGoodness, verts, dualVerts);
+                        System.out.println("    iter="+optimizationPathList.size()+": "+verts[2][0]);
+                        PRINTARRAY_NONCOMPACT(dualVerts);
+                        optimizationPathList.add(VecMath.copymat(verts));
+                        optimizationPathGoodnessesList.add(paramsCenter[0]);
+
+                        if (radius == 0. || optimizationPathList.size() >= maxPathSize)
+                            break;
+
+                        bestParams[0] = -1.; // so it's guaranteed to get set on first feasible point
+
+                        try {
+                            for (i[0] = 0; i[0] <= n; ++i[0])
+                            for (i[1] = 0; i[1] <= n; ++i[1])
+                            for (i[2] = 0; i[2] <= n; ++i[2])
+                            for (i[3] = 0; i[3] <= n; ++i[3])
+                            {
+                                for (int j = 0; j < 4; ++j)
+                                    params[j] = LERP(paramsCenter[j]-radius, paramsCenter[j]+radius, (i[j]+.5)/n);
+                                paramsToVertsAndDualVerts(params, targetMiddleDualEdgeLength, targetGoodness, verts, dualVerts);
+                                if (dualVertsAreFeasible(verts, dualVerts)) {
+                                    if (params[0] > bestParams[0]) // goal is to maximize x2=params[0]
+                                    {
+                                        VecMath.copyvec(bestParams, params);
+                                    }
+                                }
+                            }
+                        } catch (Error e) {
+                            System.out.println("Oh no! "+e);
+                            // Just end the iteration and return the current optimization list.
+                            break;
+                        }
+                        // Had to find at least one good set of params
+                        assert(bestParams[0] >= 0.);
+
+                        // Re-center around new best params.
+                        // Adjust radii: if landed in paramsCenter, divide by 2.
+                        // If landed at edge, stay the same.
+                        // Otherwise, geometrically interpolate between the two.
+                        double t = MAX4(ABS((bestParams[0]-paramsCenter[0])/(2*radius)),
+                                        ABS((bestParams[1]-paramsCenter[1])/(2*radius)),
+                                        ABS((bestParams[2]-paramsCenter[2])/(2*radius)),
+                                        ABS((bestParams[3]-paramsCenter[3])/(2*radius)));
+                        double scale = Math.pow(.5, 1-t) * Math.pow(1., t);
+                        radius *= scale;
+                        System.out.println("        t="+t+" -> scale="+scale+" -> radius="+radius);
+                        VecMath.copyvec(paramsCenter, bestParams);
+                        PRINTVEC(paramsCenter);
+                    }
+                    System.out.println("    out Netless8SlopeOptimizationStuff.optimize");
+                    double optimizationPath[][][] = new double[optimizationPathList.size()][][];
+                    optimizationPathList.toArray(optimizationPath);
+                    double optimizationPathGoodnesses[] = new double[optimizationPathGoodnessesList.size()];
+                    optimizationPathGoodnessesList.toArray(optimizationPathGoodnesses);
+                    System.out.println("    out optimizeNetless8Verts");
+                    return new Object[] {optimizationPath, optimizationPathGoodnesses};
+                } // optimize
+
+                private static void paramsToVertsAndDualVerts(double params[/*4*/],
+                                                              double targetMiddleDualEdgeLength,
+                                                              double targetGoodness,
+                                                              double verts[/*6*/][/*3*/], double dualVerts[/*7*/][/*3*/])
+                {
+                    double x2 = params[0];
+                    double y1 = params[1];
+                    double y4_over_y1 = params[2];
+                    double x4_over_y4x2 = params[3];
+                    double y4 = y4_over_y1*y1;
+                    double x4 = x4_over_y4x2 * (y4*x2);
+
+                    //   3       2
+                    //       1
+                    //      5 4
+                    //       0
+                    verts[0][0] = 0;
+                    verts[0][1] = 0;
+                    verts[0][2] = 0;
+
+                    verts[1][0] = 0;
+                    verts[1][1] = y1;
+                    verts[1][2] = 0; // h1, to be figured out
+
+                    verts[2][0] = x2;
+                    verts[2][1] = 1;
+                    verts[2][2] = 0;
+
+                    verts[3][0] = -verts[2][0];
+                    verts[3][1] = verts[2][1];
+                    verts[3][2] = 0;
+
+                    verts[4][0] = x4;
+                    verts[4][1] = y4;
+                    verts[4][2] = 0; // h4, to be figured out
+
+                    verts[5][0] = -verts[4][0];
+                    verts[5][1] = verts[4][1];
+                    verts[5][2] = 0; // h4, to be figured out
+
+                    // Now figure out the two heights.
+                    // The thing to take advantage of here is:
+                    // changing the heights don't change any weights (tri areas),
+                    // and it moves every dual vert in a linear fashion.
+                    // Therefore the dot product in question
+                    // is also changed linearly... I think.
+
+                    vertsToDualVertsInNetless8(verts, dualVerts);
+                    double middleDualEdgeLength00 = calcMiddleDualEdgeLength(dualVerts);
+                    double goodness00 = calcGoodness(verts, dualVerts);
+
+                    verts[1][2] = 1;
+                    vertsToDualVertsInNetless8(verts, dualVerts);
+                    double middleDualEdgeLength10 = calcMiddleDualEdgeLength(dualVerts);
+                    double goodness10 = calcGoodness(verts, dualVerts);
+                    verts[1][2] = 0;
+
+                    //double tol = 1e-6;
+                    double tol = 1e-5;
+                    if (true)
+                    {
+                        // optional sanity check
+                        verts[1][2] = 2;
+                        vertsToDualVertsInNetless8(verts, dualVerts);
+                        double middleDualEdgeLength20 = calcMiddleDualEdgeLength(dualVerts);
+                        double goodness20 = calcGoodness(verts, dualVerts);
+                        verts[1][2] = 0;
+                        assert(EQ(goodness10-goodness00, goodness20-goodness10, tol));
+                    }
+
+                    verts[5][2] = verts[4][2] = 1;
+                    vertsToDualVertsInNetless8(verts, dualVerts);
+                    double middleDualEdgeLength01 = calcMiddleDualEdgeLength(dualVerts);
+                    double goodness01 = calcGoodness(verts,dualVerts);
+                    verts[5][2] = verts[4][2] = 0;
+
+                    if (true)
+                    {
+                        // optional sanity check
+                        verts[5][2] = verts[4][2] = 2;
+                        vertsToDualVertsInNetless8(verts, dualVerts);
+                        double middleDualEdgeLength02 = calcMiddleDualEdgeLength(dualVerts);
+                        double goodness02 = calcGoodness(verts,dualVerts);
+                        verts[5][2] = verts[4][2] = 0;
+                        assert(EQ(goodness01-goodness00, goodness02-goodness01, tol));
+                    }
+
+                    // We want values of h1 and h4 that make
+                    // middleDualEdgeLength and goodness both 0.
+                    double h1effect[] = {middleDualEdgeLength10 - middleDualEdgeLength00,
+                                         goodness10 - goodness00};
+                    double h4effect[] = {middleDualEdgeLength01 - middleDualEdgeLength00,
+                                         goodness01 - goodness00};
+                    double M[][] = {h1effect, h4effect};
+                    // So we have M such that
+                    // <1,0> * M == h1effect and
+                    // <0,1> * M == h4effect,
+                    // i.e. <h1,h4> * M == effect.
+
+                    double targetEffect[] = {targetMiddleDualEdgeLength - middleDualEdgeLength00,
+                                             targetGoodness - goodness00};
+                    double h1h4[] = VecMath.vxinvm(targetEffect, M);
+                    double h1 = h1h4[0];
+                    double h4 = h1h4[1];
+
+                    verts[1][2] = h1;
+                    verts[5][2] = verts[4][2] = h4;
+
+                    vertsToDualVertsInNetless8(verts, dualVerts);
+                    double shouldBeTargetMiddleDualEdgeLength = calcMiddleDualEdgeLength(dualVerts);
+                    double shouldBeTargetGoodness = calcGoodness(verts, dualVerts);
+                    if (!EQ(shouldBeTargetMiddleDualEdgeLength, targetMiddleDualEdgeLength, tol))
+                    {
+                        PRINT(targetMiddleDualEdgeLength);
+                        PRINT(shouldBeTargetMiddleDualEdgeLength);
+                    }
+                    assert(EQ(shouldBeTargetMiddleDualEdgeLength, targetMiddleDualEdgeLength, tol));
+                    assert(EQ(shouldBeTargetGoodness, targetGoodness, tol));
+                } // paramsToVertsAndDualVerts
+
+                private static int primalEdgeAndLeftwardDualEdge[][][];
+                private static boolean dualVertsAreFeasible(double verts[/*6*/][/*3*/], double dualVerts[/*7*/][/*3*/])
+                {
+                    if (primalEdgeAndLeftwardDualEdge == null)
+                    {
+                        // Initialize primalEdgeAndLefwardDualEdge
+                        primalEdgeAndLeftwardDualEdge = new int[9][/*2*/][/*2*/];
+                        int n = 0;
+                        java.util.HashMap unmatchedEdgeToTri = new java.util.HashMap();
+                        FORI (iTri, tris.length)
+                        FORI (iVertThisTri, 3)
+                        {
+                            int v0 = tris[iTri][iVertThisTri];
+                            int v1 = tris[iTri][(iVertThisTri+1)%3];
+                            String v0_v1 = ""+v0+"_"+v1;
+                            String v1_v0 = ""+v1+"_"+v0;
+                            assert(!unmatchedEdgeToTri.containsKey(v0_v1));
+                            Object match = unmatchedEdgeToTri.remove(v1_v0);
+                            if (match == null)
+                                unmatchedEdgeToTri.put(v0_v1, Integer.valueOf(iTri));
+                            else
+                            {
+                                int jTri = ((Integer)match).intValue();
+                                primalEdgeAndLeftwardDualEdge[n++] = new int[][] {{v0,v1},{jTri,iTri}};
+                            }
+                        }
+                        assert(unmatchedEdgeToTri.size() == 3);
+                        assert(n == primalEdgeAndLeftwardDualEdge.length);
+                    }
+                    FORI (i, primalEdgeAndLeftwardDualEdge.length)
+                    {
+                        int pv0 = primalEdgeAndLeftwardDualEdge[i][0][0];
+                        int pv1 = primalEdgeAndLeftwardDualEdge[i][0][1];
+                        int dv0 = primalEdgeAndLeftwardDualEdge[i][1][0];
+                        int dv1 = primalEdgeAndLeftwardDualEdge[i][1][1];
+                        if ((pv0==4&&pv1==5)||(pv0==5&&pv1==4))
+                        {
+                            // special case-- this one is constrained to have length 0,
+                            // so don't check it since it might be slightly negative due to roundoff error.
+                            continue;
+                        }
+                        if (VecMath.vxv2(VecMath.vmv(verts[pv0],verts[pv1]),
+                                         VecMath.vmv(dualVerts[dv0],dualVerts[dv1])) < 0.)
+                        {
+                            return false;
+                        }
+                    }
+                    return true;
+                }
+
+                private static int tris[][] = {
+                    {0,2,4}, // 0: right
+                    {4,2,1}, // 1: the vertex with the angle we care about
+                    {5,4,1}, // 2: top of seg we care about
+                    {0,4,5}, // 3: bottom of seg we care about
+                    {1,2,3}, // 4: top
+                    {0,5,3}, // 5: left
+                    {5,1,3}, // 6: top left
+                };
+                private static double calcMiddleDualEdgeLength(double dualVerts[][])
+                {
+                    return dualVerts[2][1] - dualVerts[3][1]; // (top of seg we care about) - (bottom of seg we care about)
+                }
+                private static double calcGoodness(double verts[][], double dualVerts[][])
+                {
+                    // CBB: note that there's a lot of redundant calculation here... this gets called 4 (or 6 for sanity)
+                    // times using the same primal verts, so could precompute weights (tri areas), for all of those calls.
+                    int dualVertsBeingAveraged[] = {0, 2, 3};
+                    double totalArea = 0.;
+                    double center[] = {0.,0.};
+                    FORI (i, dualVertsBeingAveraged.length)
+                    {
+                        double area = twiceTriangleArea(
+                            verts[tris[dualVertsBeingAveraged[i]][0]],
+                            verts[tris[dualVertsBeingAveraged[i]][1]],
+                            verts[tris[dualVertsBeingAveraged[i]][2]]);
+                        // Don't worry if an area is negative... this is for linear interpolation, it will do the right thing
+                        //PRINTSUB(dualVertsBeingAveraged,i);
+                        //PRINT(area);
+                        totalArea += area;
+                        // accumulate moment
+                        VecMath.vpsxv(center,
+                                      center, area, dualVerts[dualVertsBeingAveraged[i]]);
+                    }
+                    // divide moment by total area, to get actual center
+                    VecMath.vxs(center, center, 1./totalArea);
+
+                    // Dual edge direction can't be reliably computed by subtracting dual verts,
+                    // but it *can* be reliably computed as the perpdot of the primal edge.
+                    double goodnessDir[] = VecMath.xv2(VecMath.vmv(2, verts[2], verts[1]));
+                    VecMath.normalize(goodnessDir, goodnessDir);
+                    double height = VecMath.dot(
+                        goodnessDir,
+                        VecMath.vmv(2, center, dualVerts[1]));
+                    return height;
+                } // calcGoodness
+
+                private static double[][] vertsToDualVertsInNetless8(double verts[/*6*/][/*3*/], double dualVerts[/*7*/][/*3*/])
+                {
+                    // Could optimize the hell out of this,
+                    // by caching the linear transform
+                    assert(tris.length == 7);
+                    FORI (iDualVert, dualVerts.length)
+                    {
+                        int tri[] = tris[iDualVert];
+                        double x0 = verts[tri[0]][0];
+                        double y0 = verts[tri[0]][1];
+                        double h0 = verts[tri[0]][2];
+                        double x1 = verts[tri[1]][0];
+                        double y1 = verts[tri[1]][1];
+                        double h1 = verts[tri[1]][2];
+                        double x2 = verts[tri[2]][0];
+                        double y2 = verts[tri[2]][1];
+                        double h2 = verts[tri[2]][2];
+                        SolveForDualPoint(x0,y0,h0,
+                                          x1,y1,h1,
+                                          x2,y2,h2,
+                                          dualVerts[iDualVert],
+                                          false, // wrapAroundSphereFlag
+                                          false, // centerSphereFlag
+                                          0.); // wrapSphereCurvature
+                    }
+                    return dualVerts;
+                } // vertsToDualVertsInNetless8
+
+            } // Netless8SlopeOptimizationStuff
+
+
             private static class Netless8OptimizationStuff
             {
                 // Returns the optimization path, better and better verts
@@ -11890,6 +12325,25 @@ OFF
                 } // vertsToDualEdgeLengths
 
             } // class Netless8OptimizationStuff
+
+            private void doCannedThingNetless8SlopeOptimized()
+            {
+                doCannedThingNetless8(); // for topology
+                Object optimizationPathVertsAndGoodnesses[/*2*/] = Netless8SlopeOptimizationStuff.optimize(this.mesh);
+                double optimizationPathVerts[][][] = (double[][][])optimizationPathVertsAndGoodnesses[0];
+                double optimizationPathGoodnesses[] = (double[])optimizationPathVertsAndGoodnesses[1];
+                double verts[][] = optimizationPathVerts[optimizationPathVerts.length-1];
+                FORI (iVert, 6)
+                {
+                    mesh.getVert(iVert).setXYHnaive(verts[iVert][0],
+                                               verts[iVert][1],
+                                               verts[iVert][2]);
+                }
+                PRINT(optimizationPathVerts.length);
+                theOptimizationPath = optimizationPathVerts;
+                theOptimizationIndex = optimizationPathVerts.length-1;
+                theOptimizationPathGoodnesses = optimizationPathGoodnesses;
+            }
 
             private void doCannedThingNetless8Optimized()
             {
@@ -17240,7 +17694,7 @@ OFF
         private Listenable.Int qRotationalSymmetry = new Listenable.Int(1,10, 1);
         private Listenable.Boolean leftRightSymmetry = new Listenable.Boolean(false);
         private Listenable.Boolean centralSymmetry = new Listenable.Boolean(false);
-        private Listenable.Boolean remapFundamentalRegionWhenChangingSymmetry = new Listenable.Boolean(true);
+        private Listenable.Boolean remapFundamentalRegionWhenChangingSymmetry = new Listenable.Boolean(false);
         private Listenable.Boolean replicateVertsWhenChangingSymmetry = new Listenable.Boolean(false);
         private Listenable.Boolean deleteNonReplicatedVertsWhenChangingSymmetry = new Listenable.Boolean(false);
 
