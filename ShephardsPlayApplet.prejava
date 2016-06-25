@@ -4040,8 +4040,8 @@ public class ShephardsPlayApplet
             //doCannedThingCrackGoesInSpiralSmall();
             //doCannedThingHexesSpiralOther();
             //doCannedThingNetless8Symmetric();
-            //doCannedThingNetless8Optimized();
-            doCannedThingSweepKiller0();
+            doCannedThingNetless8Optimized();
+            //doCannedThingSweepKiller0();
             //doCannedThingSweepKiller1();
             //doCannedThingAlgorithm5Killer0();
             //doCannedThingAlgorithm5Killer1();
@@ -10342,6 +10342,8 @@ OFF
             // that cut each vertex to a higher vertex.
             // Slightly simpler than SweepKiller1.
             // XXX but does it really work? Looking at it again, it seems to me it doesn't force the side vert out, so it doesn't work.
+            // XXX and in fact it looks like it can't be fixe by adjusting heights, since the center of the whole cluster
+            // XXX is always in line with the exit we'd need to make bad.
             private void doCannedThingSweepKiller2()
             {
                 double verts[][] = {
@@ -11617,6 +11619,12 @@ OFF
                     PRINTARRAY(paramsToVerts(initialGuessParams));
                     PRINTARRAY(VecMath.mmm(paramsToVerts(initialGuessParams),initialGuessVerts));
 
+                    // TODO: explain this.
+                    // Why isn't h4 a param?
+                    //    I think the answer is: h4 is chosen (by paramsToVerts)
+                    //    such that the dual size (specifically max x) is 1.
+                    // And why are x2,y2 both params? Doesn't that mean
+                    // the whole figure can grow without bound?
                     final String paramNames[] = {
                         "y1",
                         "h1",
@@ -11645,6 +11653,7 @@ OFF
 
 
                             double answer = 0.;
+                            // penalties for dual edges being too small (i.e. too small dihedral)
                             FORI (iDualEdge, dualEdgeLengths.length)
                             {
                                 if (dualEdgeLengths[iDualEdge] <= 0.)
@@ -11652,6 +11661,7 @@ OFF
                                 answer += 1./Math.pow(dualEdgeLengths[iDualEdge], dualEdgeLengthExponent);
                             }
 
+                            // penalties for tri areas being too small (not sure why though)
                             FORI (iTri, tris.length)
                             {
                                 double area = twiceTriangleArea(
@@ -11679,7 +11689,7 @@ OFF
                                     PRINTSUB(dualVertsBeingAveraged,i);
                                     PRINT(area);
                                     if (area <= 0.)
-                                        return Double.POSITIVE_INFINITY;
+                                        return Double.POSITIVE_INFINITY; // very bad
                                     totalArea += area;
                                     VecMath.vpsxv(center,
                                                   center, area, leftDualVerts[dualVertsBeingAveraged[i]]);
@@ -11692,8 +11702,8 @@ OFF
                                                                   leftDualVerts[1])),
                                     VecMath.vmv(center, leftDualVerts[1]));
                                 if (height <= 0.)
-                                    return Double.POSITIVE_INFINITY;
-                                answer += 1./Math.pow(height, angleExponent);
+                                    return Double.POSITIVE_INFINITY; // very bad
+                                answer += 1./Math.pow(height, angleExponent); // add some badness
                             }
 
                             if (answer < saveBestValue[0])
@@ -11731,12 +11741,12 @@ OFF
                 private static double[] vertsToParams(double verts[][])
                 {
                     double params[] = new double[6];
-                    params[0] = verts[1][1];
-                    params[1] = verts[1][2];
-                    params[2] = verts[2][0];
-                    params[3] = verts[2][1];
-                    params[4] = verts[4][0];
-                    params[5] = verts[4][1];
+                    params[0] = verts[1][1]; // y1
+                    params[1] = verts[1][2]; // h1
+                    params[2] = verts[2][0]; // x2
+                    params[3] = verts[2][1]; // y2
+                    params[4] = verts[4][0]; // x4
+                    params[5] = verts[4][1]; // y4
                     return params;
                 } // vertsToParams
 
@@ -11756,19 +11766,19 @@ OFF
                     verts[0][2] = 0;
 
                     verts[1][0] = 0;
-                    verts[1][1] = params[0];
-                    verts[1][2] = params[1];
+                    verts[1][1] = params[0]; // y1
+                    verts[1][2] = params[1]; // h1
 
-                    verts[2][0] = params[2];
-                    verts[2][1] = params[3];
+                    verts[2][0] = params[2]; // x2
+                    verts[2][1] = params[3]; // y2
                     verts[2][2] = 0;
 
                     verts[3][0] = -verts[2][0];
                     verts[3][1] = verts[2][1];
                     verts[3][2] = 0;
 
-                    verts[4][0] = params[4];
-                    verts[4][1] = params[5];
+                    verts[4][0] = params[4]; // x4
+                    verts[4][1] = params[5]; // y4
                     // verts[4][2] filled in below
 
                     verts[5][0] = -verts[4][0];
