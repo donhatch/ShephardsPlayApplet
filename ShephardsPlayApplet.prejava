@@ -6390,9 +6390,32 @@ public class ShephardsPlayApplet
                             analyzeRandomSpanningTrees(mesh);
                         }
                         java.math.BigInteger nPrimalSpanningTrees = countSpanningTrees(mesh);
-                        java.math.BigInteger nDualSpanningTrees = countSpanningTrees(getDualMesh());
                         PRINT(nPrimalSpanningTrees);
-                        PRINT(nDualSpanningTrees);
+                        // If fully triangulated, then the number of spanning trees will be same
+                        // for primal and dual, in which case we don't really need to compute it
+                        // for dual (which is more expensive because about twice as many verts,
+                        // so takes about 8 times as long).
+                        // But, compute it anyway and compare, as long as not too big.
+                        boolean isTriangulated = (getDualMesh().verts.size() * 3 == mesh.edges.size());
+                        PRINT(isTriangulated);
+
+                        if (getDualMesh().verts.size() <= 100)
+                        {
+                            java.math.BigInteger nDualSpanningTrees = countSpanningTrees(getDualMesh());
+                            PRINT(isTriangulated);
+                            PRINT(mesh.verts.size());
+                            PRINT(getDualMesh().verts.size());
+                            PRINT(nPrimalSpanningTrees);
+                            PRINT(nDualSpanningTrees);
+                            if (isTriangulated)
+                            {
+                                assert(nPrimalSpanningTrees.equals(nDualSpanningTrees));
+                            }
+                        } else {
+                            PRINT(mesh.verts.size());
+                            PRINT(getDualMesh().verts.size());
+                            OUT("Not counting spanning trees of dual mesh because too many verts.");
+                        }
                         break;
                     }
 
@@ -16418,47 +16441,80 @@ OFF
 
         private static double detDestructiveDouble(int n, java.math.BigInteger M[/*n*/][/*n*/])
         {
-            // Really should use Hermite decomposition.
-            // For starters, just use double-precision version
-            // (which makes this function not really destructive).
+            // Not really destructive.
             double Mdouble[][] = new double[n][n];
             for (int i = 0; i < n; ++i)
             for (int j = 0; j < n; ++j)
                 Mdouble[i][j] = M[i][j].doubleValue();
-            double answerDouble = VecMath.detDestructive(Mdouble);
-            long answer = (long)Math.round(answerDouble);
-            PRINT(answerDouble);
-            PRINT(answer);
-            assert_almost_eq(answer, answerDouble, 1e-12*ABS(answer));
+            double answer = VecMath.detDestructive(Mdouble);
             return answer;
         }
 
-        // Return an array of longs whose product is the determinant in question.
+        // Return an array of BigIntegers whose product is the determinant in question.
         // First entry will be 1 or -1, the others will be positive.
         private static java.math.BigInteger[] factorizeDetDestructive(int n, java.math.BigInteger M[][])
         {
-            int verboseLevel = 1;
+            int verboseLevel = 0;
             java.math.BigInteger ZERO = java.math.BigInteger.ZERO;
             java.math.BigInteger ONE = java.math.BigInteger.ONE;
             if (verboseLevel >= 1) OUT("        in factorizeDetDestructive(n="+n+")");
-            if (verboseLevel >= 1) PRINTMAT(M);
             if (verboseLevel >= 1) OUT("          before:");
+            if (verboseLevel >= 1) PRINTMAT(M);
+            if (verboseLevel >= 1) PRINT(n);
             int sign = 1;
             FORI (i, n)
             {
                 if (verboseLevel >= 2) OUT("              i="+i);
-                if (verboseLevel >= 2) OUT("                  before fixing:");
                 if (verboseLevel >= 2) PRINTMAT(M);
 
-                if (true)
+                boolean pivotFlag = true;
+                if (pivotFlag)
                 {
-                    // Optional, but helps keep numbers small:
+                    // Optional, but helps keep numbers relatively small:
                     // Choose the pivot to be the smallest-magnitude entry in [>=i][>=i].
-                    // TODO: do this.
+                    // This is a heuristic; I actually don't know the best way
+                    // to do this.
+                    int jPivot = -1;
+                    int kPivot = -1;
+                    java.math.BigInteger absPivot = null;
+                    for (int j = i; j < n; ++j)
+                    for (int k = i; k < n; ++k)
+                    {
+                        if (M[j][k].signum() != 0)
+                        {
+                            java.math.BigInteger absEntry = M[j][k].abs();
+                            if (absPivot == null || absEntry.compareTo(absPivot) < 0)
+                            {
+                                jPivot = j;
+                                kPivot = k;
+                                absPivot = absEntry;
+                            }
+                        }
+                    }
+                    if (verboseLevel >= 2) OUT("              jPivot="+jPivot);
+                    if (verboseLevel >= 2) OUT("              kPivot="+kPivot);
+                    if (absPivot != null)
+                    {
+                        if (jPivot != i)
+                        {
+                            java.math.BigInteger temp[];
+                            SWAP(M[i], M[jPivot], temp);
+                            sign *= -1;
+                        }
+                        if (kPivot != i)
+                        {
+                            // CBB: maybe maintain a column permutation instead of all these swaps?
+                            java.math.BigInteger temp;
+                            for (int j = i; j < n; ++j)
+                                SWAP(M[j][i], M[j][kPivot], temp);
+                            sign *= -1;
+                        }
+                    }
+                    if (verboseLevel >= 2) OUT("                  after pivoting:");
+                    if (verboseLevel >= 2) PRINTMAT(M);
                 }
 
-
-                // Make sure everything we're going to deal with is nonnegative
+                // Make sure everything we're going to deal with in this column is nonnegative
                 for (int j = i; j < n; ++j)
                 {
                     if (M[j][i].signum() < 0)
@@ -16468,29 +16524,8 @@ OFF
                             M[j][k] = M[j][k].negate();
                     }
                 }
-
-                if (true)
-                {
-                    // Optional, but helps keep numbers small:
-                    // Choose the pivot to be the smallest nonzero (i.e. positive, at this point)
-                    // entry in [>=i][i].
-                    int pivot = -1;
-                    for (int j = i; j < n; ++j)
-                    {
-                        if (M[j][i].signum() != 0
-                         && (pivot == -1 || M[j][i].compareTo(M[pivot][i]) < 0))
-                            pivot = j;
-                    }
-                    if (pivot != -1 && pivot != i)
-                    {
-                        java.math.BigInteger temp[];
-                        SWAP(M[i], M[pivot], temp);
-                        sign *= -1;
-                    }
-                    // CBB: pivot column too!
-                    // In fact just pick the smallest-magnitude nonzero entry
-                    // in the whole remaining matrix.
-                }
+                if (verboseLevel >= 2) OUT("                  after nonnegativizing:");
+                if (verboseLevel >= 2) PRINTMAT(M);
 
                 if (verboseLevel >= 2) OUT("                  after fixing:");
                 if (verboseLevel >= 2) PRINTMAT(M);
@@ -16533,7 +16568,7 @@ OFF
                                : ONE;
             for (int i = 0; i < n; ++i)
                 answer[i+1] = M[i][i];
-            if (verboseLevel >= 1) OUT("    out factorizeDetDestructive, returning "+VecMath.toString(answer));
+            if (verboseLevel >= 1) OUT("    out factorizeDetDestructive(n="+n+"), returning "+VecMath.toString(answer));
             return answer;
         }
         // Unfortunately not sure whether I should be returning long or double.
@@ -16541,12 +16576,12 @@ OFF
         private static java.math.BigInteger detDestructiveBigInteger(int n, java.math.BigInteger M[][])
         {
             int verboseLevel = 1;
-            if (verboseLevel >= 1) OUT("    in detDestructiveLong");
+            if (verboseLevel >= 1) OUT("    in detDestructiveLong(n="+n+")");
             java.math.BigInteger factors[] = factorizeDetDestructive(n, M);
             java.math.BigInteger answer = java.math.BigInteger.ONE;
             for (int i = 0; i < factors.length; ++i)
                 answer = answer.multiply(factors[i]);
-            if (verboseLevel >= 1) OUT("    out detDestructiveLong, returning "+answer);
+            if (verboseLevel >= 1) OUT("    out detDestructiveLong("+n+"), returning "+answer);
             return answer;
         }
 
@@ -16591,6 +16626,7 @@ OFF
                                               laplacian); // all but last nontrivial row&column
             assert(detDouble >= 0);
             PRINT(detDouble);
+            assert_almost_eq(detBigInteger.doubleValue(), detDouble, detDouble*1e-12);
             OUT("    out countSpanningTrees, returning "+detBigInteger);
             return detBigInteger;
         } // countSpanningTrees
