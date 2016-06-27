@@ -6384,7 +6384,15 @@ public class ShephardsPlayApplet
 
                     case CTRL('t'): // analyze random spanning trees
                     {
-                        analyzeRandomSpanningTrees(mesh);
+                        if (false)
+                        {
+                            // actually this throws an error-- integer overflow probably
+                            analyzeRandomSpanningTrees(mesh);
+                        }
+                        java.math.BigInteger nPrimalSpanningTrees = countSpanningTrees(mesh);
+                        java.math.BigInteger nDualSpanningTrees = countSpanningTrees(getDualMesh());
+                        PRINT(nPrimalSpanningTrees);
+                        PRINT(nDualSpanningTrees);
                         break;
                     }
 
@@ -16408,6 +16416,185 @@ OFF
             return answer;
         } // generateBlueNoiseOnUnitSquare
 
+        private static double detDestructiveDouble(int n, java.math.BigInteger M[/*n*/][/*n*/])
+        {
+            // Really should use Hermite decomposition.
+            // For starters, just use double-precision version
+            // (which makes this function not really destructive).
+            double Mdouble[][] = new double[n][n];
+            for (int i = 0; i < n; ++i)
+            for (int j = 0; j < n; ++j)
+                Mdouble[i][j] = M[i][j].doubleValue();
+            double answerDouble = VecMath.detDestructive(Mdouble);
+            long answer = (long)Math.round(answerDouble);
+            PRINT(answerDouble);
+            PRINT(answer);
+            assert_almost_eq(answer, answerDouble, 1e-12*ABS(answer));
+            return answer;
+        }
+
+        // Return an array of longs whose product is the determinant in question.
+        // First entry will be 1 or -1, the others will be positive.
+        private static java.math.BigInteger[] factorizeDetDestructive(int n, java.math.BigInteger M[][])
+        {
+            int verboseLevel = 1;
+            java.math.BigInteger ZERO = java.math.BigInteger.ZERO;
+            java.math.BigInteger ONE = java.math.BigInteger.ONE;
+            if (verboseLevel >= 1) OUT("        in factorizeDetDestructive(n="+n+")");
+            if (verboseLevel >= 1) PRINTMAT(M);
+            if (verboseLevel >= 1) OUT("          before:");
+            int sign = 1;
+            FORI (i, n)
+            {
+                if (verboseLevel >= 2) OUT("              i="+i);
+                if (verboseLevel >= 2) OUT("                  before fixing:");
+                if (verboseLevel >= 2) PRINTMAT(M);
+
+                if (true)
+                {
+                    // Optional, but helps keep numbers small:
+                    // Choose the pivot to be the smallest-magnitude entry in [>=i][>=i].
+                    // TODO: do this.
+                }
+
+
+                // Make sure everything we're going to deal with is nonnegative
+                for (int j = i; j < n; ++j)
+                {
+                    if (M[j][i].signum() < 0)
+                    {
+                        sign *= -1;
+                        for (int k = i; k < n; ++k)
+                            M[j][k] = M[j][k].negate();
+                    }
+                }
+
+                if (true)
+                {
+                    // Optional, but helps keep numbers small:
+                    // Choose the pivot to be the smallest nonzero (i.e. positive, at this point)
+                    // entry in [>=i][i].
+                    int pivot = -1;
+                    for (int j = i; j < n; ++j)
+                    {
+                        if (M[j][i].signum() != 0
+                         && (pivot == -1 || M[j][i].compareTo(M[pivot][i]) < 0))
+                            pivot = j;
+                    }
+                    if (pivot != -1 && pivot != i)
+                    {
+                        java.math.BigInteger temp[];
+                        SWAP(M[i], M[pivot], temp);
+                        sign *= -1;
+                    }
+                    // CBB: pivot column too!
+                    // In fact just pick the smallest-magnitude nonzero entry
+                    // in the whole remaining matrix.
+                }
+
+                if (verboseLevel >= 2) OUT("                  after fixing:");
+                if (verboseLevel >= 2) PRINTMAT(M);
+                // Zero out all entries [>i][i]
+                // by doing row operations against row i.
+                for (int j = i+1; j < n; ++j)
+                {
+                    if (verboseLevel >= 3) OUT("                  j="+j);
+                    assert(M[j][i].signum() >= 0);
+                    int iters = 0;
+                    int maxIters = 1000;
+                    // CBB: this isn't as efficient as it could be; should use CRT instead, I think.
+                    while (M[j][i].signum() != 0)
+                    {
+                        iters++;
+                        assert(iters < maxIters);
+                        java.math.BigInteger a = M[i][i];
+                        java.math.BigInteger b = M[j][i];
+                        if (verboseLevel >= 3) OUT("                      a = "+a);
+                        if (verboseLevel >= 3) OUT("                      b = "+b);
+                        java.math.BigInteger q = a.divide(b);
+                        // a,b = b,a%b
+                        // One step in euclidean algorithm: a -= q * b, then swap a,b
+                        // Do it to the whole row.
+                        for (int k = i; k < n; ++k)
+                        {
+                            //M[i][k] -= q * M[j][k];
+                            M[i][k] = M[i][k].subtract(M[j][k].multiply(q));
+                        }
+                        java.math.BigInteger temp[];
+                        SWAP(M[i], M[j], temp);
+                        sign *= -1;
+                    }
+                }
+            }
+            if (verboseLevel >= 1) OUT("      after:");
+            if (verboseLevel >= 1) PRINTMAT(M);
+            java.math.BigInteger answer[] = new java.math.BigInteger[n+1];
+            answer[0] = sign<0 ? ONE.negate()
+                               : ONE;
+            for (int i = 0; i < n; ++i)
+                answer[i+1] = M[i][i];
+            if (verboseLevel >= 1) OUT("    out factorizeDetDestructive, returning "+VecMath.toString(answer));
+            return answer;
+        }
+        // Unfortunately not sure whether I should be returning long or double.
+        // Long might be more exact, but can overflow.
+        private static java.math.BigInteger detDestructiveBigInteger(int n, java.math.BigInteger M[][])
+        {
+            int verboseLevel = 1;
+            if (verboseLevel >= 1) OUT("    in detDestructiveLong");
+            java.math.BigInteger factors[] = factorizeDetDestructive(n, M);
+            java.math.BigInteger answer = java.math.BigInteger.ONE;
+            for (int i = 0; i < factors.length; ++i)
+                answer = answer.multiply(factors[i]);
+            if (verboseLevel >= 1) OUT("    out detDestructiveLong, returning "+answer);
+            return answer;
+        }
+
+        private static java.math.BigInteger countSpanningTrees(Mesh mesh)
+        {
+            OUT("    in countSpanningTrees");
+            java.math.BigInteger ZERO = java.math.BigInteger.ZERO;
+            java.math.BigInteger ONE = java.math.BigInteger.ONE;
+            // Use Kirchoff's theorem. https://en.wikipedia.org/wiki/Kirchhoff%27s_theorem
+            int nVerts = mesh.verts.size();
+            if (nVerts == 0)
+                return ZERO;
+            java.math.BigInteger laplacian[][] = new java.math.BigInteger[nVerts+1][nVerts+1];
+            for (int i = 0; i < laplacian.length; ++i)
+            for (int j = 0; j < laplacian[0].length; ++j)
+                laplacian[i][j] = ZERO;
+
+            int nEdges = mesh.edges.size();
+            for (int iEdge = 0; iEdge < nEdges; ++iEdge)
+            {
+                Mesh.Edge edge = mesh.getEdge(iEdge);
+                Mesh.Vertex v0 = edge.initialVertex();
+                Mesh.Vertex v1 = edge.finalVertex();
+                int i0 = v0==null ? nVerts : v0.myIndex();
+                int i1 = v1==null ? nVerts : v1.myIndex();
+                if (i0 != i1) // self-loops are irrelevant
+                {
+                    laplacian[i0][i0] = laplacian[i0][i0].add(ONE);
+                    laplacian[i0][i1] = laplacian[i0][i1].subtract(ONE);
+                }
+            }
+            PRINTMAT(laplacian);
+            boolean hasEdgesToNowhere = laplacian[nVerts][nVerts].signum() != 0;
+            PRINT(hasEdgesToNowhere);
+            java.math.BigInteger detBigInteger = detDestructiveBigInteger(
+                                      hasEdgesToNowhere ? nVerts : nVerts-1,
+                                      (java.math.BigInteger[][])Arrays.copy(laplacian, 2));
+            PRINT(detBigInteger);
+            PRINT(detBigInteger.doubleValue());
+            assert(detBigInteger.signum() == 1);
+            double detDouble = detDestructiveDouble(hasEdgesToNowhere ? nVerts : nVerts-1,
+                                              laplacian); // all but last nontrivial row&column
+            assert(detDouble >= 0);
+            PRINT(detDouble);
+            OUT("    out countSpanningTrees, returning "+detBigInteger);
+            return detBigInteger;
+        } // countSpanningTrees
+
         // See paper "Generating Random Spanning Trees
         // More Quickly than the Cover Time" by David Bruce Wilson.
         // But, can't I do it in O(n) time,
@@ -16421,6 +16608,7 @@ OFF
             if (nEdges > 24)
             {
                 System.out.println("too many edges, bailing");
+                System.out.println("    out analyzeRandomSpanningTrees");
                 return;
             }
 
