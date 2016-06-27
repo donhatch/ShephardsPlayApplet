@@ -134,6 +134,7 @@ BUGS:
       (XXX what was I saying here?  is this done now?)
 
   Misc:
+    - random spanning tree analysis (ctrl-t) gets in infinite loop if graph is disconnected
     - the final un-fudge in SweepKiller0 makes the 3 top horiz edges disappear. why? commented it out for now.
     - get VERY clear on what negative weights/W's mean through the pipeline
     - on cygwin, can I make it listen for ctrl-z on console, and suspend, just like vim does?
@@ -16647,14 +16648,46 @@ OFF
             PRINT(nEdges);
             if (nEdges > 24) // i.e. 12 undirected.  CBB: we act like edge and opposite are independent, but they're not
             {
-                System.out.println("too many edges, bailing");
+                System.out.println("      too many edges, bailing");
+                System.out.println("    out analyzeRandomSpanningTrees");
+                return;
+            }
+            int nVerts = mesh.verts.size();
+            if (nVerts == 0)
+            {
+                System.out.println("      no verts, bailing");
                 System.out.println("    out analyzeRandomSpanningTrees");
                 return;
             }
 
+            // Detect whether disconnected.  If so, don't proceed.
+            if (true)
+            {
+                // DFS is actually faster supposedly but whatever
+                MergeFind mergeFind = new MergeFind(nVerts);
+                FORI (iEdge, nEdges)
+                {
+                    Mesh.Edge edge = mesh.getEdge(iEdge);
+                    Mesh.Vertex v0 = edge.initialVertex();
+                    Mesh.Vertex v1 = edge.finalVertex();
+                    if (v0 != null && v1 != null)
+                    {
+                        int i0 = v0.myIndex();
+                        int i1 = v1.myIndex();
+                        mergeFind.merge(i0, i1);
+                    }
+                }
+                FORI (iVert, nVerts)
+                    if (mergeFind.find(iVert) != mergeFind.find(0))
+                    {
+                        System.out.println("      graph is disconnected; bailing");
+                        System.out.println("    out analyzeRandomSpanningTrees");
+                        return;
+                    }
+            }
+
             // convert to simpler data structure...
 
-            int nVerts = mesh.verts.size();
             int e2v[][] = new int[nEdges][2]; // edge to verts
             int e2opposite[] = new int[nEdges];
             int e2next[] = new int[nEdges];
@@ -16737,6 +16770,7 @@ OFF
             FORI (iTry, nTries)
             {
                 // Make a random spanning tree, and increment its count.
+                // TODO: detect disconnected graph instead of endless looping!
 
                 int whichTree;
 
@@ -16753,7 +16787,7 @@ OFF
                         int u = i;
                         while (!inTree[u])
                         {
-                            next[u] = v2e[u][generator.nextInt(v2e[u].length)];
+                            next[u] = v2e[u][generator.nextInt(v2e[u].length)];  // TODO: gives array out of bounds when graph is just two isolated points
                             u = e2v[next[u]][1];
                         }
                         u = i;
