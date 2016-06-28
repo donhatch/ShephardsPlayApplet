@@ -101,6 +101,7 @@ BUGS:
       when flat paraboloid
 
   Symmetry-related:
+    - central symmetry, create a point: doesn't do opposite point as expected (although maybe "central" refers to sphere? hmm, I guess central about 2d origin is just 2-rotational. make differen label?
     - wrapped, with central symmetry on:
         - changing p from odd to even seems to lose some symmetry connections. OH I see, hmm, it's retaining the fact that it's an antiprism.  this might get better when fundamental regions are handled consistently in general
         - changing p from an even number to anything else gets whacked
@@ -2465,8 +2466,8 @@ public class ShephardsPlayApplet
                                 }
                             });
                             //add(new JLabel("    ")); // hack, just give a little space
-                            add(new JCheckBox("central") {
-                                {setToolTipText("Central symmetry");}
+                            add(new JCheckBox("sphere-central") {
+                                {setToolTipText("Sphere-central symmetry.  Probably only looks symmetrical when wrapped around sphere.");}
                                 Listenable.Listener listener;
                                 {
                                     //setMargin(nomargin);
@@ -2488,101 +2489,178 @@ public class ShephardsPlayApplet
                             });
                             add(new JLabel("    ")); // hack, just give a little space
                             add(new JTablePanel() {{
-                                final int maxpq = 20;
+                                final int maxpq = 10;
+
+                                // These button groups are somewhat redundant.
+                                // Thinking about the things needed:
+                                //     - when a toggle clicked when selected, should forcibly keep it selected
+                                //       (button group enforces this) (and I don't want to try to enforce this myself)
+                                //     - when a toggle clicked when not selected, should change the value
+                                //       and deselect the others (button group enforces this)
+                                //     - when value changed from outside, to one of the button values,
+                                //       should select that one and deselect the others
+                                //       (button group enforces the deselecting as long as we explicitly select the one)
+                                //     - when value changes from outside, to none of the button values,
+                                //       all buttons should be deselected.
+                                // So the button group by itself isn't adequate,
+                                // because it doesn't track external changes.
+                                // (Could implement that by a single callback at the end that listens for external
+                                // changes and then either selects one or calls clearSelection()... but that's a pain)
+                                // And the per-button listener by itself isn't adequate,
+                                // because it allows a button to be toggled off.
+                                // Note, even with the button group and per-button listeners,
+                                // we must *still* call buttongroup.clearSelected() even though
+                                // the per-button listeners set them all to setSelected(false),
+                                // otherwise the buttongroup will reject it!
                                 final ButtonGroup pButtonGroup = new ButtonGroup();
                                 final ButtonGroup qButtonGroup = new ButtonGroup();
-
-                                add(new JLabel(""), rightjustify);
-                                for (int i = 1; i <= maxpq; ++i)
                                 {
-                                    //add(new JLabel(i<=9?" "+i+" ":""+i), centerjustify);
-                                    add(new JLabel(" "+i+" "), centerjustify);
+                                    add(new JLabel(""), rightjustify);
+                                    for (int i = 1; i <= maxpq; ++i)
+                                    {
+                                        //add(new JLabel(i<=9?" "+i+" ":""+i), centerjustify);
+                                        add(new JLabel(" "+i+" "), centerjustify);
+                                    }
                                 }
                                 advanceRow();
-                                add(new JLabel("p:") {{
-                                    {setToolTipText("\"p\" symmetry: rotational symmetry about z axis");}
-                                }}, rightjustify);
                                 {
+                                    add(new JLabel("p:") {{
+                                        {setToolTipText("\"p\" symmetry: rotational symmetry about z axis");}
+                                    }}, rightjustify);
                                     for (int i = 1; i <= maxpq; ++i)
                                     {
                                         final int final_i = i;
                                         add(new JRadioButton("") {
-                                            Listenable.Listener listener;
                                             {
                                                 addActionListener(new java.awt.event.ActionListener() {
                                                     public void actionPerformed(java.awt.event.ActionEvent e)
                                                     {
                                                         int p = final_i;
                                                         System.out.println("p = "+p);
-                                                        applet.changeSymmetry(p, applet.qRotationalSymmetry.get(), applet.leftRightSymmetry.get(), applet.centralSymmetry.get(), applet.remapFundamentalRegionWhenChangingSymmetry.get(), applet.replicateVertsWhenChangingSymmetry.get(), applet.deleteNonReplicatedVertsWhenChangingSymmetry.get());
-                                                        int maxq = p<=2 ? maxpq : p==3 ? 5 : p==4 ? 3 : p==5 ? 3 : 2;
-                                                        int q = 1;
-                                                        for (java.util.Enumeration qButtons = qButtonGroup.getElements();
-                                                             qButtons.hasMoreElements();
-                                                             q++)
-                                                        {
-                                                            JRadioButton qButton = (JRadioButton)qButtons.nextElement();
-                                                            qButton.setEnabled(q <= maxq);
-                                                            qButton.setVisible(q <= maxq);
-                                                        }
+                                                        applet.pRotationalSymmetryIntent.set(p); // which triggers listener below
                                                     }
                                                 });
                                                 setSelected(final_i == applet.pRotationalSymmetry.get());
                                                 setMargin(nomargin);
                                                 pButtonGroup.add(this);
 
-                                                applet.pRotationalSymmetry.addListener(listener = new Listenable.Listener() {
+                                                // The per-button listener described above
+                                                applet.pRotationalSymmetryIntent.addListener(new Listenable.Listener() {
                                                     public void valueChanged()
                                                     {
-                                                        setSelected(applet.pRotationalSymmetry.get() == final_i);
+                                                        int p = final_i;
+                                                        setSelected(applet.pRotationalSymmetryIntent.get() == p);
+                                                    }
+                                                });
+                                                applet.qRotationalSymmetryIntent.addListener(new Listenable.Listener() {
+                                                    public void valueChanged()
+                                                    {
+                                                        int p = final_i;
+                                                        int q = applet.qRotationalSymmetryIntent.get();
+                                                        int maxp = q<=2 ? Integer.MAX_VALUE : q==3 ? 5 : q==4 ? 3 : q==5 ? 3 : 2;
+                                                        setEnabled(p <= maxp);
+                                                        setVisible(p <= maxp);
                                                     }
                                                 });
                                             }
                                         }, centerjustify);
                                     }
+                                    add(new JTextFieldForNumber(applet.pRotationalSymmetryIntent) {
+                                        // override super's
+                                        public boolean validate(String text)
+                                        {
+                                            int p;
+                                            try {
+                                                p = Integer.parseInt(text);
+                                            } catch (Exception e) {
+                                                return false;
+                                            }
+                                            if (p < 1) return false;
+                                            int q = applet.qRotationalSymmetryIntent.get();
+                                            int maxp = q<=2 ? Integer.MAX_VALUE : q==3 ? 5 : q==4 ? 3 : q==5 ? 3 : 2;
+                                            return p <= maxp;
+                                        }
+                                    });
+                                    applet.pRotationalSymmetryIntent.addListener(new Listenable.Listener() {
+                                        public void valueChanged()
+                                        {
+                                            System.out.println("Hey! p rotational symmetry intent changed to "+applet.pRotationalSymmetryIntent.get());
+                                            // Yes, necessary, see explanation above
+                                            if (applet.pRotationalSymmetryIntent.get() > maxpq) // from outside button group
+                                                pButtonGroup.clearSelection();
+                                            applet.changeSymmetry(applet.pRotationalSymmetryIntent.get(), applet.qRotationalSymmetryIntent.get(), applet.leftRightSymmetry.get(), applet.centralSymmetry.get(), applet.remapFundamentalRegionWhenChangingSymmetry.get(), applet.replicateVertsWhenChangingSymmetry.get(), applet.deleteNonReplicatedVertsWhenChangingSymmetry.get());
+                                        }
+                                    });
                                 }
                                 advanceRow();
-                                add(new JLabel("q:") {{
-                                    {setToolTipText("\"q\" symmetry: rotational symmetry about an axis somewhere between +z and +y");}
-                                }}, rightjustify);
                                 {
+                                    add(new JLabel("q:") {{
+                                        {setToolTipText("\"q\" symmetry: rotational symmetry about an axis somewhere between +z and +y");}
+                                    }}, rightjustify);
                                     for (int i = 1; i <= maxpq; ++i)
                                     {
                                         final int final_i = i;
                                         add(new JRadioButton("") {
-                                            Listenable.Listener listener;
                                             {
                                                 addActionListener(new java.awt.event.ActionListener() {
                                                     public void actionPerformed(java.awt.event.ActionEvent e)
                                                     {
                                                         int q = final_i;
                                                         System.out.println("q = "+q);
-                                                        applet.changeSymmetry(applet.pRotationalSymmetry.get(), q, applet.leftRightSymmetry.get(), applet.centralSymmetry.get(), applet.remapFundamentalRegionWhenChangingSymmetry.get(), applet.replicateVertsWhenChangingSymmetry.get(), applet.deleteNonReplicatedVertsWhenChangingSymmetry.get());
-                                                        int maxp = q<=2 ? maxpq : q==3 ? 5 : q==4 ? 3 : q==5 ? 3 : 2;
-                                                        int p = 1;
-                                                        for (java.util.Enumeration pButtons = pButtonGroup.getElements();
-                                                             pButtons.hasMoreElements();
-                                                             p++)
-                                                        {
-                                                            JRadioButton pButton = (JRadioButton)pButtons.nextElement();
-                                                            pButton.setEnabled(p <= maxp);
-                                                            pButton.setVisible(p <= maxp);
-                                                        }
+                                                        applet.qRotationalSymmetryIntent.set(q); // which triggers listener below
                                                     }
                                                 });
                                                 setSelected(final_i == applet.qRotationalSymmetry.get());
                                                 setMargin(nomargin);
                                                 qButtonGroup.add(this);
 
-                                                applet.qRotationalSymmetry.addListener(listener = new Listenable.Listener() {
+                                                // The per-button listener described above
+                                                applet.qRotationalSymmetryIntent.addListener(new Listenable.Listener() {
                                                     public void valueChanged()
                                                     {
-                                                        setSelected(applet.qRotationalSymmetry.get() == final_i);
+                                                        int q = final_i;
+                                                        setSelected(applet.qRotationalSymmetryIntent.get() == q);
+                                                    }
+                                                });
+                                                applet.pRotationalSymmetryIntent.addListener(new Listenable.Listener() {
+                                                    public void valueChanged()
+                                                    {
+                                                        int q = final_i;
+                                                        int p = applet.pRotationalSymmetryIntent.get();
+                                                        int maxq = p<=2 ? Integer.MAX_VALUE : p==3 ? 5 : p==4 ? 3 : p==5 ? 3 : 2;
+                                                        setEnabled(q <= maxq);
+                                                        setVisible(q <= maxq);
                                                     }
                                                 });
                                             }
                                         }, centerjustify);
                                     }
+                                    add(new JTextFieldForNumber(applet.qRotationalSymmetryIntent) {
+                                        // override super's
+                                        public boolean validate(String text)
+                                        {
+                                            int q;
+                                            try {
+                                                q = Integer.parseInt(text);
+                                            } catch (Exception e) {
+                                                return false;
+                                            }
+                                            if (q < 1) return false;
+                                            int p = applet.pRotationalSymmetryIntent.get();
+                                            int maxq = p<=2 ? Integer.MAX_VALUE : p==3 ? 5 : p==4 ? 3 : p==5 ? 3 : 2;
+                                            return q <= maxq;
+                                        }
+                                    });
+                                    applet.qRotationalSymmetryIntent.addListener(new Listenable.Listener() {
+                                        public void valueChanged()
+                                        {
+                                            System.out.println("Hey! q rotational symmetry intent changed to "+applet.qRotationalSymmetryIntent.get());
+                                            // Yes, necessary, see explanation above
+                                            if (applet.qRotationalSymmetryIntent.get() > maxpq) // from outside button group
+                                                pButtonGroup.clearSelection();
+                                            applet.changeSymmetry(applet.pRotationalSymmetryIntent.get(), applet.qRotationalSymmetryIntent.get(), applet.leftRightSymmetry.get(), applet.centralSymmetry.get(), applet.remapFundamentalRegionWhenChangingSymmetry.get(), applet.replicateVertsWhenChangingSymmetry.get(), applet.deleteNonReplicatedVertsWhenChangingSymmetry.get());
+                                        }
+                                    });
                                 }
                             }});
                         }});
@@ -18238,7 +18316,13 @@ OFF
         private boolean thermometerIsLinear = false;
         private int thermometerWidth = 10;
 
-        // symmetry to try to use when clicking or dragging with ctrl down
+        // Symmetry to try to use when clicking or dragging with ctrl down.
+        // Intent is what's shown in the ui;
+        // extent is what's been applied to the model (since changing symmetry can change the model, if one or more of the
+        // "when changing symmetry" flags is set).
+        // (Or, can just think of the non-intent values as "previous" or "applied" values.)
+        private Listenable.Int pRotationalSymmetryIntent = new Listenable.Int(1,10, 1);
+        private Listenable.Int qRotationalSymmetryIntent = new Listenable.Int(1,10, 1);
         private Listenable.Int pRotationalSymmetry = new Listenable.Int(1,10, 1);
         private Listenable.Int qRotationalSymmetry = new Listenable.Int(1,10, 1);
         private Listenable.Boolean leftRightSymmetry = new Listenable.Boolean(false);
