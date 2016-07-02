@@ -7546,17 +7546,18 @@ public class ShephardsPlayApplet
                                 if (netMethodValue == NETMETHOD_RANDOM)
                                 {
                                     // don't be verbose about net if animating, that would be too much
-                                    boolean netVerboseFlag = !(showNetFlag.get() && showNetFlowFlag.get());
-                                    if (netVerboseFlag)
-                                        System.out.println("   computing random net");
+                                    int netVerboseLevel = !(showNetFlag.get() && showNetFlowFlag.get()) ? 1 : 0;
+                                    if (netVerboseLevel >= 1) System.out.println("   computing random net");
 
                                     // Use uniform random spanning tree algorithm, from David Bruce Wilson
                                     // "Generating Random Spanning Trees More Quickly than the Cover Time"
 
+
+                                    if (netVerboseLevel >= 1) System.out.println("       initializeing edgesOut...");
                                     Mesh.Edge edgesOut[][] = new Mesh.Edge[nDualVerts+1][];
                                     {
                                         int totalArity = 0;
-                                        FORI (iDualVert, nDualVerts) // all but vertex at infinity
+                                        FORI (iDualVert, nDualVerts) // all but vertex at infinity (if any)
                                         {
                                             Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
                                             edgesOut[iDualVert] = new Mesh.Edge[dualVert.arity];
@@ -7580,6 +7581,7 @@ public class ShephardsPlayApplet
                                         FORI (iDualVert, nDualVerts+1)
                                             assert_eq(nEdgesOut[iDualVert], edgesOut[iDualVert].length);
                                     }
+                                    if (netVerboseLevel >= 1) System.out.println("       done.");
 
                                     // It's unclear from the paper whether it's okay
                                     // to start from an arbitrary vertex or what
@@ -7588,6 +7590,12 @@ public class ShephardsPlayApplet
                                     // or making it more inefficient, or what).
                                     // The paper recommends starting at a random end
                                     // of a random edge.
+                                    //   (Or does it? "In the case of undirected graphs, since any vertex r may be used
+                                    //   to generate a free spanning tree, it turns out to be more efficient to pick r
+                                    //   to be a random endpoint of a random edge, sample from Gamma_r, and then pick
+                                    //   a uniformly random vertex to be the root.)
+                                    //   (But, is there any reason we need the final result to be rooted at random?
+                                    //   I don't think so, so just let the root be r.)
                                     // But it seems to me that
                                     //     (1) a non-random initial vertex will *not* skew the distribution
                                     //         (since the trees rooted at any particular vertex
@@ -7609,9 +7617,10 @@ public class ShephardsPlayApplet
 
                                     java.util.Random generator = new java.util.Random(0);
                                     int r = nDualVerts; // start with the infinite vertex
+                                    if (netVerboseLevel >= 2) System.out.println("      infinite vertex r = "+r);
 
                                     // Algorithm RandomTreeWithRoot(r) from paper...
-                                    // Since the infinite vertex doesn't have a root,
+                                    // Since the infinite vertex doesn't have a parent,
                                     // we can work directly with the final output array dualVertIndexToParentEdge
                                     // of size nDualVerts (rather than nDualVerts+1,
                                     // the size we'd need if starting at some other vertex),
@@ -7622,14 +7631,19 @@ public class ShephardsPlayApplet
                                         inTree[r] = true;
                                         FORI (iDualVert, nDualVerts+1)
                                         {
+                                            if (netVerboseLevel >= 2) System.out.println("          iDualVert = "+iDualVert);
+                                            if (netVerboseLevel >= 2) System.out.println("              first loop");
                                             int u = iDualVert;
                                             while (!inTree[u])
                                             {
+                                                if (netVerboseLevel >= 2) System.out.println("              top of loop: u = "+u);
                                                 nRandomCalls++;
                                                 Mesh.Edge dualEdge = edgesOut[u][generator.nextInt(edgesOut[u].length)];
                                                 dualVertIndexToParentEdge[u] = dualEdge;
                                                 u = dualEdge.finalVertex() != null ? dualEdge.finalVertex().myIndex() : nDualVerts;
+                                                if (netVerboseLevel >= 2) System.out.println("              bottom of loop: u = "+u);
                                             }
+                                            if (netVerboseLevel >= 2) System.out.println("              second loop");
                                             u = iDualVert;
                                             while (!inTree[u])
                                             {
@@ -7641,7 +7655,7 @@ public class ShephardsPlayApplet
                                             }
                                         }
                                     }
-                                    if (netVerboseFlag)
+                                    if (netVerboseLevel >= 1)
                                     {
                                         PRINT(nDualVerts);
                                         PRINT(nDualEdges);
@@ -7649,8 +7663,7 @@ public class ShephardsPlayApplet
                                     }
 
 
-                                    if (netVerboseFlag)
-                                        System.out.println("   done computing random net");
+                                    if (netVerboseLevel >= 1) System.out.println("   done computing random net");
                                 }
                                 else if (netMethodValue == NETMETHOD_UPWARD
                                       || netMethodValue == NETMETHOD_OUTWARD)
@@ -16870,7 +16883,7 @@ OFF
                         int u = i;
                         while (!inTree[u])
                         {
-                            next[u] = v2e[u][generator.nextInt(v2e[u].length)];  // TODO: gives array out of bounds when graph is just two isolated points
+                            next[u] = v2e[u][generator.nextInt(v2e[u].length)];
                             u = e2v[next[u]][1];
                         }
                         u = i;
@@ -16890,7 +16903,7 @@ OFF
                         }
                     }
                 }
-                else if (true)
+                else if (false)
                 {
                     // random walk from 0,
                     // keeping *last* edge to each new vertex.
@@ -16929,6 +16942,7 @@ OFF
                     // random walk from 0,
                     // keeping *first* edge to each new vertex.
                     // This seems to be uniform.
+                    // (and takes cover time, I think?)
                     boolean inTree[] = new boolean[nVerts]; // false initially
                     int prev[] = VecMath.fillvec(nVerts, -1); // vertex to prev *edge*, not vertex
                     int r = 0; // arbitrarily
@@ -16958,7 +16972,7 @@ OFF
                         }
                     }
                 }
-                else if (true)
+                else if (false)
                 {
                     // my method--
                     // start at vertex 0 and grow the tree randomly.
@@ -17038,6 +17052,10 @@ OFF
                             whichTree |= (1 << (iEdge/2));
                         }
                     }
+                }
+                else
+                {
+                    assert(false);
                 }
 
                 //PRINT(whichTree);
@@ -18273,7 +18291,8 @@ OFF
                 "Fold Longest at each face",
                 "Fold Shortest at each face",
             };
-        private Listenable.Int netMethod = new Listenable.Int(0, netMethodNames.length-1, NETMETHOD_OUTWARD);
+        //private Listenable.Int netMethod = new Listenable.Int(0, netMethodNames.length-1, NETMETHOD_OUTWARD);
+        private Listenable.Int netMethod = new Listenable.Int(0, netMethodNames.length-1, NETMETHOD_RANDOM);
 
         private java.awt.Component theCanvas = null;
         //private java.awt.Component theHelpWindow = null;
@@ -18307,7 +18326,7 @@ OFF
         private Listenable.Boolean naiveDualEdgesFlag = new Listenable.Boolean(false);
         private Listenable.Boolean showNetFlag = new Listenable.Boolean(false);
         private Listenable.Boolean showFlattenedNetFlag = new Listenable.Boolean(true);
-        private Listenable.Boolean showNetFlowFlag = new Listenable.Boolean(true);
+        private Listenable.Boolean showNetFlowFlag = new Listenable.Boolean(false);
         private boolean pointOutRedNetEdges = false;
         private int netFlowIndex = 0;
         private int highlightedDualEdgeIndex = -1;
