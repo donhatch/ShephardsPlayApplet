@@ -124,9 +124,9 @@ BUGS:
         this actually work?  hmm I'm thinking no.
 
   Net-related:
+    - net flow doesn't work when delaunayized with "calc underside when delaunayizing"
     - netless8 / sharpest at every vertex / net -> assertion failed: _W == 1
     - netless9 / outward / net -> assertion failed: _W == 1
-    - net flow doesn't work when delaunayized with "calc underside when delaunayizing"
     - dragging net edges is pretty fucked right now
 
   Inside-outedness-related:
@@ -7538,6 +7538,7 @@ public class ShephardsPlayApplet
                         {
                             if (theNet == null)
                             {
+                                // Really better names for these would be "dualEdgeIsKnownToBeCut" etc.
                                 boolean dualEdgeIsCut[] = new boolean[mesh.edges.size()]; // all false initially
                                 boolean dualEdgeIsFold[] = null; // only needed in some cases
 
@@ -7545,125 +7546,38 @@ public class ShephardsPlayApplet
                                 int netMethodValue = netMethod.get();
                                 if (netMethodValue == NETMETHOD_RANDOM)
                                 {
-                                    // don't be verbose about net if animating, that would be too much
                                     int netVerboseLevel = !(showNetFlag.get() && showNetFlowFlag.get()) ? 1 : 0;
                                     if (netVerboseLevel >= 1) System.out.println("   computing random net");
 
-                                    // Use uniform random spanning tree algorithm, from David Bruce Wilson
-                                    // "Generating Random Spanning Trees More Quickly than the Cover Time"
-
-
-                                    if (netVerboseLevel >= 1) System.out.println("       initializeing edgesOut...");
-                                    Mesh.Edge edgesOut[][] = new Mesh.Edge[nDualVerts+1][];
+                                    SimplerMeshDataStructure simplerMeshDataStructure = new SimplerMeshDataStructure(dualMesh, true);
+                                    if (!simplerMeshDataStructure.isConnectedExceptMaybeForIsolatedVerts())
                                     {
-                                        int totalArity = 0;
-                                        FORI (iDualVert, nDualVerts) // all but vertex at infinity (if any)
-                                        {
-                                            Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
-                                            edgesOut[iDualVert] = new Mesh.Edge[dualVert.arity];
-                                            totalArity += dualVert.arity;
-                                        }
-                                        // figure out arity of vertex at infinity.
-                                        // total arity of all verts *including* the one at infinity
-                                        // is twice num edges (i.e. num half-edges), so...
-                                        int arityOfVertexAtInfinity = nDualEdges - totalArity;
-                                        edgesOut[nDualVerts] = new Mesh.Edge[arityOfVertexAtInfinity];
-
-                                        int nEdgesOut[] = new int[nDualVerts+1]; // all zeros initially
-                                        FORI (iDualEdge, nDualEdges)
-                                        {
-                                            Mesh.Edge dualEdge = dualMesh.getEdge(iDualEdge);
-                                            Mesh.Vertex v0 = dualEdge.initialVertex();
-                                            int i0 = v0==null ? nDualVerts : v0.myIndex();
-
-                                            edgesOut[i0][nEdgesOut[i0]++] = dualEdge;
-                                        }
-                                        FORI (iDualVert, nDualVerts+1)
-                                            assert_eq(nEdgesOut[iDualVert], edgesOut[iDualVert].length);
+                                        System.out.println("      graph is disconnected; not computing net");
                                     }
-                                    if (netVerboseLevel >= 1) System.out.println("       done.");
-
-                                    // It's unclear from the paper whether it's okay
-                                    // to start from an arbitrary vertex or what
-                                    // (and whether a non-random initial vertex
-                                    // results in skewing the distribution,
-                                    // or making it more inefficient, or what).
-                                    // The paper recommends starting at a random end
-                                    // of a random edge.
-                                    //   (Or does it? "In the case of undirected graphs, since any vertex r may be used
-                                    //   to generate a free spanning tree, it turns out to be more efficient to pick r
-                                    //   to be a random endpoint of a random edge, sample from Gamma_r, and then pick
-                                    //   a uniformly random vertex to be the root.)
-                                    //   (But, is there any reason we need the final result to be rooted at random?
-                                    //   I don't think so, so just let the root be r.)
-                                    // But it seems to me that
-                                    //     (1) a non-random initial vertex will *not* skew the distribution
-                                    //         (since the trees rooted at any particular vertex
-                                    //         are the same, by simple re-rooting,
-                                    //         as the trees rooted at any other particular vertex)
-                                    //     (2) starting at a random end of a random edge
-                                    //         is the same as selecting an initial vertex
-                                    //         with probability proportional to its arity
-                                    //     (3) if doing that is advantageous for efficiency,
-                                    //         then simply starting with the highest-arity
-                                    //         vertex is even more advantageous
-                                    // Typically the dual graph's vertices all have arity 3
-                                    // except for the infinite vertex which has relatively high arity,
-                                    // so we'll just let the root (start of the algorithm) be the infinite vertex.
-                                    // Empirically (on delaunay triangulation of blue noise),
-                                    // this does keep the running time low...
-                                    // and furthermore the "next" data structure returned by using the infinite vertex
-                                    // as root is exactly the one we'll need later.
-
-                                    java.util.Random generator = new java.util.Random(0);
-                                    int r = nDualVerts; // start with the infinite vertex
-                                    if (netVerboseLevel >= 2) System.out.println("      infinite vertex r = "+r);
-
-                                    // Algorithm RandomTreeWithRoot(r) from paper...
-                                    // Since the infinite vertex doesn't have a parent,
-                                    // we can work directly with the final output array dualVertIndexToParentEdge
-                                    // of size nDualVerts (rather than nDualVerts+1,
-                                    // the size we'd need if starting at some other vertex),
-                                    // which is initially all nulls.
-                                    int nRandomCalls = 0;
+                                    else if (simplerMeshDataStructure.e2v.length == 0)
                                     {
-                                        boolean inTree[] = new boolean[nDualVerts+1]; // +1 to include infinite vertex; all false initially
-                                        inTree[r] = true;
-                                        FORI (iDualVert, nDualVerts+1)
+                                        // Actually not quite sure why I need this case (assert-fails without it)
+                                        System.out.println("      no edges; not computing net");
+                                    }
+                                    else
+                                    {
+                                        assert(simplerMeshDataStructure.v2e.length == dualMesh.verts.size() + 1); // added an artificial one for the infinite vert and any inside out verts that got merged into it
+                                        java.util.Random generator = new java.util.Random(); // TODO: user specified seed
+                                        boolean spanningTree[] = simplerMeshDataStructure.randomSpanningTree(generator);
+                                        int root = dualMesh.verts.size();
+                                        int vertToParentEdgeOut[] = simplerMeshDataStructure.getVertToParentEdgeOut(root, spanningTree);
+                                        PRINTARRAY(vertToParentEdgeOut);
+                                        FORI (iDualVert, vertToParentEdgeOut.length)
                                         {
-                                            if (netVerboseLevel >= 2) System.out.println("          iDualVert = "+iDualVert);
-                                            if (netVerboseLevel >= 2) System.out.println("              first loop");
-                                            int u = iDualVert;
-                                            while (!inTree[u])
+                                            int iDualEdge = vertToParentEdgeOut[iDualVert];
+                                            if (iDualEdge != -1)
                                             {
-                                                if (netVerboseLevel >= 2) System.out.println("              top of loop: u = "+u);
-                                                nRandomCalls++;
-                                                Mesh.Edge dualEdge = edgesOut[u][generator.nextInt(edgesOut[u].length)];
-                                                dualVertIndexToParentEdge[u] = dualEdge;
-                                                u = dualEdge.finalVertex() != null ? dualEdge.finalVertex().myIndex() : nDualVerts;
-                                                if (netVerboseLevel >= 2) System.out.println("              bottom of loop: u = "+u);
-                                            }
-                                            if (netVerboseLevel >= 2) System.out.println("              second loop");
-                                            u = iDualVert;
-                                            while (!inTree[u])
-                                            {
-                                                inTree[u] = true;
-                                                Mesh.Edge dualEdge = dualVertIndexToParentEdge[u];
-                                                dualEdgeIsCut[dualEdge.myIndex()] = true;
-                                                dualEdgeIsCut[dualEdge.opposite().myIndex()] = true;
-                                                u = dualEdge.finalVertex() != null ? dualEdge.finalVertex().myIndex() : nDualVerts;
+                                                dualEdgeIsCut[iDualEdge] = true;
+                                                dualEdgeIsCut[iDualEdge ^ 1] = true;
+                                                dualVertIndexToParentEdge[iDualVert] = dualMesh.getEdge(iDualEdge);
                                             }
                                         }
                                     }
-                                    if (netVerboseLevel >= 1)
-                                    {
-                                        PRINT(nDualVerts);
-                                        PRINT(nDualEdges);
-                                        PRINT(nRandomCalls);
-                                    }
-
-
-                                    if (netVerboseLevel >= 1) System.out.println("   done computing random net");
                                 }
                                 else if (netMethodValue == NETMETHOD_UPWARD
                                       || netMethodValue == NETMETHOD_OUTWARD)
@@ -16732,11 +16646,206 @@ OFF
             return detBigInteger;
         } // countSpanningTrees
 
+        // Simpler mesh data structure, suitable for running
+        // the algorithm from David Bruce Wilson
+        // "Generating Random Spanning Trees More Quickly than the Cover Time".
+        //
+        // Subtleties:
+        //     - Depending on how original mesh was constructed,
+        //       it might have edges leading nowhere or coming from nowhere.
+        //       The "nowhere" gets made into a vertex (the "infinite vertex").
+        //     - We might or might not want to consider all inside-out vertices
+        //       to be part of the infinite vertex.
+        private static class SimplerMeshDataStructure
+        {
+            public int e2v[/*nEdges*/][/*2*/]; // edge to verts
+            public int v2e[/*nVerts*/][]; // vert to edges out
+            public SimplerMeshDataStructure(Mesh mesh, boolean mergeInsideOutVertsIntoInfiniteVert)
+            {
+                int nVerts = mesh.verts.size(); // may add 1 though
+                int nEdges = mesh.edges.size();
+                this.e2v = new int[nEdges][2];
+
+                int e2next[] = new int[nEdges];
+                boolean infiniteVertUsed = false; // until proven otherwise
+                FORI (iEdge, nEdges)
+                {
+                    Mesh.Edge edge = mesh.getEdge(iEdge);
+                    assert(edge.myIndex() == iEdge);
+                    assert(edge.opposite().myIndex() == (iEdge^1));
+                    Mesh.Vertex v0 = edge.initialVertex();
+                    Mesh.Vertex v1 = edge.finalVertex();
+                    if (v0 == null || v1 == null)
+                        infiniteVertUsed = true;
+                    int i0 = v0==null ? nVerts : v0.myIndex();
+                    int i1 = v1==null ? nVerts : v1.myIndex();
+                    e2v[iEdge][0] = i0;
+                    e2v[iEdge][1] = i1;
+                    Mesh.Edge next = edge.next();
+                    if (next == null)
+                    {
+                        // final vertex is the infinite one; to find next, need to walk backwards around the face
+                        next = edge;
+                        while (next.prev() != null)
+                            next = next.prev();
+                    }
+                    e2next[iEdge] = next.myIndex();
+                }
+                if (mergeInsideOutVertsIntoInfiniteVert)
+                {
+                    boolean isInsideOut[] = new boolean[nVerts+1];
+                    FORI (iVert, nVerts)
+                        isInsideOut[iVert] = (mesh.getVert(iVert).weight < 0);
+                    isInsideOut[nVerts] = true; // the infinite one, if any
+                    PRINTVEC(isInsideOut);
+                    FORI (iEdge, nEdges)
+                        FORI (iVertThisEdge, 2)
+                        {
+                            if (isInsideOut[e2v[iEdge][iVertThisEdge]])
+                            {
+                                e2v[iEdge][iVertThisEdge] = nVerts;
+                                infiniteVertUsed = true;
+                            }
+                        }
+                    // Note that it may be that some original verts are now unused in e2v
+                }
+                if (infiniteVertUsed)
+                    nVerts++;
+                this.v2e = new int[nVerts][];
+                {
+                    int arities[] = new int[nVerts]; // zeros initially
+                    FORI (iEdge, nEdges)
+                        arities[e2v[iEdge][0]]++;
+                    FORI (iVert, nVerts)
+                    {
+                        v2e[iVert] = new int[arities[iVert]];
+                        arities[iVert] = 0;
+                    }
+                    FORI (iEdge, nEdges)
+                    {
+                        int iVert = e2v[iEdge][0];
+                        v2e[iVert][arities[iVert]++] = iEdge;
+                    }
+                    FORI (iVert, nVerts)
+                    {
+                        assert_eq(v2e[iVert].length, arities[iVert]);
+                        FORI (iEdgeOut, v2e[iVert].length)
+                            assert_eq(e2v[v2e[iVert][iEdgeOut]][0], iVert);
+                    }
+                }
+            } // SimplerMeshDataStructure ctor
+
+            public boolean isConnectedExceptMaybeForIsolatedVerts()
+            {
+                // DFS is actually faster supposedly but whatever
+                int nVerts = v2e.length;
+                int nEdges = e2v.length;
+                MergeFind mergeFind = new MergeFind(nVerts);
+                FORI (iEdge, nEdges)
+                {
+                    int iVert = e2v[iEdge][0];
+                    int jVert = e2v[iEdge][1];
+                    mergeFind.merge(iVert, jVert);
+                }
+                int found = -1;
+                FORI (iVert, nVerts)
+                {
+                    if (v2e[iVert].length == 0) continue; // vertex got removed (or was isolated)
+                    if (found == -1)
+                        found = mergeFind.find(iVert);
+                    else if (mergeFind.find(iVert) != found)
+                        return false;
+                }
+                return true;
+            } // isConnectedExceptMaybeForIsolatedVerts
+
+            // Do not call this unless connected! (in the sense that isConnectedExceptMaybeForIsolatedVerts returns).
+            public boolean[/*nEdges/2*/] randomSpanningTree(java.util.Random generator)
+            {
+                if (e2v.length == 0)
+                    return new boolean[0];
+                // Use uniform random spanning tree algorithm, from David Bruce Wilson
+                // "Generating Random Spanning Trees More Quickly than the Cover Time"
+                // Must start with random vertex of random edge.
+                int r = e2v[generator.nextInt(e2v.length)][generator.nextInt(2)];
+                int nVerts = v2e.length;
+                boolean inTree[] = new boolean[nVerts]; // false initially
+                int theEdgeOut[] = new int[nVerts];
+                theEdgeOut[r] = -1;
+                inTree[r] = true;
+                FORI (iVert, nVerts)
+                {
+                    if (v2e[iVert].length == 0)
+                        continue; // the vertex got removed (probably merged into the infinite vertex)
+                    for (int u = iVert; !inTree[u]; u = e2v[theEdgeOut[u]][1])
+                        theEdgeOut[u] = v2e[u][generator.nextInt(v2e[u].length)];
+                    for (int u = iVert; !inTree[u]; u = e2v[theEdgeOut[u]][1])
+                        inTree[u] = true;
+                }
+                boolean answer[] = new boolean[e2v.length/2]; // all false initially
+                FORI (iVert, nVerts)
+                {
+                    if (v2e[iVert].length == 0)
+                        continue; // the vertex got removed (probably merged into the infinite vertex)
+                    int iEdge = theEdgeOut[iVert];
+                    assert((iEdge == -1) == (iVert==r));
+                    if (iEdge != -1)
+                    {
+                        assert(e2v[iEdge][0] == iVert);
+                        answer[iEdge/2] = true;
+                    }
+                }
+                return answer;
+            } // randomSpanningTree
+
+            public int[] getVertToParentEdgeOut(int root,
+                                                boolean undirectedEdgeIsInSpanningTree[/*nUndirectedEdges*/])
+            {
+                int verboseLevel = 0;
+                if (verboseLevel >= 1) System.out.println("in getVertToParentEdgeOut");
+                // TODO: BUG: VecMath.toString messes up on int[][], it omits final closing brace
+                if (verboseLevel >= 1) System.out.println("  e2v = "+VecMath.toString(e2v));
+                if (verboseLevel >= 1) System.out.println("  v2e = "+VecMath.toString(v2e));
+                if (verboseLevel >= 1) System.out.println("  undirectedEdgeIsInSpanningTree = "+VecMath.toString(undirectedEdgeIsInSpanningTree));
+                int nVerts = this.v2e.length;
+                int vertToParentEdgeOut[] = VecMath.fillvec(nVerts, -1);
+                int queue[] = new int[nVerts];
+                int queueSize = 0;
+                queue[queueSize++] = root;
+                while (queueSize > 0)
+                {
+                    int iVert = queue[--queueSize];
+                    int edgesOut[] = this.v2e[iVert];
+                    FORI (iEdgeOut, edgesOut.length)
+                    {
+                        int iEdge = edgesOut[iEdgeOut];
+                        if (iEdge != vertToParentEdgeOut[iVert] // i.e. if didn't just come from there
+                         && undirectedEdgeIsInSpanningTree[iEdge/2])
+                        {
+                            assert(this.e2v[iEdge][0] == iVert);
+                            int jVert = this.e2v[iEdge][1];
+                            int parentEdgeOut = iEdge ^ 1; // opposite edge
+                            vertToParentEdgeOut[jVert] = parentEdgeOut;
+                            assert(this.e2v[parentEdgeOut][0] == jVert);
+                            assert(this.e2v[parentEdgeOut][1] == iVert);
+                            queue[queueSize++] = jVert;
+                        }
+                    }
+                }
+                if (verboseLevel >= 1) System.out.println("  vertToParentEdgeOut = "+Arrays.toStringCompact(vertToParentEdgeOut));
+                if (verboseLevel >= 1) System.out.println("out getVertToParentEdgeOut");
+                return vertToParentEdgeOut;
+            } // getVertToParent
+        } // SimplerMeshDataStructure
+
         // See paper "Generating Random Spanning Trees
         // More Quickly than the Cover Time" by David Bruce Wilson.
         // But, can't I do it in O(n) time,
         // by simply growing the tree and picking a random new edge out of it on every step?
         // (answer: no, the next edge out of the spanning tree can't be picked uniformly)
+        // Verify that Wilson's algorithm gives something uniformly random,
+        // or that the more well known random walk one does,
+        // or that a similar one doesn't.
         private static void analyzeRandomSpanningTrees(Mesh mesh)
         {
             System.out.println("    in analyzeRandomSpanningTrees");
@@ -16748,187 +16857,6 @@ OFF
                 System.out.println("    out analyzeRandomSpanningTrees");
                 return;
             }
-
-            // Simpler mesh data structure, suitable for running
-            // the algorithm from David Bruce Wilson
-            // "Generating Random Spanning Trees More Quickly than the Cover Time".
-            //
-            // Subtleties:
-            //     - Depending on how original mesh was constructed,
-            //       it might have edges leading nowhere or coming from nowhere.
-            //       The "nowhere" gets made into a vertex (the "infinite vertex").
-            //     - We might or might not want to consider all inside-out vertices
-            //       to be part of the infinite vertex.
-            class SimplerMeshDataStructure
-            {
-                public int e2v[/*nEdges*/][/*2*/]; // edge to verts
-                public int v2e[/*nVerts*/][]; // vert to edges out
-                public SimplerMeshDataStructure(Mesh mesh, boolean mergeInsideOutVertsIntoInfiniteVert)
-                {
-                    int nVerts = mesh.verts.size(); // may add 1 though
-                    int nEdges = mesh.edges.size();
-                    this.e2v = new int[nEdges][2];
-
-                    int e2next[] = new int[nEdges];
-                    boolean infiniteVertUsed = false; // until proven otherwise
-                    FORI (iEdge, nEdges)
-                    {
-                        Mesh.Edge edge = mesh.getEdge(iEdge);
-                        assert(edge.myIndex() == iEdge);
-                        assert(edge.opposite().myIndex() == (iEdge^1));
-                        Mesh.Vertex v0 = edge.initialVertex();
-                        Mesh.Vertex v1 = edge.finalVertex();
-                        if (v0 == null || v1 == null)
-                            infiniteVertUsed = true;
-                        int i0 = v0==null ? nVerts : v0.myIndex();
-                        int i1 = v1==null ? nVerts : v1.myIndex();
-                        e2v[iEdge][0] = i0;
-                        e2v[iEdge][1] = i1;
-                        Mesh.Edge next = edge.next();
-                        if (next == null)
-                        {
-                            // final vertex is the infinite one; to find next, need to walk backwards around the face
-                            next = edge;
-                            while (next.prev() != null)
-                                next = next.prev();
-                        }
-                        e2next[iEdge] = next.myIndex();
-                    }
-                    if (mergeInsideOutVertsIntoInfiniteVert)
-                    {
-                        boolean isInsideOut[] = new boolean[nVerts+1];
-                        FORI (iVert, nVerts)
-                            isInsideOut[iVert] = (mesh.getVert(iVert).weight < 0);
-                        isInsideOut[nVerts] = true; // the infinite one, if any
-                        PRINTVEC(isInsideOut);
-                        FORI (iEdge, nEdges)
-                            FORI (iVertThisEdge, 2)
-                            {
-                                if (isInsideOut[e2v[iEdge][iVertThisEdge]])
-                                {
-                                    e2v[iEdge][iVertThisEdge] = nVerts;
-                                    infiniteVertUsed = true;
-                                }
-                            }
-                        // Note that it may be that some original verts are now unused in e2v
-                    }
-                    if (infiniteVertUsed)
-                        nVerts++;
-                    this.v2e = new int[nVerts][];
-                    {
-                        int arities[] = new int[nVerts]; // zeros initially
-                        FORI (iEdge, nEdges)
-                            arities[e2v[iEdge][0]]++;
-                        FORI (iVert, nVerts)
-                        {
-                            v2e[iVert] = new int[arities[iVert]];
-                            arities[iVert] = 0;
-                        }
-                        FORI (iEdge, nEdges)
-                        {
-                            int iVert = e2v[iEdge][0];
-                            v2e[iVert][arities[iVert]++] = iEdge;
-                        }
-                        FORI (iVert, nVerts)
-                        {
-                            assert_eq(v2e[iVert].length, arities[iVert]);
-                            FORI (iEdgeOut, v2e[iVert].length)
-                                assert_eq(e2v[v2e[iVert][iEdgeOut]][0], iVert);
-                        }
-                    }
-                } // SimplerMeshDataStructure ctor
-
-                public boolean isConnectedExceptMaybeForIsolatedVerts()
-                {
-                    // DFS is actually faster supposedly but whatever
-                    int nVerts = v2e.length;
-                    int nEdges = e2v.length;
-                    MergeFind mergeFind = new MergeFind(nVerts);
-                    FORI (iEdge, nEdges)
-                    {
-                        int iVert = e2v[iEdge][0];
-                        int jVert = e2v[iEdge][1];
-                        mergeFind.merge(iVert, jVert);
-                    }
-                    int found = -1;
-                    FORI (iVert, nVerts)
-                    {
-                        if (v2e[iVert].length == 0) continue; // vertex got removed (or was isolated)
-                        if (found == -1)
-                            found = mergeFind.find(iVert);
-                        else if (mergeFind.find(iVert) != found)
-                            return false;
-                    }
-                    return true;
-                } // isConnectedExceptMaybeForIsolatedVerts
-
-                // Do not call this unless connected! (in the sense that isConnectedExceptMaybeForIsolatedVerts returns).
-                public boolean[/*nEdges/2*/] randomSpanningTree(java.util.Random generator)
-                {
-                    if (e2v.length == 0)
-                        return new boolean[0];
-                    // Use uniform random spanning tree algorithm, from David Bruce Wilson
-                    // "Generating Random Spanning Trees More Quickly than the Cover Time"
-                    // Must start with random vertex of random edge.
-                    int r = e2v[generator.nextInt(e2v.length)][generator.nextInt(2)];
-                    int nVerts = v2e.length;
-                    boolean inTree[] = new boolean[nVerts]; // false initially
-                    int theEdgeOut[] = new int[nVerts];
-                    theEdgeOut[r] = -1;
-                    inTree[r] = true;
-                    FORI (iVert, nVerts)
-                    {
-                        if (v2e[iVert].length == 0)
-                            continue; // the vertex got removed (probably merged into the infinite vertex)
-                        for (int u = iVert; !inTree[u]; u = e2v[theEdgeOut[u]][1])
-                            theEdgeOut[u] = v2e[u][generator.nextInt(v2e[u].length)];
-                        for (int u = iVert; !inTree[u]; u = e2v[theEdgeOut[u]][1])
-                            inTree[u] = true;
-                    }
-                    boolean answer[] = new boolean[e2v.length/2]; // all false initially
-                    FORI (iVert, nVerts)
-                    {
-                        if (v2e[iVert].length == 0)
-                            continue; // the vertex got removed (probably merged into the infinite vertex)
-                        int iEdge = theEdgeOut[iVert];
-                        assert((iEdge == -1) == (iVert==r));
-                        if (iEdge != -1)
-                        {
-                            assert(e2v[iEdge][0] == iVert);
-                            answer[iEdge/2] = true;
-                        }
-                    }
-                    return answer;
-                } // randomSpanningTree
-
-                public int[] getVertToParent(int root,
-                                             boolean undirectedEdgeIsInSpanningTree[/*nUndirectedEdges*/])
-                {
-                    int nVerts = this.v2e.length;
-                    int vertToParent[] = VecMath.fillvec(nVerts, -1);
-                    int queue[] = new int[nVerts];
-                    int queueSize = 0;
-                    queue[queueSize++] = root;
-                    while (queueSize > 0)
-                    {
-                        int iVert = queue[--queueSize];
-                        int edgesOut[] = this.v2e[iVert];
-                        FORI (iEdgeOut, edgesOut.length)
-                        {
-                            int edgeOut = edgesOut[iEdgeOut];
-                            if (undirectedEdgeIsInSpanningTree[edgeOut/2])
-                            {
-                                assert(e2v[edgeOut][0] == iVert);
-                                int jVert = this.e2v[edgeOut][1];
-                                vertToParent[jVert] = iVert;
-                                queue[queueSize++] = jVert;
-                            }
-                        }
-                    }
-                    return vertToParent;
-                } // getVertToParent
-
-            } // SimplerMeshDataStructure
 
             SimplerMeshDataStructure simplerMeshDataStructure = new SimplerMeshDataStructure(mesh, true);
             if (!simplerMeshDataStructure.isConnectedExceptMaybeForIsolatedVerts())
@@ -16949,7 +16877,7 @@ OFF
 
                 int whichTree;
 
-                if (false)
+                if (true)
                 {
                     // Wilson's algorithm.
                     boolean answer[] = simplerMeshDataStructure.randomSpanningTree(generator);
