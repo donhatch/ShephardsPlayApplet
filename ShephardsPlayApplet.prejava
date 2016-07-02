@@ -6475,7 +6475,7 @@ public class ShephardsPlayApplet
                             analyzeRandomSpanningTrees(mesh);
                             analyzeRandomSpanningTrees(getDualMesh());
                         }
-                        if (true)
+                        if (false)
                         {
                             java.math.BigInteger nPrimalSpanningTrees = countSpanningTrees(mesh);
                             PRINT(nPrimalSpanningTrees);
@@ -16800,7 +16800,7 @@ OFF
             {
                 public int e2v[/*nEdges*/][/*2*/]; // edge to verts
                 public int v2e[/*nVerts*/][]; // vert to edges out
-                SimplerMeshDataStructure(Mesh mesh, boolean mergeInsideOutVertsIntoInfiniteVert)
+                public SimplerMeshDataStructure(Mesh mesh, boolean mergeInsideOutVertsIntoInfiniteVert)
                 {
                     int nVerts = mesh.verts.size(); // may add 1 though
                     int nEdges = mesh.edges.size();
@@ -16873,7 +16873,42 @@ OFF
                                 assert_eq(e2v[v2e[iVert][iEdgeOut]][0], iVert);
                         }
                     }
-                }
+                } // SimplerMeshDataStructure ctor
+                public boolean[/*nEdges/2*/] randomSpanningTree(java.util.Random generator)
+                {
+                    // Use uniform random spanning tree algorithm, from David Bruce Wilson
+                    // "Generating Random Spanning Trees More Quickly than the Cover Time"
+                    // Must start with random vertex of random edge.
+                    int r = e2v[generator.nextInt(e2v.length)][generator.nextInt(2)];
+                    int nVerts = v2e.length;
+                    boolean inTree[] = new boolean[nVerts]; // false initially
+                    int theEdgeOut[] = new int[nVerts];
+                    theEdgeOut[r] = -1;
+                    inTree[r] = true;
+                    FORI (iVert, nVerts)
+                    {
+                        if (v2e[iVert].length == 0)
+                            continue; // the vertex got removed (probably merged into the infinite vertex)
+                        for (int u = iVert; !inTree[u]; u = e2v[theEdgeOut[u]][1])
+                            theEdgeOut[u] = v2e[u][generator.nextInt(v2e[u].length)];
+                        for (int u = iVert; !inTree[u]; u = e2v[theEdgeOut[u]][1])
+                            inTree[u] = true;
+                    }
+                    boolean answer[] = new boolean[e2v.length/2]; // all false initially
+                    FORI (iVert, nVerts)
+                    {
+                        if (v2e[iVert].length == 0)
+                            continue; // the vertex got removed (probably merged into the infinite vertex)
+                        int iEdge = theEdgeOut[iVert];
+                        assert((iEdge == -1) == (iVert==r));
+                        if (iEdge != -1)
+                        {
+                            assert(e2v[iEdge][0] == iVert);
+                            answer[iEdge/2] = true;
+                        }
+                    }
+                    return answer;
+                }  // randomSpanningTree
             } // SimplerMeshDataStructure
 
             SimplerMeshDataStructure simplerMeshDataStructure = new SimplerMeshDataStructure(mesh, true);
@@ -16897,28 +16932,11 @@ OFF
                 if (true)
                 {
                     // Wilson's algorithm.
-                    // Must start with random vertex of random edge.
-                    int r = e2v[generator.nextInt(e2v.length)][generator.nextInt(2)];
-                    boolean inTree[] = new boolean[nVerts]; // false initially
-                    int next[] = new int[nVerts]; // vertex to next *edge*, not vertex
-                    next[r] = -1;
-                    inTree[r] = true;
-                    FORI (i, nVerts)
-                    {
-                        if (v2e[i].length == 0)
-                            continue; // the vertex got removed (probably merged into the infinite vertex)
-                        for (int u = i; !inTree[u]; u = e2v[next[u]][1])
-                            next[u] = v2e[u][generator.nextInt(v2e[u].length)];
-                        for (int u = i; !inTree[u]; u = e2v[next[u]][1])
-                            inTree[u] = true;
-                    }
+                    boolean answer[] = simplerMeshDataStructure.randomSpanningTree(generator);
                     whichTree = 0;
-                    FORI (iVert, nVerts)
-                    {
-                        int iEdge = next[iVert];
-                        if (iEdge != -1)
-                            whichTree |= (1 << (iEdge/2));
-                    }
+                    FORI (iUndirectedEdge, answer.length)
+                        if (answer[iUndirectedEdge])
+                            whichTree |= (1 << iUndirectedEdge);
                 }
                 else if (false)
                 {
