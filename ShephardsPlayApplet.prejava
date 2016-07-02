@@ -124,6 +124,9 @@ BUGS:
         this actually work?  hmm I'm thinking no.
 
   Net-related:
+    - can we color some edges red even when net is not complete?  I think the parts that are connected to the infinite can be colored.
+      (extra credit: when *not* connected to infinite yet, can still color but in general need two different colors
+      depending on which direction the edge will eventualy go.  can that be conveyed?)
     - net flow doesn't work when delaunayized with "calc underside when delaunayizing"
     - netless8 / sharpest at every vertex / net -> assertion failed: _W == 1
     - netless9 / outward / net -> assertion failed: _W == 1
@@ -4596,9 +4599,9 @@ public class ShephardsPlayApplet
                                 else
                                 {
                                     // begin dragging a net edge or fold
-                                    //PRINT(beingDraggedNetEdgeIndex);
+                                    PRINT(beingDraggedNetEdgeIndex);
                                     beingDraggedNetEdgeIndex = getDualMesh().indexOfClosestEdge(projectedThisPeffective, true); // XXX not right actually... want closest edge in screen space, not doing this paraboloid thing
-                                    //PRINT(beingDraggedNetEdgeIndex);
+                                    PRINT(beingDraggedNetEdgeIndex);
                                     beingDraggedNetEdgeDelta = new double[]{0,0};
                                 }
                             }
@@ -6524,7 +6527,7 @@ public class ShephardsPlayApplet
 
 
                 // common code used twice
-                private void drawLabels(MyGraphics3D mg,
+                private void drawLabels(MyGraphics3D mg3d,
                                         Mesh mesh,
                                         boolean isDualMesh,
                                         boolean showInsideOutParts,
@@ -6627,12 +6630,12 @@ public class ShephardsPlayApplet
                             {
                                 ang = Math.random() * 2*Math.PI;
                             }
-                            double offr = 5/mg.getScaleX(); // pixels
+                            double offr = 5/mg3d.getScaleX(); // pixels
                             double offx = offr*Math.cos(ang);
                             double offy = offr*Math.sin(ang);
                             double offmax = MAX(ABS(offx),ABS(offy));
 
-                            mg.drawString("v"+iVert,
+                            mg3d.drawString("v"+iVert,
                                           X+offx*W,
                                           Y+offy*W,
                                           Z,
@@ -6690,11 +6693,11 @@ public class ShephardsPlayApplet
                                 double ang = Math.PI/2 + Math.atan2(y1-y0, x1-x0);
                                 if (isDualMesh)
                                     ang += Math.PI;
-                                double offr = 2/mg.getScaleX(); // pixels
+                                double offr = 2/mg3d.getScaleX(); // pixels
                                 double offx = offr*Math.cos(ang);
                                 double offy = offr*Math.sin(ang);
                                 double offmax = MAX(ABS(offx),ABS(offy));
-                                mg.drawString("e"+iEdge,
+                                mg3d.drawString("e"+iEdge,
                                               x+offx,
                                               y+offy,
                                               z,
@@ -6710,7 +6713,7 @@ public class ShephardsPlayApplet
                 // Experimental--
                 // show the net of the faces in 3d, flattened onto the xy plane
                 //
-                void drawFlattenedNet(MyGraphics3D mg, Mesh mesh, Mesh dualMesh, double dualEdgeInitialCoords[/*nDualEdges*/][/*2*/][/*4*/], int nVerts, int nEdges, java.awt.Color dualEdgeColors[/*nEdges*/])
+                void drawFlattenedNet(MyGraphics3D mg3d, Mesh mesh, Mesh dualMesh, double dualEdgeInitialCoords[/*nDualEdges*/][/*2*/][/*4*/], int nVerts, int nEdges, java.awt.Color dualEdgeColors[/*nEdges*/])
                 {
                     // We want a rotate/translate matrix for each dual face
                     // (i.e. each primal vertex)
@@ -6893,11 +6896,11 @@ public class ShephardsPlayApplet
                         FORI (i, 2)
                             coords[i] = VecMath.vxm(coords[i], M);
                         if (theNet._edgeStatuses[iEdge] == Net.CUT)
-                            mg.setColor(java.awt.Color.yellow);
+                            mg3d.setColor(java.awt.Color.yellow);
                         else
-                            mg.setColor(new java.awt.Color(0.f,0.f,1/4.f)); // XXX darkBlue
-                        mg.setColor(dualEdgeColors[iEdge]);
-                        mg.drawLine(coords[0][0],
+                            mg3d.setColor(new java.awt.Color(0.f,0.f,1/4.f)); // XXX darkBlue
+                        mg3d.setColor(dualEdgeColors[iEdge]);
+                        mg3d.drawLine(coords[0][0],
                                     coords[0][1],
                                     coords[0][2],
                                     coords[1][0],
@@ -6991,11 +6994,11 @@ public class ShephardsPlayApplet
 
                 final boolean wrapAroundSphereFlagValue = wrapAroundSphereFlag.get();
                 double minSize = (double)MIN(size.width, size.height);
-                MyGraphics3D mg = new MyGraphics3D(g, size,
+                MyGraphics3D mg3d = new MyGraphics3D(g, size,
                                         -size.width/minSize,size.width/minSize,
                                         -size.height/minSize,size.height/minSize,
                                         getLocalToWorld());
-                mostRecentGraphics = mg;
+                mostRecentGraphics = mg3d;
 
                 if (implementAntiAliasingInHardware)
                 {
@@ -7010,8 +7013,8 @@ public class ShephardsPlayApplet
                 //
                 // Clear to black...
                 //
-                mg.setColor(java.awt.Color.black);
-                mg.fillWindow();
+                mg3d.setColor(java.awt.Color.black);
+                mg3d.fillWindow();
 
                 if (showGridFlag)
                 {
@@ -7036,7 +7039,7 @@ public class ShephardsPlayApplet
                             double start = gridBrightnessValue;
                             double speed = 1./3.;
                             float luminance = (float)(start * Math.pow(.5, iLevel*speed));
-                            mg.setColor(new java.awt.Color(luminance,luminance,luminance));
+                            mg3d.setColor(new java.awt.Color(luminance,luminance,luminance));
                         }
 
                         int gridLinesPerUnit = 1 << iLevel;
@@ -7046,10 +7049,10 @@ public class ShephardsPlayApplet
                              || iGridLine % 2 == 1)
                             {
                                 double x = iGridLine / (double)gridLinesPerUnit;
-                                mg.drawLine(x, -ymax, 0.,
+                                mg3d.drawLine(x, -ymax, 0.,
                                             x,  ymax, 0.,
                                             antiAliasingFlag);
-                                mg.drawLine(-x, -ymax, 0.,
+                                mg3d.drawLine(-x, -ymax, 0.,
                                             -x,  ymax, 0.,
                                              antiAliasingFlag);
                             }
@@ -7060,10 +7063,10 @@ public class ShephardsPlayApplet
                              || iGridLine % 2 == 1)
                             {
                                 double y = iGridLine / (double)gridLinesPerUnit;
-                                mg.drawLine(-xmax, y, 0.,
+                                mg3d.drawLine(-xmax, y, 0.,
                                              xmax, y, 0.,
                                              antiAliasingFlag);
-                                mg.drawLine(-xmax, -y, 0.,
+                                mg3d.drawLine(-xmax, -y, 0.,
                                              xmax, -y, 0.,
                                              antiAliasingFlag);
                             }
@@ -7085,9 +7088,9 @@ public class ShephardsPlayApplet
 
                     int nPoints = 360;
                     double horizonPoints[][] = theSurface.horizon(0.,eyeInLocalSpace,nPoints);
-                    mg.setColor(java.awt.Color.red);
+                    mg3d.setColor(java.awt.Color.red);
                     FORI (iPoint, horizonPoints.length)
-                        mg.drawPoint(horizonPoints[iPoint][0],
+                        mg3d.drawPoint(horizonPoints[iPoint][0],
                                      horizonPoints[iPoint][1],
                                      horizonPoints[iPoint][2],
                                      1);
@@ -7102,7 +7105,7 @@ public class ShephardsPlayApplet
                     FORI (iVert, nVerts)
                     {
                         Mesh.Vertex vert = mesh.getVert(iVert);
-                        mg.xform(vert.X(), vert.Y(), vert.Z(), vert.W(), xys[iVert]);
+                        mg3d.xform(vert.X(), vert.Y(), vert.Z(), vert.W(), xys[iVert]);
                     }
                     double center[] = new double[2];
                     //MiniBall.verboseLevel = 2; // 2 for nice diagram
@@ -7122,9 +7125,9 @@ public class ShephardsPlayApplet
                         //PRINT(radius);
 
                         float luminance = .05f; // currently grid is .09f
-                        mg.setColor(new java.awt.Color(luminance,luminance,luminance));
+                        mg3d.setColor(new java.awt.Color(luminance,luminance,luminance));
                         if (GT(radius, 0., 1e-6)) // otherwise I think the arc drawing might go into an infinite loop, not sure.  oh hmm, maybe that was just with NaN, I think I can remove this check
-                            mg.drawThickArc(center[0]-radius, center[1]-radius,
+                            mg3d.drawThickArc(center[0]-radius, center[1]-radius,
                                             2*radius, 2*radius,
                                             0., Math.PI*2,
                                             1., // thicknessInPixels,
@@ -7691,7 +7694,7 @@ public class ShephardsPlayApplet
                                                 triCenterDualVert.x() + .05 * threeDirections[bestSide][0],
                                                 triCenterDualVert.y() + .05 * threeDirections[bestSide][1],
                                             };
-                                            mg.drawPoint(whereToDrawMark[0],
+                                            mg3d.drawPoint(whereToDrawMark[0],
                                                          whereToDrawMark[1],
                                                          0.,
                                                          5);
@@ -8036,14 +8039,14 @@ public class ShephardsPlayApplet
                                     if (selectedDualVertIndices.length > 1)
                                     {
                                         if (isGoodExit)
-                                            mg.setColor(perpColorGood);
+                                            mg3d.setColor(perpColorGood);
                                         else
-                                            mg.setColor(perpColorBad);
+                                            mg3d.setColor(perpColorBad);
 
                                         // draw perpendicular at the zero level (not at the vertex),
                                         // to emphasize the wrongness if viewing non-orthogonally
                                         double rayLength = 1.;
-                                        mg.drawLine(initialVertex.x() - rayLength * dualEdge.direction[1],
+                                        mg3d.drawLine(initialVertex.x() - rayLength * dualEdge.direction[1],
                                                     initialVertex.y() + rayLength * dualEdge.direction[0],
                                                     0,
                                                     initialVertex.x() + rayLength * dualEdge.direction[1],
@@ -8086,9 +8089,9 @@ public class ShephardsPlayApplet
                         ArrayList dualEdges = dualMesh.edges;
 
                         if (iFacingPass == 0) // back faces
-                            mg.setColor(new java.awt.Color(backBrightness,backBrightness,backBrightness));
+                            mg3d.setColor(new java.awt.Color(backBrightness,backBrightness,backBrightness));
                         else
-                            mg.setColor(new java.awt.Color(frontBrightness,frontBrightness,frontBrightness));
+                            mg3d.setColor(new java.awt.Color(frontBrightness,frontBrightness,frontBrightness));
 
 
                         if (showPrimalVertsFlag.get())
@@ -8097,7 +8100,7 @@ public class ShephardsPlayApplet
                                 if ((vertFacings[iVert]!=FACING_BACK||iVert==beingDraggedVertIndex) == (iFacingPass==1))
                                 {
                                     double vCoordHomo[] = vertCoordsHomo[iVert];
-                                    mg.drawPoint(vCoordHomo[0],
+                                    mg3d.drawPoint(vCoordHomo[0],
                                                  vCoordHomo[1],
                                                  vCoordHomo[2],
                                                  vCoordHomo[3],
@@ -8125,7 +8128,7 @@ public class ShephardsPlayApplet
                                                       {vert2.x(),vert2.y(),vert2.z()+wrapSphereRadius}};
                                     int N = 4;
                                     int n = 8;
-                                    mg.setColor(new java.awt.Color(0,0,255));
+                                    mg3d.setColor(new java.awt.Color(0,0,255));
                                     FORI (iii, 3)
                                     {
                                         double p0[] = ppp[iii];
@@ -8153,7 +8156,7 @@ public class ShephardsPlayApplet
                                                 double ang1 = (i+1.)/360*(2*Math.PI);
                                                 VecMath.vpsxvpsxv(from, circleCenter, r*Math.cos(ang0), basis[1], r*Math.sin(ang0), basis[2]);
                                                 VecMath.vpsxvpsxv(to, circleCenter, r*Math.cos(ang1), basis[1], r*Math.sin(ang1), basis[2]);
-                                                mg.drawLine(from[0],from[1],from[2]-wrapSphereRadius,
+                                                mg3d.drawLine(from[0],from[1],from[2]-wrapSphereRadius,
                                                             to[0],to[1],to[2]-wrapSphereRadius,
                                                             antiAliasingFlag);
                                             }
@@ -8161,16 +8164,16 @@ public class ShephardsPlayApplet
 
                                             if (false)
                                             {
-                                                mg.drawLine(midpoint[0],midpoint[1],midpoint[2]-wrapSphereRadius,
+                                                mg3d.drawLine(midpoint[0],midpoint[1],midpoint[2]-wrapSphereRadius,
                                                             point1[0],point1[1],point1[2]-wrapSphereRadius,
                                                             antiAliasingFlag);
-                                                mg.drawLine(midpoint[0],midpoint[1],midpoint[2]-wrapSphereRadius,
+                                                mg3d.drawLine(midpoint[0],midpoint[1],midpoint[2]-wrapSphereRadius,
                                                             point2[0],point2[1],point2[2]-wrapSphereRadius,
                                                             antiAliasingFlag);
                                             }
                                         }
                                     }
-                                    mg.setColor(java.awt.Color.white);
+                                    mg3d.setColor(java.awt.Color.white);
                                     FORI (iii, 3)
                                     {
                                         double p0[] = ppp[iii];
@@ -8182,7 +8185,7 @@ public class ShephardsPlayApplet
                                             double p[] = sbary(p0,
                                                                p1, (double)(N-I)/(double)N,
                                                                p2, (double)J/(double)N);
-                                            mg.drawPoint(p[0],
+                                            mg3d.drawPoint(p[0],
                                                          p[1],
                                                          p[2] - wrapSphereRadius,
                                                          2);
@@ -8193,7 +8196,7 @@ public class ShephardsPlayApplet
                                             double p[] = sbary(p0,
                                                                p1, (double)(N-I)/(double)N,
                                                                p2, (double)j/(double)n/(double)N);
-                                            mg.drawPoint(p[0],
+                                            mg3d.drawPoint(p[0],
                                                          p[1],
                                                          p[2] - wrapSphereRadius,
                                                          1);
@@ -8279,7 +8282,7 @@ public class ShephardsPlayApplet
 
                                     double v0[] = vertCoordsHomo[edge.initialVertex().myIndex()];
                                     double v1[] = vertCoordsHomo[edge.finalVertex().myIndex()];
-                                    mg.drawLine(v0[0],v0[1],v0[2],v0[3],
+                                    mg3d.drawLine(v0[0],v0[1],v0[2],v0[3],
                                                 v1[0],v1[1],v1[2],v1[3],
                                                 antiAliasingFlag);
 
@@ -8373,14 +8376,14 @@ public class ShephardsPlayApplet
                                         // cyan for good, magenta for bad.
                                         boolean isGood = LEQ(VecMath.dot(2, alternativeExit.direction,
                                                                             VecMath.vmv(2, lagoonCenter,
-                                                                                           new double[]{alternativeExitVertex.Xnaive(),
-                                                                                                        alternativeExitVertex.Ynaive()})), 0., SQR(1e-6));
+                                                                                           new double[]{alternativeExitVertex.x(),
+                                                                                                        alternativeExitVertex.y()})), 0., SQR(1e-6));
                                         color = isGood ? java.awt.Color.cyan : java.awt.Color.magenta;
                                     }
                                     else
                                     {
                                         // If dragging a fold: just highlight alternative folds
-                                        // in whatever color they are in (green->cyan, red->magenta, darkBlue->blue)
+                                        // in whatever color they are in (cut green->cyan, cut red->magenta, self darkBlue->blue)
                                         color = dualEdgeColors[alternativeExit.myIndex()];
                                         color = (alternativeExit.myIndex()==beingDraggedNetEdgeIndex
                                               || alternativeExit.opposite().myIndex()==beingDraggedNetEdgeIndex) ? java.awt.Color.blue :
@@ -8396,26 +8399,37 @@ public class ShephardsPlayApplet
                                 {
                                     if (dualEdgeColors[beingDraggedNetEdgeIndex] == java.awt.Color.cyan)
                                     {
-                                        //mg.setColor(darkGreen);
-                                        mg.setColor(darkCyan);
+                                        //mg3d.setColor(darkGreen);
+                                        mg3d.setColor(darkCyan);
                                     }
                                     else if (dualEdgeColors[beingDraggedNetEdgeIndex] == java.awt.Color.magenta)
                                     {
-                                        //mg.setColor(darkRed);
-                                        mg.setColor(darkMagenta);
+                                        //mg3d.setColor(darkRed);
+                                        mg3d.setColor(darkMagenta);
                                     }
                                     else if (dualEdgeColors[beingDraggedNetEdgeIndex] == java.awt.Color.blue)
-                                        mg.setColor(darkBlue);
+                                        mg3d.setColor(darkBlue);
 
 
                                     double from[] = dualEdgeInitialCoords[beingDraggedNetEdgeIndex][0];
                                     double to[] = dualEdgeInitialCoords[dualMesh.getEdge(beingDraggedNetEdgeIndex).opposite().myIndex()][0];
-                                    mg.drawLine(from[0]+beingDraggedNetEdgeDelta[0],
+                                    System.out.println("HEY! drawing edge being dragged?");
+                                    PRINTVEC(from);
+                                    PRINTVEC(to);
+                                    PRINTVEC(beingDraggedNetEdgeDelta);
+                                    mg3d.drawLine(from[0]+beingDraggedNetEdgeDelta[0],
                                                 from[1]+beingDraggedNetEdgeDelta[1],
                                                 from[2],
                                                 to[0]+beingDraggedNetEdgeDelta[0],
                                                 to[1]+beingDraggedNetEdgeDelta[1],
                                                 to[2],
+                                                antiAliasingFlag);
+                                    mg3d.drawLine(from[0]/from[3]+beingDraggedNetEdgeDelta[0],
+                                                from[1]/from[3]+beingDraggedNetEdgeDelta[1],
+                                                from[2]/from[3],
+                                                to[0]/to[3]+beingDraggedNetEdgeDelta[0],
+                                                to[1]/to[3]+beingDraggedNetEdgeDelta[1],
+                                                to[2]/to[3],
                                                 antiAliasingFlag);
                                 }
                             }
@@ -8426,7 +8440,7 @@ public class ShephardsPlayApplet
                          && showFlattenedNetFlag.get()
                          && localScaleZ != 0.
                          && tilt > Math.PI*.5) // i.e. if xy plane is behind rest of picture
-                            drawFlattenedNet(mg, mesh, dualMesh, dualEdgeInitialCoords, nVerts, nEdges, dualEdgeColors);
+                            drawFlattenedNet(mg3d, mesh, dualMesh, dualEdgeInitialCoords, nVerts, nEdges, dualEdgeColors);
 
                         double backfaceBrightnessValue = backfaceBrightness.get();
 
@@ -8462,10 +8476,10 @@ public class ShephardsPlayApplet
                                         int G = (rgb>>8)&255;
                                         int B = rgb&255;
                                         java.awt.Color backColor = new java.awt.Color((int)(R*backfaceBrightnessValue), (int)(G*backfaceBrightnessValue), (int)(B*backfaceBrightnessValue));
-                                        mg.setColor(backColor);
+                                        mg3d.setColor(backColor);
                                     }
                                     else
-                                        mg.setColor(frontColor);
+                                        mg3d.setColor(frontColor);
 
 
                                     Mesh.Edge dualEdge = dualMesh.getEdge(iDualEdge);
@@ -8481,15 +8495,15 @@ public class ShephardsPlayApplet
                                         if (from==null)
                                             continue; // this part doesn't exist-- edge is wholely on other sheet
 
-                                        mg.drawLine(from[0], from[1], from[2], from[3],
+                                        mg3d.drawLine(from[0], from[1], from[2], from[3],
                                                     to[0], to[1], to[2], to[3],
                                                     antiAliasingFlag);
 
                                         if (showNetFlag.get()
                                          && pointOutRedNetEdges
-                                         && mg.getColor() == java.awt.Color.red)
+                                         && mg3d.getColor() == java.awt.Color.red)
                                         {
-                                            mg.drawPoint((to[0]+from[0])*.5,
+                                            mg3d.drawPoint((to[0]+from[0])*.5,
                                                          (to[1]+from[1])*.5,
                                                          (to[2]+from[2])*.5,
                                                          7);
@@ -8531,14 +8545,14 @@ public class ShephardsPlayApplet
                                 int G = (rgb>>8)&255;
                                 int B = rgb&255;
                                 java.awt.Color backColor = new java.awt.Color((int)(R*backfaceBrightnessValue), (int)(G*backfaceBrightnessValue), (int)(B*backfaceBrightnessValue));
-                                mg.setColor(backColor);
+                                mg3d.setColor(backColor);
                             }
                             else
-                                mg.setColor(frontColor);
+                                mg3d.setColor(frontColor);
 
                             double p[] = dualVertCoords[iDualVert];
                             double sign = p[3]<0. ? -1 : 1;
-                            mg.drawPoint(sign*p[0], sign*p[1], sign*p[2], sign*p[3],
+                            mg3d.drawPoint(sign*p[0], sign*p[1], sign*p[2], sign*p[3],
                                          showNetFlag.get() ? 2 : 5);
                         }
 
@@ -8573,12 +8587,12 @@ public class ShephardsPlayApplet
                                 }
                             }
 
-                            double unitsPerPixel = 1./mg.getScaleX(); // scale is uniform
+                            double unitsPerPixel = 1./mg3d.getScaleX(); // scale is uniform
                             int period = 9; // how many redraws to get back to original state, to traverse a step
                             double step = 9 * unitsPerPixel;
 
-                            //mg.setColor(lightBlue);
-                            mg.setColor(java.awt.Color.red); // lava
+                            //mg3d.setColor(lightBlue);
+                            mg3d.setColor(java.awt.Color.red); // lava
 
                             FORI (iChild, nDualVerts)
                             {
@@ -8609,7 +8623,7 @@ public class ShephardsPlayApplet
                                             double x = LERP(parent.x(), child.x(), t);
                                             double y = LERP(parent.y(), child.y(), t);
                                             double z = LERP(parent.z(), child.z(), t);
-                                            mg.drawPoint(x, y, z, 3);
+                                            mg3d.drawPoint(x, y, z, 3);
                                         }
                                     }
                                     else
@@ -8624,7 +8638,7 @@ public class ShephardsPlayApplet
                                             double x = child.x() - pos * parentEdge.direction[0];
                                             double y = child.y() - pos * parentEdge.direction[1];
                                             double z = child.z() - pos * parentEdge.direction[2];
-                                            mg.drawPoint(x, y, z, 3);
+                                            mg3d.drawPoint(x, y, z, 3);
                                         }
                                     }
                                 }
@@ -8638,8 +8652,8 @@ public class ShephardsPlayApplet
                         //
                         if (avg != null)
                         {
-                            mg.setColor(dualVertSelectionColor);
-                            mg.drawPoint(avg[0],
+                            mg3d.setColor(dualVertSelectionColor);
+                            mg3d.drawPoint(avg[0],
                                          avg[1],
                                          avg[2],
                                          7);
@@ -8648,8 +8662,8 @@ public class ShephardsPlayApplet
 
                         if (lagoonCenter != null)
                         {
-                            mg.setColor(dualVertSelectionColor);
-                            mg.drawPoint(lagoonCenter[0],
+                            mg3d.setColor(dualVertSelectionColor);
+                            mg3d.drawPoint(lagoonCenter[0],
                                          lagoonCenter[1],
                                          lagoonCenter[2],
                                          3);
@@ -8669,9 +8683,9 @@ public class ShephardsPlayApplet
                         if (arrowsTowardsSharpestDihedralsFlag)
                         {
                             if (showNetFlag.get())
-                                mg.setColor(dualColor);
+                                mg3d.setColor(dualColor);
                             else
-                                mg.setColor(dualVertSelectionColor);
+                                mg3d.setColor(dualVertSelectionColor);
                             FORIDOWN (iEdge, mesh.edges.size())
                             {
                                 Mesh.Vertex triCenterDualVert = (dualMesh.getEdge(iEdge)).finalVertex();
@@ -8705,7 +8719,7 @@ public class ShephardsPlayApplet
                                     triCenterDualVert.Hnaive() + .02 * toEdgeVec[2],
                                 };
                                 //VecMath.vpsxv(whereToDrawMark, whereToDrawMark, .004, VecMath.random(2));
-                                mg.drawPoint(whereToDrawMark[0],
+                                mg3d.drawPoint(whereToDrawMark[0],
                                              whereToDrawMark[1],
                                              whereToDrawMark[2],
                                              5);
@@ -8714,7 +8728,7 @@ public class ShephardsPlayApplet
                         if (arrowsTowardsShortestEdgesFlag)
                         {
                             // XXX we do this in 3 ways, possibly getting different answer each time, in case of a tie... should fix that
-                            mg.setColor(java.awt.Color.cyan);
+                            mg3d.setColor(java.awt.Color.cyan);
                             FORIDOWN (iEdge, mesh.edges.size())
                             {
                                 Mesh.Vertex triCenterDualVert = (dualMesh.getEdge(iEdge)).finalVertex();
@@ -8760,7 +8774,7 @@ public class ShephardsPlayApplet
                                     triCenterDualVert.Hnaive() + .02 * toEdgeVec[2],
                                 };
                                 //VecMath.vpsxv(whereToDrawMark, whereToDrawMark, .005, VecMath.random(2));
-                                mg.drawPoint(whereToDrawMark[0],
+                                mg3d.drawPoint(whereToDrawMark[0],
                                              whereToDrawMark[1],
                                              whereToDrawMark[2],
                                              5);
@@ -8773,7 +8787,7 @@ public class ShephardsPlayApplet
                          && showFlattenedNetFlag.get()
                          && localScaleZ != 0.
                          && tilt <= Math.PI*.5) // i.e. if xy plane is in front of rest of picture
-                            drawFlattenedNet(mg, mesh, dualMesh, dualEdgeInitialCoords, nVerts, nEdges, dualEdgeColors);
+                            drawFlattenedNet(mg3d, mesh, dualMesh, dualEdgeInitialCoords, nVerts, nEdges, dualEdgeColors);
 
                     } // if (drawDualDiagramFlag)
 
@@ -8820,10 +8834,10 @@ public class ShephardsPlayApplet
                             double p[] = VecMath.lerp(p0,p1,frac);
                             double d[] = VecMath.lerp(d0,d1,frac);
 
-                            mg.setColor(java.awt.Color.white);
-                            mg.drawPoint(p[0], p[1], p[2], 7);
-                            mg.setColor(lightBlue);
-                            mg.drawPoint(d[0], d[1], d[2], 7);
+                            mg3d.setColor(java.awt.Color.white);
+                            mg3d.drawPoint(p[0], p[1], p[2], 7);
+                            mg3d.setColor(lightBlue);
+                            mg3d.drawPoint(d[0], d[1], d[2], 7);
                         } catch (IndexOutOfBoundsException e) {
                             System.out.println("Oops! primal-dual visualization apparently no longer valid, throwing it away");
                             primalDualVisAngles = null;
@@ -8835,12 +8849,12 @@ public class ShephardsPlayApplet
                     if (true)
                     {
                         // Show tri strip of whole thing
-                        mg.setColor(new java.awt.Color(255,192,192)); // pink
+                        mg3d.setColor(new java.awt.Color(255,192,192)); // pink
                         FORI (i, primalDualVisAngles.length)
                         {
                             Mesh.Vertex p = mesh.getVert(primalDualVisPrimalVertInds[i]);
                             Mesh.Vertex d = dualMesh.getVert(primalDualVisDualVertInds[i]);
-                            mg.drawLine(p.X(), p.Y(), p.Z(), p.W(),
+                            mg3d.drawLine(p.X(), p.Y(), p.Z(), p.W(),
                                         d.X(), d.Y(), d.Z(), d.W(),
                                         antiAliasingFlag);
                         }
@@ -8853,8 +8867,8 @@ public class ShephardsPlayApplet
                 if ((showPrimalVertsFlag.get()&&labelPrimalVertsFlag.get())
                  || (showPrimalEdgesFlag.get()&&labelPrimalEdgesFlag.get()))
                 {
-                    mg.setColor(java.awt.Color.white);
-                    drawLabels(mg, mesh, false, showInsideOutDualVertsFlag.get(),
+                    mg3d.setColor(java.awt.Color.white);
+                    drawLabels(mg3d, mesh, false, showInsideOutDualVertsFlag.get(),
                             showPrimalVertsFlag.get()&&labelPrimalVertsFlag.get(),
                             showPrimalEdgesFlag.get()&&labelPrimalEdgesFlag.get(),
                             null, // primal
@@ -8863,9 +8877,9 @@ public class ShephardsPlayApplet
                 if ((showDualVertsFlag.get()&&labelDualVertsFlag.get())
                  || (showDualEdgesFlag.get()&&labelDualEdgesFlag.get()))
                 {
-                    //mg.setColor(java.awt.Color.red);
-                    mg.setColor(dualColor);
-                    drawLabels(mg, dualMesh, true, showInsideOutDualVertsFlag.get(),
+                    //mg3d.setColor(java.awt.Color.red);
+                    mg3d.setColor(dualColor);
+                    drawLabels(mg3d, dualMesh, true, showInsideOutDualVertsFlag.get(),
                         showDualVertsFlag.get()&&labelDualVertsFlag.get(),
                         showDualEdgesFlag.get()&&labelDualEdgesFlag.get(),
                         dualEdgeInitialCoords, // dual
@@ -8875,16 +8889,16 @@ public class ShephardsPlayApplet
                 if (showOriginFlag)
                 {
                     // draw a subtle dot at the origin
-                    mg.setColor(java.awt.Color.white);
-                    mg.drawPoint(0., 0., 0., 1);
+                    mg3d.setColor(java.awt.Color.white);
+                    mg3d.drawPoint(0., 0., 0., 1);
                 }
                 // if showing an optimization path, display a message about it
                 if (theOptimizationIndex != -1)
                 {
-                    mg.setColor(java.awt.Color.white);
+                    mg3d.setColor(java.awt.Color.white);
                     String message = "Optimization step "+theOptimizationIndex+"/"+(theOptimizationPath.length-1)+":  goodness = "+theOptimizationPathGoodnesses[theOptimizationIndex]
                         + " ([Shift] L/R arrow to advance/retreat )";
-                    mg.drawString(message,
+                    mg3d.drawString(message,
                                   -1., -1.,
                                   -1., 1.1);
                 }
@@ -8959,8 +8973,8 @@ public class ShephardsPlayApplet
                             break;
                     }
 
-                    mg.setColor(java.awt.Color.white);
-                    mg.drawString(""+nNonZeroLengthOffBalanceCuts+" / "+nNonZeroLengthWholeEdges+" off-balance cuts",
+                    mg3d.setColor(java.awt.Color.white);
+                    mg3d.drawString(""+nNonZeroLengthOffBalanceCuts+" / "+nNonZeroLengthWholeEdges+" off-balance cuts",
                                   size.width/minSize,-size.height/minSize,
                                   1.2, 1.5,
                                   java.awt.Color.black); // background
@@ -8973,13 +8987,13 @@ public class ShephardsPlayApplet
                 //
                 if (rubberBandingNewEdge)
                 {
-                    mg.setColor(java.awt.Color.white);
+                    mg3d.setColor(java.awt.Color.white);
                     Mesh.Vertex v0 = mesh.getVert(beingDraggedVertIndex);
                     double projectedPrevP[] = new double[3];
                     pickPointOnSurface(prevP, vertOffset(v0, wrapAroundSphereFlag.get()), projectedPrevP, mousePressWasBackFacing);
-                    //mg.drawLine(v0.Xnaive(), v0.Ynaive(),
+                    //mg3d.drawLine(v0.Xnaive(), v0.Ynaive(),
                                 //prevP[0], prevP[1], antiAliasingFlag);
-                    mg.drawLine(v0.Xnaive(), v0.Ynaive(), v0.Znaive(),
+                    mg3d.drawLine(v0.Xnaive(), v0.Ynaive(), v0.Znaive(),
                                 projectedPrevP[0], projectedPrevP[1], projectedPrevP[2],
                                 antiAliasingFlag);
                 } // if (rubberBandingNewEdge)
@@ -9036,21 +9050,21 @@ public class ShephardsPlayApplet
                          || ABS(iN-dN) < .01)
                         {
                             if (iN == 0)
-                                mg.setColor(java.awt.Color.red);
+                                mg3d.setColor(java.awt.Color.red);
                             else if (iN % 2 == 0)
-                                mg.setColor(java.awt.Color.green);
+                                mg3d.setColor(java.awt.Color.green);
                             else
-                                mg.setColor(java.awt.Color.blue);
+                                mg3d.setColor(java.awt.Color.blue);
 
                             if (iPoint == 0
                              || iPoint == nLabels+nPoints-1)
-                                mg.drawString(""+(dN*incrDegrees),
+                                mg3d.drawString(""+(dN*incrDegrees),
                                               Mv[0],Mv[1], -1., 1.);
                             else if (iPoint < nLabels)
-                                mg.drawString(""+(int)Math.round(dN*incrDegrees),
+                                mg3d.drawString(""+(int)Math.round(dN*incrDegrees),
                                               Mv[0],Mv[1], -1., 1.);
                             else
-                                mg.drawPoint(Mv[0],Mv[1], 0., 1);
+                                mg3d.drawPoint(Mv[0],Mv[1], 0., 1);
                         }
                         else
                             iPoint--; // cancel loop iteration
@@ -9058,8 +9072,8 @@ public class ShephardsPlayApplet
                 }
 
                 nPaints++;
-                mg.setColor(java.awt.Color.white);
-                mg.drawString(""+nPaints+" paints", size.width/minSize,size.height/minSize,
+                mg3d.setColor(java.awt.Color.white);
+                mg3d.drawString(""+nPaints+" paints", size.width/minSize,size.height/minSize,
                               1., -.5,
                               java.awt.Color.black); // background
 
@@ -9083,7 +9097,7 @@ public class ShephardsPlayApplet
                         {
                             // lame way of figuring out where the mouse was most recently
                             double focus[] = new double[2];
-                            mg.unpick(prevP[0], prevP[1], focus);
+                            mg3d.unpick(prevP[0], prevP[1], focus);
                             focusX = (int)Math.round(focus[0]-.5);
                             focusY = (int)Math.round(focus[1]-.5);
                         }
@@ -9165,8 +9179,8 @@ public class ShephardsPlayApplet
                             int green = (pixels[0]>> 8) & 0xff;
                             int blue =  (pixels[0]    ) & 0xff;
 
-                            mg.setColor(java.awt.Color.white);
-                            mg.drawString(""+focusX+","+focusY+": "+red+","+green+","+blue+(alpha==255?"":" "+alpha),
+                            mg3d.setColor(java.awt.Color.white);
+                            mg3d.drawString(""+focusX+","+focusY+": "+red+","+green+","+blue+(alpha==255?"":" "+alpha),
                                           size.width/minSize,-size.height/minSize,
                                           1., 1.5,
                                           java.awt.Color.black); // background
@@ -14276,7 +14290,7 @@ OFF
             } // deleteVertex
 
             // XXX TODO: this shouldn't need graphics, just the xform
-            public int indexOfClosestVert(double x, double y, MyGraphics3D mg)
+            public int indexOfClosestVert(double x, double y, MyGraphics3D mg3d)
             {
                 double closestDistSqrd = Double.POSITIVE_INFINITY;
                 int closestVertIndex = -1;
@@ -14284,7 +14298,7 @@ OFF
                 FORI (iVert, verts.size()) // beginning to end, so we choose first of equal
                 {
                     Vertex vert = (Vertex)verts.get(iVert);
-                    mg.xform(vert.X(), vert.Y(), vert.Z(), vert.W(), scratch);
+                    mg3d.xform(vert.X(), vert.Y(), vert.Z(), vert.W(), scratch);
                     double thisDistSqrd = SQR(scratch[0]-x)
                                         + SQR(scratch[1]-y);
                     if (thisDistSqrd < closestDistSqrd)
