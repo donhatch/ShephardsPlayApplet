@@ -6473,8 +6473,9 @@ public class ShephardsPlayApplet
                         if (true)
                         {
                             analyzeRandomSpanningTrees(mesh);
+                            analyzeRandomSpanningTrees(getDualMesh());
                         }
-                        if (false)
+                        if (true)
                         {
                             java.math.BigInteger nPrimalSpanningTrees = countSpanningTrees(mesh);
                             PRINT(nPrimalSpanningTrees);
@@ -16806,7 +16807,7 @@ OFF
                     this.e2v = new int[nEdges][2];
 
                     int e2next[] = new int[nEdges];
-                    boolean infiniteVertexUsed = false; // until proven otherwise
+                    boolean infiniteVertUsed = false; // until proven otherwise
                     FORI (iEdge, nEdges)
                     {
                         Mesh.Edge edge = mesh.getEdge(iEdge);
@@ -16814,12 +16815,12 @@ OFF
                         assert(edge.opposite().myIndex() == (iEdge^1));
                         Mesh.Vertex v0 = edge.initialVertex();
                         Mesh.Vertex v1 = edge.finalVertex();
+                        if (v0 == null || v1 == null)
+                            infiniteVertUsed = true;
                         int i0 = v0==null ? nVerts : v0.myIndex();
                         int i1 = v1==null ? nVerts : v1.myIndex();
                         e2v[iEdge][0] = i0;
                         e2v[iEdge][1] = i1;
-                        if (v0 == null || v1 == null)
-                            infiniteVertexUsed = true;
                         Mesh.Edge next = edge.next();
                         if (next == null)
                         {
@@ -16830,7 +16831,25 @@ OFF
                         }
                         e2next[iEdge] = next.myIndex();
                     }
-                    if (infiniteVertexUsed)
+                    if (mergeInsideOutVertsIntoInfiniteVert)
+                    {
+                        boolean isInsideOut[] = new boolean[nVerts+1];
+                        FORI (iVert, nVerts)
+                            isInsideOut[iVert] = (mesh.getVert(iVert).weight < 0);
+                        isInsideOut[nVerts] = true; // the infinite one, if any
+                        PRINTVEC(isInsideOut);
+                        FORI (iEdge, nEdges)
+                            FORI (iVertThisEdge, 2)
+                            {
+                                if (isInsideOut[e2v[iEdge][iVertThisEdge]])
+                                {
+                                    e2v[iEdge][iVertThisEdge] = nVerts;
+                                    infiniteVertUsed = true;
+                                }
+                            }
+                        // Note that it may be that some original verts are now unused in e2v
+                    }
+                    if (infiniteVertUsed)
                         nVerts++;
                     this.v2e = new int[nVerts][];
                     {
@@ -16845,24 +16864,11 @@ OFF
                         FORI (iEdge, nEdges)
                         {
                             int iVert = e2v[iEdge][0];
-                            if (arities[iVert] == 0)
-                            {
-                                v2e[iVert][0] = iEdge; // arbitrary edge out of the vertex
-                                arities[iVert] = 1;
-                            }
+                            v2e[iVert][arities[iVert]++] = iEdge;
                         }
                         FORI (iVert, nVerts)
                         {
-                            if (arities[iVert] == 1)
-                            {
-                                while (arities[iVert] < v2e[iVert].length)
-                                {
-                                    v2e[iVert][arities[iVert]] = e2next[v2e[iVert][arities[iVert]-1]^1]; // next one CW around the vertex
-                                    arities[iVert]++;
-                                }
-                                assert_eq(e2next[v2e[iVert][arities[iVert]-1]^1], v2e[iVert][0]);
-                            }
-                            assert_eq(arities[iVert], v2e[iVert].length);
+                            assert_eq(v2e[iVert].length, arities[iVert]);
                             FORI (iEdgeOut, v2e[iVert].length)
                                 assert_eq(e2v[v2e[iVert][iEdgeOut]][0], iVert);
                         }
@@ -16873,6 +16879,9 @@ OFF
             SimplerMeshDataStructure simplerMeshDataStructure = new SimplerMeshDataStructure(mesh, true);
             int e2v[][] = simplerMeshDataStructure.e2v;
             int v2e[][] = simplerMeshDataStructure.v2e;
+            //PRINTARRAY(e2v);
+            //PRINTARRAY(v2e);
+            nVerts = v2e.length; // may have increased by 1. CBB: error prone!
 
             java.util.Random generator = new java.util.Random();
 
@@ -16882,41 +16891,33 @@ OFF
             FORI (iTry, nTries)
             {
                 // Make a random spanning tree, and increment its count.
-                // TODO: detect disconnected graph instead of endless looping!
 
                 int whichTree;
 
                 if (true)
                 {
-                    // wilson's algorithm with r=0
+                    // Wilson's algorithm.
+                    // Must start with random vertex of random edge.
+                    int r = e2v[generator.nextInt(e2v.length)][generator.nextInt(2)];
                     boolean inTree[] = new boolean[nVerts]; // false initially
                     int next[] = new int[nVerts]; // vertex to next *edge*, not vertex
-                    int r = 0; // arbitrarily
                     next[r] = -1;
                     inTree[r] = true;
                     FORI (i, nVerts)
                     {
-                        int u = i;
-                        while (!inTree[u])
-                        {
+                        if (v2e[i].length == 0)
+                            continue; // the vertex got removed (probably merged into the infinite vertex)
+                        for (int u = i; !inTree[u]; u = e2v[next[u]][1])
                             next[u] = v2e[u][generator.nextInt(v2e[u].length)];
-                            u = e2v[next[u]][1];
-                        }
-                        u = i;
-                        while (!inTree[u])
-                        {
+                        for (int u = i; !inTree[u]; u = e2v[next[u]][1])
                             inTree[u] = true;
-                            u = e2v[next[u]][1];
-                        }
                     }
                     whichTree = 0;
                     FORI (iVert, nVerts)
                     {
                         int iEdge = next[iVert];
                         if (iEdge != -1)
-                        {
                             whichTree |= (1 << (iEdge/2));
-                        }
                     }
                 }
                 else if (false)
@@ -17077,7 +17078,6 @@ OFF
                 //PRINT(whichTree);
 
                 counts[whichTree]++;
-
             }
             //PRINTARRAY(counts);
 
@@ -17087,6 +17087,7 @@ OFF
                 nZeros++;
             counts = (int[])Arrays.subarray(counts, nZeros, counts.length-nZeros);
             PRINTARRAY(counts);
+            PRINT(counts.length);
 
             System.out.println("    out analyzeRandomSpanningTrees");
         } // analyzeRandomSpanningTrees
