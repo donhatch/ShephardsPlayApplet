@@ -6472,7 +6472,6 @@ public class ShephardsPlayApplet
                     {
                         if (true)
                         {
-                            // actually this throws an error-- integer overflow probably
                             analyzeRandomSpanningTrees(mesh);
                         }
                         if (false)
@@ -16782,81 +16781,98 @@ OFF
                     }
             }
 
-            // convert to simpler data structure...
-
-            int e2v[][] = new int[nEdges][2]; // edge to verts
-            int e2opposite[] = new int[nEdges];
-            int e2next[] = new int[nEdges];
-
-            boolean infiniteVertexUsed = false; // until proven otherwise
-            FORI (iEdge, nEdges)
+            // Simpler mesh data structure, suitable for running
+            // the algorithm from David Bruce Wilson
+            // "Generating Random Spanning Trees More Quickly than the Cover Time".
+            //
+            // Subtleties:
+            //     - Depending on how original mesh was constructed,
+            //       it might have edges leading nowhere or coming from nowhere.
+            //       The "nowhere" gets made into a vertex (the "infinite vertex").
+            //     - We might or might not want to consider all inside-out vertices
+            //       to be part of the infinite vertex.
+            //     - To get a random spanning tree, we have to start at a random vertex of a random edge.
+            //       but, the caller would really like a specific root.
+            //       How do we reconcile these needs?
+            //       Answer: bite the bullet, do it the recommended way, and then re-root.
+            class SimplerMeshDataStructure
             {
-                Mesh.Edge edge = mesh.getEdge(iEdge);
-                Mesh.Vertex v0 = edge.initialVertex();
-                Mesh.Vertex v1 = edge.finalVertex();
-                int i0 = v0==null ? nVerts : v0.myIndex();
-                int i1 = v1==null ? nVerts : v1.myIndex();
-                e2v[iEdge][0] = i0;
-                e2v[iEdge][1] = i1;
-                if (v0 == null || v1 == null)
-                    infiniteVertexUsed = true;
-                e2opposite[iEdge] = edge.opposite().myIndex();
-                assert(e2opposite[iEdge] == (iEdge ^ 1)); // so don't really need the lookup table, oh well
-                Mesh.Edge next = edge.next();
-                if (next == null)
+                public int e2v[/*nEdges*/][/*2*/]; // edge to verts
+                public int v2e[/*nVerts*/][]; // vert to edges out
+                SimplerMeshDataStructure(Mesh mesh, boolean mergeInsideOutVertsIntoInfiniteVert)
                 {
-                    // final vertex is the infinite one; to find next, need to walk backwards around the face
-                    next = edge;
-                    while (next.prev() != null)
-                        next = next.prev();
-                }
-                e2next[iEdge] = next.myIndex();
-            }
-            PRINTARRAY(e2v);
-            PRINTARRAY(e2opposite);
-            PRINTARRAY(e2next);
-            PRINT(nVerts);
-            PRINT(infiniteVertexUsed);
-            if (infiniteVertexUsed)
-                nVerts++;
-            PRINT(nVerts);
+                    int nVerts = mesh.verts.size(); // may add 1 though
+                    int nEdges = mesh.edges.size();
+                    this.e2v = new int[nEdges][2];
 
-            int v2e[][] = new int[nVerts][];
-            {
-                int arities[] = new int[nVerts]; // zeros initially
-                FORI (iEdge, nEdges)
-                    arities[e2v[iEdge][0]]++;
-                FORI (iVert, nVerts)
-                {
-                    v2e[iVert] = new int[arities[iVert]];
-                    arities[iVert] = 0;
-                }
-                FORI (iEdge, nEdges)
-                {
-                    int iVert = e2v[iEdge][0];
-                    if (arities[iVert] == 0)
+                    int e2next[] = new int[nEdges];
+                    boolean infiniteVertexUsed = false; // until proven otherwise
+                    FORI (iEdge, nEdges)
                     {
-                        v2e[iVert][0] = iEdge; // arbitrary edge out of the vertex
-                        arities[iVert] = 1;
-                    }
-                }
-                FORI (iVert, nVerts)
-                {
-                    if (arities[iVert] == 1)
-                    {
-                        while (arities[iVert] < v2e[iVert].length)
+                        Mesh.Edge edge = mesh.getEdge(iEdge);
+                        assert(edge.myIndex() == iEdge);
+                        assert(edge.opposite().myIndex() == (iEdge^1));
+                        Mesh.Vertex v0 = edge.initialVertex();
+                        Mesh.Vertex v1 = edge.finalVertex();
+                        int i0 = v0==null ? nVerts : v0.myIndex();
+                        int i1 = v1==null ? nVerts : v1.myIndex();
+                        e2v[iEdge][0] = i0;
+                        e2v[iEdge][1] = i1;
+                        if (v0 == null || v1 == null)
+                            infiniteVertexUsed = true;
+                        Mesh.Edge next = edge.next();
+                        if (next == null)
                         {
-                            v2e[iVert][arities[iVert]] = e2next[e2opposite[v2e[iVert][arities[iVert]-1]]]; // next one CW around the vertex
-                            arities[iVert]++;
+                            // final vertex is the infinite one; to find next, need to walk backwards around the face
+                            next = edge;
+                            while (next.prev() != null)
+                                next = next.prev();
                         }
-                        assert_eq(e2next[e2opposite[v2e[iVert][arities[iVert]-1]]], v2e[iVert][0]);
+                        e2next[iEdge] = next.myIndex();
                     }
-                    assert_eq(arities[iVert], v2e[iVert].length);
-                    FORI (iEdgeOut, v2e[iVert].length)
-                        assert_eq(e2v[v2e[iVert][iEdgeOut]][0], iVert);
+                    if (infiniteVertexUsed)
+                        nVerts++;
+                    this.v2e = new int[nVerts][];
+                    {
+                        int arities[] = new int[nVerts]; // zeros initially
+                        FORI (iEdge, nEdges)
+                            arities[e2v[iEdge][0]]++;
+                        FORI (iVert, nVerts)
+                        {
+                            v2e[iVert] = new int[arities[iVert]];
+                            arities[iVert] = 0;
+                        }
+                        FORI (iEdge, nEdges)
+                        {
+                            int iVert = e2v[iEdge][0];
+                            if (arities[iVert] == 0)
+                            {
+                                v2e[iVert][0] = iEdge; // arbitrary edge out of the vertex
+                                arities[iVert] = 1;
+                            }
+                        }
+                        FORI (iVert, nVerts)
+                        {
+                            if (arities[iVert] == 1)
+                            {
+                                while (arities[iVert] < v2e[iVert].length)
+                                {
+                                    v2e[iVert][arities[iVert]] = e2next[v2e[iVert][arities[iVert]-1]^1]; // next one CW around the vertex
+                                    arities[iVert]++;
+                                }
+                                assert_eq(e2next[v2e[iVert][arities[iVert]-1]^1], v2e[iVert][0]);
+                            }
+                            assert_eq(arities[iVert], v2e[iVert].length);
+                            FORI (iEdgeOut, v2e[iVert].length)
+                                assert_eq(e2v[v2e[iVert][iEdgeOut]][0], iVert);
+                        }
+                    }
                 }
-            }
-            PRINTARRAY(v2e);
+            } // SimplerMeshDataStructure
+
+            SimplerMeshDataStructure simplerMeshDataStructure = new SimplerMeshDataStructure(mesh, true);
+            int e2v[][] = simplerMeshDataStructure.e2v;
+            int v2e[][] = simplerMeshDataStructure.v2e;
 
             java.util.Random generator = new java.util.Random();
 
@@ -17015,13 +17031,13 @@ OFF
                         {
                             int jEdge = v2e[u][iEdgeOut];
                             boolean isBackToTree = inTree[e2v[jEdge][1]];
-                            assert_eq(isBackToTree, (e2indexInPotentialNextEdges[e2opposite[jEdge]] != -1));
+                            assert_eq(isBackToTree, (e2indexInPotentialNextEdges[jEdge^1] != -1));
                             if (isBackToTree)
                             {
                                 // remove (opposite of) jEdge from boundary.
-                                int index = e2indexInPotentialNextEdges[e2opposite[jEdge]];
+                                int index = e2indexInPotentialNextEdges[jEdge^1];
                                 assert(index != -1);
-                                e2indexInPotentialNextEdges[e2opposite[jEdge]] = -1;
+                                e2indexInPotentialNextEdges[jEdge^1] = -1;
                                 if (index != nPotentialNextEdges-1)
                                 {
                                     // move the last one into the gap
