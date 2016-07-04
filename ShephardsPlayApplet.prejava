@@ -102,6 +102,7 @@ BUGS:
       when flat paraboloid
 
   Symmetry-related:
+    - "force symmetry" on "crack goes in spiral" gives fuzzy exception.  I think I need to use max-mag-normalized w coords?
     - take into account central symmetry when remapping fundamental regions
     - wrapped, with central symmetry on:
         - changing p from odd to even seems to lose some symmetry connections. OH I see, hmm, it's retaining the fact that it's an antiprism.  this might get better when fundamental regions are handled consistently in general
@@ -2680,7 +2681,7 @@ public class ShephardsPlayApplet
                                 setSelected(applet.remapFundamentalRegionWhenChangingSymmetry.get());
                                 setMargin(nomargin);
                                 addActionListener(new java.awt.event.ActionListener() {
-                                    public void actionPerformed(java.awt.event.ActionEvent e)
+                                    @Override public void actionPerformed(java.awt.event.ActionEvent e)
                                     {
                                         applet.remapFundamentalRegionWhenChangingSymmetry.set(isSelected());
                                     }
@@ -2696,13 +2697,12 @@ public class ShephardsPlayApplet
                                 add(new JLabel("    "));
                                 add(new JCol() {{
                                     final ButtonGroup buttonGroup = new ButtonGroup();
-                                    add(new JRadioButton("replicate non-matching verts (doesn't work yet)") { Listenable.Listener listener; {
-                                        setBackground(new java.awt.Color(255,128,0)); // maintenance
+                                    add(new JRadioButton("replicate non-matching verts") { Listenable.Listener listener; {
                                         buttonGroup.add(this);
                                         setSelected(applet.replicateVertsWhenChangingSymmetry.get());
                                         setMargin(nomargin);
                                         addActionListener(new java.awt.event.ActionListener() {
-                                            public void actionPerformed(java.awt.event.ActionEvent e)
+                                            @Override public void actionPerformed(java.awt.event.ActionEvent e)
                                             {
                                                 applet.replicateVertsWhenChangingSymmetry.set(isSelected());
                                             }
@@ -2720,7 +2720,7 @@ public class ShephardsPlayApplet
                                         setSelected(applet.deleteNonReplicatedVertsWhenChangingSymmetry.get());
                                         setMargin(nomargin);
                                         addActionListener(new java.awt.event.ActionListener() {
-                                            public void actionPerformed(java.awt.event.ActionEvent e)
+                                            @Override public void actionPerformed(java.awt.event.ActionEvent e)
                                             {
                                                 applet.deleteNonReplicatedVertsWhenChangingSymmetry.set(isSelected());
                                             }
@@ -2734,11 +2734,23 @@ public class ShephardsPlayApplet
                                     }});
                                 }});
                             }});
-                            add(new JButton("force symmetry by replicating non-matching verts (doesn't work yet)") {{
+                            add(new JButton("force symmetry by replicating non-matching verts") {{
                                 setBackground(new java.awt.Color(255,128,0)); // maintenance
+                                addActionListener(new java.awt.event.ActionListener() {
+                                    @Override public void actionPerformed(java.awt.event.ActionEvent e)
+                                    {
+                                        applet.forceSymmetryByReplicatingVerts();
+                                    }
+                                });
                             }});
                             add(new JButton("force symmetry by deleting non-matching verts (doesn't work yet)") {{
                                 setBackground(new java.awt.Color(255,128,0)); // maintenance
+                                addActionListener(new java.awt.event.ActionListener() {
+                                    @Override public void actionPerformed(java.awt.event.ActionEvent e)
+                                    {
+                                        applet.forceSymmetryByDeletingVerts();
+                                    }
+                                });
                             }});
                         }});
                     }});
@@ -2950,7 +2962,7 @@ public class ShephardsPlayApplet
                             add(new JButton("Dump window positions and sizes") {{
                                 setMargin(nomargin);
                                 addActionListener(new java.awt.event.ActionListener() {
-                                    public void actionPerformed(java.awt.event.ActionEvent e)
+                                    @Override public void actionPerformed(java.awt.event.ActionEvent e)
                                     {
                                         System.out.println("----------------");
                                         System.out.println("      main applet: "+applet.theMainAppletWindow.getWidth()+"x"+applet.theMainAppletWindow.getHeight()+"+"+applet.theMainAppletWindow.getX()+"+"+applet.theMainAppletWindow.getY()+"");
@@ -3049,7 +3061,7 @@ public class ShephardsPlayApplet
                 menuBar.add(windowsMenu);
                 windowsMenu.add(new JMenuItem("Control Panel") {{
                     addActionListener(new java.awt.event.ActionListener() {
-                        public void actionPerformed(java.awt.event.ActionEvent e)
+                        @Override public void actionPerformed(java.awt.event.ActionEvent e)
                         {
                             theControlPanelWindow.setState(JFrame.NORMAL); // not iconified
                             theControlPanelWindow.setVisible(true); // also brings it to front, apparently
@@ -3061,7 +3073,7 @@ public class ShephardsPlayApplet
                 menuBar.add(helpMenu);
                 helpMenu.add(new JMenuItem("Help") {{
                     addActionListener(new java.awt.event.ActionListener() {
-                        public void actionPerformed(java.awt.event.ActionEvent e)
+                        @Override public void actionPerformed(java.awt.event.ActionEvent e)
                         {
                             help();
                         }
@@ -4254,10 +4266,11 @@ public class ShephardsPlayApplet
                 + " "+(central?"with":"without")+" central symmetry");
 
             UndoItem.State before = newUndoItemState();
-            if (remap)
-                changeMeshRotationalSymmetry(pRotationalSymmetry.get(),
-                                             qRotationalSymmetry.get(),
-                                             p, q);
+            if (remap && (p != pRotationalSymmetry.get() || q != qRotationalSymmetry.get()))
+                this.mesh = changeMeshRotationalSymmetry(this.mesh,
+                                                         pRotationalSymmetry.get(),
+                                                         qRotationalSymmetry.get(),
+                                                         p, q);
             // probably a lot of excess messages going on...
             pRotationalSymmetry.set(p);
             qRotationalSymmetry.set(q);
@@ -4270,17 +4283,102 @@ public class ShephardsPlayApplet
             theCanvas.repaint();
         } // changeSymmetry
 
-        public void changeMeshRotationalSymmetry(int oldP, int oldQ,
-                                                 int newP, int newQ)
+        // XXX crappy name. this is the non-static version that uses a bunch of params to decide the symmetry group.
+        private void forceSymmetryByReplicatingVerts()
+        {
+            double group[][][] = getTheSymmetryGroup();
+            UndoItem.State before = newUndoItemState();
+            this.mesh = forceMeshSymmetryByReplicatingVerts(this.mesh, group);
+            if (continuouslyDelaunayizeFlag.get()) delaunayize();
+            UndoItem.State after = newUndoItemState();
+            undoTreeSquirrel.Do(new UndoItem(before, after));
+            theCanvas.repaint();
+        }
+        private void forceSymmetryByDeletingVerts()
+        {
+            double group[][][] = getTheSymmetryGroup();
+            UndoItem.State before = newUndoItemState();
+            this.mesh = forceMeshSymmetryByDeletingVerts(this.mesh, group);
+            if (continuouslyDelaunayizeFlag.get()) delaunayize();
+            UndoItem.State after = newUndoItemState();
+            undoTreeSquirrel.Do(new UndoItem(before, after));
+            theCanvas.repaint();
+        }
+
+        private static Mesh forceMeshSymmetryByDeletingVerts(Mesh mesh, double group[][][])
+        {
+            System.out.println("forceMeshSymmetryByDeletingVerts not implemented!");
+            return mesh;
+        }
+
+        // Currently destroys connectivity. Another option would be to add verts one by one, the same as if user created them.
+        // Currently removes dups.
+        // CBB: should vert store notion of whether the intent was H or W?  we assume W.
+        private static Mesh forceMeshSymmetryByReplicatingVerts(Mesh mesh, double group[][][])
+        {
+            int nVerts = mesh.verts.size();
+            System.out.println("          nVerts = "+nVerts);
+            double vertsHomo[][] = new double[nVerts][4];
+            double vertsHetero[][] = new double[nVerts][3];
+            FORI (iVert, nVerts)
+            {
+                Mesh.Vertex vert = mesh.getVert(iVert);
+                vertsHomo[iVert][0] = vert.X();
+                vertsHomo[iVert][1] = vert.Y();
+                vertsHomo[iVert][2] = vert.Z();
+                vertsHomo[iVert][3] = vert.W();
+                vertsHetero[iVert][0] = vert.x();
+                vertsHetero[iVert][1] = vert.y();
+                vertsHetero[iVert][2] = vert.z();
+            }
+            double bbox[][] = VecMath.bbox(vertsHetero);
+            double workAreaSize = (nVerts==0 ? 1. : MAX4(ABS(bbox[0][0]),
+                                                         ABS(bbox[0][1]),
+                                                         ABS(bbox[1][0]),
+                                                         ABS(bbox[1][1])));
+            // as recommended in FuzzyPointHashTable doc...
+            double littleTol = 1e-12 * workAreaSize;
+            double bigTol = 1e-10 * workAreaSize;
+            double bucketSize = 1/1024. * workAreaSize;
+            FuzzyPointHashTable fuzzyTable = new FuzzyPointHashTable(littleTol,
+                                                                     bigTol,
+                                                                     bucketSize);
+            Object dummy = new Object(); // we really want a hash set, not hash table, so need a dummy object, distinct from null
+
+            ArrayList/*<double[]>*/ finalVertsArrayList = new ArrayList();
+
+            // Initial pass adding originals, since those are the preferred images
+            FORI (iVert, nVerts)
+            {
+                if (fuzzyTable.put(vertsHetero[iVert],dummy) == null) // i.e. if it wasn't already there
+                    finalVertsArrayList.add(vertsHomo[iVert]);
+            }
+            double scratch4[] = new double[4];
+            FORI (iVert, nVerts)
+            {
+                for (int iSymmetry = 1; iSymmetry < group.length; ++iSymmetry) // skip 0 since we did it already
+                {
+                    VecMath.vxm(scratch4, vertsHomo[iVert], group[iSymmetry]);
+                    if (fuzzyTable.put(VecMath.vxs(3,scratch4,1./scratch4[3]),dummy) == null) // i.e. if it wasn't already there
+                        finalVertsArrayList.add(VecMath.copyvec(scratch4));
+                }
+            }
+            double finalVerts[][] = new double[finalVertsArrayList.size()][4];
+            finalVertsArrayList.toArray(finalVerts);
+            finalVertsArrayList = null;
+
+            Mesh answer = new Mesh(finalVerts, new int[0][]);
+
+            System.out.println("    out changeMeshRotationalSymmetry");
+            return answer;
+
+        } // forceMeshSymmetryByReplicatingVerts
+
+        private static Mesh changeMeshRotationalSymmetry(Mesh mesh,
+                                                         int oldP, int oldQ,
+                                                         int newP, int newQ)
         {
             System.out.println("    in changeMeshRotationalSymmetry");
-            if (oldP == newP
-             && oldQ == newQ)
-            {
-                System.out.println("    out changeMeshRotationalSymmetry (nothing changed)");
-                return; // nothing change; no point in introducing round-off error
-            }
-
             ArrayList/*<double[]>*/ newVertsArrayList = new ArrayList();
 
             if (oldQ == 1 && newQ == 1)
@@ -4296,7 +4394,7 @@ public class ShephardsPlayApplet
                     Mesh.Vertex vert = mesh.getVert(iOldVert);
                     oldVerts[iOldVert][0] = vert.x();
                     oldVerts[iOldVert][1] = vert.y();
-                    oldVerts[iOldVert][2] = vert.h(); // different from the other
+                    oldVerts[iOldVert][2] = vert.h(); // different from the other (hmm, should this be dependent on wrapAroundSphere instead? now I'm confused)
                 }
                 double oldBbox[][] = VecMath.bbox(oldVerts);
                 double workAreaSize = (nOldVerts==0 ? 1. : MAX4(ABS(oldBbox[0][0]),
@@ -4360,7 +4458,7 @@ public class ShephardsPlayApplet
                     Mesh.Vertex vert = mesh.getVert(iOldVert);
                     oldVerts[iOldVert][0] = vert.x();
                     oldVerts[iOldVert][1] = vert.y();
-                    oldVerts[iOldVert][2] = vert.z(); // different from the other
+                    oldVerts[iOldVert][2] = vert.z(); // different from the other  (hmm, should this be dependent on wrapAroundSphere instead? now I'm confused)
                 }
                 double oldBbox[][] = VecMath.bbox(oldVerts);
                 double workAreaSize = (nOldVerts==0 ? 1. : MAX4(ABS(oldBbox[0][0]),
@@ -4533,9 +4631,10 @@ public class ShephardsPlayApplet
 
             // For now, don't try to retain any connectivity.
             // A mesh will appear if "Keep delaunayized" is checked.
-            this.mesh = new Mesh(newVerts, new int[0][]);
+            Mesh answer = new Mesh(newVerts, new int[0][]);
 
             System.out.println("    out changeMeshRotationalSymmetry");
+            return answer;
         } // changeMeshRotationalSymmetry
 
 
@@ -18527,8 +18626,8 @@ OFF
         private Listenable.Boolean leftRightSymmetry = new Listenable.Boolean(false);
         private Listenable.Boolean centralSymmetry = new Listenable.Boolean(false);
         private Listenable.Boolean remapFundamentalRegionWhenChangingSymmetry = new Listenable.Boolean(false);
-        private Listenable.Boolean replicateVertsWhenChangingSymmetry = new Listenable.Boolean(false);
-        private Listenable.Boolean deleteNonReplicatedVertsWhenChangingSymmetry = new Listenable.Boolean(false);
+        private Listenable.Boolean replicateVertsWhenChangingSymmetry = new Listenable.Boolean(true);
+        private Listenable.Boolean deleteNonReplicatedVertsWhenChangingSymmetry = new Listenable.Boolean(false); // XXX don't need this, it's just the opposite of the other, but need to pick a better name
 
         private Listenable.Boolean wrapAroundSphereFlag = new Listenable.Boolean(false);
         private Listenable.Boolean centerSphereFlag = new Listenable.Boolean(false);
@@ -18767,7 +18866,7 @@ OFF
                 }
             });
             addActionListener(new java.awt.event.ActionListener() {
-                public void actionPerformed(java.awt.event.ActionEvent e)
+                @Override public void actionPerformed(java.awt.event.ActionEvent e)
                 {
                     s.set(getText());
                 }
