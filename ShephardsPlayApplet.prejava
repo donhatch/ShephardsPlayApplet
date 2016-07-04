@@ -2697,7 +2697,7 @@ public class ShephardsPlayApplet
                                 add(new JLabel("    "));
                                 add(new JCol() {{
                                     final ButtonGroup buttonGroup = new ButtonGroup();
-                                    add(new JRadioButton("replicate non-matching verts") { Listenable.Listener listener; {
+                                    add(new JRadioButton("replicate non-matching verts when remapping") { Listenable.Listener listener; {
                                         buttonGroup.add(this);
                                         setSelected(applet.replicateVertsWhenChangingSymmetry.get());
                                         setMargin(nomargin);
@@ -2714,7 +2714,7 @@ public class ShephardsPlayApplet
                                             }
                                         });
                                     }});
-                                    add(new JRadioButton("delete non-matching verts (doesn't work yet)") { Listenable.Listener listener; {
+                                    add(new JRadioButton("delete non-matching verts  when remapping (doesn't work yet)") { Listenable.Listener listener; {
                                         setBackground(new java.awt.Color(255,128,0)); // maintenance
                                         buttonGroup.add(this);
                                         setSelected(applet.deleteNonReplicatedVertsWhenChangingSymmetry.get());
@@ -4251,6 +4251,7 @@ public class ShephardsPlayApplet
 
 
         // crappy name-- this is changeMeshRotationalSymmetry with undo and repaint... well also some resets
+        // TODO: doesn't do anything reasonable if p,q is polyhedral but not wrapped around sphere
         private void changeSymmetry(int p, int q, boolean leftRight, boolean central, boolean remap, boolean replicate, boolean deleteNonReplicated)
         {
             if (p == pRotationalSymmetry.get()
@@ -4311,15 +4312,38 @@ public class ShephardsPlayApplet
             return mesh;
         }
 
+        // TODO: move these to VecMath I think
+        // Normalize so max abs value of coordinates is 1.
+        private static void homoNormalize(int n, double answer[], double v[])
+        {
+            double divideByThis = ABS(v[0]);
+            for (int i = 1; i < n; ++i) // skip 0
+            {
+                double absvi = ABS(v[i]);
+                divideByThis = MAX(divideByThis, absvi);
+            }
+            VecMath.vxs(n, answer, v, 1./divideByThis);
+        }
+        private static void homoNormalize(double answer[], double v[])
+        {
+            homoNormalize(MIN(answer.length,v.length), answer, v);
+        }
+        private static double[] homoNormalize(double v[])
+        {
+            double answer[] = new double[v.length];
+            homoNormalize(v.length, answer, v);
+            return answer;
+        }
+
         // Currently destroys connectivity. Another option would be to add verts one by one, the same as if user created them.
         // Currently removes dups.
         // CBB: should vert store notion of whether the intent was H or W?  we assume W.
+        // NOTE: I'm using normalized homogeneous coords as keys... however, the reason I'm doing that is because I thought it would fix the behavior on "crack goes in spiral small", but it doesn't!  so maybe go back to using 3d points?  Not sure.  Normalized homo does have the advantage that it should do something reasonable with very large coords though.  Hmm.
         private static Mesh forceMeshSymmetryByReplicatingVerts(Mesh mesh, double group[][][])
         {
             int nVerts = mesh.verts.size();
             System.out.println("          nVerts = "+nVerts);
             double vertsHomo[][] = new double[nVerts][4];
-            double vertsHetero[][] = new double[nVerts][3];
             FORI (iVert, nVerts)
             {
                 Mesh.Vertex vert = mesh.getVert(iVert);
@@ -4327,22 +4351,10 @@ public class ShephardsPlayApplet
                 vertsHomo[iVert][1] = vert.Y();
                 vertsHomo[iVert][2] = vert.Z();
                 vertsHomo[iVert][3] = vert.W();
-                vertsHetero[iVert][0] = vert.x();
-                vertsHetero[iVert][1] = vert.y();
-                vertsHetero[iVert][2] = vert.z();
             }
-            double bbox[][] = VecMath.bbox(vertsHetero);
-            double workAreaSize = (nVerts==0 ? 1. : MAX4(ABS(bbox[0][0]),
-                                                         ABS(bbox[0][1]),
-                                                         ABS(bbox[1][0]),
-                                                         ABS(bbox[1][1])));
+
             // as recommended in FuzzyPointHashTable doc...
-            double littleTol = 1e-12 * workAreaSize;
-            double bigTol = 1e-10 * workAreaSize;
-            double bucketSize = 1/1024. * workAreaSize;
-            FuzzyPointHashTable fuzzyTable = new FuzzyPointHashTable(littleTol,
-                                                                     bigTol,
-                                                                     bucketSize);
+            FuzzyPointHashTable fuzzyTable = new FuzzyPointHashTable(1e-12, 1e-10, 1/1024.);
             Object dummy = new Object(); // we really want a hash set, not hash table, so need a dummy object, distinct from null
 
             ArrayList/*<double[]>*/ finalVertsArrayList = new ArrayList();
@@ -4350,17 +4362,17 @@ public class ShephardsPlayApplet
             // Initial pass adding originals, since those are the preferred images
             FORI (iVert, nVerts)
             {
-                if (fuzzyTable.put(vertsHetero[iVert],dummy) == null) // i.e. if it wasn't already there
+                if (fuzzyTable.put(homoNormalize(vertsHomo[iVert]),dummy) == null) // i.e. if it wasn't already there
                     finalVertsArrayList.add(vertsHomo[iVert]);
             }
-            double scratch4[] = new double[4];
+            double scratchHomo[] = new double[4];
             FORI (iVert, nVerts)
             {
                 for (int iSymmetry = 1; iSymmetry < group.length; ++iSymmetry) // skip 0 since we did it already
                 {
-                    VecMath.vxm(scratch4, vertsHomo[iVert], group[iSymmetry]);
-                    if (fuzzyTable.put(VecMath.vxs(3,scratch4,1./scratch4[3]),dummy) == null) // i.e. if it wasn't already there
-                        finalVertsArrayList.add(VecMath.copyvec(scratch4));
+                    VecMath.vxm(scratchHomo, vertsHomo[iVert], group[iSymmetry]);
+                    if (fuzzyTable.put(homoNormalize(scratchHomo),dummy) == null) // i.e. if it wasn't already there
+                        finalVertsArrayList.add(VecMath.copyvec(scratchHomo));
                 }
             }
             double finalVerts[][] = new double[finalVertsArrayList.size()][4];
@@ -4470,7 +4482,7 @@ public class ShephardsPlayApplet
                 double oldGroup[][][] = computeSymmetryGroup3d(
                     oldP,
                     oldQ,
-                    false, false); // no reflections here
+                    false, false); // no reflections taken into account here
 
                 System.out.println("          "+oldGroup.length+" old symmetries");
 
