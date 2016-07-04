@@ -2590,9 +2590,13 @@ public class ShephardsPlayApplet
                                             @Override public void valueChanged()
                                             {
                                                 System.out.println("Hey! p rotational symmetry intent changed to "+applet.pRotationalSymmetryIntent.get());
-                                                // Yes, necessary, see explanation above
                                                 if (applet.pRotationalSymmetryIntent.get() > maxpq) // from outside button group
+                                                {
+                                                    // Yes, necessary, if we don't explicitly clearSelection,
+                                                    // the button group will reject the last button's attempt
+                                                    // to deselect itself.  More details above.
                                                     pButtonGroup.clearSelection();
+                                                }
                                                 applet.changeSymmetry(applet.pRotationalSymmetryIntent.get(), applet.qRotationalSymmetryIntent.get(), applet.leftRightSymmetry.get(), applet.centralSymmetry.get(), applet.remapFundamentalRegionWhenChangingSymmetry.get(), applet.replicateVertsWhenChangingSymmetry.get(), applet.deleteNonReplicatedVertsWhenChangingSymmetry.get());
                                             }
                                         });
@@ -4239,7 +4243,9 @@ public class ShephardsPlayApplet
 
             UndoItem.State before = newUndoItemState();
             if (remap)
-                changeMeshSymmetry(pRotationalSymmetry.get(), qRotationalSymmetry.get(), leftRightSymmetry.get(), centralSymmetry.get(),
+                changeMeshSymmetry(pRotationalSymmetry.get(),
+                                   qRotationalSymmetry.get(),
+                                   leftRightSymmetry.get(), centralSymmetry.get(),
                                    p, q, leftRight, central);
             // probably a lot of excess messages going on...
             pRotationalSymmetry.set(p);
@@ -4284,7 +4290,7 @@ public class ShephardsPlayApplet
                                                             ABS(oldBbox[1][0]),
                                                             ABS(oldBbox[1][1])));
 
-            ArrayList/*<double[]>*/ newVerts = new ArrayList();
+            ArrayList/*<double[]>*/ newVertsArrayList = new ArrayList();
 
             // as recommended in FuzzyPointHashTable doc...
             double littleTol = 1e-12 * workAreaSize;
@@ -4326,7 +4332,7 @@ public class ShephardsPlayApplet
                         };
                         if (newVertsTable.put(newVert,dummy) == null) // i.e. if it wasn't already there
                         {
-                            newVerts.add(new double[] {
+                            newVertsArrayList.add(new double[] {
                                 newVert[0],
                                 newVert[1],
                                 oldVert[2], // takes one of the old heights arbitrarily, if multiple
@@ -4335,17 +4341,17 @@ public class ShephardsPlayApplet
                     }
             }
 
+            oldVerts = null;
+            newVertsTable = null;
+
+            double newVerts[][] = new double[newVertsArrayList.size()][];
+            newVertsArrayList.toArray(newVerts);
+            newVertsArrayList = null;
+
             // For now, don't try to retain any connectivity.
-            mesh = new Mesh();
-            int nNewVerts = newVerts.size();
-            PRINT(nNewVerts);
-            FORI (iNewVert, nNewVerts)
-            {
-                double newVert[] = (double[])newVerts.get(iNewVert);
-                mesh.addIsolatedVertex(newVert[0],
-                                       newVert[1],
-                                       newVert[2]);
-            }
+            // A mesh will appear if "Keep delaunayized" is checked.
+            this.mesh = new Mesh(newVerts, new int[0][]);
+
             System.out.println("    out changeMeshSymmetry");
         } // changeMeshSymmetry
 
