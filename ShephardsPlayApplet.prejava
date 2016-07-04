@@ -4273,38 +4273,38 @@ public class ShephardsPlayApplet
                 return; // nothing change; no point in introducing round-off error
             }
 
-            int nOldVerts = mesh.verts.size();
-            PRINT(nOldVerts);
-            double oldVerts[][] = new double[nOldVerts][3];
-            double maxAbsCoord = 0.;
-            FORI (iOldVert, nOldVerts)
-            {
-                Mesh.Vertex vert = mesh.getVert(iOldVert);
-                oldVerts[iOldVert][0] = vert.x();
-                oldVerts[iOldVert][1] = vert.y();
-                oldVerts[iOldVert][2] = vert.h();
-            }
-            double oldBbox[][] = VecMath.bbox(oldVerts);
-            double workAreaSize = (nOldVerts==0 ? 1. : MAX4(ABS(oldBbox[0][0]),
-                                                            ABS(oldBbox[0][1]),
-                                                            ABS(oldBbox[1][0]),
-                                                            ABS(oldBbox[1][1])));
-
             ArrayList/*<double[]>*/ newVertsArrayList = new ArrayList();
-
-            // as recommended in FuzzyPointHashTable doc...
-            double littleTol = 1e-12 * workAreaSize;
-            double bigTol = 1e-10 * workAreaSize;
-            double bucketSize = 1/1024. * workAreaSize;
-            FuzzyPointHashTable newVertsTable = new FuzzyPointHashTable(littleTol,
-                                                                        bigTol,
-                                                                        bucketSize);
-            Object dummy = new Object(); // we really want a hash set, not hash table, so need a dummy object, distinct from null
 
             if (oldQ == 1 && newQ == 1)
             {
                 // Old and new fundamental regions are infinite pie slices
                 System.out.println("      remap fundamental region pie slice");
+
+                int nOldVerts = mesh.verts.size();
+                PRINT(nOldVerts);
+                double oldVerts[][] = new double[nOldVerts][3];
+                FORI (iOldVert, nOldVerts)
+                {
+                    Mesh.Vertex vert = mesh.getVert(iOldVert);
+                    oldVerts[iOldVert][0] = vert.x();
+                    oldVerts[iOldVert][1] = vert.y();
+                    oldVerts[iOldVert][2] = vert.h(); // different from the other
+                }
+                double oldBbox[][] = VecMath.bbox(oldVerts);
+                double workAreaSize = (nOldVerts==0 ? 1. : MAX4(ABS(oldBbox[0][0]),
+                                                                ABS(oldBbox[0][1]),
+                                                                ABS(oldBbox[1][0]),
+                                                                ABS(oldBbox[1][1])));
+
+                // as recommended in FuzzyPointHashTable doc...
+                double littleTol = 1e-12 * workAreaSize;
+                double bigTol = 1e-10 * workAreaSize;
+                double bucketSize = 1/1024. * workAreaSize;
+                FuzzyPointHashTable newVertsTable = new FuzzyPointHashTable(littleTol,
+                                                                            bigTol,
+                                                                            bucketSize);
+                Object dummy = new Object(); // we really want a hash set, not hash table, so need a dummy object, distinct from null
+
                 FORI (iOldVert, nOldVerts)
                 {
                     double oldVert[] = oldVerts[iOldVert];
@@ -4350,6 +4350,24 @@ public class ShephardsPlayApplet
             {
                 // Old and new fundamental regions are triangles.  Or something.
                 System.out.println("      remap fundamental region triangle or something");
+
+                int nOldVerts = mesh.verts.size();
+                PRINT(nOldVerts);
+                double oldVerts[][] = new double[nOldVerts][3];
+                FORI (iOldVert, nOldVerts)
+                {
+                    Mesh.Vertex vert = mesh.getVert(iOldVert);
+                    oldVerts[iOldVert][0] = vert.x();
+                    oldVerts[iOldVert][1] = vert.y();
+                    oldVerts[iOldVert][2] = vert.z(); // different from the other
+                }
+                double oldBbox[][] = VecMath.bbox(oldVerts);
+                double workAreaSize = (nOldVerts==0 ? 1. : MAX4(ABS(oldBbox[0][0]),
+                                                                ABS(oldBbox[0][1]),
+                                                                ABS(oldBbox[1][0]),
+                                                                ABS(oldBbox[1][1])));
+
+
                 double oldGroup[][][] = computeSymmetryGroup3d(
                     oldP,
                     oldQ,
@@ -4362,35 +4380,90 @@ public class ShephardsPlayApplet
                     newSphereCentralSymmetry);
 
                 double oldFundamentalRegionVerts[][] = getFundamentalRegionVerts(oldP, oldQ, oldLeftRightSymmetry);
+                int gonality = oldFundamentalRegionVerts.length;
                 //PRINTMAT(oldFundamentalRegionVerts);
-
-                FORI (iOldVert, nOldVerts)
+                double oldFundamentalRegionInwardNormals[][] = new double[gonality][3];
+                FORI (i, gonality)
                 {
-                    double oldVert[] = oldVerts[iOldVert];
-                    // Which symmetry brings it into old fundamental region?
-                    // Have to be fuzzy, so make it a contest.
+                    VecMath.vxv3(oldFundamentalRegionInwardNormals[i],
+                                 oldFundamentalRegionVerts[i],
+                                 oldFundamentalRegionVerts[(i+1)%gonality]);
+                    VecMath.normalize(oldFundamentalRegionInwardNormals[i],
+                                      oldFundamentalRegionInwardNormals[i]);
+                }
 
-                    FORI (iOldSymmetry, oldGroup.length)
+                double oldImages[][] = new double[nOldVerts][3];
+                {
+                    double oldImage[] = new double[3]; // scratch for loop
+                    double fakeBary[] = new double[gonality]; // scratch for loop
+
+                    FORI (iOldVert, nOldVerts)
                     {
-                        double oldImage[] = VecMath.vxm(oldVert, oldGroup[iOldSymmetry]);
+                        double oldVert[] = oldVerts[iOldVert];
+
+                        // Which symmetry brings it into old fundamental region?
+                        // It's fuzzy, so make it a contest.
+                        double bestGoodness = Double.NEGATIVE_INFINITY;
+                        FORI (iOldSymmetry, oldGroup.length)
+                        {
+                            // CBB: could premultiply the two matrices together, i.e. precompute all images of schwarz triangles. would be less work if lots of oldVerts.
+                            VecMath.vxm(oldImage, oldVert, oldGroup[iOldSymmetry]);
+                            VecMath.mxv(fakeBary, oldFundamentalRegionInwardNormals, oldImage);
+                            double goodness = VecMath.min(fakeBary);
+                            if (goodness > bestGoodness)
+                            {
+                                bestGoodness = goodness;
+                                VecMath.copyvec(oldImages[iOldVert], oldImage);
+                            }
+                        }
+                        PRINT(VecMath.norm(oldVert));
+                        PRINT(VecMath.norm(oldImages[iOldVert]));
                     }
                 }
+                if (true)
+                {
+                    // De-dup oldImages.
+                    // Note that there can actually still be dups, for images on the boundary of the fundamental region,
+                    // but comparatively few of them and we'll catch those later.
+                    // TODO: make a utility function out of this?
+                    int nDeDuped = 0;
+                    {
+                        // TODO: make a FuzzyPointHashSet that does this?
+
+                        Object dummy = new Object(); // we really want a hash set, not hash table, so need a dummy object, distinct from null
+                        // as recommended in FuzzyPointHashTable doc...
+                        double littleTol = 1e-12 * workAreaSize;
+                        double bigTol = 1e-10 * workAreaSize;
+                        double bucketSize = 1/1024. * workAreaSize;
+                        FuzzyPointHashTable newVertsTable = new FuzzyPointHashTable(littleTol,
+                                                                                    bigTol,
+                                                                                    bucketSize);
+                        FuzzyPointHashTable fuzzyPointHashTable = new FuzzyPointHashTable(littleTol, bigTol, bucketSize);
+                        FORI (iOldVert, nOldVerts)
+                            if (newVertsTable.put(oldImages[iOldVert],dummy) == null) // i.e. if it wasn't already there
+                                VecMath.copyvec(oldImages[nDeDuped++], oldImages[iOldVert]);
+                    }
+                    System.out.println("    old images deduped "+oldImages.length+" -> "+nDeDuped);
+                    oldImages = (double[][])Arrays.subarray(oldImages, 0, nDeDuped);
+                }
+
 
                 double newFundamentalRegionVerts[][] = getFundamentalRegionVerts(newP, newQ, newLeftRightSymmetry);
                 PRINTMAT(newFundamentalRegionVerts);
 
-                if (true)
+                if (false)
                 {
                     // HACK-- show the new fundamental region
                     FORI (i, newFundamentalRegionVerts.length)
-                    {
-                        newVertsArrayList.add(newFundamentalRegionVerts[i]);
-                    }
+                        newVertsArrayList.add(Arrays.append(newFundamentalRegionVerts[i], 1.));
+                }
+                if (true)
+                {
+                    // HACK-- show old images
+                    FORI (i, oldImages.length)
+                        newVertsArrayList.add(Arrays.append(oldImages[i], 1.));
                 }
             }
-
-            oldVerts = null;
-            newVertsTable = null;
 
             double newVerts[][] = new double[newVertsArrayList.size()][];
             newVertsArrayList.toArray(newVerts);
