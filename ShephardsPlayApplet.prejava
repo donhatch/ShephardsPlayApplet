@@ -2735,7 +2735,6 @@ public class ShephardsPlayApplet
                                 }});
                             }});
                             add(new JButton("force symmetry by replicating non-matching verts") {{
-                                setBackground(new java.awt.Color(255,128,0)); // maintenance
                                 addActionListener(new java.awt.event.ActionListener() {
                                     @Override public void actionPerformed(java.awt.event.ActionEvent e)
                                     {
@@ -2744,7 +2743,6 @@ public class ShephardsPlayApplet
                                 });
                             }});
                             add(new JButton("force symmetry by deleting non-matching verts (doesn't work yet)") {{
-                                setBackground(new java.awt.Color(255,128,0)); // maintenance
                                 addActionListener(new java.awt.event.ActionListener() {
                                     @Override public void actionPerformed(java.awt.event.ActionEvent e)
                                     {
@@ -4268,10 +4266,20 @@ public class ShephardsPlayApplet
 
             UndoItem.State before = newUndoItemState();
             if (remap && (p != pRotationalSymmetry.get() || q != qRotationalSymmetry.get()))
+            {
+                if (deleteNonReplicatedVertsWhenChangingSymmetry.get())
+                {
+                    double group[][][] = getTheSymmetryGroup(); // XXX wrong! should only do the rotational part of it!
+                    boolean retainConnectivity = false; // since the changeMeshRotationalSymmetry afterwards loses the mesh anyway
+                    this.mesh = forceMeshSymmetryByDeletingVertsDestructive(this.mesh, group, retainConnectivity);
+                }
+                // Otherwise changeRotationalSymmetry will do the right thing--
+                // that is, adding vertices where necessary to accomplish the rotational symmetry.
                 this.mesh = changeMeshRotationalSymmetry(this.mesh,
                                                          pRotationalSymmetry.get(),
                                                          qRotationalSymmetry.get(),
                                                          p, q);
+            }
             // probably a lot of excess messages going on...
             pRotationalSymmetry.set(p);
             qRotationalSymmetry.set(q);
@@ -4299,18 +4307,15 @@ public class ShephardsPlayApplet
         {
             double group[][][] = getTheSymmetryGroup();
             UndoItem.State before = newUndoItemState();
-            this.mesh = forceMeshSymmetryByDeletingVerts(this.mesh, group);
+            boolean retainConnectivity = true; // hard-coded, but could be an option
+            this.mesh = forceMeshSymmetryByDeletingVertsDestructive(this.mesh, group, retainConnectivity);
+            dirtyDualMesh(); // necessary if it did in-place operations and returned original
             if (continuouslyDelaunayizeFlag.get()) delaunayize();
             UndoItem.State after = newUndoItemState();
             undoTreeSquirrel.Do(new UndoItem(before, after));
             theCanvas.repaint();
         }
 
-        private static Mesh forceMeshSymmetryByDeletingVerts(Mesh mesh, double group[][][])
-        {
-            System.out.println("forceMeshSymmetryByDeletingVerts not implemented!");
-            return mesh;
-        }
 
         // TODO: move these to VecMath I think
         // Normalize so max abs value of coordinates is 1.
@@ -4335,12 +4340,95 @@ public class ShephardsPlayApplet
             return answer;
         }
 
+        // Might or might not return the same mesh.
+        private static Mesh forceMeshSymmetryByDeletingVertsDestructive(Mesh mesh, double group[][][], boolean retainConnectivity)
+        {
+            System.out.println("    in forceMeshSymmetryByDeletingVertsDestructive");
+            int nVerts = mesh.verts.size();
+            System.out.println("          nVerts = "+nVerts);
+            double vertsHomo[][] = new double[nVerts][4];
+            FORI (iVert, nVerts)
+            {
+                Mesh.Vertex vert = mesh.getVert(iVert);
+                vertsHomo[iVert][0] = vert.X();
+                vertsHomo[iVert][1] = vert.Y();
+                vertsHomo[iVert][2] = vert.Z();
+                vertsHomo[iVert][3] = vert.W();
+            }
+
+            // as recommended in FuzzyPointHashTable doc...
+            FuzzyPointHashTable fuzzyTable = new FuzzyPointHashTable(1e-12, 1e-10, 1/1024.);
+            Object dummy = new Object(); // we really want a hash set, not hash table, so need a dummy object, distinct from null
+
+            // Initial pass adding originals, since those are the preferred images
+            FORI (iVert, nVerts)
+            {
+                if (fuzzyTable.put(homoNormalize(vertsHomo[iVert]),dummy) == null) // i.e. if it wasn't already there
+                {
+                    // nothing. we don't dedup here (although maybe we should).
+                }
+            }
+            // Retain only verts in vertsHomo that are "all there".
+            // CBB: probably theres a more efficient algorithm; whatever
+            boolean bad[] = new boolean[nVerts];
+            int nBad = 0;
+            {
+                double scratchHomo[] = new double[4];
+                double scratchHomoNormalized[] = new double[4];
+                FORI (iVert, nVerts)
+                {
+                    for (int iSymmetry = 1; iSymmetry < group.length; ++iSymmetry) // skip 0 since we did it already
+                    {
+                        VecMath.vxm(scratchHomo, vertsHomo[iVert], group[iSymmetry]);
+                        homoNormalize(scratchHomoNormalized, scratchHomo);
+                        if (fuzzyTable.get(scratchHomoNormalized) == null)
+                        {
+                            bad[iVert] = true;
+                            nBad++;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (nBad == 0)
+            {
+                System.out.println("    out forceMeshSymmetryByDeletingVertsDestructive (nothing changed in "+nVerts+" verts)");
+                return mesh;
+            }
+            if (retainConnectivity)
+            {
+                // Note, each removal takes O(n) time, so this is quadratic.
+                FORIDOWN(iVert, nVerts) // backwards so that deleting won't mess up indices of future work
+                {
+                    if (bad[iVert])
+                    {
+                        mesh.deleteVertex(mesh.getVert(iVert), null, null);
+                    }
+                }
+                System.out.println("    out forceMeshSymmetryByDeletingVertsDestructive (deleted "+nBad+"/"+nVerts+" verts in place))");
+                return mesh;
+            }
+            else
+            {
+                double goodVerts[][] = new double[nVerts-nBad][];
+                int nGood = 0;
+                FORI (iVert, nVerts)
+                    if (!bad[iVert])
+                        goodVerts[nGood++] = vertsHomo[iVert];
+                assert(nGood == goodVerts.length);
+                Mesh answer = new Mesh(goodVerts, new int[0][]);
+                System.out.println("    out forceMeshSymmetryByDeletingVertsDestructive (created new mesh to delete "+nBad+"/"+nVerts+" verts)");
+                return answer;
+            }
+        } // forceMeshSymmetryByDeletingVertsDestructive
+
         // Currently destroys connectivity. Another option would be to add verts one by one, the same as if user created them.
         // Currently removes dups.
         // CBB: should vert store notion of whether the intent was H or W?  we assume W.
         // NOTE: I'm using normalized homogeneous coords as keys... however, the reason I'm doing that is because I thought it would fix the behavior on "crack goes in spiral small", but it doesn't!  so maybe go back to using 3d points?  Not sure.  Normalized homo does have the advantage that it should do something reasonable with very large coords though.  Hmm.
         private static Mesh forceMeshSymmetryByReplicatingVerts(Mesh mesh, double group[][][])
         {
+            System.out.println("    in forceMeshSymmetryByReplicatingVerts");
             int nVerts = mesh.verts.size();
             System.out.println("          nVerts = "+nVerts);
             double vertsHomo[][] = new double[nVerts][4];
@@ -4381,7 +4469,7 @@ public class ShephardsPlayApplet
 
             Mesh answer = new Mesh(finalVerts, new int[0][]);
 
-            System.out.println("    out changeMeshRotationalSymmetry");
+            System.out.println("    out forceMeshSymmetryByReplicatingVerts");
             return answer;
 
         } // forceMeshSymmetryByReplicatingVerts
@@ -4605,6 +4693,7 @@ public class ShephardsPlayApplet
                                                                                 bigTol,
                                                                                 bucketSize);
                     double newVert[] = new double[3]; // scratch for loop
+                    // CBB: probably theres a more efficient algorithm; whatever
                     FORI (iImage, newImages.length)
                     {
                         FORI (iNewSymmetry, newGroup.length)
