@@ -102,9 +102,8 @@ BUGS:
       when flat paraboloid
 
   Symmetry-related:
-    - BUG: remapping fundamental region of polyhedral symmetry when not wrapped-and-centered-and-unit-radius is wrong
-    - "force symmetry" on "crack goes in spiral" gives fuzzy exception.  I think I need to use max-mag-normalized w coords? no... maybe new kind of fuzzy hash table that uses relative sizes?  but then this might conflict with normal usage for which we'd want to merge verts near origin. need to think about this.
     - take into account central symmetry when remapping fundamental regions
+    - "force symmetry" on "crack goes in spiral" gives fuzzy exception.  I think I need to use max-mag-normalized w coords? no... maybe new kind of fuzzy hash table that uses relative sizes?  but then this might conflict with normal usage for which we'd want to merge verts near origin. need to think about this.
     - wrapped, with central symmetry on:
         - changing p from odd to even seems to lose some symmetry connections. OH I see, hmm, it's retaining the fact that it's an antiprism.  this might get better when fundamental regions are handled consistently in general
         - changing p from an even number to anything else gets whacked
@@ -4159,6 +4158,28 @@ public class ShephardsPlayApplet
 
 
 
+        // Wait, what? shouldn't we multiply the whole thing by wrapSphereCurvature so it can be zero?
+        // Hmm, maybe not, then center-and-uncenter wouldn't be identity.  Weird.
+        // I don't think the xform is invertible in the curvature=0 case anyway,
+        // so shouldn't be centering the sphere in that case.
+        private static double[][] getCenterSphereMatrix(double wrapSphereCurvature)
+        {
+            return new double[][] {
+                {1,0,0,0},
+                {0,1,0,0},
+                {0,0,1,0},
+                {0,0,1./wrapSphereCurvature,1},
+            };
+        }
+        private static double[][] getUncenterSphereMatrix(double wrapSphereCurvature)
+        {
+            return new double[][] {
+                {1,0,0,0},
+                {0,1,0,0},
+                {0,0,1,0},
+                {0,0,-1./wrapSphereCurvature,1},
+            };
+        }
         private static double[][] getWrapAroundSphereMatrix(double wrapSphereCurvature, boolean centerSphereFlag)
         {
             // inverse of getUnwrapAroundSphereMatrix, I don't claim to understand it directly
@@ -4171,12 +4192,7 @@ public class ShephardsPlayApplet
             if (centerSphereFlag)
             {
                 // end by moving center from -r to origin
-                m = VecMath.mxm(m, new double[][] {
-                    {1,0,0,0},
-                    {0,1,0,0},
-                    {0,0,1,0},
-                    {0,0,1./wrapSphereCurvature,1},
-                });
+                m = VecMath.mxm(m, getCenterSphereMatrix(wrapSphereCurvature));
             }
             return m;
         } // getWrapAroundSphereMatrix
@@ -4225,12 +4241,7 @@ public class ShephardsPlayApplet
             if (centerSphereFlag)
             {
                 // start by moving center from origin to -r
-                m = VecMath.mxm(new double[][] {
-                    {1,0,0,0},
-                    {0,1,0,0},
-                    {0,0,1,0},
-                    {0,0,-1./wrapSphereCurvature,1},
-                }, m);
+                m = VecMath.mxm(getUncenterSphereMatrix(wrapSphereCurvature), m);
             }
             return m;
         } // getUnwrapAroundSphereMatrix
@@ -4279,8 +4290,6 @@ public class ShephardsPlayApplet
         } // xformTheMesh
 
 
-        // crappy name-- this is changeMeshRotationalSymmetry with undo and repaint... well also some resets
-        // TODO: doesn't do anything reasonable if p,q is polyhedral but not wrapped around sphere
         private void changeSymmetry(int p, int q, boolean leftRight, boolean central)
         {
             if (p == pRotationalSymmetry.get()
@@ -4296,7 +4305,9 @@ public class ShephardsPlayApplet
                 + " "+(central?"with":"without")+" central symmetry");
 
             UndoItem.State before = newUndoItemState();
-            if (remapFundamentalRegionWhenChangingRotationalSymmetry.get() && (p != pRotationalSymmetry.get() || q != qRotationalSymmetry.get()))
+            if (remapFundamentalRegionWhenChangingRotationalSymmetry.get()
+             && (p != pRotationalSymmetry.get()
+              || q != qRotationalSymmetry.get()))
             {
                 if (deleteNonReplicatedVertsWhenChangingRotationalSymmetry.get())
                 {
@@ -4304,12 +4315,42 @@ public class ShephardsPlayApplet
                     boolean retainConnectivity = false; // since the changeMeshRotationalSymmetry afterwards loses the mesh anyway
                     this.mesh = forceMeshSymmetryByDeletingVertsDestructive(this.mesh, group, retainConnectivity);
                 }
-                // Otherwise changeRotationalSymmetry will do the right thing--
-                // that is, adding vertices where necessary to accomplish the new rotational symmetry.
+                else
+                {
+                    // Replicating unmatched verts when changing rotational symmetry.
+                    // changeRotationalSymmetry will do the right thing,
+                    // so no need to do anything here.
+                }
+
+                boolean needToWrapAndUnwrap = false;
+                boolean needToCenterAndUncenter = false;
+                if (pRotationalSymmetry.get()!=1 && qRotationalSymmetry.get()!=1 && p!=1 && q!=1)
+                {
+                    if (!wrapAroundSphereFlag.get())
+                        needToWrapAndUnwrap = true;
+                    else if (!centerSphereFlag.get())
+                        needToCenterAndUncenter = true;
+                }
+                if (needToWrapAndUnwrap)
+                {
+                    wrapAroundSphere(wrapSphereCurvature.get(), true);
+                }
+                else if (needToCenterAndUncenter)
+                {
+                    xformTheMesh(getCenterSphereMatrix(wrapSphereCurvature.get()));
+                }
                 this.mesh = changeMeshRotationalSymmetry(this.mesh,
                                                          pRotationalSymmetry.get(),
                                                          qRotationalSymmetry.get(),
                                                          p, q);
+                if (needToWrapAndUnwrap)
+                {
+                    unwrapAroundSphere(wrapSphereCurvature.get(), true);
+                }
+                else if (needToCenterAndUncenter)
+                {
+                    xformTheMesh(getUncenterSphereMatrix(wrapSphereCurvature.get()));
+                }
             }
             // probably a lot of excess messages going on...
             pRotationalSymmetry.set(p);
@@ -4323,7 +4364,6 @@ public class ShephardsPlayApplet
             theCanvas.repaint();
         } // changeSymmetry
 
-        // XXX crappy name. this is the non-static version that uses a bunch of params to decide the symmetry group.
         private void forceSymmetryByReplicatingVerts()
         {
             double group[][][] = getTheSymmetryGroup();
