@@ -2676,7 +2676,7 @@ public class ShephardsPlayApplet
                             });
                         }});
                         add(new JCol() {{
-                            add(new JCheckBox("remap fundamental region when changing symmetry (only works in some cases)") { Listenable.Listener listener; {
+                            add(new JCheckBox("remap fundamental region when changing rotational symmetry (only works in some cases)") { Listenable.Listener listener; {
                                 setSelected(applet.remapFundamentalRegionWhenChangingSymmetry.get());
                                 setMargin(nomargin);
                                 addActionListener(new java.awt.event.ActionListener() {
@@ -4227,7 +4227,7 @@ public class ShephardsPlayApplet
         } // xformTheMesh
 
 
-        // crappy name-- this is changeMeshSymmetry with undo and repaint
+        // crappy name-- this is changeMeshRotationalSymmetry with undo and repaint... well also some resets
         private void changeSymmetry(int p, int q, boolean leftRight, boolean central, boolean remap, boolean replicate, boolean deleteNonReplicated)
         {
             if (p == pRotationalSymmetry.get()
@@ -4244,10 +4244,9 @@ public class ShephardsPlayApplet
 
             UndoItem.State before = newUndoItemState();
             if (remap)
-                changeMeshSymmetry(pRotationalSymmetry.get(),
-                                   qRotationalSymmetry.get(),
-                                   leftRightSymmetry.get(), centralSymmetry.get(),
-                                   p, q, leftRight, central);
+                changeMeshRotationalSymmetry(pRotationalSymmetry.get(),
+                                             qRotationalSymmetry.get(),
+                                             p, q);
             // probably a lot of excess messages going on...
             pRotationalSymmetry.set(p);
             qRotationalSymmetry.set(q);
@@ -4260,17 +4259,14 @@ public class ShephardsPlayApplet
             theCanvas.repaint();
         } // changeSymmetry
 
-        // TODO: needs an overhaul, doesn't use q or central yet
-        public void changeMeshSymmetry(int oldP, int oldQ, boolean oldLeftRightSymmetry, boolean oldSphereCentralSymmetry,
-                                       int newP, int newQ, boolean newLeftRightSymmetry, boolean newSphereCentralSymmetry)
+        public void changeMeshRotationalSymmetry(int oldP, int oldQ,
+                                                 int newP, int newQ)
         {
-            System.out.println("    in changeMeshSymmetry");
+            System.out.println("    in changeMeshRotationalSymmetry");
             if (oldP == newP
-             && oldQ == newQ
-             && oldLeftRightSymmetry == newLeftRightSymmetry
-             && oldSphereCentralSymmetry == newSphereCentralSymmetry)
+             && oldQ == newQ)
             {
-                System.out.println("    out changeMeshSymmetry (nothing changed)");
+                System.out.println("    out changeMeshRotationalSymmetry (nothing changed)");
                 return; // nothing change; no point in introducing round-off error
             }
 
@@ -4315,12 +4311,6 @@ public class ShephardsPlayApplet
                     double frac = (oldAngle/(2*Math.PI) + .25) // so -90 degrees produces frac=0
                                 * oldP;
                     frac -= Math.floor(frac); // so frac should now be between 0 and 1
-                    if (oldLeftRightSymmetry)
-                    {
-                        if (frac > .5)
-                            frac = 1. - frac;
-                        frac *= 2.;
-                    }
 
                     if (false) // nah, this looks like hell
                     {
@@ -4328,29 +4318,28 @@ public class ShephardsPlayApplet
                         magnitude = Math.pow(magnitude, (double)oldP/(double)newP);
                     }
 
-                    FORI (iReflect, (newLeftRightSymmetry ? 2 : 1))
-                        FORI (iNewImage, newP)
+                    FORI (iNewImage, newP)
+                    {
+                        double newAngle = (((iNewImage+frac)) / newP - .25) * (2*Math.PI);
+                        double newVert[] = {
+                            magnitude * Math.cos(newAngle),
+                            magnitude * Math.sin(newAngle),
+                        };
+                        if (newVertsTable.put(newVert,dummy) == null) // i.e. if it wasn't already there
                         {
-                            double newAngle = ((iNewImage+frac*(newLeftRightSymmetry ? .5 : 1)) / newP - .25) * (2*Math.PI);
-                            double newVert[] = {
-                                magnitude * Math.cos(newAngle) * (iReflect==1 ? -1. : 1.),
-                                magnitude * Math.sin(newAngle),
-                            };
-                            if (newVertsTable.put(newVert,dummy) == null) // i.e. if it wasn't already there
-                            {
-                                newVertsArrayList.add(new double[] {
-                                    newVert[0],
-                                    newVert[1],
-                                    oldVert[2], // takes one of the old heights arbitrarily, if multiple.  CBB: can we set it to average?
-                                });
-                            }
+                            newVertsArrayList.add(new double[] {
+                                newVert[0],
+                                newVert[1],
+                                oldVert[2], // takes one of the old heights arbitrarily, if multiple.  CBB: can we set it to average?
+                            });
                         }
+                    }
                 }
             } else if (oldP != 1 && oldQ != 1
                     && newP != 1 && newQ != 1)
             {
                 // Old and new fundamental regions are triangles.  Or something.
-                System.out.println("      remap fundamental region "+(newLeftRightSymmetry?"triangle":"quad"));
+                System.out.println("      remap fundamental region quad");
 
                 int nOldVerts = mesh.verts.size();
                 System.out.println("          nOldVerts = "+nOldVerts);
@@ -4372,14 +4361,13 @@ public class ShephardsPlayApplet
                 double oldGroup[][][] = computeSymmetryGroup3d(
                     oldP,
                     oldQ,
-                    newLeftRightSymmetry, // yes, new. old left-right is ignored.
-                    oldSphereCentralSymmetry); // XXX don't know what I'm doing with this yet
+                    false, false); // no reflections here
 
                 System.out.println("          "+oldGroup.length+" old symmetries");
 
-                double oldFundamentalRegionVerts[][] = getFundamentalRegionVerts(oldP, oldQ,
-                                                                                 newLeftRightSymmetry); // yes, new. old left-right is ignore.
+                double oldFundamentalRegionVerts[][] = getFundamentalRegionVerts(oldP, oldQ, false);
                 int gonality = oldFundamentalRegionVerts.length;
+                assert(gonality == 4); // because no reflections
                 double oldFundamentalRegionInwardNormals[][] = new double[gonality][3];
                 FORI (i, gonality)
                 {
@@ -4446,10 +4434,11 @@ public class ShephardsPlayApplet
 
                 double newImages[][] = new double[oldImages.length][3];
 
-                double newFundamentalRegionVerts[][] = getFundamentalRegionVerts(newP, newQ, newLeftRightSymmetry);
+                double newFundamentalRegionVerts[][] = getFundamentalRegionVerts(newP, newQ, false);
                 assert(newFundamentalRegionVerts.length == gonality);
                 if (gonality == 3)
                 {
+                    assert(false); // it turns out we only do this with rotational symmetry, so this doesn't happen
                     double bary[] = new double[3]; // scratch for loop
                     FORI (iImage, oldImages.length)
                     {
@@ -4483,8 +4472,7 @@ public class ShephardsPlayApplet
                 double newGroup[][][] = computeSymmetryGroup3d(
                     newP,
                     newQ,
-                    newLeftRightSymmetry,
-                    newSphereCentralSymmetry); // XXX don't know what I'm doing with this yet
+                    false, false);  // no reflections here
                 System.out.println("          "+newGroup.length+" new symmetries");
                 {
                     Object dummy = new Object(); // we really want a hash set, not hash table, so need a dummy object, distinct from null
@@ -4536,8 +4524,8 @@ public class ShephardsPlayApplet
             // A mesh will appear if "Keep delaunayized" is checked.
             this.mesh = new Mesh(newVerts, new int[0][]);
 
-            System.out.println("    out changeMeshSymmetry");
-        } // changeMeshSymmetry
+            System.out.println("    out changeMeshRotationalSymmetry");
+        } // changeMeshRotationalSymmetry
 
 
         @Override public void init()
@@ -17696,7 +17684,8 @@ OFF
             accumulator[accumulator.length-1] += increment[increment.length-1]; // A
         }
 
-        // TODO: doesn't take into account centralSymmetry?
+        // Note, it turns out this is only called with leftRightSymmetry=false, currently...
+        // i.e. it always returns a quad, not a triangle.
         private static double[][] getFundamentalRegionVerts(int p, int q, boolean leftRightSymmetry)
         {
             assert(p >= 2);
