@@ -102,11 +102,11 @@ BUGS:
       when flat paraboloid
 
   Symmetry-related:
+    - take into account central symmetry when remapping fundamental regions
     - wrapped, with central symmetry on:
         - changing p from odd to even seems to lose some symmetry connections. OH I see, hmm, it's retaining the fact that it's an antiprism.  this might get better when fundamental regions are handled consistently in general
         - changing p from an even number to anything else gets whacked
     - only enable flips that don't mess up current symmetry
-    - when switching symmetry, map the fundamental region (schwarz triangle) (using VecMath.sphericalAverage/getSphericalAverageWeights)
     - symmetry averaging is wrong on sphere--- it shrinks towards sphere center (and even worse now that I'm doing it in homo space, I think).  need a height-above-sphere-preserving average. (then again, is that even possible? I never was able to find a reasonable notion of average in 3d)
     - respect symmetry:
         - rubberbanding
@@ -119,6 +119,7 @@ BUGS:
         - snap closest image to exact image? hmm, not sure
         - mode to place new verts in kaleidescope? (draw dots at images of cursor? might be subtle)
     - when increasing or decreasing rotational symmetry, show animation?
+        (hmm, can this be done in changing between cube and dodecahedron? would be wacky)
     - wouldn't hurt to allow {4,4}, {6,3}, {3,6} ... just show a few layers, or actually support the toroidal space?
         actually hmm, is there a projection from 4d torus that makes
         this actually work?  hmm I'm thinking no.
@@ -4281,7 +4282,7 @@ public class ShephardsPlayApplet
                 System.out.println("      remap fundamental region pie slice");
 
                 int nOldVerts = mesh.verts.size();
-                PRINT(nOldVerts);
+                System.out.println("          nOldVerts = "+nOldVerts);
                 double oldVerts[][] = new double[nOldVerts][3];
                 FORI (iOldVert, nOldVerts)
                 {
@@ -4349,10 +4350,10 @@ public class ShephardsPlayApplet
                     && newP != 1 && newQ != 1)
             {
                 // Old and new fundamental regions are triangles.  Or something.
-                System.out.println("      remap fundamental region triangle or something");
+                System.out.println("      remap fundamental region "+(newLeftRightSymmetry?"triangle":"quad"));
 
                 int nOldVerts = mesh.verts.size();
-                PRINT(nOldVerts);
+                System.out.println("          nOldVerts = "+nOldVerts);
                 double oldVerts[][] = new double[nOldVerts][3];
                 FORI (iOldVert, nOldVerts)
                 {
@@ -4371,17 +4372,14 @@ public class ShephardsPlayApplet
                 double oldGroup[][][] = computeSymmetryGroup3d(
                     oldP,
                     oldQ,
-                    oldLeftRightSymmetry,
-                    oldSphereCentralSymmetry);
-                double newGroup[][][] = computeSymmetryGroup3d(
-                    newP,
-                    newQ,
-                    newLeftRightSymmetry,
-                    newSphereCentralSymmetry);
+                    newLeftRightSymmetry, // yes, new. old left-right is ignored.
+                    oldSphereCentralSymmetry); // XXX don't know what I'm doing with this yet
 
-                double oldFundamentalRegionVerts[][] = getFundamentalRegionVerts(oldP, oldQ, oldLeftRightSymmetry);
+                System.out.println("          "+oldGroup.length+" old symmetries");
+
+                double oldFundamentalRegionVerts[][] = getFundamentalRegionVerts(oldP, oldQ,
+                                                                                 newLeftRightSymmetry); // yes, new. old left-right is ignore.
                 int gonality = oldFundamentalRegionVerts.length;
-                //PRINTMAT(oldFundamentalRegionVerts);
                 double oldFundamentalRegionInwardNormals[][] = new double[gonality][3];
                 FORI (i, gonality)
                 {
@@ -4416,16 +4414,15 @@ public class ShephardsPlayApplet
                                 VecMath.copyvec(oldImages[iOldVert], oldImage);
                             }
                         }
-                        PRINT(VecMath.norm(oldVert));
-                        PRINT(VecMath.norm(oldImages[iOldVert]));
                     }
                 }
                 if (true)
                 {
                     // De-dup oldImages.
-                    // Note that there can actually still be dups, for images on the boundary of the fundamental region,
+                    // Note that there can actually still be dups, for images on the boundary of the fundamental region
+                    // when not reflective symmetry,
                     // but comparatively few of them and we'll catch those later.
-                    // TODO: make a utility function out of this?
+                    // TODO: make a utility function out of deduping?
                     int nDeDuped = 0;
                     {
                         // TODO: make a FuzzyPointHashSet that does this?
@@ -4443,25 +4440,91 @@ public class ShephardsPlayApplet
                             if (newVertsTable.put(oldImages[iOldVert],dummy) == null) // i.e. if it wasn't already there
                                 VecMath.copyvec(oldImages[nDeDuped++], oldImages[iOldVert]);
                     }
-                    System.out.println("    old images deduped "+oldImages.length+" -> "+nDeDuped);
+                    System.out.println("          old images deduped "+oldImages.length+" -> "+nDeDuped);
                     oldImages = (double[][])Arrays.subarray(oldImages, 0, nDeDuped);
                 }
 
+                double newImages[][] = new double[oldImages.length][3];
 
                 double newFundamentalRegionVerts[][] = getFundamentalRegionVerts(newP, newQ, newLeftRightSymmetry);
-                PRINTMAT(newFundamentalRegionVerts);
+                assert(newFundamentalRegionVerts.length == gonality);
+                if (gonality == 3)
+                {
+                    double bary[] = new double[3]; // scratch for loop
+                    FORI (iImage, oldImages.length)
+                    {
+                        double oldMagnitude = VecMath.normalize(oldImages[iImage],oldImages[iImage]); // destructive
+                        VecMath.getSphericalAverageWeights(bary, oldFundamentalRegionVerts, oldImages[iImage]);
+                        VecMath.sphericalAverage(newImages[iImage], newFundamentalRegionVerts, bary);
+                        VecMath.vxs(newImages[iImage], newImages[iImage], oldMagnitude);
+                    }
+                }
+                else // gonality == 4
+                {
+                    double oldTris[/*2*/][/*3*/][/*3*/] = {
+                        {oldFundamentalRegionVerts[0],oldFundamentalRegionVerts[1],oldFundamentalRegionVerts[2]},
+                        {oldFundamentalRegionVerts[0],oldFundamentalRegionVerts[2],oldFundamentalRegionVerts[3]},
+                    };
+                    double newTris[/*2*/][/*3*/][/*3*/] = {
+                        {newFundamentalRegionVerts[0],newFundamentalRegionVerts[1],newFundamentalRegionVerts[2]},
+                        {newFundamentalRegionVerts[0],newFundamentalRegionVerts[2],newFundamentalRegionVerts[3]},
+                    };
+                    double bary[] = new double[3]; // scratch for loop
+                    FORI (iImage, oldImages.length)
+                    {
+                        int which = oldImages[iImage][0]>=0 ? 0 : 1;
+                        double oldMagnitude = VecMath.normalize(oldImages[iImage],oldImages[iImage]); // destructive
+                        VecMath.getSphericalAverageWeights(bary, oldTris[which], oldImages[iImage]);
+                        VecMath.sphericalAverage(newImages[iImage], newTris[which], bary);
+                        VecMath.vxs(newImages[iImage], newImages[iImage], oldMagnitude);
+                    }
+                }
+
+                double newGroup[][][] = computeSymmetryGroup3d(
+                    newP,
+                    newQ,
+                    newLeftRightSymmetry,
+                    newSphereCentralSymmetry); // XXX don't know what I'm doing with this yet
+                System.out.println("          "+newGroup.length+" new symmetries");
+                {
+                    Object dummy = new Object(); // we really want a hash set, not hash table, so need a dummy object, distinct from null
+                    // as recommended in FuzzyPointHashTable doc...
+                    double littleTol = 1e-12 * workAreaSize;
+                    double bigTol = 1e-10 * workAreaSize;
+                    double bucketSize = 1/1024. * workAreaSize;
+                    FuzzyPointHashTable newVertsTable = new FuzzyPointHashTable(littleTol,
+                                                                                bigTol,
+                                                                                bucketSize);
+                    double newVert[] = new double[3]; // scratch for loop
+                    FORI (iImage, newImages.length)
+                    {
+                        FORI (iNewSymmetry, newGroup.length)
+                        {
+                            VecMath.vxm(newVert, newImages[iImage], newGroup[iNewSymmetry]);
+                            if (newVertsTable.put(newVert,dummy) == null) // i.e. if it wasn't already there
+                                newVertsArrayList.add(Arrays.append(newVert, 1.)); // xyzw (otherwise would be interpreted as xyh)
+                        }
+                    }
+                    System.out.println("          new verts deduped "+(newImages.length*newGroup.length)+" -> "+newVertsArrayList.size());
+                }
 
                 if (false)
                 {
-                    // HACK-- show the new fundamental region
+                    // HACK-- show the new fundamental region verts
                     FORI (i, newFundamentalRegionVerts.length)
                         newVertsArrayList.add(Arrays.append(newFundamentalRegionVerts[i], 1.));
                 }
-                if (true)
+                if (false)
                 {
                     // HACK-- show old images
                     FORI (i, oldImages.length)
                         newVertsArrayList.add(Arrays.append(oldImages[i], 1.));
+                }
+                if (false)
+                {
+                    // HACK-- show new images
+                    FORI (i, oldImages.length)
+                        newVertsArrayList.add(Arrays.append(newImages[i], 1.));
                 }
             }
 
@@ -8393,10 +8456,12 @@ public class ShephardsPlayApplet
                                                 double flatThreshold = 1e-6;
                                                 if (VecMath.distsqrd(v0,v1) < SQR(flatThreshold))
                                                 {
+                                                    /*
                                                     System.out.println("flat, not showing:");
                                                     PRINTVEC(v0);
                                                     PRINTVEC(v1);
                                                     PRINT(VecMath.distsqrd(v0,v1));
+                                                    */
                                                     continue;
                                                 }
                                             }
@@ -17631,6 +17696,7 @@ OFF
             accumulator[accumulator.length-1] += increment[increment.length-1]; // A
         }
 
+        // TODO: doesn't take into account centralSymmetry?
         private static double[][] getFundamentalRegionVerts(int p, int q, boolean leftRightSymmetry)
         {
             assert(p >= 2);
