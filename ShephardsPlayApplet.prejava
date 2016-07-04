@@ -4260,14 +4260,14 @@ public class ShephardsPlayApplet
         } // changeSymmetry
 
         // TODO: needs an overhaul, doesn't use q or central yet
-        public void changeMeshSymmetry(int oldRotationalSymmetry, int oldQ, boolean oldLeftRightSymmetry, boolean oldCentral,
-                                       int newRotationalSymmetry, int newQ, boolean newLeftRightSymmetry, boolean newCentral)
+        public void changeMeshSymmetry(int oldRotationalSymmetry, int oldQ, boolean oldLeftRightSymmetry, boolean oldSphereCentralSymmetry,
+                                       int newRotationalSymmetry, int newQ, boolean newLeftRightSymmetry, boolean newSphereCentralSymmetry)
         {
             System.out.println("    in changeMeshSymmetry");
             if (oldRotationalSymmetry == newRotationalSymmetry
              && oldQ == newQ
              && oldLeftRightSymmetry == newLeftRightSymmetry
-             && oldCentral == newCentral)
+             && oldSphereCentralSymmetry == newSphereCentralSymmetry)
             {
                 System.out.println("    out changeMeshSymmetry (nothing changed)");
                 return; // nothing change; no point in introducing round-off error
@@ -4300,45 +4300,93 @@ public class ShephardsPlayApplet
                                                                         bigTol,
                                                                         bucketSize);
             Object dummy = new Object(); // we really want a hash set, not hash table, so need a dummy object, distinct from null
-            FORI (iOldVert, nOldVerts)
+
+            if (oldQ == 1 && newQ == 1)
             {
-                double oldVert[] = oldVerts[iOldVert];
-                double magnitude = MyMath.hypot(oldVert[0], oldVert[1]);
-                double oldAngle = Math.atan2(oldVert[1], oldVert[0]);
-                // find fraction in the canonical fundamental region...
-                double frac = (oldAngle/(2*Math.PI) + .25) // so -90 degrees produces frac=0
-                            * oldRotationalSymmetry;
-                frac -= Math.floor(frac); // so frac should now be between 0 and 1
-                if (oldLeftRightSymmetry)
+                // Old and new fundamental regions are infinite pie slices
+                System.out.println("      remap fundamental region pie slice");
+                FORI (iOldVert, nOldVerts)
                 {
-                    if (frac > .5)
-                        frac = 1. - frac;
-                    frac *= 2.;
-                }
-
-                if (false) // nah, this looks like hell
-                {
-                    // make it a conformal mapping (raising to a power in the complex plane)...
-                    magnitude = Math.pow(magnitude, (double)oldRotationalSymmetry/(double)newRotationalSymmetry);
-                }
-
-                FORI (iReflect, (newLeftRightSymmetry ? 2 : 1))
-                    FORI (iNewImage, newRotationalSymmetry)
+                    double oldVert[] = oldVerts[iOldVert];
+                    double magnitude = MyMath.hypot(oldVert[0], oldVert[1]);
+                    double oldAngle = Math.atan2(oldVert[1], oldVert[0]);
+                    // find fraction in the canonical fundamental region...
+                    double frac = (oldAngle/(2*Math.PI) + .25) // so -90 degrees produces frac=0
+                                * oldRotationalSymmetry;
+                    frac -= Math.floor(frac); // so frac should now be between 0 and 1
+                    if (oldLeftRightSymmetry)
                     {
-                        double newAngle = ((iNewImage+frac*(newLeftRightSymmetry ? .5 : 1)) / newRotationalSymmetry - .25) * (2*Math.PI);
-                        double newVert[] = {
-                            magnitude * Math.cos(newAngle) * (iReflect==1 ? -1. : 1.),
-                            magnitude * Math.sin(newAngle),
-                        };
-                        if (newVertsTable.put(newVert,dummy) == null) // i.e. if it wasn't already there
-                        {
-                            newVertsArrayList.add(new double[] {
-                                newVert[0],
-                                newVert[1],
-                                oldVert[2], // takes one of the old heights arbitrarily, if multiple
-                            });
-                        }
+                        if (frac > .5)
+                            frac = 1. - frac;
+                        frac *= 2.;
                     }
+
+                    if (false) // nah, this looks like hell
+                    {
+                        // make it a conformal mapping (raising to a power in the complex plane)...
+                        magnitude = Math.pow(magnitude, (double)oldRotationalSymmetry/(double)newRotationalSymmetry);
+                    }
+
+                    FORI (iReflect, (newLeftRightSymmetry ? 2 : 1))
+                        FORI (iNewImage, newRotationalSymmetry)
+                        {
+                            double newAngle = ((iNewImage+frac*(newLeftRightSymmetry ? .5 : 1)) / newRotationalSymmetry - .25) * (2*Math.PI);
+                            double newVert[] = {
+                                magnitude * Math.cos(newAngle) * (iReflect==1 ? -1. : 1.),
+                                magnitude * Math.sin(newAngle),
+                            };
+                            if (newVertsTable.put(newVert,dummy) == null) // i.e. if it wasn't already there
+                            {
+                                newVertsArrayList.add(new double[] {
+                                    newVert[0],
+                                    newVert[1],
+                                    oldVert[2], // takes one of the old heights arbitrarily, if multiple.  CBB: can we set it to average?
+                                });
+                            }
+                        }
+                }
+            } else if (oldRotationalSymmetry != 1 && oldQ != 1
+                    && newRotationalSymmetry != 1 && newQ != 1)
+            {
+                // Old and new fundamental regions are triangles.  Or something.
+                System.out.println("      remap fundamental region triangle or something");
+                double oldGroup[][][] = computeSymmetryGroup3d(
+                    oldRotationalSymmetry,
+                    oldQ,
+                    oldLeftRightSymmetry,
+                    oldSphereCentralSymmetry);
+                double newGroup[][][] = computeSymmetryGroup3d(
+                    newRotationalSymmetry,
+                    newQ,
+                    newLeftRightSymmetry,
+                    newSphereCentralSymmetry);
+
+                double oldFundamentalRegionVerts[][] = getFundamentalRegionVerts(oldRotationalSymmetry, oldQ, oldLeftRightSymmetry);
+                //PRINTMAT(oldFundamentalRegionVerts);
+
+                FORI (iOldVert, nOldVerts)
+                {
+                    double oldVert[] = oldVerts[iOldVert];
+                    // Which symmetry brings it into old fundamental region?
+                    // Have to be fuzzy, so make it a contest.
+
+                    FORI (iOldSymmetry, oldGroup.length)
+                    {
+                        double oldImage[] = VecMath.vxm(oldVert, oldGroup[iOldSymmetry]);
+                    }
+                }
+
+                double newFundamentalRegionVerts[][] = getFundamentalRegionVerts(newRotationalSymmetry, newQ, newLeftRightSymmetry);
+                PRINTMAT(newFundamentalRegionVerts);
+
+                if (true)
+                {
+                    // HACK-- show the new fundamental region
+                    FORI (i, newFundamentalRegionVerts.length)
+                    {
+                        newVertsArrayList.add(newFundamentalRegionVerts[i]);
+                    }
+                }
             }
 
             oldVerts = null;
@@ -17509,6 +17557,56 @@ OFF
                 accumulator[2] += increment[2]; // h*A^2, or z*A
             accumulator[accumulator.length-1] += increment[increment.length-1]; // A
         }
+
+        private static double[][] getFundamentalRegionVerts(int p, int q, boolean leftRightSymmetry)
+        {
+            assert(p >= 2);
+            assert(q >= 2);
+            assert((p-2)*(q-2) < 4);
+            double answer[][];
+
+            // Verts of schwarz triangle:
+            //     V2 = +z axis, angle pi/p
+            //     V0 = between +z and +y axis, angle pi/q
+            //     V1 = somewhere in +x +y +z, angle pi/2
+            // By https://en.wikipedia.org/wiki/Solution_of_triangles#Three_angles_given_.28spherical_AAA.29,
+            // the corresponding spherical side lengths are:
+            //     S01 = acos((cos(pi/p) + cos(pi/q)cos(pi/2)) / (sin(pi/q)sin(pi/2)))
+            //         = acos((cos(pi/p) / sin(pi/q))
+            //     S12 = acos((cos(pi/q) + cos(pi/2)cos(pi/p)) / (sin(pi/2)sin(pi/p)))
+            //         = acos((cos(pi/q) / sin(pi/p))
+            //         = (pi-dihedral{p,q})/2
+            //     S20 = acos((cos(pi/2) + cos(pi/p)cos(pi/q)) / (sin(pi/p)sin(pi/q))
+            //         = acos(cos(pi/p)cos(pi/q) / (sin(pi/p)sin(pi/q))
+            //         = acos(cot(pi/p)cot(pi/q))
+            // TODO: can probably do this better, see the math I did in computeSymmetryGroupGenerators3d
+            double cosSqrdS12 = cosSquaredPiTimes(1,q) / sinSquaredPiTimes(1,p);
+            double cosS12 = Math.sqrt(cosSqrdS12);
+            double sinS12 = Math.sqrt(1.-cosSqrdS12);
+            double cosSqrdS20 = cotSquaredPiTimes(1,p) * cotSquaredPiTimes(1,q);  // increases with p,q
+            double cosS20 = Math.sqrt(cosSqrdS20);
+            double sinS20 = Math.sqrt(1.-cosSqrdS20);
+
+            double V2[] = {0,0,1};
+            // V1 is: +z axis, rotated +z->+y by s12, rotated +y->+x by pi/p
+            // = {0,cosS12,sinS12} rotated +y->+x by pi/p
+            double V1[] = VecMath.vxm(new double[]{0,sinS12,cosS12},
+                                      VecMath.makeRowRotMat(3, 1, 0, Math.PI/p));
+            // V0 is: +z axis, rotated +z->+y by S20
+            double V0[] = {0,sinS20,cosS20};
+
+
+            if (leftRightSymmetry)
+            {
+                // fundamental region is a triangle
+                return new double[][] {V2, V1, V0};
+            }
+            else
+            {
+                // fundamental region is a quad
+                return new double[][] {V2, V1, V0, new double[]{-V1[0],V1[1],V1[2]}};
+            }
+        } // getFundamentalRegionVerts
 
         // 3d symmetry groups.
         // Rotation of order p around z axis,
