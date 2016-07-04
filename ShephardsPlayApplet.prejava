@@ -102,7 +102,8 @@ BUGS:
       when flat paraboloid
 
   Symmetry-related:
-    - "force symmetry" on "crack goes in spiral" gives fuzzy exception.  I think I need to use max-mag-normalized w coords?
+    - BUG: remapping fundamental region of polyhedral symmetry when not wrapped-and-centered-and-unit-radius is wrong
+    - "force symmetry" on "crack goes in spiral" gives fuzzy exception.  I think I need to use max-mag-normalized w coords? no... maybe new kind of fuzzy hash table that uses relative sizes?  but then this might conflict with normal usage for which we'd want to merge verts near origin. need to think about this.
     - take into account central symmetry when remapping fundamental regions
     - wrapped, with central symmetry on:
         - changing p from odd to even seems to lose some symmetry connections. OH I see, hmm, it's retaining the fact that it's an antiprism.  this might get better when fundamental regions are handled consistently in general
@@ -2704,7 +2705,9 @@ public class ShephardsPlayApplet
                                         addActionListener(new java.awt.event.ActionListener() {
                                             @Override public void actionPerformed(java.awt.event.ActionEvent e)
                                             {
+                                                // CBB: this is confusing. should be just one variable I think.
                                                 applet.replicateVertsWhenChangingSymmetry.set(isSelected());
+                                                applet.deleteNonReplicatedVertsWhenChangingSymmetry.set(!isSelected());
                                             }
                                         });
                                         applet.replicateVertsWhenChangingSymmetry.addListener(listener = new Listenable.Listener() {
@@ -2715,14 +2718,15 @@ public class ShephardsPlayApplet
                                         });
                                     }});
                                     add(new JRadioButton("delete non-matching verts  when remapping (doesn't work yet)") { Listenable.Listener listener; {
-                                        setBackground(new java.awt.Color(255,128,0)); // maintenance
                                         buttonGroup.add(this);
                                         setSelected(applet.deleteNonReplicatedVertsWhenChangingSymmetry.get());
                                         setMargin(nomargin);
                                         addActionListener(new java.awt.event.ActionListener() {
                                             @Override public void actionPerformed(java.awt.event.ActionEvent e)
                                             {
+                                                // CBB: this is confusing. should probably just be one variable?
                                                 applet.deleteNonReplicatedVertsWhenChangingSymmetry.set(isSelected());
+                                                applet.replicateVertsWhenChangingSymmetry.set(!isSelected());
                                             }
                                         });
                                         applet.deleteNonReplicatedVertsWhenChangingSymmetry.addListener(listener = new Listenable.Listener() {
@@ -4267,14 +4271,15 @@ public class ShephardsPlayApplet
             UndoItem.State before = newUndoItemState();
             if (remap && (p != pRotationalSymmetry.get() || q != qRotationalSymmetry.get()))
             {
+                assert_ne(deleteNonReplicatedVertsWhenChangingSymmetry.get(), replicateVertsWhenChangingSymmetry.get());
                 if (deleteNonReplicatedVertsWhenChangingSymmetry.get())
                 {
-                    double group[][][] = getTheSymmetryGroup(); // XXX wrong! should only do the rotational part of it!
+                    double group[][][] = getTheRotationalSymmetryGroup(); // ignore reflective symmetries here
                     boolean retainConnectivity = false; // since the changeMeshRotationalSymmetry afterwards loses the mesh anyway
                     this.mesh = forceMeshSymmetryByDeletingVertsDestructive(this.mesh, group, retainConnectivity);
                 }
                 // Otherwise changeRotationalSymmetry will do the right thing--
-                // that is, adding vertices where necessary to accomplish the rotational symmetry.
+                // that is, adding vertices where necessary to accomplish the new rotational symmetry.
                 this.mesh = changeMeshRotationalSymmetry(this.mesh,
                                                          pRotationalSymmetry.get(),
                                                          qRotationalSymmetry.get(),
@@ -18095,21 +18100,36 @@ OFF
             return group;
         } // computeSymmetryGroup3d
 
-        // Uses:
-        //     pRotationalSymmetry
-        //     qRotationalSymmetry
-        //     leftRightSymmetry
-        //     centralSymmetry
-        //     wrapAroundSphereFlag
-        //     wrapSphereCurvature
+        private double[][/*4*/][/*4*/] getTheRotationalSymmetryGroup()
+        {
+            return getSymmetryGroup(
+                pRotationalSymmetry.get(),
+                qRotationalSymmetry.get(),
+                false, // ignore leftRightSymmetry
+                false, // ignore centralSymmetry
+                wrapAroundSphereFlag.get(),
+                wrapSphereCurvature.get(),
+                centerSphereFlag.get());
+        }
         private double[][/*4*/][/*4*/] getTheSymmetryGroup()
         {
-            double group[][][] = computeSymmetryGroup3d(this.pRotationalSymmetry.get(), this.qRotationalSymmetry.get(), this.leftRightSymmetry.get(), this.centralSymmetry.get());
+            return getSymmetryGroup(
+                pRotationalSymmetry.get(),
+                qRotationalSymmetry.get(),
+                leftRightSymmetry.get(),
+                centralSymmetry.get(),
+                wrapAroundSphereFlag.get(),
+                wrapSphereCurvature.get(),
+                centerSphereFlag.get());
+        }
+        private static double[][/*4*/][/*4*/] getSymmetryGroup(int p, int q, boolean leftRight, boolean sphereCentral,  boolean wrapAroundSphereFlag, double wrapSphereCurvature, boolean centerSphereFlag)
+        {
+            double group[][][] = computeSymmetryGroup3d(p, q, leftRight, sphereCentral);
 
-            if (!centerSphereFlag.get()) // XXX TODO: wait a minute, this test can't be right when not wrapped, can it?
+            if (!centerSphereFlag) // XXX TODO: wait a minute, this test can't be right when not wrapped, can it?
             {
                 // un-center the symmetry group
-                double wrapSphereRadius = 1./wrapSphereCurvature.get();
+                double wrapSphereRadius = 1./wrapSphereCurvature;
                 double originToSphereCenter[][] = {
                     {1,0,0,0},
                     {0,1,0,0},
@@ -18129,11 +18149,11 @@ OFF
                                                   originToSphereCenter);
                 }
             }
-            if (!wrapAroundSphereFlag.get())
+            if (!wrapAroundSphereFlag)
             {
                 // unwrap the symmetry group
-                double wrapMat[][] = getWrapAroundSphereMatrix(wrapSphereCurvature.get(), centerSphereFlag.get());
-                double unwrapMat[][] = getUnwrapAroundSphereMatrix(wrapSphereCurvature.get(), centerSphereFlag.get());
+                double wrapMat[][] = getWrapAroundSphereMatrix(wrapSphereCurvature, centerSphereFlag);
+                double unwrapMat[][] = getUnwrapAroundSphereMatrix(wrapSphereCurvature, centerSphereFlag);
                 FORI (iGroup, group.length)
                     group[iGroup] = VecMath.mxmxm(wrapMat,
                                                   group[iGroup],
