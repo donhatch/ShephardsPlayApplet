@@ -8550,11 +8550,13 @@ public class ShephardsPlayApplet
                 boolean whichPrimalEdgesGotDrawn[] = showPrimalEdgesFlag.get() ? new boolean[nEdges] : null; // all false initially
                 boolean showInsideOutDualVertsFlagValue = showInsideOutDualVertsFlag.get();
 
-                FORI (iFacingPass, 2) // back, then front
+                int frontBrightness = 240;
+                int backBrightness = (int)(backfaceBrightness.get() * frontBrightness);
+                int passFacings[] = {FACING_BACK, FACING_SIDE, FACING_FRONT, FACING_UNKNOWN};
+                FORI (_iFacingPass, passFacings.length)
                 {
-                    int frontBrightness = 240;
-                    int backBrightness = (int)(backfaceBrightness.get() * frontBrightness);
-                    if (iFacingPass == 0 && backBrightness <= 0)
+                    int passFacing = passFacings[_iFacingPass];
+                    if (passFacing == FACING_BACK && backBrightness <= 0)
                         continue;
 
                     if (showPrimalVertsFlag.get() || showPrimalEdgesFlag.get())
@@ -8563,16 +8565,25 @@ public class ShephardsPlayApplet
                         ArrayList edges = mesh.edges;
                         ArrayList dualEdges = dualMesh.edges;
 
-                        if (iFacingPass == 0) // backfaces
+                        if (passFacing == FACING_BACK)
                             mg3d.setColor(new java.awt.Color(backBrightness,backBrightness,backBrightness));
-                        else
+                        else if (passFacing == FACING_FRONT)
                             mg3d.setColor(new java.awt.Color(frontBrightness,frontBrightness,frontBrightness));
-
+                        else if (passFacing == FACING_SIDE)
+                            mg3d.setColor(java.awt.Color.yellow);
+                        else if (passFacing == FACING_UNKNOWN)
+                            mg3d.setColor(java.awt.Color.magenta);
+                        else
+                            assert(false);
 
                         if (showPrimalVertsFlag.get())
                             FORI (iVert, nVerts)
                             {
-                                if ((vertFacings[iVert]!=FACING_BACK||iVert==beingDraggedVertIndex) == (iFacingPass==1))
+                                // CBB: maybe just force vertFacings[beingDraggedVertIndex] to FACING_FRONT earlier?
+                                int whichPassToDrawItIn = vertFacings[iVert];
+                                if (iVert == beingDraggedVertIndex)
+                                    whichPassToDrawItIn = FACING_FRONT;
+                                if (whichPassToDrawItIn == passFacing)
                                 {
                                     double vCoordHomo[] = vertCoordsHomo[iVert];
                                     mg3d.drawPoint(vCoordHomo[0],
@@ -8586,7 +8597,7 @@ public class ShephardsPlayApplet
 #if 1 // XXX was this just an experiment? can I get rid?  oh wait, it's actually cool!
                         //if (showTriangles.get() == 3) // spherical barycentrics experiment
                         //if (!showPrimalVertsFlag.get() && !showPrimalEdgesFlag.get()) // spherical barycentrics experiment
-                        if (sbaryExperimentType.get() != 0)
+                        if (sbaryExperimentType.get() != 0 && passFacing == FACING_FRONT) // CBB: honor facing for this
                         {
                             OUT("barycentrics experiment! type="+sbaryExperimentType.get());
                             double wrapSphereRadius = 1./wrapSphereCurvature.get();
@@ -8725,7 +8736,8 @@ public class ShephardsPlayApplet
                             boolean showFlatPrimalEdgesFlagValue = showFlatPrimalEdgesFlag.get();
                             FORIDOWN (iWholeEdge, edges.size()/2)
                             {
-                                if ((edgeFacings[iWholeEdge*2]!=FACING_BACK) == (iFacingPass==1))
+                                assert(edgeFacings[iWholeEdge*2] == edgeFacings[iWholeEdge*2+1]);
+                                if (edgeFacings[iWholeEdge*2] == passFacing)
                                 {
                                     Mesh.Edge edge = (Mesh.Edge)edges.get(iWholeEdge*2);
 
@@ -8950,13 +8962,11 @@ public class ShephardsPlayApplet
                                      && (theNet._edgeStatuses[iDualEdge]==Net.CUT) != (iPass==1))
                                         continue; // when two passes, draw cuts iff iPass==1
 
-
-
-                                    if ((dualEdgeFacings[iDualEdge]!=FACING_BACK) != (iFacingPass==1))
+                                    if (dualEdgeFacings[iDualEdge] != passFacing)
                                         continue;
 
                                     java.awt.Color frontColor = dualEdgeColors[iDualEdge];
-                                    if (iFacingPass == 0)
+                                    if (passFacing == FACING_BACK)
                                     {
                                         // holy moly this is inefficient, probably
                                         int rgb = frontColor.getRGB();
@@ -8967,7 +8977,10 @@ public class ShephardsPlayApplet
                                         mg3d.setColor(backColor);
                                     }
                                     else
+                                    {
+                                        // CBB: use sideColor and unknownColor here
                                         mg3d.setColor(frontColor);
+                                    }
 
 
                                     Mesh.Edge dualEdge = dualMesh.getEdge(iDualEdge);
@@ -9004,6 +9017,7 @@ public class ShephardsPlayApplet
                         //
                         // Draw dual verts
                         // (only if NOT showing net flow... they are disruptive to the flow)
+                        // XXX where do I check that? I don't see it
                         //
                         FORIDOWN(iDualVert, dualMesh.verts.size())
                         {
@@ -9021,11 +9035,11 @@ public class ShephardsPlayApplet
 
                             //System.out.println("    drawing dual vert at "+Arrays.toStringCompact(dualVert));
 
-                            if ((dualVertFacings[iDualVert]!=FACING_BACK) != (iFacingPass==1))
+                            if (dualVertFacings[iDualVert] != passFacing)
                                 continue;
 
                             java.awt.Color frontColor = dualVertColors[iDualVert];
-                            if (iFacingPass == 0)
+                            if (passFacing == FACING_BACK)
                             {
                                 // holy moly this is inefficient, probably
                                 int rgb = frontColor.getRGB();
@@ -9036,7 +9050,10 @@ public class ShephardsPlayApplet
                                 mg3d.setColor(backColor);
                             }
                             else
+                            {
+                                // CBB: use sideColor and unknownColor here
                                 mg3d.setColor(frontColor);
+                            }
 
                             double p[] = dualVertCoords[iDualVert];
                             double sign = p[3]<0. ? -1 : 1;
@@ -9279,7 +9296,7 @@ public class ShephardsPlayApplet
 
                     } // if (drawDualDiagramFlag)
 
-                } // for iFacingPass
+                } // for _iFacingPass
 
 
                 if (primalDualVisFlag.get()
@@ -9721,6 +9738,8 @@ public class ShephardsPlayApplet
                                            boolean centerSphereFlagValue,
                                            double wrapSphereCurvatureValue)
             {
+                int verboseLevel = 0;
+                if (verboseLevel >= 1) System.out.println("    in getFacings");
                 VecMath.fillvec(faceFacings, FACING_UNKNOWN);
                 VecMath.fillvec(edgeFacings, FACING_UNKNOWN);
                 VecMath.fillvec(vertFacings, FACING_UNKNOWN);
@@ -9730,60 +9749,76 @@ public class ShephardsPlayApplet
                 int nDualVerts = dualMesh.verts.size();
 
                 // compute face facings...
-                //System.out.println("computing face facings");
-                FORI (iFace, nDualVerts)
+                if (verboseLevel >= 1) System.out.println("      computing face facings");
+                if (false)
                 {
-                    Mesh.Vertex dualVert = dualMesh.getVert(iFace);
-
-                    // plane is all points p such that p dot facePlaneNormal == facePlaneOffset
-                    /*
-                    double facePlaneNormal[] = {dualVert.x(), dualVert.y(), 1.}; // not unit length
-                    double facePlaneOffset = -dualVert.z(); // magic!  I don't know why, but this is the correct value
-                    */
-
-                    double facePlaneNormal[];
-                    double facePlaneOffset;
-
-                    if (wrapAroundSphereFlagValue)
+                    if (verboseLevel >= 1) System.out.println("          (NOT!");
+                }
+                else
+                {
+                    FORI (iFace, nDualVerts)
                     {
-                        // reciprocated wrt sphere.
+                        Mesh.Vertex dualVert = dualMesh.getVert(iFace);
 
-                        // just work with frickin actual coords,
-                        // homogeneous coords are too confusing
-                        // and w=0 is exceedingly rare in wrapped-around-sphere case anyway.
-                        // this is STILL too frickin complicated!
+                        // plane is all points p such that p dot facePlaneNormal == facePlaneOffset
+                        /*
+                        double facePlaneNormal[] = {dualVert.x(), dualVert.y(), 1.}; // not unit length
+                        double facePlaneOffset = -dualVert.z(); // magic!  I don't know why, but this is the correct value
+                        */
 
-                        facePlaneNormal = new double[] {
-                            dualVert.x(),
-                            dualVert.y(),
-                            centerSphereFlagValue ? dualVert.z() : dualVert.z() + 1./wrapSphereCurvatureValue
-                        };
-                        double dualVertDist2FromCenter = VecMath.normsqrd(facePlaneNormal);
-                        double facePlaneClosestPoint[] = VecMath.vxs(facePlaneNormal, 1./dualVertDist2FromCenter);
-                        if (!centerSphereFlagValue)
-                            facePlaneClosestPoint[2] -= 1./wrapSphereCurvatureValue;
-                        facePlaneOffset = VecMath.dot(facePlaneNormal, facePlaneClosestPoint);
+                        double facePlaneNormal[];
+                        double facePlaneOffset;
+
+                        double frontness;
+                        if (wrapAroundSphereFlagValue)
+                        {
+                            // reciprocated wrt sphere.
+
+                            // just work with frickin actual coords,
+                            // homogeneous coords are too confusing
+                            // and w=0 is exceedingly rare in wrapped-around-sphere case anyway.
+                            // this is STILL too frickin complicated!
+
+                            facePlaneNormal = new double[] {
+                                dualVert.x(),
+                                dualVert.y(),
+                                centerSphereFlagValue ? dualVert.z() : dualVert.z() + 1./wrapSphereCurvatureValue
+                            };
+                            // CBB: don't really need to normalize to reciprocate, but I'm doing it to not confuse myself so much
+                            double dualVertDist2FromCenter = VecMath.normsqrd(facePlaneNormal);
+                            double facePlaneSmallestPoint[] = VecMath.vxs(facePlaneNormal, 1./dualVertDist2FromCenter);
+                            if (!centerSphereFlagValue)
+                                facePlaneSmallestPoint[2] -= 1./wrapSphereCurvatureValue;
+                            facePlaneOffset = VecMath.dot(facePlaneNormal, facePlaneSmallestPoint);
+                            frontness = VecMath.dot(facePlaneNormal, eyeInLocalSpace)
+                                             - facePlaneOffset;
+
+                            // Hmm, that's wrong if face plane is facing the origin...
+                            // and useless if the face plane passes through the origin (in which case the dual vert is at infinity).
+                            // How the heck can we tell??
+                        }
+                        else
+                        {
+                            // reciprocated wrt paraboloid
+                            facePlaneNormal = new double[] {dualVert.X(), dualVert.Y(), dualVert.W()}; // i.e. x,y,1.  not unit length.
+                            facePlaneOffset = -dualVert.Z(); // i.e. z.  magic!  I don't know why, but this is the correct value
+                            frontness = VecMath.dot(facePlaneNormal, eyeInLocalSpace)
+                                      - facePlaneOffset;
+                        }
+                        // XXX not sure the epsilons make sense... maybe normalize facePlaneNormal and offset, just so we can think straight about that?
+                        if (LT(frontness, 0., SQR(1e-6)))
+                            faceFacings[iFace] = FACING_BACK;
+                        else if (GT(frontness, 0., SQR(1e-6)))
+                            faceFacings[iFace] = FACING_FRONT;
+                        else
+                            faceFacings[iFace] = FACING_SIDE;
                     }
-                    else
-                    {
-                        // reciprocated wrt paraboloid
-                        facePlaneNormal = new double[] {dualVert.X(), dualVert.Y(), dualVert.W()}; // i.e. x,y,1.  not unit length.
-                        facePlaneOffset = -dualVert.Z(); // i.e. z.  magic!  I don't know why, but this is the correct value
-                    }
-                    double frontness = VecMath.dot(facePlaneNormal, eyeInLocalSpace)
-                                     - facePlaneOffset;
-                    // XXX not sure the epsilons make sense... maybe normalize facePlaneNormal and offset, just so we can think straight about that?
-                    if (LT(frontness, 0., SQR(1e-6)))
-                        faceFacings[iFace] = FACING_BACK;
-                    else if (GT(frontness, 0., SQR(1e-6)))
-                        faceFacings[iFace] = FACING_FRONT;
-                    else
-                        faceFacings[iFace] = FACING_SIDE;
                 }
 
                 // Bleah, the faces that don't have dual verts
                 // need to be computed by a separate method.
                 // TODO: make all faces have dual verts?  Not sure, if non-planar then maybe that will cause more damage than it fixes
+                if (verboseLevel >= 1) System.out.println("      computing face for faces that don't have dual verts");
                 FORI (iEdge, nEdges)
                 {
                     Mesh.Edge edgeI = mesh.getEdge(iEdge);
@@ -9792,6 +9827,7 @@ public class ShephardsPlayApplet
                     int iLeftFace = leftDualVert==null ? nDualVerts : leftDualVert.myIndex();
                     if (faceFacings[iLeftFace] == FACING_UNKNOWN)
                     {
+                        System.out.println("          iEdge = "+iEdge+"/"+nEdges);
                         double normal[] = {0,0,0}; // for starters
                         double moment[] = {0,0,0}; // for starters
                         double centroid[] = null;
@@ -9799,16 +9835,33 @@ public class ShephardsPlayApplet
                         double area = 0.;
                         {
                             Mesh.Vertex v0 = edgeI.initialVertex();
+                            if (v0 == null)
+                            {
+                                System.out.println("              ouch! edge "+iEdge+" has null initial vertex");
+                                continue;
+                            }
                             // XXX TODO: compute in homogeneous space
+                            assert(v0 != null);
                             double v0coords[] = {v0.x(), v0.y(), v0.z()};
                             double v1coords[] = new double[3]; // scratch for loop
                             double v2coords[] = new double[3]; // scratch for loop
                             double thisCentroid[] = new double[3]; // scratch for loop
                             double thisWeightedNormal[] = new double[3]; // scratch for loop
-                            for (Mesh.Edge edgeJ = edgeI.next(); edgeJ != edgeI; edgeJ = edgeJ.next())
+                            Mesh.Edge edgeJ;
+                            for (edgeJ = edgeI.next(); edgeJ != edgeI; edgeJ = edgeJ.next())
                             {
                                 Mesh.Vertex v1 = edgeJ.initialVertex();
                                 Mesh.Vertex v2 = edgeJ.finalVertex();
+                                if (v1 == null)
+                                {
+                                    System.out.println("                  ouch! edge "+edgeJ.myIndex()+" has null initial vertex");
+                                    break;
+                                }
+                                if (v2 == null)
+                                {
+                                    System.out.println("                  ouch! edge "+edgeJ.myIndex()+" has null final vertex vertex");
+                                    break;
+                                }
                                 v1coords[0] = v1.x();
                                 v1coords[1] = v1.y();
                                 v1coords[2] = v1.z();
@@ -9823,6 +9876,10 @@ public class ShephardsPlayApplet
                                 area += thisArea;
                                 VecMath.sxvpsxv(thisCentroid, 1/3., v1coords, 1/3., v2coords); // relative to v0
                                 VecMath.vpsxv(moment, moment, thisArea, thisCentroid);
+                            }
+                            if (edgeJ != edgeI) // if broke
+                            {
+                                System.out.println("              ouch! continuing");
                             }
                             centroid = VecMath.vpsxv(v0coords, 1./area, moment);
                         }
@@ -9841,10 +9898,10 @@ public class ShephardsPlayApplet
                 }
 
                 // compute edge facings from incident face facings...
-                //System.out.println("computing edge facings");
+                if (verboseLevel >= 1) System.out.println("      computing edge facings");
                 FORI (iEdge, nEdges)
                 {
-                    if (edgeFacings[iEdge] == FACING_UNKNOWN) // if not already done by opposite edge
+                    if (edgeFacings[iEdge] == FACING_UNKNOWN)
                     {
                         Mesh.Edge edgeI = mesh.getEdge(iEdge);
                         Mesh.Edge dualEdgeI = dualMesh.getEdge(iEdge);
@@ -9854,15 +9911,20 @@ public class ShephardsPlayApplet
                         int iRightFace = rightDualVert==null ? nDualVerts : rightDualVert.myIndex();
                         int leftFaceFacing = faceFacings[iLeftFace];
                         int rightFaceFacing = faceFacings[iRightFace];
-                        // XXX not sure this is quite right-- maybe UNKNOWN should yield to all others?
-                        edgeFacings[iEdge] = leftFaceFacing==rightFaceFacing ? leftFaceFacing
-                                                                             : FACING_SIDE;
+                        // UNKNOWN trumps all others
+                        edgeFacings[iEdge] = (leftFaceFacing==FACING_UNKNOWN || rightFaceFacing==FACING_UNKNOWN) ? FACING_UNKNOWN
+                                           : leftFaceFacing==rightFaceFacing ? leftFaceFacing
+                                           : FACING_SIDE;
                         int oEdge = edgeI.opposite().myIndex();
+                        assert(oEdge == (iEdge^1));
                         edgeFacings[oEdge] = edgeFacings[iEdge];
                     }
                 }
                 // compute vert facings from incident edge facings...
-                //System.out.println("computing vert facings");
+                if (verboseLevel >= 1) System.out.println("      computing vert facings");
+                // bleah, need some other value for "not yet initialized"
+                assert(-1 != FACING_UNKNOWN);
+                VecMath.fillvec(vertFacings, -1);
                 FORI (iEdge, nEdges)
                 {
                     // only need to do initial vertex-- edge.opposite() will do final vertex
@@ -9870,36 +9932,45 @@ public class ShephardsPlayApplet
                     if (v0 == null)
                         continue;
                     int i0 = v0.myIndex();
-                    if (vertFacings[i0] == FACING_UNKNOWN)
+                    if (vertFacings[i0] == -1) // uninitialized
                         vertFacings[i0] = edgeFacings[iEdge];
+                    else if (vertFacings[i0] == FACING_UNKNOWN || edgeFacings[iEdge] == FACING_UNKNOWN)
+                        vertFacings[i0] = FACING_UNKNOWN;
                     else if (vertFacings[i0] != edgeFacings[iEdge])
                         vertFacings[i0] = FACING_SIDE;
+                    // otherwise leave it what it is
+                }
+                FORI (iVert, vertFacings.length)
+                {
+                    if (vertFacings[iVert] == -1)
+                        vertFacings[iVert] = FACING_UNKNOWN;
                 }
 
-                if (false)
+                if (verboseLevel >= 1)
                 {
-                    System.out.println("--------");
+                    OUT("      --------");
                     final char facingToChar[] = {'?','-','0','+'};
                     {
                         StringBuffer sb = new StringBuffer();
                         FORI (i, faceFacings.length)
                             sb.append(facingToChar[faceFacings[i]]);
-                        System.out.println("    face facings: "+sb);
+                        System.out.println("      face facings: "+sb);
                     }
                     {
                         StringBuffer sb = new StringBuffer();
                         FORI (i, edgeFacings.length)
                             sb.append(facingToChar[edgeFacings[i]]);
-                        System.out.println("    edge facings: "+sb);
+                        System.out.println("      edge facings: "+sb);
                     }
                     {
                         StringBuffer sb = new StringBuffer();
                         FORI (i, vertFacings.length)
                             sb.append(facingToChar[vertFacings[i]]);
-                        System.out.println("    vert facings: "+sb);
+                        System.out.println("      vert facings: "+sb);
                     }
-                    System.out.println("--------");
+                    OUT("      --------");
                 }
+                if (verboseLevel >= 1) System.out.println("    out getFacings");
             } // getFacings
 
             private void delaunayize()
