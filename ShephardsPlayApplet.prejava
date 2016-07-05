@@ -800,6 +800,7 @@ public class ShephardsPlayApplet
                     addActionListener(new java.awt.event.ActionListener() {
                         @Override public void actionPerformed(java.awt.event.ActionEvent e)
                         {
+                            // XXX dup code-- make a function!
                             UndoItem item = (UndoItem)applet.undoTreeSquirrel.undo();
                             if (item != null)
                             {
@@ -828,6 +829,7 @@ public class ShephardsPlayApplet
                     addActionListener(new java.awt.event.ActionListener() {
                         @Override public void actionPerformed(java.awt.event.ActionEvent e)
                         {
+                            // XXX dup code-- make a function!
                             UndoItem item = (UndoItem)applet.undoTreeSquirrel.redo();
                             if (item != null)
                             {
@@ -1341,10 +1343,28 @@ public class ShephardsPlayApplet
                 final java.awt.Component theBackfaceBrightnessLabel = new JLabel("Backface brightness:");
                 final java.awt.Component theBackfaceBrightnessTextField = new JTextFieldForNumber(applet.backfaceBrightness);
                 final java.awt.Component theBackfaceBrightnessSlider = new SliderForFloat(applet.backfaceBrightness);
-                final java.awt.Component theWrapRadiusLabel = new JLabel("Wrap radius:") {{setEnabled(false);}};
-                final java.awt.Component theWrapRadiusTextField = new JTextFieldForNumber(applet.wrapSphereSymbolicRadius) {{setEnabled(false);}};
-                final java.awt.Component theWrapRadiusSlider = new SliderForFloat(applet.wrapSphereSymbolicRadius) {{setEnabled(false);}};
+                final java.awt.Component theWrapRadiusLabel = new JLabel("Wrap radius:") {{setEnabled(false);}}; // assumes !wrapAroundSphereFlag initially
+                final java.awt.Component theWrapRadiusTextField = new JTextFieldForNumber(applet.wrapSphereSymbolicRadius) {{setEnabled(false);}}; // assumes !wrapAroundSphereFlag initially
+                final java.awt.Component theWrapRadiusSlider = new SliderForFloat(applet.wrapSphereSymbolicRadius) {{setEnabled(false);}}; // assumes !wrapAroundSphereFlag initially.
 
+                // TODO: make generic way to tie enabledness to boolean instead
+                applet.wrapAroundSphereFlag.addListener(applet.wrapAroundSphereFlagListenerYYY = new Listenable.Listener() {
+                    @Override public void valueChanged()
+                    {
+                        if (applet.wrapAroundSphereFlag.get())
+                        {
+                            theWrapRadiusLabel.setEnabled(true);
+                            theWrapRadiusTextField.setEnabled(true);
+                            theWrapRadiusSlider.setEnabled(true);
+                        }
+                        else
+                        {
+                            theWrapRadiusLabel.setEnabled(false);
+                            theWrapRadiusTextField.setEnabled(false);
+                            theWrapRadiusSlider.setEnabled(false);
+                        }
+                    }
+                });
 
                 // for making pixmaps from ascii
                 final java.awt.Color asciiToColor[] = new java.awt.Color[128];
@@ -2359,46 +2379,8 @@ public class ShephardsPlayApplet
                         }});
                         add(new JRow() {{
                                 add(new JRow() {{
-                                    add(new JCheckBox("Wrap around sphere", applet.wrapAroundSphereFlag.get()) {{
-                                            addItemListener(new java.awt.event.ItemListener() {
-                                                @Override public void itemStateChanged(java.awt.event.ItemEvent e)
-                                                {
-                                                    UndoItem.State before = applet.newUndoItemState();
-                                                    applet.wrapAroundSphereFlag.set(isSelected());
-                                                    System.out.println("wrapAroundSphereFlag -> "+applet.wrapAroundSphereFlag.get());
-                                                    UndoItem.State after = applet.newUndoItemState();
-                                                    applet.undoTreeSquirrel.Do(new UndoItem(before, after));
-                                                    applet.theCanvas.repaint();
-                                                }
-                                            });
-                                            applet.wrapAroundSphereFlag.addListener(applet.wrapAroundSphereFlagListener = new Listenable.Listener() {
-                                                @Override public void valueChanged()
-                                                {
-                                                    // XXX this should go in one listener
-                                                    setSelected(applet.wrapAroundSphereFlag.get()); // of the checkbox
 
-                                                    // XXX the rest should go in a separate listener
-
-                                                    // XXX this isn't really the right place for the following (inside the checkbox setup); should do the following regardless of whether there's a checkbox for it.
-                                                    if (applet.wrapAroundSphereFlag.get())
-                                                    {
-                                                        applet.theSurface = applet.theSphereSurface;
-                                                        applet.wrapAroundSphere(applet.wrapSphereCurvature.get(), applet.centerSphereFlag.get());
-                                                        theWrapRadiusLabel.setEnabled(true);
-                                                        theWrapRadiusTextField.setEnabled(true);
-                                                        theWrapRadiusSlider.setEnabled(true);
-                                                    }
-                                                    else
-                                                    {
-                                                        applet.theSurface = applet.theParaboloidSurface;
-                                                        applet.unwrapAroundSphere(applet.wrapSphereCurvature.get(), applet.centerSphereFlag.get());
-                                                        theWrapRadiusLabel.setEnabled(false);
-                                                        theWrapRadiusTextField.setEnabled(false);
-                                                        theWrapRadiusSlider.setEnabled(false);
-                                                    }
-                                                }
-                                            });
-                                    }});
+                                    add(new JCheckBoxForBoolean("Wrap around sphere", applet.wrapAroundSphereFlagIntent));
                                     add(new JCheckBoxForBoolean("Center sphere", applet.centerSphereFlag));
                                 }});
                         }});
@@ -3200,6 +3182,37 @@ public class ShephardsPlayApplet
                     PRINT(backfaceBrightness.get());
                     theCanvas.repaint();
                     System.out.println("out backfaceBrightness valueChanged");
+                }
+            });
+
+            wrapAroundSphereFlagIntent.addListener(wrapAroundSphereFlagIntentListener = new Listenable.Listener() {
+                @Override public void valueChanged()
+                {
+                    // TODO: this interaction is fucked-- undo needs to restore wrapAroundSphereFlag or wrapAroundSphereFlagIntent (not sure which at the moment)
+                    UndoItem.State before = newUndoItemState();
+                    // This should be the *only* setting of extent. In particular, there should be no
+                    // gui elements connected directly to wrapAroundSphereFlag, unless read-only.
+                    // Oh, maybe make wrapAroundSphereFlag (or wrapAroundSphereFlagExtent) be not a Listenable!
+                    wrapAroundSphereFlag.set(wrapAroundSphereFlagIntent.get()); // set the extent
+                    System.out.println("wrapAroundSphereFlag -> "+wrapAroundSphereFlag.get());
+                    UndoItem.State after = newUndoItemState();
+                    undoTreeSquirrel.Do(new UndoItem(before, after));
+                }
+            });
+            wrapAroundSphereFlag.addListener(wrapAroundSphereFlagListener = new Listenable.Listener() {
+                @Override public void valueChanged()
+                {
+                    if (wrapAroundSphereFlag.get())
+                    {
+                        theSurface = theSphereSurface;
+                        wrapAroundSphere(wrapSphereCurvature.get(), centerSphereFlag.get());
+                    }
+                    else
+                    {
+                        theSurface = theParaboloidSurface;
+                        unwrapAroundSphere(wrapSphereCurvature.get(), centerSphereFlag.get());
+                    }
+                    theCanvas.repaint();
                 }
             });
             wrapSphereSymbolicRadius.addListener(wrapSphereSymbolicRadiusListener = new Listenable.Listener() {
@@ -6793,6 +6806,7 @@ public class ShephardsPlayApplet
 
                     case 'u': case CTRL('z'): // undo
                     {
+                        // XXX dup code-- make a function!
                         UndoItem item = (UndoItem)undoTreeSquirrel.undo();
                         if (item != null)
                         {
@@ -6817,6 +6831,7 @@ public class ShephardsPlayApplet
                     }
                     case 'r': case 'U': case CTRL('r'): case CTRL('y'): // redo
                     {
+                        // XXX dup code-- make a function!
                         UndoItem item = (UndoItem)undoTreeSquirrel.redo();
                         if (item != null)
                         {
@@ -18670,6 +18685,8 @@ OFF
         // XXX is there an easier way to associate that stuff with a certain object? maybe be able to just pass this object to addListener, and make it automatically remove the listener when I go away?  OH, just add it as a member variable in the object, I think?
         private Listenable.Listener continuouslyDelaunayizeFlagListener = null;
         private Listenable.Listener wrapAroundSphereFlagListener = null;
+        private Listenable.Listener wrapAroundSphereFlagListenerYYY = null; // TODO: make more local
+        private Listenable.Listener wrapAroundSphereFlagIntentListener = null;
         private Listenable.Listener centerSphereFlagListener = null;
         private Listenable.Listener wrapSphereCurvatureListener = null;
         private Listenable.Listener wrapSphereSymbolicRadiusListener = null;
@@ -18816,6 +18833,7 @@ OFF
         private Listenable.Boolean deleteUnmatchedVertsWhenChangingRotationalSymmetry = new Listenable.Boolean(false);
 
         private Listenable.Boolean wrapAroundSphereFlag = new Listenable.Boolean(false);
+        private Listenable.Boolean wrapAroundSphereFlagIntent = new Listenable.Boolean(false);
         private Listenable.Boolean centerSphereFlag = new Listenable.Boolean(false);
         private Listenable.Double wrapSphereCurvature = new Listenable.Double(.001,2., 1.);
         private Listenable.Double wrapSphereSymbolicRadius = new Listenable.Double(.001,1.999, 1.);
