@@ -906,21 +906,23 @@ public class ShephardsPlayApplet
                         }
                     });
                 }};
-                final JButton saveButton = new JButton("Save DUMP.off xyh") {{
+
+                final JButton smartSaveButton = new JButton("Save DUMP.off I AM SO SMART") {Listenable.Listener listener;{
                     setMargin(nomargin);
-                    addActionListener(new java.awt.event.ActionListener() {
-                        @Override public void actionPerformed(java.awt.event.ActionEvent e)
+                    setText(applet.wrapAroundSphereFlag.get() ? "Save DUMP.off XYZW"
+                                                              : "Save DUMP.off xyh");
+                    applet.wrapAroundSphereFlag.addListener(listener = new Listenable.Listener() {
+                        @Override public void valueChanged()
                         {
-                            applet.save("DUMP.off", false);
+                            setText(applet.wrapAroundSphereFlag.get() ? "Save DUMP.off XYZW"
+                                                                      : "Save DUMP.off xyh");
                         }
                     });
-                }};
-                final JButton saveHomoButton = new JButton("Save DUMP.off XYZW") {{
-                    setMargin(nomargin);
                     addActionListener(new java.awt.event.ActionListener() {
                         @Override public void actionPerformed(java.awt.event.ActionEvent e)
                         {
-                            applet.save("DUMP.off", true);
+                            boolean saveHomo = applet.wrapAroundSphereFlag.get();
+                            applet.save("DUMP.off", saveHomo);
                         }
                     });
                 }};
@@ -933,7 +935,6 @@ public class ShephardsPlayApplet
                         }
                     });
                 }};
-
                 final JTextFieldForNumber theGridNTextField = new JTextFieldForNumber(applet.gridN);
                 final JTextFieldForNumber theBlueNoiseNTextField = new JTextFieldForNumber(applet.blueNoiseN);
 
@@ -1368,8 +1369,7 @@ public class ShephardsPlayApplet
                             add(redoButton);
                         }});
                         add(loadButton);
-                        add(saveButton);
-                        add(saveHomoButton);
+                        add(smartSaveButton);
                         add(saveDualButton);
                         // scale?
                     }});
@@ -3567,7 +3567,7 @@ public class ShephardsPlayApplet
                 System.out.println("save to file "+fileName+" failed:" + exc);
             }
             System.out.println("done.");
-        } // save
+        } // dualSave
         public void save(String fileName,
                          boolean saveHomo)
         {
@@ -3793,6 +3793,21 @@ public class ShephardsPlayApplet
                 }
 
                 reader.close();
+
+
+                // Guess what wrapAroundSphere should be based on first vertex (although theoretically they can be mixed).
+                boolean desiredWrapAroundSphereFlag = verts.length==0 ? false : verts[0].length==4;
+                // CBB: wrapAroundSphere and wrapAroundSphereFlagIntent are kind of a train wreck.
+                // Can't set intent without an undo item being created, argh!
+                // and can't set extent without actually doing the wrap or unwrap, argh!
+                // And if we don't set the intent, the ui won't change, argh!
+                // Try to minimize the badness by clearing the mesh first.
+                if (wrapAroundSphereFlagIntent.get() != desiredWrapAroundSphereFlag)
+                {
+                    mesh = new Mesh(new double[0][], new int[0][]);
+                    wrapAroundSphereFlagIntent.set(desiredWrapAroundSphereFlag);
+                }
+
 
                 mesh = new Mesh(verts, faces);
 
