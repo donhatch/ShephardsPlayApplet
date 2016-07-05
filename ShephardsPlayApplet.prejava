@@ -81,7 +81,7 @@ BUGS:
                  since introduced through different global xform
         - whenever about to move a vert or introduce a new one, that's the time to bake the accumulated
           viewing xform into the model.
-    - tilt/twirl is actually confusing me for sphere-- maybe trackball mode instead
+    - tilt/twirl is actually confusing me for sphere-- maybe trackball mode instead, or option
     - for Surface, most important thing is that offset is right-- should adjust final result to make it right
     - backfaces now completely nonfunctional
     - backface culling is flakey (or, need a coherent scheme, not keying on show-inside-out)
@@ -6966,6 +6966,19 @@ public class ShephardsPlayApplet
                         break;
                     }
 
+                    // undocumented
+                    case CTRL('w'):
+                    {
+                        sbaryExperimentType.cycle(-1);
+                        theCanvas.repaint();
+                        break;
+                    }
+                    case CTRL('e'):
+                    {
+                        sbaryExperimentType.cycle(+1);
+                        theCanvas.repaint();
+                        break;
+                    }
 
                     default:
                         System.out.println("Unknown key '"+c+"'("+(int)c+") typed");
@@ -7383,11 +7396,19 @@ public class ShephardsPlayApplet
             } // sphericalTriangleArea
 
             // experimental... spherical barycentrics based on triangle areas.
+            // This is actually lame, since it doesn't get it right along edge.  VecMath.sphericalAverage is better!
             // XXX was this just an experiment? get rid?
             private double[] sbary(final double v0[],
                                    final double v1[], double t1,
                                    final double v2[], double t2)
             {
+                if (sbaryExperimentType.get() == 2)
+                {
+                    double answer[] = new double[3];
+                    VecMath.sphericalAverage(answer, new double[][]{v0,v1,v2}, new double[]{1-t1-t2,t1,t2});
+                    return answer;
+                }
+
                 double t0 = 1. - (t1 + t2);
                 double Area = sphericalTriangleArea(v0,v1,v2);
 
@@ -7395,7 +7416,7 @@ public class ShephardsPlayApplet
                 // has the desired areas.
                 double targetArea1 = Area * t1;
                 double targetArea2 = Area * t2;
-                assert(false); // coverage
+                //assert(false); // coverage
                 NewtonSolver.Fun fun = new NewtonSolver.Fun(2) {
                     @Override public void f(double x[], double answer[])
                     {
@@ -8559,9 +8580,12 @@ public class ShephardsPlayApplet
                                 }
                             }
 
-#if 0 // XXX was this just an experiment? can I get rid?
-                        if (showTriangles.get() == 3) // spherical barycentrics experiment
+#if 1 // XXX was this just an experiment? can I get rid?  oh wait, it's actually cool!
+                        //if (showTriangles.get() == 3) // spherical barycentrics experiment
+                        //if (!showPrimalVertsFlag.get() && !showPrimalEdgesFlag.get()) // spherical barycentrics experiment
+                        if (sbaryExperimentType.get() != 0)
                         {
+                            OUT("barycentrics experiment! type="+sbaryExperimentType.get());
                             double wrapSphereRadius = 1./wrapSphereCurvature.get();
                             FORIDOWN(iEdge, edges.size())
                             {
@@ -8579,7 +8603,7 @@ public class ShephardsPlayApplet
                                                       {vert2.x(),vert2.y(),vert2.z()+wrapSphereRadius}};
                                     int N = 4;
                                     int n = 8;
-                                    mg3d.setColor(new java.awt.Color(0,0,255));
+                                    mg3d.setColor(new java.awt.Color(0,0,255)); // blue
                                     FORI (iii, 3)
                                     {
                                         double p0[] = ppp[iii];
@@ -8683,7 +8707,7 @@ public class ShephardsPlayApplet
 #endif // NOTYET
                                 }
                             }
-                            continue;
+                            if (true) continue;
                         }
 #endif // 0
 
@@ -18831,7 +18855,7 @@ OFF
         private Surface.Paraboloid theParaboloidSurface = new Surface.Paraboloid(-.5);
         private Surface theSurface = (wrapAroundSphereFlag.get() ? (Surface)theSphereSurface
                                                                  : (Surface)theParaboloidSurface);
-
+        private Listenable.Int sbaryExperimentType = new Listenable.Int(0,2, 0);
 
         // very special case visualization... if these are set,
         // highlight the primal/dual feature corresponding to the mouse angle.
