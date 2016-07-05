@@ -217,7 +217,7 @@ TO DO:
     - put in dump files:
         - selected verts
         - net
-        - wrapAroundSphereFlag?
+        - wrapAroundSphereFlag?  (using heuristic for save/load, works pretty much, except for center flag)
 
     - try to maintain selection when swapping diagonals and stuff
 
@@ -2362,9 +2362,10 @@ public class ShephardsPlayApplet
                         }});
                         add(new JRow() {{
                                 add(new JRow() {{
-
                                     add(new JCheckBoxForBoolean("Wrap around sphere", applet.wrapAroundSphereFlagIntent));
                                     add(new JCheckBoxForBoolean("Center sphere", applet.centerSphereFlag));
+                                    add(new JLabel("    "));
+                                    add(new JCheckBoxForBoolean("transform when changing wrap or curvature or center", applet.transformWhenChangingWrapOrCenterFlag));
                                 }});
                         }});
                         add(new JRow() {{
@@ -3166,30 +3167,38 @@ public class ShephardsPlayApplet
                 @Override public void valueChanged()
                 {
                     // TODO: this interaction is fucked-- undo needs to restore wrapAroundSphereFlag or wrapAroundSphereFlagIntent (not sure which at the moment)
-                    UndoItem.State before = newUndoItemState();
-                    // This should be the *only* setting of extent. In particular, there should be no
-                    // gui elements connected directly to wrapAroundSphereFlag, unless read-only.
-                    // Oh, maybe make wrapAroundSphereFlag (or wrapAroundSphereFlagExtent) be not a Listenable!
-                    wrapAroundSphereFlag.set(wrapAroundSphereFlagIntent.get()); // set the extent
-                    System.out.println("wrapAroundSphereFlag -> "+wrapAroundSphereFlag.get());
-                    UndoItem.State after = newUndoItemState();
-                    undoTreeSquirrel.Do(new UndoItem(before, after));
+                    if (transformWhenChangingWrapOrCenterFlag.get())
+                    {
+                        UndoItem.State before = newUndoItemState();
+                        // This should be the *only* setting of extent. In particular, there should be no
+                        // gui elements connected directly to wrapAroundSphereFlag, unless read-only.
+                        // Oh, maybe make wrapAroundSphereFlag (or wrapAroundSphereFlagExtent) be not a Listenable!
+                        wrapAroundSphereFlag.set(wrapAroundSphereFlagIntent.get()); // set the extent
+                        System.out.println("wrapAroundSphereFlag -> "+wrapAroundSphereFlag.get());
+                        UndoItem.State after = newUndoItemState();
+                        undoTreeSquirrel.Do(new UndoItem(before, after));
+                    }
+                    else
+                    {
+                        wrapAroundSphereFlag.set(wrapAroundSphereFlagIntent.get()); // set the extent
+                    }
                 }
             });
             wrapAroundSphereFlag.addListener(wrapAroundSphereFlagListener = new Listenable.Listener() {
                 @Override public void valueChanged()
                 {
                     if (wrapAroundSphereFlag.get())
-                    {
                         theSurface = theSphereSurface;
-                        wrapAroundSphere(wrapSphereCurvature.get(), centerSphereFlag.get());
-                    }
                     else
-                    {
                         theSurface = theParaboloidSurface;
-                        unwrapAroundSphere(wrapSphereCurvature.get(), centerSphereFlag.get());
+                    if (transformWhenChangingWrapOrCenterFlag.get())
+                    {
+                        if (wrapAroundSphereFlag.get())
+                            wrapAroundSphere(wrapSphereCurvature.get(), centerSphereFlag.get());
+                        else
+                            unwrapAroundSphere(wrapSphereCurvature.get(), centerSphereFlag.get());
+                        theCanvas.repaint();
                     }
-                    theCanvas.repaint();
                 }
             });
             wrapSphereSymbolicRadius.addListener(wrapSphereSymbolicRadiusListener = new Listenable.Listener() {
@@ -3217,11 +3226,14 @@ public class ShephardsPlayApplet
                     if (!centerSphereFlag.get())
                         theSphereSurface.center[2] = -theSphereSurface.radius;
 
-                    if (wrapAroundSphereFlag.get())
+                    if (transformWhenChangingWrapOrCenterFlag.get())
                     {
-                        unwrapAroundSphere(previousValue, centerSphereFlag.get());
-                        wrapAroundSphere(currentValue, centerSphereFlag.get());
-                        theCanvas.repaint();
+                        if (wrapAroundSphereFlag.get())
+                        {
+                            unwrapAroundSphere(previousValue, centerSphereFlag.get());
+                            wrapAroundSphere(currentValue, centerSphereFlag.get());
+                            theCanvas.repaint();
+                        }
                     }
 
                     previousValue = currentValue;
@@ -3244,11 +3256,14 @@ public class ShephardsPlayApplet
                         theSphereSurface.center[2] = -theSphereSurface.radius;
                     }
 
-                    if (wrapAroundSphereFlag.get())
+                    if (transformWhenChangingWrapOrCenterFlag.get())
                     {
-                        unwrapAroundSphere(wrapSphereCurvature.get(), previousValue);
-                        wrapAroundSphere(wrapSphereCurvature.get(), currentValue);
-                        theCanvas.repaint();
+                        if (wrapAroundSphereFlag.get())
+                        {
+                            unwrapAroundSphere(wrapSphereCurvature.get(), previousValue);
+                            wrapAroundSphere(wrapSphereCurvature.get(), currentValue);
+                            theCanvas.repaint();
+                        }
                     }
 
                     previousValue = currentValue;
@@ -3795,19 +3810,15 @@ public class ShephardsPlayApplet
                 reader.close();
 
 
-                // Guess what wrapAroundSphere should be based on first vertex (although theoretically they can be mixed).
-                boolean desiredWrapAroundSphereFlag = verts.length==0 ? false : verts[0].length==4;
-                // CBB: wrapAroundSphere and wrapAroundSphereFlagIntent are kind of a train wreck.
-                // Can't set intent without an undo item being created, argh!
-                // and can't set extent without actually doing the wrap or unwrap, argh!
-                // And if we don't set the intent, the ui won't change, argh!
-                // Try to minimize the badness by clearing the mesh first.
-                if (wrapAroundSphereFlagIntent.get() != desiredWrapAroundSphereFlag)
                 {
-                    mesh = new Mesh(new double[0][], new int[0][]);
+                    // Guess what wrapAroundSphere should be based on first vertex (although theoretically they can be mixed).
+                    boolean desiredWrapAroundSphereFlag = verts.length==0 ? false : verts[0].length==4;
+                    // Have to suppress transforming when setting wrap flag.
+                    boolean savedTransformFlag = transformWhenChangingWrapOrCenterFlag.get();
+                    transformWhenChangingWrapOrCenterFlag.set(false);
                     wrapAroundSphereFlagIntent.set(desiredWrapAroundSphereFlag);
+                    transformWhenChangingWrapOrCenterFlag.set(savedTransformFlag);
                 }
-
 
                 mesh = new Mesh(verts, faces);
 
@@ -18938,6 +18949,8 @@ OFF
         private Listenable.Boolean centerSphereFlag = new Listenable.Boolean(true);
         private Listenable.Double wrapSphereCurvature = new Listenable.Double(.001,2., 1.);
         private Listenable.Double wrapSphereSymbolicRadius = new Listenable.Double(.001,1.999, 1.);
+        private Listenable.Boolean transformWhenChangingWrapOrCenterFlag = new Listenable.Boolean(true);
+
         private Listenable.Double backfaceBrightness = new Listenable.Double(0.,1., .25);
         private Listenable.Int gridN = new Listenable.Int(0,1000,10);
         private Listenable.Int blueNoiseN = new Listenable.Int(0,1000,10);
