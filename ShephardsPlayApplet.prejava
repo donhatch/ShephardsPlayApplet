@@ -164,6 +164,8 @@ BUGS:
     - use exact group calculation rather than generateVertices when adding a point
 
 TO DO:
+    - idea: save should operate in xyh when not wrapped around sphere, xyzw when wrapped around sphere? and load should set wrap based on it(but what about center? hmm, maybe should automatically uncenter for purpose of saving/loading? not sure. and the buttons can change
+
     - idea: actually infinite figures?  E.g. CrackGoesInSpiral could be recursive, it could go outward to infinity and/or inward to infinity
         - special-case less ambitious sub-idea:
           certain figures such as CrackGoesInSpiral could be annotated with such knowledge,
@@ -7794,7 +7796,11 @@ public class ShephardsPlayApplet
                 int dualEdgeFacings[] = new int[nEdges];
                 int dualVertFacings[] = new int[nDualVerts+1];
                 double eyeInLocalSpace[] = VecMath.mxv(getRotMat(), eye); // multiply on wrong side, i.e. apply transpose i.e. inverse
-                eyeInLocalSpace[2] /= MAX(localScaleZ, 1e-6);
+                // gag, that returned a 4d vector
+                eyeInLocalSpace = (double[])Arrays.subarray(eyeInLocalSpace, 0, 3);
+                if (!wrapAroundSphereFlag.get())
+                    eyeInLocalSpace[2] /= MAX(localScaleZ, 1e-6);
+
                 getFacings(eyeInLocalSpace, mesh, dualMesh, faceFacings, edgeFacings, vertFacings, wrapAroundSphereFlag.get(), centerSphereFlag.get(), wrapSphereCurvature.get());
                 getFacings(eyeInLocalSpace, dualMesh, mesh, dualFaceFacings, dualEdgeFacings, dualVertFacings, wrapAroundSphereFlag.get(), centerSphereFlag.get(), wrapSphereCurvature.get());
                 //PRINTARRAY(faceFacings);
@@ -9741,32 +9747,31 @@ public class ShephardsPlayApplet
                 VecMath.fillvec(edgeFacings, FACING_UNKNOWN);
                 VecMath.fillvec(vertFacings, FACING_UNKNOWN);
 
+                // XXX wait, is there some confusion here? aren't some of the array sizes one more than this?
                 int nVerts = mesh.verts.size();
                 int nEdges = mesh.edges.size();
                 int nDualVerts = dualMesh.verts.size();
 
+                if (verboseLevel >= 1) System.out.println("      eyeInLocalSpace = "+VecMath.toString(eyeInLocalSpace));
                 // compute face facings...
                 if (verboseLevel >= 1) System.out.println("      computing face facings");
+
+
+                // TODO: Do I need to abandon this first method??
+                // Problem is, in wrapped-around-sphere case, if whole polyhedron is eyeward of the origin, it's impossible
+                // to tell direction from 3d dual vertex position.
+                // However, for paraboloid case, it's awesome!  It magically gives the right answer given dual vertex, although I don't understand why.
                 if (false)
-                {
-                    if (verboseLevel >= 1) System.out.println("          (NOT!");
-                }
-                else
                 {
                     FORI (iFace, nDualVerts)
                     {
                         Mesh.Vertex dualVert = dualMesh.getVert(iFace);
 
                         // plane is all points p such that p dot facePlaneNormal == facePlaneOffset
-                        /*
-                        double facePlaneNormal[] = {dualVert.x(), dualVert.y(), 1.}; // not unit length
-                        double facePlaneOffset = -dualVert.z(); // magic!  I don't know why, but this is the correct value
-                        */
 
                         double facePlaneNormal[];
                         double facePlaneOffset;
 
-                        double frontness;
                         if (wrapAroundSphereFlagValue)
                         {
                             // reciprocated wrt sphere.
@@ -9781,14 +9786,11 @@ public class ShephardsPlayApplet
                                 dualVert.y(),
                                 centerSphereFlagValue ? dualVert.z() : dualVert.z() + 1./wrapSphereCurvatureValue
                             };
-                            // CBB: don't really need to normalize to reciprocate, but I'm doing it to not confuse myself so much
                             double dualVertDist2FromCenter = VecMath.normsqrd(facePlaneNormal);
                             double facePlaneSmallestPoint[] = VecMath.vxs(facePlaneNormal, 1./dualVertDist2FromCenter);
                             if (!centerSphereFlagValue)
                                 facePlaneSmallestPoint[2] -= 1./wrapSphereCurvatureValue;
                             facePlaneOffset = VecMath.dot(facePlaneNormal, facePlaneSmallestPoint);
-                            frontness = VecMath.dot(facePlaneNormal, eyeInLocalSpace)
-                                             - facePlaneOffset;
 
                             // Hmm, that's wrong if face plane is facing the origin...
                             // and useless if the face plane passes through the origin (in which case the dual vert is at infinity).
@@ -9799,10 +9801,10 @@ public class ShephardsPlayApplet
                             // reciprocated wrt paraboloid
                             facePlaneNormal = new double[] {dualVert.X(), dualVert.Y(), dualVert.W()}; // i.e. x,y,1.  not unit length.
                             facePlaneOffset = -dualVert.Z(); // i.e. z.  magic!  I don't know why, but this is the correct value
-                            frontness = VecMath.dot(facePlaneNormal, eyeInLocalSpace)
-                                      - facePlaneOffset;
                         }
                         // XXX not sure the epsilons make sense... maybe normalize facePlaneNormal and offset, just so we can think straight about that?
+                        double frontness = VecMath.dot(facePlaneNormal, eyeInLocalSpace)
+                                  - facePlaneOffset;
                         if (LT(frontness, 0., SQR(1e-6)))
                             faceFacings[iFace] = FACING_BACK;
                         else if (GT(frontness, 0., SQR(1e-6)))
@@ -9811,11 +9813,16 @@ public class ShephardsPlayApplet
                             faceFacings[iFace] = FACING_SIDE;
                     }
                 }
+                else
+                {
+                    if (verboseLevel >= 1) System.out.println("          (NOT!)");
+                }
 
                 // Bleah, the faces that don't have dual verts
                 // need to be computed by a separate method.
-                // TODO: make all faces have dual verts?  Not sure, if non-planar then maybe that will cause more damage than it fixes
+                // (and the above method sucks anyway, at least for wrapped-around-sphere).
                 if (verboseLevel >= 1) System.out.println("      computing face for faces that don't have dual verts");
+                // CBB: maybe two passes: first only looks at edges that are first on a face with missing vertex, so we get those done robustly
                 FORI (iEdge, nEdges)
                 {
                     Mesh.Edge edgeI = mesh.getEdge(iEdge);
@@ -9824,20 +9831,20 @@ public class ShephardsPlayApplet
                     int iLeftFace = leftDualVert==null ? nDualVerts : leftDualVert.myIndex();
                     if (faceFacings[iLeftFace] == FACING_UNKNOWN)
                     {
-                        System.out.println("          iEdge = "+iEdge+"/"+nEdges);
+                        if (verboseLevel >= 2) System.out.println("          iEdge = "+iEdge+"/"+nEdges+" ("+(edgeI.direction!=null?"has direction":"no direction")+")");
                         double normal[] = {0,0,0}; // for starters
                         double moment[] = {0,0,0}; // for starters
                         double centroid[] = null;
-                        // XXX TODO: centroid of verts might be more robust than area centroid? yeah I think so
+                        // XXX TODO: centroid of verts might be more robust than area centroid? yeah I think so, hmm
                         double area = 0.;
                         {
                             Mesh.Vertex v0 = edgeI.initialVertex();
                             if (v0 == null)
                             {
-                                System.out.println("              ouch! edge "+iEdge+" has null initial vertex");
+                                if (verboseLevel >= 2) System.out.println("              ouch! edge "+iEdge+" has null initial vertex ("+(edgeI.direction!=null?"has direction":"no direction")+")");
                                 continue;
                             }
-                            // XXX TODO: compute in homogeneous space
+                            // CBB: compute in homogeneous space?  Hmm that would be ambitious.
                             assert(v0 != null);
                             double v0coords[] = {v0.x(), v0.y(), v0.z()};
                             double v1coords[] = new double[3]; // scratch for loop
@@ -9845,18 +9852,18 @@ public class ShephardsPlayApplet
                             double thisCentroid[] = new double[3]; // scratch for loop
                             double thisWeightedNormal[] = new double[3]; // scratch for loop
                             Mesh.Edge edgeJ;
-                            for (edgeJ = edgeI.next(); edgeJ != edgeI; edgeJ = edgeJ.next())
+                            for (edgeJ = edgeI.next(); edgeJ.finalVertex() != v0; edgeJ = edgeJ.next())
                             {
                                 Mesh.Vertex v1 = edgeJ.initialVertex();
                                 Mesh.Vertex v2 = edgeJ.finalVertex();
                                 if (v1 == null)
                                 {
-                                    System.out.println("                  ouch! edge "+edgeJ.myIndex()+" has null initial vertex");
+                                    if (verboseLevel >= 2) System.out.println("                  ouch! edge "+edgeJ.myIndex()+" has null initial vertex ("+(edgeJ.direction!=null?"has direction":"no direction")+")");
                                     break;
                                 }
                                 if (v2 == null)
                                 {
-                                    System.out.println("                  ouch! edge "+edgeJ.myIndex()+" has null final vertex vertex");
+                                    if (verboseLevel >= 2) System.out.println("                  ouch! edge "+edgeJ.myIndex()+" has null final vertex ("+(edgeJ.direction!=null?"has direction":"no direction")+")");
                                     break;
                                 }
                                 v1coords[0] = v1.x();
@@ -9865,10 +9872,11 @@ public class ShephardsPlayApplet
                                 v2coords[0] = v2.x();
                                 v2coords[1] = v2.y();
                                 v2coords[2] = v2.z();
-                                VecMath.vmv(v1coords, v1coords, v0coords);
-                                VecMath.vmv(v2coords, v2coords, v0coords);
+                                VecMath.vmv(v1coords, v1coords, v0coords); // so now relative to v0
+                                VecMath.vmv(v2coords, v2coords, v0coords); // so now relative to v0
                                 VecMath.vxv3(thisWeightedNormal, v1coords, v2coords);
                                 VecMath.vpv(normal, normal, thisWeightedNormal);
+                                if (verboseLevel >= 2) System.out.println("                  adding weighted normal "+VecMath.toString(thisWeightedNormal));
                                 double thisArea = VecMath.norm(thisWeightedNormal);
                                 area += thisArea;
                                 VecMath.sxvpsxv(thisCentroid, 1/3., v1coords, 1/3., v2coords); // relative to v0
@@ -9876,13 +9884,15 @@ public class ShephardsPlayApplet
                             }
                             if (edgeJ != edgeI) // if broke
                             {
-                                System.out.println("              ouch! continuing");
+                                if (verboseLevel >= 2) System.out.println("              ouch! continuing");
                             }
                             centroid = VecMath.vpsxv(v0coords, 1./area, moment);
                         }
+                        if (verboseLevel >= 2) System.out.println("              normal = "+VecMath.toString(normal));
+                        if (verboseLevel >= 2) System.out.println("              eyeInLocalSpace-centroid = "+VecMath.toString(VecMath.vmv(eyeInLocalSpace, centroid)));
                         double frontness = VecMath.dot(normal, eyeInLocalSpace)
                                          - VecMath.dot(normal, centroid);
-                        //PRINT(frontness);
+                        if (verboseLevel >= 2) System.out.println("              frontness = "+frontness);
                         // XXX not sure the epsilons make sense... maybe normalize normal, just so we can think straight about that?
                         if (LT(frontness, 0., SQR(1e-6)))
                             faceFacings[iLeftFace] = FACING_BACK;
@@ -18908,9 +18918,9 @@ OFF
         private Listenable.Boolean remapFundamentalRegionWhenChangingRotationalSymmetry = new Listenable.Boolean(false);
         private Listenable.Boolean deleteUnmatchedVertsWhenChangingRotationalSymmetry = new Listenable.Boolean(false);
 
-        private Listenable.Boolean wrapAroundSphereFlag = new Listenable.Boolean(false);
-        private Listenable.Boolean wrapAroundSphereFlagIntent = new Listenable.Boolean(false);
-        private Listenable.Boolean centerSphereFlag = new Listenable.Boolean(false);
+        private Listenable.Boolean wrapAroundSphereFlagIntent = new Listenable.Boolean(true);
+        private Listenable.Boolean wrapAroundSphereFlag = new Listenable.Boolean(true);
+        private Listenable.Boolean centerSphereFlag = new Listenable.Boolean(true);
         private Listenable.Double wrapSphereCurvature = new Listenable.Double(.001,2., 1.);
         private Listenable.Double wrapSphereSymbolicRadius = new Listenable.Double(.001,1.999, 1.);
         private Listenable.Double backfaceBrightness = new Listenable.Double(0.,1., .25);
