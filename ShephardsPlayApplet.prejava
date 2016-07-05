@@ -1343,28 +1343,9 @@ public class ShephardsPlayApplet
                 final java.awt.Component theBackfaceBrightnessLabel = new JLabel("Backface brightness:");
                 final java.awt.Component theBackfaceBrightnessTextField = new JTextFieldForNumber(applet.backfaceBrightness);
                 final java.awt.Component theBackfaceBrightnessSlider = new SliderForFloat(applet.backfaceBrightness);
-                final java.awt.Component theWrapRadiusLabel = new JLabel("Wrap radius:") {{setEnabled(false);}}; // assumes !wrapAroundSphereFlag initially
-                final java.awt.Component theWrapRadiusTextField = new JTextFieldForNumber(applet.wrapSphereSymbolicRadius) {{setEnabled(false);}}; // assumes !wrapAroundSphereFlag initially
-                final java.awt.Component theWrapRadiusSlider = new SliderForFloat(applet.wrapSphereSymbolicRadius) {{setEnabled(false);}}; // assumes !wrapAroundSphereFlag initially.
-
-                // TODO: make generic way to tie enabledness to boolean instead
-                applet.wrapAroundSphereFlag.addListener(applet.wrapAroundSphereFlagListenerYYY = new Listenable.Listener() {
-                    @Override public void valueChanged()
-                    {
-                        if (applet.wrapAroundSphereFlag.get())
-                        {
-                            theWrapRadiusLabel.setEnabled(true);
-                            theWrapRadiusTextField.setEnabled(true);
-                            theWrapRadiusSlider.setEnabled(true);
-                        }
-                        else
-                        {
-                            theWrapRadiusLabel.setEnabled(false);
-                            theWrapRadiusTextField.setEnabled(false);
-                            theWrapRadiusSlider.setEnabled(false);
-                        }
-                    }
-                });
+                final java.awt.Component theWrapRadiusLabel = new JLabel("Wrap radius:") {Listenable.Listener enabledListener; {enabledListener = tieEnabledTo(this, applet.wrapAroundSphereFlag);}};
+                final java.awt.Component theWrapRadiusTextField = new JTextFieldForNumber(applet.wrapSphereSymbolicRadius) {Listenable.Listener enabledListener; {enabledListener = tieEnabledTo(this, applet.wrapAroundSphereFlag);}};
+                final java.awt.Component theWrapRadiusSlider = new SliderForFloat(applet.wrapSphereSymbolicRadius) {Listenable.Listener enabledListener; {enabledListener = tieEnabledTo(this, applet.wrapAroundSphereFlag);}};
 
                 // for making pixmaps from ascii
                 final java.awt.Color asciiToColor[] = new java.awt.Color[128];
@@ -2826,8 +2807,8 @@ public class ShephardsPlayApplet
                                         });
                                     }
                                 });
-                                add(new JCheckBox("Flow", applet.showNetFlowFlag.get()) {{
-                                        setEnabled(applet.showNetFlag.get());
+                                add(new JCheckBox("Flow", applet.showNetFlowFlag.get()) {Listenable.Listener enabledListener; {
+                                        enabledListener = tieEnabledTo(this, applet.showNetFlag);
                                         setMargin(nomargin);
                                         addItemListener(new java.awt.event.ItemListener() {
                                             @Override public void itemStateChanged(java.awt.event.ItemEvent e)
@@ -2837,12 +2818,6 @@ public class ShephardsPlayApplet
                                                     applet.showNetFlowFlag.set(isSelected());
                                                 }
                                                 applet.theCanvas.repaint();
-                                            }
-                                        });
-                                        applet.showNetFlag.addListener(applet.showNetFlagListener2 = new Listenable.Listener() {
-                                            @Override public void valueChanged()
-                                            {
-                                                setEnabled(applet.showNetFlag.get()); // of the applet.showNetFlowFlag checkbox
                                             }
                                         });
                                         applet.showNetFlowFlag.addListener(applet.showNetFlowFlagListener = new Listenable.Listener() {
@@ -19360,6 +19335,22 @@ OFF
             super(f);
         }
     }
+
+    // Note, caller must store the returned strong reference to this for as long as it wants the listener to live.
+    // It might make sense to make alternate versions of this, e.g. tie to negation or other function of listenable(s).
+    private static Listenable.Listener tieEnabledTo(java.awt.Component component, Listenable.Boolean listenable)
+    {
+        component.setEnabled(listenable.get());
+        Listenable.Listener listener = new Listenable.Listener() {
+            @Override public void valueChanged()
+            {
+                component.setEnabled(listenable.get());
+            }
+        };
+        listenable.addListener(listener);
+        return listener;
+    }
+
 
     //
     // From Tom Davis's paper "Homogeneous Coordinates and Computer Graphics"
