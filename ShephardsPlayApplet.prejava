@@ -5501,9 +5501,9 @@ public class ShephardsPlayApplet
                             // Make sure it's a valid alternative.
                             // (could do this once on mouse down,
                             // but whatever, it's O(n) which is fine here)
-                            Mesh.Edge alternatives[] = theNet.findAlternatives(beingDraggedNetEdgeIndex);
-                            if (Arrays.indexOfUsingEqualsSymbol(alternatives, dualMesh.getEdge(targetEdgeIndex)) != -1
-                             || Arrays.indexOfUsingEqualsSymbol(alternatives, dualMesh.getEdge(targetEdgeIndex).opposite()) != -1)
+                            int alternatives[] = theNet.findAlternatives(beingDraggedNetEdgeIndex);
+                            if (Arrays.indexOf(alternatives, targetEdgeIndex) != -1
+                             || Arrays.indexOf(alternatives, targetEdgeIndex^1) != -1)
                             {
                                 theNet.swapCutAndFold(beingDraggedNetEdgeIndex,
                                                       targetEdgeIndex);
@@ -6077,10 +6077,10 @@ public class ShephardsPlayApplet
                                     assert_eq(theNet._vertToParentEdgeInd[_dualMesh.getEdge(highlightedDualEdgeIndex).initialVertex().myIndex()], highlightedDualEdgeIndex);
                                 }
 
-                                Mesh.Edge alternatives[] = theNet.findAlternatives(highlightedDualEdgeIndex);
+                                int alternatives[] = theNet.findAlternatives(highlightedDualEdgeIndex);
                                 if (alternatives.length > 0)
                                 {
-                                    int other = alternatives[(keyCode == java.awt.event.KeyEvent.VK_LEFT ? 0 : alternatives.length-1)].myIndex();
+                                    int other = alternatives[(keyCode == java.awt.event.KeyEvent.VK_LEFT ? 0 : alternatives.length-1)];
 
                                     UndoItem.State before = newUndoItemState();
                                     theNet.swapCutAndFold(highlightedDualEdgeIndex,
@@ -8895,14 +8895,14 @@ public class ShephardsPlayApplet
                                     }
                                 }
 
-                                Mesh.Edge alternatives[] = theNet.findAlternatives(beingDraggedNetEdgeIndex);
+                                int alternatives[] = theNet.findAlternatives(beingDraggedNetEdgeIndex);
 
                                 // add in the original exit itself, to simplify the loop
-                                alternatives = (Mesh.Edge[])Arrays.append(alternatives, dualMesh.getEdge(beingDraggedNetEdgeIndex));
+                                alternatives = (int[])Arrays.append(alternatives, beingDraggedNetEdgeIndex);
 
                                 FORI (iAlternative, alternatives.length)
                                 {
-                                    Mesh.Edge alternativeExit = alternatives[iAlternative];
+                                    Mesh.Edge alternativeExit = dualMesh.getEdge(alternatives[iAlternative]);
                                     Mesh.Vertex alternativeExitVertex = alternativeExit.initialVertex();
                                     java.awt.Color color;
                                     if (itsACut)
@@ -16549,9 +16549,11 @@ OFF
             }
 
             // If iEdge is a cut, return a list of all the folds
-            // that are alternate exits out of the same lagoon (in same direction).
-            // If iEdge is a fold, do the dual thing in the dual mesh.
-            public Mesh.Edge[] findAlternatives(int iEdge)
+            // that are alternate exits out of the same lagoon (in same direction),
+            // in CCW order around the lagoon.
+            // If iEdge is a fold, do the dual thing in the dual mesh,
+            // resulting in "forward" order (i.e. edge to its next CCW around face, roughly).
+            public int[] findAlternatives(int iEdge)
             {
                 assert_eq(_nUndecideds, 0);
                 Mesh meshToUse = (_edgeStatuses[iEdge]==CUT ? _mesh : _dualMesh);
@@ -16584,7 +16586,7 @@ OFF
                         mergeFind.merge(j0, j1);
                     }
                 }
-                Mesh.Edge results[] = new Mesh.Edge[nEdges];
+                int results[] = new int[nEdges];
                 int nResults = 0;
 
                 int treeType = _edgeStatuses[iEdge];
@@ -16602,14 +16604,15 @@ OFF
                         if (mergeFind.find(j0) == mergeFind.find(i0)
                          && mergeFind.find(j1) == mergeFind.find(i1))
                         {
+                            // note edgeJ isn't necessarily the actual alternative since it's on meshToUse
+                            // which isn't necessarily _mesh; however its index is correct.
                             // result is NOT necessarily edgeJ since meshToUse isn't necessarily _mesh.
-                            results[nResults++] = (meshToUse==_mesh ? edgeJ
-                                                                    : _mesh.getEdge(jEdge));
+                            results[nResults++] = jEdge;
                         }
                     }
                 }
 
-                results = (Mesh.Edge[])Arrays.subarray(results, 0, nResults);
+                results = (int[])Arrays.subarray(results, 0, nResults);
                 return results;
             } // findAlternatives()
 
@@ -16627,19 +16630,12 @@ OFF
                 if (verboseLevel >= 2) System.out.println("...");
                 FORI (iEdge, nEdges)
                 {
-                    Mesh.Edge alternatives[] = findAlternatives(iEdge);
-                    if (verboseLevel >= 2)
-                    {
-                        // TODO: just make it return ints I think
-                        int intAlternatives[] = new int[alternatives.length];
-                        FORI (i, alternatives.length)
-                            intAlternatives[i] = alternatives[i].myIndex();
-                        System.out.println("          "+iEdge+"/"+nEdges+": "+(_edgeStatuses[iEdge]==FOLD?"FOLD":_edgeStatuses[iEdge]==CUT?"CUT":"???")+": "+Arrays.toStringCompact(intAlternatives));
-                    }
+                    int alternatives[] = findAlternatives(iEdge);
+                    if (verboseLevel >= 2) System.out.println("          "+iEdge+"/"+nEdges+": "+(_edgeStatuses[iEdge]==FOLD?"FOLD":_edgeStatuses[iEdge]==CUT?"CUT":"???")+": "+Arrays.toStringCompact(alternatives));
                     FORI (iAlternative, alternatives.length)
                     {
-                        assert(!answer[iEdge][alternatives[iAlternative].myIndex()]);
-                        answer[iEdge][alternatives[iAlternative].myIndex()] = true;
+                        assert(!answer[iEdge][alternatives[iAlternative]]);
+                        answer[iEdge][alternatives[iAlternative]] = true;
                         if (verboseLevel == 1) System.out.print(".");
                         //if (verboseLevel == 1) System.out.print("("+alternatives.length+")");
                         if (verboseLevel == 1) System.out.flush();
