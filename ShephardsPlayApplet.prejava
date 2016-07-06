@@ -4,7 +4,7 @@ that will let me play with triangulations with heights,
 and produce the dual diagrams with heights.
 
 BUGS:
-  Single-lagoon-exit related:
+  Dual related:
     - dual vert numbering isn't sane (maybe nothing can be done about that...
       I think they come out in order based on tri order,
       which is based on edge order (rather than original tri order; that gets lost)
@@ -83,9 +83,6 @@ BUGS:
           viewing xform into the model.
     - tilt/twirl is actually confusing me for sphere-- maybe trackball mode instead, or option
     - for Surface, most important thing is that offset is right-- should adjust final result to make it right
-    - backfaces now completely nonfunctional
-    - backface culling is flakey (or, need a coherent scheme, not keying on show-inside-out)
-    - backface culling sometimes slightly wrong-- using wrong criterion? symmetry 3,4 or something, some backfacing tries are shown with frontfacing color
     - doesn't interact correctly with undo/redo or save/restore
     - should compute ray lengths in flat space or something so they don't overshoot
       the point that goes to infinity.  or, just recognize the point
@@ -125,7 +122,7 @@ BUGS:
     - can we color some edges red even when net is not complete?  I think the parts that are connected to the infinite can be colored.
       (extra credit: when *not* connected to infinite yet, can still color but in general need two different colors
       depending on which direction the edge will eventualy go.  can that be conveyed?)
-    - net flow doesn't work when delaunayized with "calc underside when delaunayizing"
+    - net flow doesn't work (since doesn't think net is complete) when delaunayized with "calc underside when delaunayizing"
     - netless8 / sharpest at every vertex / net -> assertion failed: _W == 1
     - netless9 / outward / net -> assertion failed: _W == 1
 
@@ -7827,8 +7824,8 @@ public class ShephardsPlayApplet
                 if (!wrapAroundSphereFlag.get())
                     eyeInLocalSpace[2] /= MAX(localScaleZ, 1e-6);
 
-                getFacings(eyeInLocalSpace, mesh, dualMesh, faceFacings, edgeFacings, vertFacings, wrapAroundSphereFlag.get(), centerSphereFlag.get(), wrapSphereCurvature.get());
-                getFacings(eyeInLocalSpace, dualMesh, mesh, dualFaceFacings, dualEdgeFacings, dualVertFacings, wrapAroundSphereFlag.get(), centerSphereFlag.get(), wrapSphereCurvature.get());
+                getFacings(eyeInLocalSpace, mesh, dualMesh, false, faceFacings, edgeFacings, vertFacings, wrapAroundSphereFlag.get(), centerSphereFlag.get(), wrapSphereCurvature.get());
+                getFacings(eyeInLocalSpace, dualMesh, mesh, true, dualFaceFacings, dualEdgeFacings, dualVertFacings, wrapAroundSphereFlag.get(), centerSphereFlag.get(), wrapSphereCurvature.get());
                 //PRINTARRAY(faceFacings);
                 //PRINTARRAY(dualFaceFacings);
 
@@ -8044,7 +8041,7 @@ public class ShephardsPlayApplet
 
                     //
                     // If showing net, compute a net.
-                    // For now, sweep upwards,
+                    // If it ends up complete,
                     // color good edges green and off-balance ones red.
                     //
 
@@ -9094,6 +9091,10 @@ public class ShephardsPlayApplet
                          && theNet._topSortedVertInds != null) // TODO: can probably remove this check eventually, when I get topsort working even if only forest
                         {
                             //
+                            // Draw the flow, i.e. the marching ants.
+                            //
+
+                            //
                             // Figure out distance (both 2-norm and infinity-norm) from each vertex
                             // to the root-most one in its tree, in 2 dimensions
                             //
@@ -9136,7 +9137,10 @@ public class ShephardsPlayApplet
                                 {
                                     if (!showInsideOutDualVertsFlagValue
                                      && dualEdgeFacings[parentEdgeInd] == FACING_BACK)
+                                    {
+                                        //System.out.println("        skipping flow on e"+parentEdgeInd+" from v"+iChild+" to "+(dualMesh.getEdge(parentEdgeInd).finalVertex()!=null ? "v"+dualMesh.getEdge(parentEdgeInd).finalVertex().myIndex() : "null"));
                                         continue;
+                                    }
 
                                     Mesh.Edge parentEdge = dualMesh.getEdge(parentEdgeInd);
                                     Mesh.Vertex parent = parentEdge.finalVertex();
@@ -9759,7 +9763,7 @@ public class ShephardsPlayApplet
             private static final int FACING_SIDE = 2;
             private static final int FACING_FRONT = 3;
             private static void getFacings(double eyeInLocalSpace[],
-                                           Mesh mesh, Mesh dualMesh,
+                                           Mesh mesh, Mesh dualMesh, boolean meshIsReallyDualMesh,
                                            int faceFacings[],
                                            int edgeFacings[],
                                            int vertFacings[],
@@ -9918,6 +9922,8 @@ public class ShephardsPlayApplet
                         if (verboseLevel >= 2) System.out.println("              eyeInLocalSpace-centroid = "+VecMath.toString(VecMath.vmv(eyeInLocalSpace, centroid)));
                         double frontness = VecMath.dot(normal, eyeInLocalSpace)
                                          - VecMath.dot(normal, centroid);
+                        if (meshIsReallyDualMesh)
+                            frontness *= -1;
                         if (verboseLevel >= 2) System.out.println("              frontness = "+frontness);
                         // XXX not sure the epsilons make sense... maybe normalize normal, just so we can think straight about that?
                         if (LT(frontness, 0., SQR(1e-6)))
