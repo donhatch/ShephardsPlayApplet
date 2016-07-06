@@ -7012,6 +7012,8 @@ public class ShephardsPlayApplet
                         boolean fullAlternativesMatrix[][] = theNet.findFullAlternativesMatrix();
                         PRINTVEC(theNet._edgeStatuses);
                         //PRINTMAT(fullAlternativesMatrix);
+                        int fullAlternativesToEverything[][] = theNet.findFullAlternativesToEverything();
+                        //PRINTMAT(fullAlternativesToEverything);
                         break;
                     }
 
@@ -16616,8 +16618,46 @@ OFF
                 return results;
             } // findAlternatives()
 
+            public int[][] findFullAlternativesToEverything()
+            {
+                int verboseLevel = 2;
+                if (verboseLevel >= 1) OUT("    in findFullAlternativesMatrix");
+                assert_eq(_nUndecideds, 0);
+                int nEdges = _mesh.edges.size();
+                int answer[][] = new int[nEdges][];
+                FORI (iEdge, nEdges)
+                {
+                    answer[iEdge] = findAlternatives(iEdge);
+                    if (verboseLevel >= 2) System.out.println("          "+iEdge+"/"+nEdges+": "+(_edgeStatuses[iEdge]==FOLD?"FOLD":_edgeStatuses[iEdge]==CUT?"CUT":"???")+": "+Arrays.toStringCompact(answer[iEdge]));
+                }
+                {
+                    if (verboseLevel >= 1) OUT("      sanity checking...");
+                    FORI (iEdge, nEdges)
+                    {
+                        assert(answer[iEdge].length == answer[iEdge^1].length);
+                        FORI (j, answer[iEdge].length)
+                        {
+                            int jEdge = answer[iEdge][j];
+                            assert(Arrays.indexOf(answer[iEdge], jEdge) == j);
+                            assert(Arrays.indexOf(answer[iEdge^1], jEdge^1) != -1);
+
+                            // Funny dance, it comes back in opposite direction.
+                            // Yes, that's the right thing (mouse-down on a cut and fold to see it).
+                            assert(Arrays.indexOf(answer[jEdge], iEdge^1) != -1);
+                            assert(Arrays.indexOf(answer[jEdge^1], iEdge) != -1);
+                        }
+                    }
+                    if (verboseLevel >= 1) OUT("      done.");
+                }
+                if (verboseLevel >= 2) PRINTMAT(answer);
+                if (verboseLevel >= 1) OUT("    out findFullAlternativesMatrix");
+                return answer;
+            } // findFullAlternativesToEverything
+
             // Really the matrix should be bipartite, but that would be a bit more complicated.
             // So for now, it takes up something like 4 times as much space as it should.
+            // Actually this whole idea is pretty silly-- the matrix ends up very sparse.
+            // Should just make an array.
             public boolean[][] findFullAlternativesMatrix()
             {
                 int verboseLevel = 2;
