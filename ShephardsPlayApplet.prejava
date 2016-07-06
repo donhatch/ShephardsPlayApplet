@@ -119,6 +119,8 @@ BUGS:
         this actually work?  hmm I'm thinking no.
 
   Net-related:
+    - random auto net completion!
+    - take net of triangle, turn on "Show primal underside and second dual sheet (if any)"; it draws a strange extra cut that looks wrong
     - can we color some edges red even when net is not complete?  I think the parts that are connected to the infinite can be colored.
       (extra credit: when *not* connected to infinite yet, can still color but in general need two different colors
       depending on which direction the edge will eventualy go.  can that be conveyed?)
@@ -5499,9 +5501,9 @@ public class ShephardsPlayApplet
                             // Make sure it's a valid alternative.
                             // (could do this once on mouse down,
                             // but whatever, it's O(n) which is fine here)
-                            Mesh.Edge alternatives[] = theNet.alternatives(beingDraggedNetEdgeIndex);
-                            if (Arrays.indexOfUsingEqualsSymbol(alternatives, dualMesh.getEdge(targetEdgeIndex)) != -1
-                             || Arrays.indexOfUsingEqualsSymbol(alternatives, dualMesh.getEdge(targetEdgeIndex).opposite()) != -1)
+                            int alternatives[] = theNet.findAlternatives(beingDraggedNetEdgeIndex);
+                            if (Arrays.indexOf(alternatives, targetEdgeIndex) != -1
+                             || Arrays.indexOf(alternatives, targetEdgeIndex^1) != -1)
                             {
                                 theNet.swapCutAndFold(beingDraggedNetEdgeIndex,
                                                       targetEdgeIndex);
@@ -6075,10 +6077,10 @@ public class ShephardsPlayApplet
                                     assert_eq(theNet._vertToParentEdgeInd[_dualMesh.getEdge(highlightedDualEdgeIndex).initialVertex().myIndex()], highlightedDualEdgeIndex);
                                 }
 
-                                Mesh.Edge alternatives[] = theNet.alternatives(highlightedDualEdgeIndex);
+                                int alternatives[] = theNet.findAlternatives(highlightedDualEdgeIndex);
                                 if (alternatives.length > 0)
                                 {
-                                    int other = alternatives[(keyCode == java.awt.event.KeyEvent.VK_LEFT ? 0 : alternatives.length-1)].myIndex();
+                                    int other = alternatives[(keyCode == java.awt.event.KeyEvent.VK_LEFT ? 0 : alternatives.length-1)];
 
                                     UndoItem.State before = newUndoItemState();
                                     theNet.swapCutAndFold(highlightedDualEdgeIndex,
@@ -7003,6 +7005,12 @@ public class ShephardsPlayApplet
                     {
                         sbaryExperimentType.cycle(+1);
                         theCanvas.repaint();
+                        break;
+                    }
+                    case 'F':
+                    {
+                        int fullAlternativesToEverything[][] = theNet.findFullAlternativesToEverything();
+                        //PRINTMAT(fullAlternativesToEverything);
                         break;
                     }
 
@@ -8857,6 +8865,7 @@ public class ShephardsPlayApplet
                                     dualEdgeColors[iEdge] = darkGray;
                                 }
                             }
+
                             if (beingDraggedNetEdgeIndex != -1)
                             {
                                 boolean itsACut = (theNet._edgeStatuses[beingDraggedNetEdgeIndex] == Net.CUT);
@@ -8885,14 +8894,14 @@ public class ShephardsPlayApplet
                                     }
                                 }
 
-                                Mesh.Edge alternatives[] = theNet.alternatives(beingDraggedNetEdgeIndex);
+                                int alternatives[] = theNet.findAlternatives(beingDraggedNetEdgeIndex);
 
                                 // add in the original exit itself, to simplify the loop
-                                alternatives = (Mesh.Edge[])Arrays.append(alternatives, dualMesh.getEdge(beingDraggedNetEdgeIndex));
+                                alternatives = (int[])Arrays.append(alternatives, beingDraggedNetEdgeIndex);
 
                                 FORI (iAlternative, alternatives.length)
                                 {
-                                    Mesh.Edge alternativeExit = alternatives[iAlternative];
+                                    Mesh.Edge alternativeExit = dualMesh.getEdge(alternatives[iAlternative]);
                                     Mesh.Vertex alternativeExitVertex = alternativeExit.initialVertex();
                                     java.awt.Color color;
                                     if (itsACut)
@@ -16539,9 +16548,11 @@ OFF
             }
 
             // If iEdge is a cut, return a list of all the folds
-            // that are alternate exits out of the same lagoon (in same direction).
-            // If iEdge is a fold, do the dual thing in the dual mesh.
-            public Mesh.Edge[] alternatives(int iEdge)
+            // that are alternate exits out of the same lagoon (in same direction),
+            // in CCW order around the lagoon.
+            // If iEdge is a fold, do the dual thing in the dual mesh,
+            // resulting in "forward" order (i.e. edge to its next CCW around face, roughly).
+            public int[] findAlternatives(int iEdge)
             {
                 assert_eq(_nUndecideds, 0);
                 Mesh meshToUse = (_edgeStatuses[iEdge]==CUT ? _mesh : _dualMesh);
@@ -16574,7 +16585,7 @@ OFF
                         mergeFind.merge(j0, j1);
                     }
                 }
-                Mesh.Edge results[] = new Mesh.Edge[nEdges];
+                int results[] = new int[nEdges];
                 int nResults = 0;
 
                 int treeType = _edgeStatuses[iEdge];
@@ -16592,16 +16603,73 @@ OFF
                         if (mergeFind.find(j0) == mergeFind.find(i0)
                          && mergeFind.find(j1) == mergeFind.find(i1))
                         {
+                            // note edgeJ isn't necessarily the actual alternative since it's on meshToUse
+                            // which isn't necessarily _mesh; however its index is correct.
                             // result is NOT necessarily edgeJ since meshToUse isn't necessarily _mesh.
-                            results[nResults++] = (meshToUse==_mesh ? edgeJ
-                                                                    : _mesh.getEdge(jEdge));
+                            results[nResults++] = jEdge;
                         }
                     }
                 }
 
-                results = (Mesh.Edge[])Arrays.subarray(results, 0, nResults);
+                results = (int[])Arrays.subarray(results, 0, nResults);
                 return results;
-            } // alternatives()
+            } // findAlternatives()
+
+            public int[][] findFullAlternativesToEverything()
+            {
+                int verboseLevel = 2;
+                if (verboseLevel >= 1) OUT("    in findFullAlternativesMatrix");
+                assert_eq(_nUndecideds, 0);
+                int nEdges = _mesh.edges.size();
+                int answer[][] = new int[nEdges][];
+                FORI (iEdge, nEdges)
+                {
+                    answer[iEdge] = findAlternatives(iEdge);
+                    if (verboseLevel >= 2) System.out.println("          "+iEdge+"/"+nEdges+": "+(_edgeStatuses[iEdge]==FOLD?"FOLD":_edgeStatuses[iEdge]==CUT?"CUT":"???")+": "+Arrays.toStringCompact(answer[iEdge]));
+                }
+                {
+                    if (verboseLevel >= 1) OUT("      sanity checking...");
+                    FORI (iEdge, nEdges)
+                    {
+                        assert(answer[iEdge].length == answer[iEdge^1].length);
+                        FORI (j, answer[iEdge].length)
+                        {
+                            int jEdge = answer[iEdge][j];
+                            assert(Arrays.indexOf(answer[iEdge], jEdge) == j);
+                            assert(Arrays.indexOf(answer[iEdge^1], jEdge^1) != -1);
+
+                            // Funny dance, it comes back in opposite direction.
+                            // Yes, that's the right thing (mouse-down on a cut and fold to see it).
+                            assert(Arrays.indexOf(answer[jEdge], iEdge^1) != -1);
+                            assert(Arrays.indexOf(answer[jEdge^1], iEdge) != -1);
+                        }
+                    }
+                    if (verboseLevel >= 1) OUT("      done.");
+                }
+                if (verboseLevel >= 2) PRINTMAT(answer);
+                if (verboseLevel >= 1) OUT("    out findFullAlternativesMatrix");
+                return answer;
+            } // findFullAlternativesToEverything
+
+            #ifdef NOTYET
+            private boolean findRandomBadCutAndFixIt()
+            {
+                FORI (iEdge, nEdges)
+                {
+                    if (theNet._edgeStatuses[iEdge] == Net.CUT)
+                    {
+                        figure out its goodness
+                        if its bad
+                        {
+                            // choose a good exit
+                            //   - CCW?
+                            //   - random?
+                            // and swap from bad to good.
+                        }
+                    }
+                }
+            }
+            #endif
 
             // Make the cut a fold, and vice-versa.
             // The result must still be a tree.
