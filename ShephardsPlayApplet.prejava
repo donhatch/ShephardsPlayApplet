@@ -119,6 +119,8 @@ BUGS:
         this actually work?  hmm I'm thinking no.
 
   Net-related:
+    - random auto net completion!
+    - take net of triangle, turn on "Show primal underside and second dual sheet (if any)"; it draws a strange extra cut that looks wrong
     - can we color some edges red even when net is not complete?  I think the parts that are connected to the infinite can be colored.
       (extra credit: when *not* connected to infinite yet, can still color but in general need two different colors
       depending on which direction the edge will eventualy go.  can that be conveyed?)
@@ -7003,6 +7005,13 @@ public class ShephardsPlayApplet
                     {
                         sbaryExperimentType.cycle(+1);
                         theCanvas.repaint();
+                        break;
+                    }
+                    case 'F':
+                    {
+                        boolean fullAlternativesMatrix[][] = theNet.findFullAlternativesMatrix();
+                        PRINTVEC(theNet._edgeStatuses);
+                        //PRINTMAT(fullAlternativesMatrix);
                         break;
                     }
 
@@ -16603,6 +16612,62 @@ OFF
                 results = (Mesh.Edge[])Arrays.subarray(results, 0, nResults);
                 return results;
             } // findAlternatives()
+
+            // Really the matrix should be bipartite, but that would be a bit more complicated.
+            // So for now, it takes up something like 4 times as much space as it should.
+            public boolean[][] findFullAlternativesMatrix()
+            {
+                int verboseLevel = 2;
+                if (verboseLevel >= 1) OUT("    in findFullAlternativesMatrix");
+                assert_eq(_nUndecideds, 0);
+                int nEdges = _mesh.edges.size();
+                boolean answer[][] = new boolean[nEdges][nEdges]; // all false initially
+                if (verboseLevel >= 1) System.out.print("      finding alternatives for each of "+nEdges+" edges");
+                if (verboseLevel == 1) System.out.flush();
+                if (verboseLevel >= 2) System.out.println("...");
+                FORI (iEdge, nEdges)
+                {
+                    Mesh.Edge alternatives[] = findAlternatives(iEdge);
+                    if (verboseLevel >= 2)
+                    {
+                        // TODO: just make it return ints I think
+                        int intAlternatives[] = new int[alternatives.length];
+                        FORI (i, alternatives.length)
+                            intAlternatives[i] = alternatives[i].myIndex();
+                        System.out.println("          "+iEdge+"/"+nEdges+": "+(_edgeStatuses[iEdge]==FOLD?"FOLD":_edgeStatuses[iEdge]==CUT?"CUT":"???")+": "+Arrays.toStringCompact(intAlternatives));
+                    }
+                    FORI (iAlternative, alternatives.length)
+                    {
+                        assert(!answer[iEdge][alternatives[iAlternative].myIndex()]);
+                        answer[iEdge][alternatives[iAlternative].myIndex()] = true;
+                        if (verboseLevel == 1) System.out.print(".");
+                        //if (verboseLevel == 1) System.out.print("("+alternatives.length+")");
+                        if (verboseLevel == 1) System.out.flush();
+                    }
+                }
+                if (verboseLevel == 1) System.out.println();
+                //PRINTMAT(answer);
+                if (true)
+                {
+                    if (verboseLevel >= 1) System.out.println("      sanity checking answer...");
+                    int nTrue = 0;
+                    int nFalse = 0;
+                    FORI (iEdge, nEdges)
+                    FORI (jEdge, iEdge)
+                    {
+                        if (answer[iEdge][jEdge]) nTrue++; else nFalse++;
+                        if (iEdge == jEdge)
+                           assert(!answer[iEdge][jEdge]);
+                        // Funny dance, it comes back in opposite direction.
+                        // Yes, that's the right thing (mouse-down on a cut and fold to see it).
+                        assert(answer[iEdge][jEdge] == answer[jEdge^1][iEdge]);
+                    }
+                    if (verboseLevel >= 1) System.out.println("      done!");
+                    if (verboseLevel >= 1) System.out.println("      "+nFalse+"/"+(nFalse+nTrue)+" false, "+nTrue+"/"+(nFalse+nTrue)+" true");
+                }
+                if (verboseLevel >= 1) OUT("    out findFullAlternativesMatrix");
+                return answer;
+            } // findFullAlternativesMatrix
 
             #ifdef NOTYET
             private boolean findRandomBadCutAndFixIt()
