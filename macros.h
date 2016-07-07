@@ -11,6 +11,35 @@
 #define assumpt(expr) do { if (!(expr)) throw new Error("Assumption failed at "+__FILE__+"("+__LINE__+"): " + #expr + ""); } while (false)
 #define unimplemented() do {if (true) throw new Error("Unimplemented at "+__FILE__+"("+__LINE__+")"); } while (false)
 
+// NOTE: this causes a,b to be evaluated twice on failure, so is not ideal. might be better to do a block... ?
+#define assert_op(a,op,b) do { if (!((a)op(b))) throw new Error("Assertion failed at "+__FILE__+"("+__LINE__+"): (" + #a + ")" + #op + "(" + #b + ") ("+(a)+" vs. "+(b)+")"); } while (false)
+#define assert_eq(a,b) assert_op(a,==,b)
+#define assert_le(a,b) assert_op(a,<=,b)
+#define assert_ge(a,b) assert_op(a,>=,b)
+#define assert_lt(a,b) assert_op(a,<,b)
+#define assert_gt(a,b) assert_op(a,>,b)
+#define assert_ne(a,b) assert_op(a,!=,b)  // note, not very useful if either a or b is a literal
+#define assert_nan(x) do { if (!Double.isNaN(x)) throw new Error("Assertion failed at "+__FILE__+"("+__LINE__+"): " + #x + " is "+(x)+", expected NaN"); } while (false)
+// Note: the additional "(a)==(b)||" is to make it work correctly for infinities...
+// and causes the args to be evaluated twice.
+#define assert_almost_eq(a,b,tol) \
+    do { \
+        if (!((a)==(b)||Math.abs((a)-(b))<=tol)) \
+            throw new Error("Assertion failed at "+__FILE__+"("+__LINE__+"): " \
+                           +"(" + #a + ")==(" + #b + ")+-" + #tol + "" \
+                           +" ("+(a)+" vs. "+(b)+" +- "+(tol)+")" \
+                           +" (error = "+((a)-(b))+")" \
+                           ); \
+    } while (false)
+#define assert_almost_inorder(a,b,c,tol) \
+    do { \
+        if (!((a)-(b)<=(tol)) || !((b)-(c)<=(tol))) \
+            throw new Error("Assertion failed at "+__FILE__+"("+__LINE__+"): " \
+                           +"(" + #a + ")<=(" + #b + ")<=(" + #c + ")+-" + #tol + "" \
+                           +" ("+(a)+" vs. "+(b)+" vs. "+(c)+" +- "+(tol)+")" \
+                           +" (error = "+((a)-(b))+", "+((b)-(c))+")" \
+                           ); \
+    } while (false)
 
 #define INRANGE(foo,bar,baz) ((foo(bar))&&((bar)baz))
 
@@ -35,7 +64,7 @@
 
 #define ABS(x) ((x) < 0 ? -(x) : (x))
 #define HYPOTSQRD(a,b) (((a)*(a))+((b)*(b)))
-#define LERP(a,b,t) ((a) + (t)*((b)-(a)))
+#define LERP(a,b,t) ((1-(t))*(a) + (t)*(b)) // hits endpoints exactly
 #define SMOOTH(timeFrac) ((Math.sin(((timeFrac) - .5) * Math.PI) + 1) / 2)
 #define SWAP(a,b,temp) {temp=(a);a=(b);b=(temp);}
 #define MIN(a,b) ((a)<=(b)?(a):(b))
