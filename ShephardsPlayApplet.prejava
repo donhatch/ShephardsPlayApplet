@@ -2943,66 +2943,71 @@ public class ShephardsPlayApplet
                             }});
                             add(new JLabel("    "));
                             add(new JCheckBox("Make Good", applet.showNetMakeGoodFlag.get()) {Listenable.Listener enabledListener; {
-                                    enabledListener = tieEnabledTo(this, applet.showNetFlag);
-                                    setMargin(nomargin);
-                                    addItemListener(new java.awt.event.ItemListener() {
-                                        @Override public void itemStateChanged(java.awt.event.ItemEvent e)
+                                enabledListener = tieEnabledTo(this, applet.showNetFlag);
+                                setMargin(nomargin);
+                                addItemListener(new java.awt.event.ItemListener() {
+                                    @Override public void itemStateChanged(java.awt.event.ItemEvent e)
+                                    {
+                                        synchronized(applet.showNetMakeGoodFlag) // since another thread checks it once in a while
                                         {
-                                            synchronized(applet.showNetMakeGoodFlag) // since another thread checks it once in a while
-                                            {
-                                                applet.showNetMakeGoodFlag.set(isSelected());
-                                            }
-                                            applet.theCanvas.repaint();
+                                            applet.showNetMakeGoodFlag.set(isSelected());
                                         }
-                                    });
-                                    applet.showNetMakeGoodFlag.addListener(applet.showNetMakeGoodFlagListener = new Listenable.Listener() {
-                                        @Override public void valueChanged()
+                                        applet.theCanvas.repaint();
+                                    }
+                                });
+                                applet.showNetMakeGoodFlag.addListener(applet.showNetMakeGoodFlagListener = new Listenable.Listener() {
+                                    @Override public void valueChanged()
+                                    {
+                                        setSelected(applet.showNetMakeGoodFlag.get()); // of the checkbox
+
+                                        // XXX TODO: arguably this should be in a different listener... it should happen even if we decided not to have this checkbox
+                                        // XXX TODO: dup code
+                                        if (applet.showNetFlag.get() && applet.showNetMakeGoodFlag.get())
                                         {
-                                            setSelected(applet.showNetMakeGoodFlag.get()); // of the checkbox
-
-                                            // XXX TODO: arguably this should be in a different listener... it should happen even if we decided not to have this checkbox
-                                            // XXX TODO: dup code
-                                            if (applet.showNetFlag.get() && applet.showNetMakeGoodFlag.get())
-                                            {
-                                                Runnable runnable = new Runnable() {
-                                                    public void run()
+                                            Runnable runnable = new Runnable() {
+                                                public void run()
+                                                {
+                                                    System.out.println("starting animator thread");
+                                                    int fps = 10; // XXX need user control of this?
+                                                    while (true) // while (applet.showNetFlag.get() && applet.showNetMakeGoodFlag.get()), but synchronized
                                                     {
-                                                        System.out.println("starting animator thread");
-                                                        int fps = 10; // XXX need user control of this?
-                                                        while (true) // while (applet.showNetFlag.get() && applet.showNetMakeGoodFlag.get()), but synchronized
+                                                        synchronized(applet.showNetFlag)
                                                         {
-                                                            synchronized(applet.showNetFlag)
+                                                            synchronized(applet.showNetMakeGoodFlag)
                                                             {
-                                                                synchronized(applet.showNetMakeGoodFlag)
-                                                                {
-                                                                    if (!applet.showNetFlag.get() || !applet.showNetMakeGoodFlag.get())
-                                                                        break;
-                                                                }
-                                                            }
-
-                                                            applet.theCanvas.repaint();
-                                                            //System.out.println("    sleeping for "+(1000/fps)+" ms");
-                                                            try {
-                                                                Thread.sleep(1000/fps);
-                                                            } catch (InterruptedException e) {
-                                                                break;
+                                                                if (!applet.showNetFlag.get() || !applet.showNetMakeGoodFlag.get())
+                                                                    break;
                                                             }
                                                         }
-                                                        System.out.println("terminating animator thread");
-                                                        // XXX TODO: does master thread need to join?
-                                                    }
-                                                };
-                                                Thread animatorThread = new Thread(runnable);
-                                                animatorThread.setDaemon(true); // make it so the java vm won't wait for it to finish before exiting
-                                                animatorThread.start();
-                                            }
 
+                                                        applet.theCanvas.repaint();
+                                                        //System.out.println("    sleeping for "+(1000/fps)+" ms");
+                                                        try {
+                                                            Thread.sleep(1000/fps);
+                                                        } catch (InterruptedException e) {
+                                                            break;
+                                                        }
+                                                    }
+                                                    System.out.println("terminating animator thread");
+                                                    // XXX TODO: does master thread need to join?
+                                                }
+                                            };
+                                            Thread animatorThread = new Thread(runnable);
+                                            animatorThread.setDaemon(true); // make it so the java vm won't wait for it to finish before exiting
+                                            animatorThread.start();
                                         }
-                                    });
-                                }
-                            });
+
+                                    }
+                                });
+                            }});
                             add(new JLabel("  quantum=") {Listenable.Listener enabledListener; {enabledListener = tieEnabledTo(this, applet.showNetFlag); }});
-                            add(new JTextFieldForNumber(applet.showNetFixQuantum) {Listenable.Listener enabledListener; {enabledListener = tieEnabledTo(this, applet.showNetFlag); }});
+                            add(new JTextFieldForNumber(applet.showNetMakeGoodQuantum) {Listenable.Listener enabledListener; {enabledListener = tieEnabledTo(this, applet.showNetFlag); }});
+                            add(new JLabel("    "));
+                            add(new JCheckBoxForBoolean("Make Bad Again", applet.showNetMakeBadAgainFlag) {Listenable.Listener enabledListener; {
+                                setToolTipText("If set, whenever Make Good finishes, a new \"Just Noise\" mesh will be created and net generated, and it will continue.");
+                                enabledListener = tieEnabledTo(this, applet.showNetFlag);
+                                setMargin(nomargin);
+                            }});
                         }});
                     }});
                 }});
@@ -7595,6 +7600,8 @@ public class ShephardsPlayApplet
             {
                 if (eventVerbose >= 1) System.out.println("in paint");
 
+                boolean needToMakeItBadAgainAtTheEnd = false;
+
                 makeSureBackBufferIsRight();
                 java.awt.Graphics g;
                 java.awt.Dimension size;
@@ -8611,10 +8618,15 @@ public class ShephardsPlayApplet
                             {
                                 // Apply some fixage.
                                 OUT("HEY! Applying some fixage!");
-                                boolean madeItGood = theNet.makeItGood(showNetFixQuantum.get(), randomNumberGenerator, showNetMakeGoodFlag);
+                                boolean madeItGood = theNet.makeItGood(showNetMakeGoodQuantum.get(), randomNumberGenerator, showNetMakeGoodFlag);
                                 if (madeItGood)
                                 {
-                                    showNetMakeGoodFlag.set(false);
+                                    if (showNetMakeBadAgainFlag.get())
+                                    {
+                                        needToMakeItBadAgainAtTheEnd = true;
+                                    }
+                                    else
+                                        showNetMakeGoodFlag.set(false);
                                 }
                             }
                         }
@@ -9866,8 +9878,18 @@ public class ShephardsPlayApplet
                                                   this);
                 }
 
+                if (needToMakeItBadAgainAtTheEnd)
+                {
+                    OUT("HEY! making bad again!");
+                    // Make Bad Again is checked, so whenever it was made good,
+                    // create a different configuration and start making good again.
+                    doJustNoiseThing(justNoiseN.get());
+                    if (continuouslyDelaunayizeFlag.get()) delaunayize();
+                    repaint();
+                }
+
                 if (eventVerbose >= 1) System.out.println("out paint");
-            } // paint
+            } // paintComponent
 
             private void makeSureBackBufferIsRight()
             {
@@ -19262,6 +19284,7 @@ OFF
         private Listenable.Listener showNetFlagListener2 = null;
         private Listenable.Listener showNetFlowFlagListener = null;
         private Listenable.Listener showNetMakeGoodFlagListener = null;
+        private Listenable.Listener showNetMakeBadAgainFlagListener = null;
         private Listenable.Listener netMethodListener = null;
         private Listenable.Listener calcInsideOutDualVertsFlagListener = null;
         private Listenable.Listener showInsideOutDualVertsFlagListener = null;
@@ -19372,7 +19395,8 @@ OFF
         private Listenable.Boolean showFlattenedNetFlag = new Listenable.Boolean(true);
         private Listenable.Boolean showNetFlowFlag = new Listenable.Boolean(false);
         private Listenable.Boolean showNetMakeGoodFlag = new Listenable.Boolean(false);
-        private Listenable.Int showNetFixQuantum = new Listenable.Int(0,1000, 1);
+        private Listenable.Boolean showNetMakeBadAgainFlag = new Listenable.Boolean(false);
+        private Listenable.Int showNetMakeGoodQuantum = new Listenable.Int(0,1000, 1);
         private boolean pointOutRedNetEdges = false;
         private int netFlowIndex = 0;
         private int highlightedDualEdgeIndex = -1;
