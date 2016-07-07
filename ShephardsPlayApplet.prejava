@@ -7987,6 +7987,7 @@ public class ShephardsPlayApplet
                 double lagoonCenter[] = null; // we set it to non-null if drawing one
                 double momentAndWeightStrictlyBelowEachDualVertex[][] = null;
                 boolean dualEdgeIsOffBalanceCut[] = null;
+                int dualEdgeOffBalanceCuts[] = null;
 
                 int nOffBalanceCuts = -1;
                 int nNonZeroLengthWholeEdges = -1;
@@ -8521,67 +8522,14 @@ public class ShephardsPlayApplet
                             // accumulate weights...
                             if (theNet._topSortedVertInds != null) // i.e. if complete
                             {
-                                momentAndWeightStrictlyBelowEachDualVertex = new double[nDualVerts][3]; // initially zeros
-                                {
-                                    FORIDOWN(iiChild, theNet._topSortedVertInds.length) // leaves to roots
-                                    {
-                                        int iChild = theNet._topSortedVertInds[iiChild];
-                                        if (iChild == nDualVerts)
-                                            continue; // it's the infinite vertex, i.e. the root
-                                        Mesh.Vertex child = dualMesh.getVert(iChild);
-                                        int parentEdgeInd = theNet._vertToParentEdgeInd[iChild];
-                                        if (parentEdgeInd != -1)
-                                        {
-                                            Mesh.Edge parentEdge = dualMesh.getEdge(parentEdgeInd);
-                                            Mesh.Vertex parent = parentEdge.finalVertex();
-                                            if (parent != null)
-                                            {
-                                                int iParent = parent.myIndex();
-                                                accumulateMomentAndArea(momentAndWeightStrictlyBelowEachDualVertex[iParent],
-                                                                        momentAndWeightStrictlyBelowEachDualVertex[iChild]);
-                                                accumulateMomentAndArea(momentAndWeightStrictlyBelowEachDualVertex[iParent],
-                                                                        child.momentAndArea);
-                                            }
-                                        }
-                                    }
-                                }
+                                momentAndWeightStrictlyBelowEachDualVertex = theNet.computeMomentAndWeightStrictlyBelowEachVertexInitially();
+                                dualEdgeIsOffBalanceCut = new boolean[mesh.edges.size()];
+                                dualEdgeOffBalanceCuts = new int[mesh.edges.size()];
 
-                                dualEdgeIsOffBalanceCut = new boolean[mesh.edges.size()]; // all false initially
-                                nOffBalanceCuts = 0;
-
-                                FORI (iDualVert, nDualVerts)
-                                {
-                                    double momentAndWeightStrictlyBelowDualVertex[] = momentAndWeightStrictlyBelowEachDualVertex[iDualVert];
-                                    double weightStrictlyBelowDualVertex = momentAndWeightStrictlyBelowDualVertex[2];
-                                    if (weightStrictlyBelowDualVertex != 0.)
-                                    {
-                                        int iDualEdge = theNet._vertToParentEdgeInd[iDualVert];
-                                        if (iDualEdge == -1)
-                                            continue; // this is the root / highest node
-
-                                        Mesh.Edge dualEdge = dualMesh.getEdge(iDualEdge);
-
-                                        Mesh.Vertex dualVert = dualEdge.initialVertex();
-                                        assert_eq(dualVert.myIndex(), iDualVert);
-                                        if (dualVert.weight < 0.)
-                                            continue; // nodes on the boundary are automatically okay
-
-                                        double centerX = momentAndWeightStrictlyBelowDualVertex[0] / weightStrictlyBelowDualVertex;
-                                        double centerY = momentAndWeightStrictlyBelowDualVertex[1] / weightStrictlyBelowDualVertex;
-                                        if (GT(dualEdge.direction[0] * (centerX - dualVert.x())
-                                             + dualEdge.direction[1] * (centerY - dualVert.y()), 0., 1e-6))
-                                        {
-                                            dualEdgeIsOffBalanceCut[dualEdge.myIndex()] = true;
-                                            dualEdgeIsOffBalanceCut[dualEdge.opposite().myIndex()] = true;
-                                            nOffBalanceCuts++;
-                                            //System.out.println("    edge at dual vert "+iDualVert+" is off balance!");
-                                        }
-                                        else
-                                        {
-                                            //System.out.println("    edge at dual vert "+iDualVert+" is balanced");
-                                        }
-                                    }
-                                }
+                                nOffBalanceCuts = theNet.figureOutWhatsOffBalanceInitially(
+                                    momentAndWeightStrictlyBelowEachDualVertex,
+                                    dualEdgeIsOffBalanceCut,
+                                    dualEdgeOffBalanceCuts);
 
                                 // We want to omit zero-length (or very close to zero-length) edges
                                 // from the thermometer.
@@ -16822,6 +16770,83 @@ OFF
                 return results;
             } // findAlternatives()
 
+            // TODO: need incremental version of this too
+            // TODO: who varnishes?  make that more clear and perhaps principled
+            private double[][] computeMomentAndWeightStrictlyBelowEachVertexInitially()
+            {
+                assert(_topSortedVertInds != null); // only call this when net is complete and varnished
+                assert(_vertToParentEdgeInd != null); // only call this when net is complete and varnished
+
+                int nVerts = _mesh.verts.size();
+                double momentAndWeightStrictlyBelowEachVertex[][] = new double[nVerts][3]; // initially zeros
+                FORIDOWN(iiChild, _topSortedVertInds.length) // leaves to roots
+                {
+                    int iChild = _topSortedVertInds[iiChild];
+                    if (iChild == nVerts)
+                        continue; // it's the infinite vertex, i.e. the root
+                    Mesh.Vertex child = _mesh.getVert(iChild);
+                    int parentEdgeInd = _vertToParentEdgeInd[iChild];
+                    if (parentEdgeInd != -1)
+                    {
+                          Mesh.Edge parentEdge = _mesh.getEdge(parentEdgeInd);
+                          Mesh.Vertex parent = parentEdge.finalVertex();
+                          if (parent != null)
+                          {
+                              int iParent = parent.myIndex();
+                              accumulateMomentAndArea(momentAndWeightStrictlyBelowEachVertex[iParent],
+                                                      momentAndWeightStrictlyBelowEachVertex[iChild]);
+                              accumulateMomentAndArea(momentAndWeightStrictlyBelowEachVertex[iParent],
+                                                      child.momentAndArea);
+                          }
+                    }
+                }
+                return momentAndWeightStrictlyBelowEachVertex;
+            } // computeMomentAndWeightStrictlyBelowEachVertexInitially
+
+            // TODO: need incremental version of this too
+            private int figureOutWhatsOffBalanceInitially(double momentAndWeightStrictlyBelowEachVertex[][], // in
+                                                          boolean edgeIsOffBalanceCut[], // out
+                                                          int offBalanceCuts[]) // out
+            {
+                int nVerts = _mesh.verts.size();
+                int nEdges = _mesh.edges.size();
+                assert(edgeIsOffBalanceCut.length == nEdges);
+                assert(offBalanceCuts.length == nEdges);
+                VecMath.fillvec(edgeIsOffBalanceCut, false);
+                int nOffBalanceCuts = 0;
+                FORI (iVert, nVerts)
+                {
+                    double momentAndWeightStrictlyBelowVertex[] = momentAndWeightStrictlyBelowEachVertex[iVert];
+                    double weightStrictlyBelowVertex = momentAndWeightStrictlyBelowVertex[2];
+                    if (weightStrictlyBelowVertex != 0.)
+                    {
+                        int iEdge = _vertToParentEdgeInd[iVert];
+                        if (iEdge == -1)
+                            continue; // this is the root / highest node
+                        Mesh.Edge edge = _mesh.getEdge(iEdge);
+                        Mesh.Vertex vert = edge.initialVertex();
+                        assert_eq(vert.myIndex(), iVert);
+                        if (vert.weight < 0.)
+                            continue; // "nodes on the boundary are automatically ok" (what did this mean exactly?)
+                        double centerX = momentAndWeightStrictlyBelowVertex[0] / weightStrictlyBelowVertex;
+                        double centerY = momentAndWeightStrictlyBelowVertex[1] / weightStrictlyBelowVertex;
+                        if (GT(edge.direction[0] * (centerX - vert.x())
+                             + edge.direction[1] * (centerY - vert.y()), 0., 1e-6)) // XXX is this a reasonable tolerance?
+                        {
+                            edgeIsOffBalanceCut[edge.myIndex()] = true;
+                            edgeIsOffBalanceCut[edge.opposite().myIndex()] = true;
+                            offBalanceCuts[nOffBalanceCuts++] = iEdge;
+                            //OUT("                  edge at vert "+iVert+" is off balance!");
+                        }
+                        else
+                        {
+                            //OUT("                  edge at vert "+iVert+" is balanced");
+                        }
+                    }
+                }
+                return nOffBalanceCuts;
+            } // figureOutWhatsOffBalanceInitially
+
             private boolean makeGood(int maxSwaps, java.util.Random generator, Listenable.Boolean keepGoing)
             {
                 OUT("    in makeGood");
@@ -16846,66 +16871,17 @@ OFF
                         }
                     }
                     OUT("          top of loop: nSwapsDone = "+nSwapsDone+"/"+maxSwaps);
-                    //
-                    // XXX dup code from draw-- make this a function I think.  and make it incremental!
-                    double momentAndWeightStrictlyBelowEachVertex[][] = new double[nVerts][3]; // initially zeros
-                    FORIDOWN(iiChild, _topSortedVertInds.length) // leaves to roots
-                    {
-                        int iChild = _topSortedVertInds[iiChild];
-                        if (iChild == nVerts)
-                            continue; // it's the infinite vertex, i.e. the root
-                        Mesh.Vertex child = _mesh.getVert(iChild);
-                        int parentEdgeInd = _vertToParentEdgeInd[iChild];
-                        if (parentEdgeInd != -1)
-                        {
-                              Mesh.Edge parentEdge = _mesh.getEdge(parentEdgeInd);
-                              Mesh.Vertex parent = parentEdge.finalVertex();
-                              if (parent != null)
-                              {
-                                  int iParent = parent.myIndex();
-                                  accumulateMomentAndArea(momentAndWeightStrictlyBelowEachVertex[iParent],
-                                                          momentAndWeightStrictlyBelowEachVertex[iChild]);
-                                  accumulateMomentAndArea(momentAndWeightStrictlyBelowEachVertex[iParent],
-                                                          child.momentAndArea);
-                              }
-                        }
-                    }
 
-                    // XXX more dup code-- make this a function I think. and make it incremental!
+                    OUT("              computing moment-and-weight strictly below each vertex");
+                    // TODO: make incremental
+                    double momentAndWeightStrictlyBelowEachVertex[][] = computeMomentAndWeightStrictlyBelowEachVertexInitially();
+
                     OUT("              figuring out what's balanced");
-                    boolean edgeIsOffBalanceCut[] = new boolean[nEdges]; // all false initially
+                    boolean edgeIsOffBalanceCut[] = new boolean[nEdges];
                     int offBalanceCuts[] = new int[nEdges];
-                    int nOffBalanceCuts = 0;
-                    FORI (iVert, nVerts)
-                    {
-                        double momentAndWeightStrictlyBelowVertex[] = momentAndWeightStrictlyBelowEachVertex[iVert];
-                        double weightStrictlyBelowVertex = momentAndWeightStrictlyBelowVertex[2];
-                        if (weightStrictlyBelowVertex != 0.)
-                        {
-                            int iEdge = _vertToParentEdgeInd[iVert];
-                            if (iEdge == -1)
-                                continue; // this is the root / highest node
-                            Mesh.Edge edge = _mesh.getEdge(iEdge);
-                            Mesh.Vertex vert = edge.initialVertex();
-                            assert_eq(vert.myIndex(), iVert);
-                            if (vert.weight < 0.)
-                                continue; // "nodes on the boundary are automatically ok" (what did this mean exactly?)
-                            double centerX = momentAndWeightStrictlyBelowVertex[0] / weightStrictlyBelowVertex;
-                            double centerY = momentAndWeightStrictlyBelowVertex[1] / weightStrictlyBelowVertex;
-                            if (GT(edge.direction[0] * (centerX - vert.x())
-                                 + edge.direction[1] * (centerY - vert.y()), 0., 1e-6)) // XXX is this a reasonable tolerance?
-                            {
-                                edgeIsOffBalanceCut[edge.myIndex()] = true;
-                                edgeIsOffBalanceCut[edge.opposite().myIndex()] = true;
-                                offBalanceCuts[nOffBalanceCuts++] = iEdge;
-                                //OUT("                  edge at vert "+iVert+" is off balance!");
-                            }
-                            else
-                            {
-                                //OUT("                  edge at vert "+iVert+" is balanced");
-                            }
-                        }
-                    }
+                    // TODO: make incremental
+                    int nOffBalanceCuts = figureOutWhatsOffBalanceInitially(momentAndWeightStrictlyBelowEachVertex, edgeIsOffBalanceCut, offBalanceCuts);
+
                     OUT("              nOffBalanceCuts = "+nOffBalanceCuts);
                     OUT("              offBalanceCuts = "+VecMath.toString((int[])Arrays.subarray(offBalanceCuts,0,nOffBalanceCuts)));
                     if (nOffBalanceCuts == 0)
