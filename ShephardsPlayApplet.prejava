@@ -119,6 +119,7 @@ BUGS:
         this actually work?  hmm I'm thinking no.
 
   Net-related:
+    - makeGood should show graphical progress!
     - random auto net completion!
     - take net of triangle, turn on "Show primal underside and second dual sheet (if any)"; it draws a strange extra cut that looks wrong
     - can we color some edges red even when net is not complete?  I think the parts that are connected to the infinite can be colored.
@@ -2940,6 +2941,68 @@ public class ShephardsPlayApplet
                                     }
                                 });
                             }});
+                            add(new JLabel("    "));
+                            add(new JCheckBox("Make Good", applet.showNetFixFlag.get()) {Listenable.Listener enabledListener; {
+                                    enabledListener = tieEnabledTo(this, applet.showNetFlag);
+                                    setMargin(nomargin);
+                                    addItemListener(new java.awt.event.ItemListener() {
+                                        @Override public void itemStateChanged(java.awt.event.ItemEvent e)
+                                        {
+                                            synchronized(applet.showNetFixFlag) // since another thread checks it once in a while
+                                            {
+                                                applet.showNetFixFlag.set(isSelected());
+                                            }
+                                            applet.theCanvas.repaint();
+                                        }
+                                    });
+                                    applet.showNetFixFlag.addListener(applet.showNetFixFlagListener = new Listenable.Listener() {
+                                        @Override public void valueChanged()
+                                        {
+                                            setSelected(applet.showNetFixFlag.get()); // of the checkbox
+
+                                            // XXX TODO: arguably this should be in a different listener... it should happen even if we decided not to have this checkbox
+                                            // XXX TODO: dup code
+                                            if (applet.showNetFlag.get() && applet.showNetFixFlag.get())
+                                            {
+                                                Runnable runnable = new Runnable() {
+                                                    public void run()
+                                                    {
+                                                        System.out.println("starting animator thread");
+                                                        int fps = 10; // XXX need user control of this?
+                                                        while (true) // while (applet.showNetFlag.get() && applet.showNetFixFlag.get()), but synchronized
+                                                        {
+                                                            synchronized(applet.showNetFlag)
+                                                            {
+                                                                synchronized(applet.showNetFixFlag)
+                                                                {
+                                                                    if (!applet.showNetFlag.get() || !applet.showNetFixFlag.get())
+                                                                        break;
+                                                                }
+                                                            }
+
+                                                            applet.theCanvas.repaint();
+                                                            //System.out.println("    sleeping for "+(1000/fps)+" ms");
+                                                            try {
+                                                                Thread.sleep(1000/fps);
+                                                            } catch (InterruptedException e) {
+                                                                break;
+                                                            }
+                                                        }
+                                                        System.out.println("terminating animator thread");
+                                                        // XXX TODO: does master thread need to join?
+                                                    }
+                                                };
+                                                Thread animatorThread = new Thread(runnable);
+                                                animatorThread.setDaemon(true); // make it so the java vm won't wait for it to finish before exiting
+                                                animatorThread.start();
+                                            }
+
+                                        }
+                                    });
+                                }
+                            });
+                            add(new JLabel("  quantum=") {Listenable.Listener enabledListener; {enabledListener = tieEnabledTo(this, applet.showNetFlag); }});
+                            add(new JTextFieldForNumber(applet.showNetFixQuantum) {Listenable.Listener enabledListener; {enabledListener = tieEnabledTo(this, applet.showNetFlag); }});
                         }});
                     }});
                 }});
@@ -7058,17 +7121,7 @@ public class ShephardsPlayApplet
                     }
                     case 'F':
                     {
-                        if (theNet == null)
-                        {
-                            OUT("Make a net first.");
-                        }
-                        else
-                        {
-                            //int fullAlternativesToEverything[][] = theNet.findFullAlternativesToEverything(2);
-                            //PRINTMAT(fullAlternativesToEverything);
-                            boolean madeItGood = theNet.makeItGood(1000);
-                            theCanvas.repaint();
-                        }
+                        showNetFixFlag.set(!showNetFixFlag.get());
                         break;
                     }
 
@@ -8551,6 +8604,17 @@ public class ShephardsPlayApplet
                             else
                             {
                                 dualEdgeIsOffBalanceCut = new boolean[mesh.edges.size()]; // all false
+                            }
+
+                            if (showNetFlag.get() && showNetFixFlag.get())
+                            {
+                                // Apply some fixage.
+                                OUT("HEY! Applying some fixage!");
+                                boolean madeItGood = theNet.makeItGood(showNetFixQuantum.get(), randomNumberGenerator, showNetFixFlag);
+                                if (madeItGood)
+                                {
+                                    showNetFixFlag.set(false);
+                                }
                             }
                         }
                         catch (Throwable e)
@@ -16758,11 +16822,55 @@ OFF
                     if (verboseLevel >= 1) OUT("          done.");
                 }
                 if (verboseLevel >= 3) PRINTMAT(answer);
-                if (verboseLevel >= 1) OUT("        out findFullAlternativesMatrix");
+                if (verboseLevel >= 1) OUT("        out findFullAlternativesToEverything");
                 return answer;
             } // findFullAlternativesToEverything
 
-            private boolean makeItGood(int maxSwaps)
+            private void helpDebugSplice(int alternativesToEverything[][], int cutToSwap, int foldToSwap)
+            {
+                int inds[] = {cutToSwap, foldToSwap, cutToSwap^1, foldToSwap^1};
+                for (int ii = 0; ii < 4; ++ii) OUT("                  "+inds[ii]+": "+Arrays.toStringCompact(alternativesToEverything[inds[ii]]));
+            }
+
+            // Oh hell!  I think this is completely wrong now that I think about it :-(
+            private void spliceAlternativesToEverything(int alternativesToEverything[][], int cutToSwap, int foldToSwap)
+            {
+                OUT("            in spliceAlternativesToEverything");
+                int inds[] = {cutToSwap, foldToSwap, cutToSwap^1, foldToSwap^1};
+                OUT("              before:");
+                helpDebugSplice(alternativesToEverything, cutToSwap, foldToSwap);
+
+                for (int ii = 0; ii < 4; ++ii)
+                {
+                    int iEdge = inds[ii];
+                    int jEdge = inds[(ii+1)%4];
+                    int oldLagoon[] = alternativesToEverything[iEdge];
+                    int splicePoint = Arrays.indexOf(oldLagoon, jEdge);
+                    assert(splicePoint != -1);
+                    int newLagoon[] = new int[oldLagoon.length];
+                    System.arraycopy(
+                        oldLagoon, splicePoint+1,
+                        newLagoon, 0,
+                        oldLagoon.length-1-splicePoint);
+                    newLagoon[oldLagoon.length-1-splicePoint] = iEdge;
+                    System.arraycopy(
+                        oldLagoon, 0,
+                        newLagoon, oldLagoon.length-splicePoint,
+                        splicePoint);
+                    alternativesToEverything[iEdge] = newLagoon;
+                }
+                int temp[] = alternativesToEverything[inds[3]];
+                alternativesToEverything[inds[3]] = alternativesToEverything[inds[2]];
+                alternativesToEverything[inds[2]] = alternativesToEverything[inds[1]];
+                alternativesToEverything[inds[1]] = alternativesToEverything[inds[0]];
+                alternativesToEverything[inds[0]] = temp;
+                OUT("              after:");
+                helpDebugSplice(alternativesToEverything, cutToSwap, foldToSwap);
+                OUT("            out spliceAlternativesToEverything");
+            } // spliceAlternativesToEverything
+
+            // CBB: the keepGoing thing actually isn't really working.  I guess I should be doing this in a separate thread? Not sure.
+            private boolean makeItGood(int maxSwaps, java.util.Random generator, Listenable.Boolean keepGoing)
             {
                 OUT("    in makeItGood");
                 int alternativesToEverything[][] = findFullAlternativesToEverything(0);
@@ -16775,12 +16883,18 @@ OFF
                 int nVerts = _mesh.verts.size();
                 int nEdges = _mesh.edges.size();
 
-                java.util.Random generator = new java.util.Random(0);
-
                 int nSwapsDone = 0;
                 while (true)
                 {
-                    OUT("          top of loop: nSwapsDone = "+nSwapsDone);
+                    synchronized(keepGoing)
+                    {
+                        if (!keepGoing.get())
+                        {
+                            OUT("    out makeItGood, returning false (animation stopped, I guess)");
+                            return false;
+                        }
+                    }
+                    OUT("          top of loop: nSwapsDone = "+nSwapsDone+"/"+maxSwaps);
                     //
                     // XXX dup code from draw-- make this a function I think.  and make it incremental!
                     double momentAndWeightStrictlyBelowEachVertex[][] = new double[nVerts][3]; // initially zeros
@@ -16853,7 +16967,7 @@ OFF
                     {
                         OUT("      nSwapsDone = "+nSwapsDone);
                         OUT("    out makeItGood, returning false (failed!)");
-                        return true;
+                        return false;
                     }
 
                     // Take a random off-balance cut,
@@ -16876,8 +16990,15 @@ OFF
                     nSwapsDone++;
 
                     // Fix alternativesToEverything
+                    if (false)
                     {
                         // Splice at cutToSwap and foldToSwap.
+                        //PRINTMAT(alternativesToEverything);
+                        spliceAlternativesToEverything(alternativesToEverything, cutToSwap, foldToSwap);
+                        //PRINTMAT(alternativesToEverything);
+                    }
+                    else
+                    {
                         // XXX for now, just recompute from scratch
                         alternativesToEverything = findFullAlternativesToEverything(0);
                     }
@@ -16889,6 +17010,15 @@ OFF
                         int shouldBeAlternativesToEverything[][] = findFullAlternativesToEverything(0);
                         //PRINTMAT(alternativesToEverything);
                         //PRINTMAT(shouldBeAlternativesToEverything);
+                        OUT("                  straightforward part...");
+                        FORI (iEdge, nEdges)
+                        {
+                            if (iEdge/2 != cutToSwap/2 && iEdge/2 != foldToSwap/2)
+                            {
+                                assert(VecMath.equals(alternativesToEverything[iEdge], shouldBeAlternativesToEverything[iEdge]));
+                            }
+                        }
+                        OUT("                  tricky part...");
                         assert(VecMath.equals(alternativesToEverything, shouldBeAlternativesToEverything));
                         OUT("              done.");
                     }
@@ -19130,6 +19260,7 @@ OFF
         private Listenable.Listener showNetFlagListener = null;
         private Listenable.Listener showNetFlagListener2 = null;
         private Listenable.Listener showNetFlowFlagListener = null;
+        private Listenable.Listener showNetFixFlagListener = null;
         private Listenable.Listener netMethodListener = null;
         private Listenable.Listener calcInsideOutDualVertsFlagListener = null;
         private Listenable.Listener showInsideOutDualVertsFlagListener = null;
@@ -19239,6 +19370,8 @@ OFF
         private Listenable.Boolean showNetFlag = new Listenable.Boolean(false);
         private Listenable.Boolean showFlattenedNetFlag = new Listenable.Boolean(true);
         private Listenable.Boolean showNetFlowFlag = new Listenable.Boolean(false);
+        private Listenable.Boolean showNetFixFlag = new Listenable.Boolean(false);
+        private Listenable.Int showNetFixQuantum = new Listenable.Int(0,1000, 1);
         private boolean pointOutRedNetEdges = false;
         private int netFlowIndex = 0;
         private int highlightedDualEdgeIndex = -1;
