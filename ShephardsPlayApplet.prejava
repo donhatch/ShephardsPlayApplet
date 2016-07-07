@@ -7009,8 +7009,17 @@ public class ShephardsPlayApplet
                     }
                     case 'F':
                     {
-                        int fullAlternativesToEverything[][] = theNet.findFullAlternativesToEverything();
-                        //PRINTMAT(fullAlternativesToEverything);
+                        if (theNet == null)
+                        {
+                            OUT("Make a net first.");
+                        }
+                        else
+                        {
+                            //int fullAlternativesToEverything[][] = theNet.findFullAlternativesToEverything(2);
+                            //PRINTMAT(fullAlternativesToEverything);
+                            boolean madeItGood = theNet.makeItGood(1000);
+                            theCanvas.repaint();
+                        }
                         break;
                     }
 
@@ -16420,7 +16429,7 @@ OFF
 
         public static class Net
         {
-            // note that our mesh,dualMesh is the reverse of the applet's
+            // note that our mesh,dualMesh is generally the reverse of the applet's
             // (since we want a net of the applet's dual mesh).
             public Net(Mesh mesh, Mesh dualMesh)
             {
@@ -16438,7 +16447,7 @@ OFF
                 this._faceComponents = new SizeTrackingMergeFind(nFaces+1); // last may or may not be used
 
                 this._vertToParentEdgeInd = null; // only makes sense when net is complete
-                this._topSortedVertInds = null; // only makes sense when net is complete
+                this._topSortedVertInds = null; // only makes sense when net is complete.  TODO: this is root to leaves. maybe reverse, but in any case put that in the var name
             }
 
             public Net(Mesh mesh, Mesh dualMesh, int edgeStatuses[])
@@ -16466,8 +16475,9 @@ OFF
             // root==mesh.verts.size() means root is the infinite end of all the infinite edges.
             public void chooseDirections(int root)
             {
-                System.out.println("    in chooseDirections");
-                PRINT(root);
+                int verboseLevel = 0;
+                if (verboseLevel >= 1) System.out.println("    in chooseDirections");
+                if (verboseLevel >= 1) PRINT(root);
                 assert_eq(_nUndecideds, 0);
 
                 int nEdges = _mesh.edges.size();
@@ -16523,14 +16533,14 @@ OFF
                         }
                     }
                 }
-                PRINTARRAY(isSorted);
-                PRINTARRAY(_topSortedVertInds);
-                PRINTARRAY(_vertToParentEdgeInd);
-                PRINT(nVerts);
-                PRINT(nSorted);
+                if (verboseLevel >= 1) PRINTARRAY(isSorted);
+                if (verboseLevel >= 1) PRINTARRAY(_topSortedVertInds);
+                if (verboseLevel >= 1) PRINTARRAY(_vertToParentEdgeInd);
+                if (verboseLevel >= 1) PRINT(nVerts);
+                if (verboseLevel >= 1) PRINT(nSorted);
                 assert_eq(nSorted, nVerts+1);
 
-                System.out.println("    out chooseDirections");
+                if (verboseLevel >= 1) System.out.println("    out chooseDirections");
             } // chooseDirections
 
             // Walk around the boundary of the tree,
@@ -16636,20 +16646,19 @@ OFF
                 return results;
             } // findAlternatives()
 
-            public int[][] findFullAlternativesToEverything()
+            public int[][] findFullAlternativesToEverything(int verboseLevel) // verboseLevel=2 = nice depiction
             {
-                int verboseLevel = 2;
-                if (verboseLevel >= 1) OUT("    in findFullAlternativesMatrix");
+                if (verboseLevel >= 1) OUT("        in findFullAlternativesMatrix");
                 assert_eq(_nUndecideds, 0);
                 int nEdges = _mesh.edges.size();
                 int answer[][] = new int[nEdges][];
                 FORI (iEdge, nEdges)
                 {
                     answer[iEdge] = findAlternatives(iEdge);
-                    if (verboseLevel >= 2) System.out.println("          "+iEdge+"/"+nEdges+": "+(_edgeStatuses[iEdge]==FOLD?"FOLD":_edgeStatuses[iEdge]==CUT?"CUT":"???")+": "+Arrays.toStringCompact(answer[iEdge]));
+                    if (verboseLevel >= 2) OUT("              "+iEdge+"/"+nEdges+": "+(_edgeStatuses[iEdge]==FOLD?"FOLD":_edgeStatuses[iEdge]==CUT?"CUT":"???")+": "+Arrays.toStringCompact(answer[iEdge]));
                 }
                 {
-                    if (verboseLevel >= 1) OUT("      sanity checking...");
+                    if (verboseLevel >= 1) OUT("          sanity checking...");
                     FORI (iEdge, nEdges)
                     {
                         assert(answer[iEdge].length == answer[iEdge^1].length);
@@ -16665,32 +16674,145 @@ OFF
                             assert(Arrays.indexOf(answer[jEdge^1], iEdge) != -1);
                         }
                     }
-                    if (verboseLevel >= 1) OUT("      done.");
+                    if (verboseLevel >= 1) OUT("          done.");
                 }
-                if (verboseLevel >= 2) PRINTMAT(answer);
-                if (verboseLevel >= 1) OUT("    out findFullAlternativesMatrix");
+                if (verboseLevel >= 3) PRINTMAT(answer);
+                if (verboseLevel >= 1) OUT("        out findFullAlternativesMatrix");
                 return answer;
             } // findFullAlternativesToEverything
 
-            #ifdef NOTYET
-            private boolean findRandomBadCutAndFixIt()
+            private boolean makeItGood(int maxSwaps)
             {
-                FORI (iEdge, nEdges)
+                OUT("    in makeItGood");
+                int alternativesToEverything[][] = findFullAlternativesToEverything(0);
+                if (_vertToParentEdgeInd == null)
                 {
-                    if (theNet._edgeStatuses[iEdge] == Net.CUT)
+                    OUT("    out makeItGood, returning false (oops, net wasn't complete)");
+                    return false;
+                }
+
+                int nVerts = _mesh.verts.size();
+                int nEdges = _mesh.edges.size();
+
+                java.util.Random generator = new java.util.Random(0);
+
+                int nSwapsDone = 0;
+                while (true)
+                {
+                    OUT("          top of loop: nSwapsDone = "+nSwapsDone);
+                    //
+                    // XXX dup code from draw-- make this a function I think.  and make it incremental!
+                    double momentAndWeightStrictlyBelowEachVertex[][] = new double[nVerts][3]; // initially zeros
+                    FORIDOWN(iiChild, _topSortedVertInds.length) // leaves to roots
                     {
-                        figure out its goodness
-                        if its bad
+                        int iChild = _topSortedVertInds[iiChild];
+                        if (iChild == nVerts)
+                            continue; // it's the infinite vertex, i.e. the root
+                        Mesh.Vertex child = _mesh.getVert(iChild);
+                        int parentEdgeInd = _vertToParentEdgeInd[iChild];
+                        if (parentEdgeInd != -1)
                         {
-                            // choose a good exit
-                            //   - CCW?
-                            //   - random?
-                            // and swap from bad to good.
+                              Mesh.Edge parentEdge = _mesh.getEdge(parentEdgeInd);
+                              Mesh.Vertex parent = parentEdge.finalVertex();
+                              if (parent != null)
+                              {
+                                  int iParent = parent.myIndex();
+                                  accumulateMomentAndArea(momentAndWeightStrictlyBelowEachVertex[iParent],
+                                                          momentAndWeightStrictlyBelowEachVertex[iChild]);
+                                  accumulateMomentAndArea(momentAndWeightStrictlyBelowEachVertex[iParent],
+                                                          child.momentAndArea);
+                              }
                         }
                     }
+
+                    // XXX more dup code-- make this a function I think. and make it incremental!
+                    OUT("              figuring out what's balanced");
+                    boolean edgeIsOffBalanceCut[] = new boolean[nEdges]; // all false initially
+                    int offBalanceCuts[] = new int[nEdges];
+                    int nOffBalanceCuts = 0;
+                    FORI (iVert, nVerts)
+                    {
+                        double momentAndWeightStrictlyBelowVertex[] = momentAndWeightStrictlyBelowEachVertex[iVert];
+                        double weightStrictlyBelowVertex = momentAndWeightStrictlyBelowVertex[2];
+                        if (weightStrictlyBelowVertex != 0.)
+                        {
+                            int iEdge = _vertToParentEdgeInd[iVert];
+                            if (iEdge == -1)
+                                continue; // this is the root / highest node
+                            Mesh.Edge edge = _mesh.getEdge(iEdge);
+                            Mesh.Vertex vert = edge.initialVertex();
+                            assert_eq(vert.myIndex(), iVert);
+                            if (vert.weight < 0.)
+                                continue; // "nodes on the boundary are automatically ok" (what did this mean exactly?)
+                            double centerX = momentAndWeightStrictlyBelowVertex[0] / weightStrictlyBelowVertex;
+                            double centerY = momentAndWeightStrictlyBelowVertex[1] / weightStrictlyBelowVertex;
+                            if (GT(edge.direction[0] * (centerX - vert.x())
+                                 + edge.direction[1] * (centerY - vert.y()), 0., 1e-6)) // XXX is this a reasonable tolerance?
+                            {
+                                edgeIsOffBalanceCut[edge.myIndex()] = true;
+                                edgeIsOffBalanceCut[edge.opposite().myIndex()] = true;
+                                offBalanceCuts[nOffBalanceCuts++] = iEdge;
+                                //OUT("                  edge at vert "+iVert+" is off balance!");
+                            }
+                            else
+                            {
+                                //OUT("                  edge at vert "+iVert+" is balanced");
+                            }
+                        }
+                    }
+                    OUT("              nOffBalanceCuts = "+nOffBalanceCuts);
+                    OUT("              offBalanceCuts = "+VecMath.toString((int[])Arrays.subarray(offBalanceCuts,0,nOffBalanceCuts)));
+                    if (nOffBalanceCuts == 0)
+                    {
+                        OUT("      nSwapsDone = "+nSwapsDone);
+                        OUT("    out makeItGood, returning true (succeeded!)");
+                        return true;
+                    }
+                    if (nSwapsDone == maxSwaps)
+                    {
+                        OUT("      nSwapsDone = "+nSwapsDone);
+                        OUT("    out makeItGood, returning false (failed!)");
+                        return true;
+                    }
+
+                    // Take a random off-balance cut,
+                    // and swap it with a random alternative.
+                    // CBB: there must be at least one good alternative, but take any alternative for now.
+
+                    int cutToSwap = offBalanceCuts[generator.nextInt(nOffBalanceCuts)];
+                    OUT("              picked cutToSwap e"+cutToSwap);
+                    int cutAlternatives[] = alternativesToEverything[cutToSwap];
+                    OUT("              cutAlternatives = "+VecMath.toString(cutAlternatives));
+                    int foldToSwap = cutAlternatives[generator.nextInt(cutAlternatives.length)];
+                    OUT("              picked foldToSwap e"+foldToSwap);
+                    int foldAlternatives[] = alternativesToEverything[foldToSwap];
+                    OUT("              foldAlternatives = "+VecMath.toString(foldAlternatives));
+
+                    // CBB: O(n), can't be doing that here!
+                    OUT("              calling swapCutAndFold");
+                    swapCutAndFold(cutToSwap, foldToSwap);
+                    OUT("              returned from swapCutAndFold");
+                    nSwapsDone++;
+
+                    // Fix alternativesToEverything
+                    {
+                        // Splice at cutToSwap and foldToSwap.
+                        // XXX for now, just recompute from scratch
+                        alternativesToEverything = findFullAlternativesToEverything(0);
+                    }
+
+                    if (true)
+                    {
+                        // sanity check
+                        OUT("              sanity checking that alternativesToEverything is still correct...");
+                        int shouldBeAlternativesToEverything[][] = findFullAlternativesToEverything(0);
+                        //PRINTMAT(alternativesToEverything);
+                        //PRINTMAT(shouldBeAlternativesToEverything);
+                        assert(VecMath.equals(alternativesToEverything, shouldBeAlternativesToEverything));
+                        OUT("              done.");
+                    }
                 }
-            }
-            #endif
+            } // makeItGood
 
             // Make the cut a fold, and vice-versa.
             // The result must still be a tree.
