@@ -9862,7 +9862,6 @@ public class ShephardsPlayApplet
                 // need to be computed by a separate method.
                 // (and the above method sucks anyway, at least for wrapped-around-sphere).
                 if (verboseLevel >= 1) System.out.println("      computing face for faces that don't have dual verts");
-                // CBB: maybe two passes: first only looks at edges that are first on a face with missing vertex, so we get those done robustly
                 FORI (iEdge, nEdges)
                 {
                     Mesh.Edge edgeI = mesh.getEdge(iEdge);
@@ -9871,7 +9870,7 @@ public class ShephardsPlayApplet
                     int iLeftFace = leftDualVert==null ? nDualVerts : leftDualVert.myIndex();
                     if (faceFacings[iLeftFace] == FACING_UNKNOWN)
                     {
-                        if (verboseLevel >= 2) System.out.println("          iEdge = "+iEdge+"/"+nEdges+" ("+(edgeI.direction!=null?"has direction":"no direction")+")");
+                        if (verboseLevel >= 2) System.out.println("          iEdge = e"+iEdge+"/"+nEdges+" "+(edgeI.initialVertex()==null?"null":"v"+edgeI.initialVertex().myIndex())+"->"+(edgeI.finalVertex()==null?"null  ":"v"+edgeI.finalVertex().myIndex())+" ("+(edgeI.direction!=null?"has direction":"no direction")+")");
                         double normal[] = {0,0,0}; // for starters
                         double moment[] = {0,0,0}; // for starters
                         double centroid[] = null;
@@ -9882,6 +9881,7 @@ public class ShephardsPlayApplet
                             if (v0 == null)
                             {
                                 if (verboseLevel >= 2) System.out.println("              ouch! edge "+iEdge+" has null initial vertex ("+(edgeI.direction!=null?"has direction":"no direction")+")");
+                                // This shouldn't be a disaster; this face will be solved by some other edge on it.
                                 continue;
                             }
                             // CBB: compute in homogeneous space?  Hmm that would be ambitious.
@@ -9892,31 +9892,50 @@ public class ShephardsPlayApplet
                             double thisCentroid[] = new double[3]; // scratch for loop
                             double thisWeightedNormal[] = new double[3]; // scratch for loop
                             Mesh.Edge edgeJ;
-                            for (edgeJ = edgeI.next(); edgeJ.finalVertex() != v0; edgeJ = edgeJ.next())
+                            for (edgeJ = edgeI.next(); edgeJ.next() != edgeI; edgeJ = edgeJ.next())
                             {
                                 Mesh.Vertex v1 = edgeJ.initialVertex();
                                 Mesh.Vertex v2 = edgeJ.finalVertex();
-                                if (v1 == null)
+                                // a bit hackish, but prevents weird computation using vertices we shouldn't be using
+                                if (v1 != null && v1.weight < 0.) v1 = null;
+                                if (v2 != null && v2.weight < 0.) v2 = null;
+                                if (v1 == null && v2 == null)
+                                {
+                                    if (verboseLevel >= 0) System.out.println("                  ouch! edge "+edgeJ.myIndex()+" has null initial and final vertex ("+(edgeJ.direction!=null?"has direction":"no direction")+")");
+                                    break;
+                                }
+                                else if (v1 == null)
                                 {
                                     if (verboseLevel >= 2) System.out.println("                  ouch! edge "+edgeJ.myIndex()+" has null initial vertex ("+(edgeJ.direction!=null?"has direction":"no direction")+")");
-                                    break;
+                                    assert(edgeJ.direction != null);
+                                    v2coords[0] = v2.x();
+                                    v2coords[1] = v2.y();
+                                    v2coords[2] = v2.z();
+                                    VecMath.vmv(3, v1coords, v2coords, edgeJ.direction);
                                 }
-                                if (v2 == null)
+                                else if (v2 == null)
                                 {
                                     if (verboseLevel >= 2) System.out.println("                  ouch! edge "+edgeJ.myIndex()+" has null final vertex ("+(edgeJ.direction!=null?"has direction":"no direction")+")");
-                                    break;
+                                    assert(edgeJ.direction != null);
+                                    v1coords[0] = v1.x();
+                                    v1coords[1] = v1.y();
+                                    v1coords[2] = v1.z();
+                                    VecMath.vpv(3, v2coords, v1coords, edgeJ.direction);
                                 }
-                                v1coords[0] = v1.x();
-                                v1coords[1] = v1.y();
-                                v1coords[2] = v1.z();
-                                v2coords[0] = v2.x();
-                                v2coords[1] = v2.y();
-                                v2coords[2] = v2.z();
+                                else
+                                {
+                                    v1coords[0] = v1.x();
+                                    v1coords[1] = v1.y();
+                                    v1coords[2] = v1.z();
+                                    v2coords[0] = v2.x();
+                                    v2coords[1] = v2.y();
+                                    v2coords[2] = v2.z();
+                                }
                                 VecMath.vmv(v1coords, v1coords, v0coords); // so now relative to v0
                                 VecMath.vmv(v2coords, v2coords, v0coords); // so now relative to v0
                                 VecMath.vxv3(thisWeightedNormal, v1coords, v2coords);
                                 VecMath.vpv(normal, normal, thisWeightedNormal);
-                                if (verboseLevel >= 2) System.out.println("                  adding weighted normal "+VecMath.toString(thisWeightedNormal));
+                                if (verboseLevel >= 2) System.out.println("                  jEdge = e"+edgeJ.myIndex()+"/"+nEdges+" "+(edgeJ.initialVertex()==null?"null":"v"+edgeJ.initialVertex().myIndex())+"->"+(edgeJ.finalVertex()==null?"null  ":"v"+edgeJ.finalVertex().myIndex())+" adding weighted normal "+VecMath.toString(thisWeightedNormal));
                                 double thisArea = VecMath.norm(thisWeightedNormal);
                                 area += thisArea;
                                 VecMath.sxvpsxv(thisCentroid, 1/3., v1coords, 1/3., v2coords); // relative to v0
