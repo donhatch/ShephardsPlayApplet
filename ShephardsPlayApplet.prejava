@@ -937,6 +937,7 @@ public class ShephardsPlayApplet
                 }};
                 final JTextFieldForNumber theGridNTextField = new JTextFieldForNumber(applet.gridN);
                 final JTextFieldForNumber theBlueNoiseNTextField = new JTextFieldForNumber(applet.blueNoiseN);
+                final JTextFieldForNumber theJustNoiseNTextField = new JTextFieldForNumber(applet.justNoiseN);
 
                 final java.awt.Component cannedThingButtons[] = {
                     new JButton("Hexes Spiral") {{
@@ -1258,6 +1259,38 @@ public class ShephardsPlayApplet
                             });
                         }}, stretchx);
                         add(theBlueNoiseNTextField, stretchx);
+                    }},
+                    new JRow() {{
+                        add(new JRepeatingButton("Just Noise") {{
+                            {setToolTipText("Just noise on the plane, or, if \"Wrap around sphere\", on the sphere.");}
+                            setMargin(nomargin);
+                            addActionListener(new java.awt.event.ActionListener() {
+                                @Override public void actionPerformed(java.awt.event.ActionEvent e)
+                                {
+                                    // Flush the textfield value into justNoiseN
+                                    try
+                                    {
+                                        applet.justNoiseN.setDouble(Double.valueOf(theJustNoiseNTextField.getText()).doubleValue());
+                                    }
+                                    catch (java.lang.NumberFormatException nfe)
+                                    {
+                                        // maybe should print an error message or something
+                                        theJustNoiseNTextField.updateText(applet.justNoiseN);
+                                    }
+
+                                    UndoItem.State before = applet.newUndoItemState();
+
+                                    applet.doJustNoiseThing(applet.justNoiseN.get());
+
+                                    if (applet.continuouslyDelaunayizeFlag.get()) applet.delaunayize();
+                                    UndoItem.State after = applet.newUndoItemState();
+                                    applet.undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                    applet.theCanvas.repaint();
+                                }
+                            });
+                        }}, stretchx);
+                        add(theJustNoiseNTextField, stretchx);
                     }},
                     new JRow() {{
                         add(new JCol() {{
@@ -3425,6 +3458,9 @@ public class ShephardsPlayApplet
             "    ctrl-'i' - toggle showInsideOutDualVertsFlag",
             "    ctrl-'o' - cycle optimizationType",
             "    ctrl-'v' - toggle nonEventVerbose",
+            "    ctrl-'b' - uniform grid",
+            "    'b' - blue noise",
+            "    'j' - just noise",
             "    Up arrow: pull face plane of closest vertex out",
             "    Down arrow: push face plane of closest vertex in",
             "    'c' - clear",
@@ -6919,19 +6955,7 @@ public class ShephardsPlayApplet
                         break;
                     }
 
-                    case CTRL('b'): // blue noise pattern
-                    {
-                        UndoItem.State before = newUndoItemState();
-
-                        doBlueNoiseThing(blueNoiseN.get());
-
-                        if (continuouslyDelaunayizeFlag.get()) delaunayize();
-                        UndoItem.State after = newUndoItemState();
-                        undoTreeSquirrel.Do(new UndoItem(before, after));
-                        theCanvas.repaint();
-                        break;
-                    }
-                    case 'b': // uniform grid thing
+                    case CTRL('b'): // uniform grid thing
                     {
                         UndoItem.State before = newUndoItemState();
 
@@ -6943,6 +6967,31 @@ public class ShephardsPlayApplet
                         theCanvas.repaint();
                         break;
                     }
+                    case 'b': // blue noise pattern
+                    {
+                        UndoItem.State before = newUndoItemState();
+
+                        doBlueNoiseThing(blueNoiseN.get());
+
+                        if (continuouslyDelaunayizeFlag.get()) delaunayize();
+                        UndoItem.State after = newUndoItemState();
+                        undoTreeSquirrel.Do(new UndoItem(before, after));
+                        theCanvas.repaint();
+                        break;
+                    }
+                    case 'j': // just noise pattern
+                    {
+                        UndoItem.State before = newUndoItemState();
+
+                        doJustNoiseThing(justNoiseN.get());
+
+                        if (continuouslyDelaunayizeFlag.get()) delaunayize();
+                        UndoItem.State after = newUndoItemState();
+                        undoTreeSquirrel.Do(new UndoItem(before, after));
+                        theCanvas.repaint();
+                        break;
+                    }
+
                     case CTRL('l'): // optimize farthest lagoon exit killer XXX this should be temporary maybe
                     {
                         UndoItem.State before = newUndoItemState();
@@ -10735,6 +10784,38 @@ public class ShephardsPlayApplet
                 }
                 mesh = new Mesh(verts, new int[][]{});
             } // doBlueNoiseThing
+
+            private void doJustNoiseThing(int n)
+            {
+                double verts[][] = new double[n*n][3];
+                if (wrapAroundSphereFlag.get())
+                {
+                    FORI (iVert, verts.length)
+                    {
+                        while (true)
+                        {
+                            verts[iVert][0] = randomNumberGenerator.nextDouble()*2.-1.;
+                            verts[iVert][1] = randomNumberGenerator.nextDouble()*2.-1.;
+                            verts[iVert][2] = randomNumberGenerator.nextDouble()*2.-1.;
+                            double length2 = VecMath.normsqrd(verts[iVert]);
+                            if (length2 <= 1. && length2 >= SQR(1e-6))
+                                break;
+                        }
+                        VecMath.normalize(verts[iVert], verts[iVert]);
+                    }
+                }
+                else
+                {
+                    FORI (iVert, verts.length)
+                    {
+                        verts[iVert][0] = randomNumberGenerator.nextDouble() - .5;
+                        verts[iVert][1] = randomNumberGenerator.nextDouble() - .5;
+                        verts[iVert][2] = 0.;
+                    }
+                }
+                mesh = new Mesh(verts, new int[][]{});
+            } // doJustNoiseThing
+
 
             private void doUniformGridThing(int nX)
             {
@@ -17200,6 +17281,7 @@ OFF
             return (double[][])Arrays.subarray(samples, 0, nSuccesses);
         } // generateBlueNoiseOnUnitSphere
 
+        // "unit square" = [-1,1]x[-1,1]
         private static double[][] generateBlueNoiseOnUnitSquare(double stubbornness,
                                                                 double overlappingDiskRadiusX,
                                                                 double overlappingDiskRadiusY) // radius of disks that half-overlap.  this is twice the radius of disks that don't overlap.
@@ -19192,6 +19274,7 @@ OFF
         private Listenable.Double backfaceBrightness = new Listenable.Double(0.,1., .25);
         private Listenable.Int gridN = new Listenable.Int(0,1000,10);
         private Listenable.Int blueNoiseN = new Listenable.Int(0,1000,10);
+        private Listenable.Int justNoiseN = new Listenable.Int(0,1000,10);
         private Listenable.Double singleExitLagoonVirtualN = new Listenable.Double(0.,100.,16);
         private Listenable.Int singleExitLagoonNBeforeApex = new Listenable.Int(0,100,3);
         private Listenable.Int singleExitLagoonNBeforeBeforeApex = new Listenable.Int(0,100,3);
