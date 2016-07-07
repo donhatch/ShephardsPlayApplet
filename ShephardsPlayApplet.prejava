@@ -16822,87 +16822,9 @@ OFF
                 return results;
             } // findAlternatives()
 
-            public int[][] findAlternativesToEverything(int verboseLevel) // verboseLevel=2 = nice depiction
-            {
-                if (verboseLevel >= 1) OUT("        in findAlternativesMatrix");
-                assert_eq(_nUndecideds, 0);
-                int nEdges = _mesh.edges.size();
-                int answer[][] = new int[nEdges][];
-                FORI (iEdge, nEdges)
-                {
-                    answer[iEdge] = findAlternatives(iEdge);
-                    if (verboseLevel >= 2) OUT("              "+iEdge+"/"+nEdges+": "+(_edgeStatuses[iEdge]==FOLD?"FOLD":_edgeStatuses[iEdge]==CUT?"CUT":"???")+": "+Arrays.toStringCompact(answer[iEdge]));
-                }
-                {
-                    if (verboseLevel >= 1) OUT("          sanity checking...");
-                    FORI (iEdge, nEdges)
-                    {
-                        assert(answer[iEdge].length == answer[iEdge^1].length);
-                        FORI (j, answer[iEdge].length)
-                        {
-                            int jEdge = answer[iEdge][j];
-                            assert(Arrays.indexOf(answer[iEdge^1], jEdge^1) != -1);
-                            // Funny dance, it comes back in opposite direction.
-                            // Yes, that's the right thing (mouse-down on a cut and alternative fold to see it).
-                            assert(Arrays.indexOf(answer[jEdge], iEdge^1) != -1);
-                            assert(Arrays.indexOf(answer[jEdge^1], iEdge) != -1);
-                        }
-                    }
-                    if (verboseLevel >= 1) OUT("          done.");
-                }
-                if (verboseLevel >= 3) PRINTMAT(answer);
-                if (verboseLevel >= 1) OUT("        out findAlternativesToEverything");
-                return answer;
-            } // findAlternativesToEverything
-
-            private void helpDebugSplice(int alternativesToEverything[][], int cutToSwap, int foldToSwap)
-            {
-                int inds[] = {cutToSwap, foldToSwap, cutToSwap^1, foldToSwap^1};
-                for (int ii = 0; ii < 4; ++ii) OUT("                  "+inds[ii]+": "+Arrays.toStringCompact(alternativesToEverything[inds[ii]]));
-            }
-
-            // Oh hell!  I think this is completely wrong now that I think about it :-(
-            private void spliceAlternativesToEverything(int alternativesToEverything[][], int cutToSwap, int foldToSwap)
-            {
-                OUT("            in spliceAlternativesToEverything");
-                int inds[] = {cutToSwap, foldToSwap, cutToSwap^1, foldToSwap^1};
-                OUT("              before:");
-                helpDebugSplice(alternativesToEverything, cutToSwap, foldToSwap);
-
-                for (int ii = 0; ii < 4; ++ii)
-                {
-                    int iEdge = inds[ii];
-                    int jEdge = inds[(ii+1)%4];
-                    int oldLagoon[] = alternativesToEverything[iEdge];
-                    int splicePoint = Arrays.indexOf(oldLagoon, jEdge);
-                    assert(splicePoint != -1);
-                    int newLagoon[] = new int[oldLagoon.length];
-                    System.arraycopy(
-                        oldLagoon, splicePoint+1,
-                        newLagoon, 0,
-                        oldLagoon.length-1-splicePoint);
-                    newLagoon[oldLagoon.length-1-splicePoint] = iEdge;
-                    System.arraycopy(
-                        oldLagoon, 0,
-                        newLagoon, oldLagoon.length-splicePoint,
-                        splicePoint);
-                    alternativesToEverything[iEdge] = newLagoon;
-                }
-                int temp[] = alternativesToEverything[inds[3]];
-                alternativesToEverything[inds[3]] = alternativesToEverything[inds[2]];
-                alternativesToEverything[inds[2]] = alternativesToEverything[inds[1]];
-                alternativesToEverything[inds[1]] = alternativesToEverything[inds[0]];
-                alternativesToEverything[inds[0]] = temp;
-                OUT("              after:");
-                helpDebugSplice(alternativesToEverything, cutToSwap, foldToSwap);
-                OUT("            out spliceAlternativesToEverything");
-            } // spliceAlternativesToEverything
-
-            // CBB: the keepGoing thing actually isn't really working.  I guess I should be doing this in a separate thread? Not sure.
             private boolean makeItGood(int maxSwaps, java.util.Random generator, Listenable.Boolean keepGoing)
             {
                 OUT("    in makeItGood");
-                int alternativesToEverything[][] = findAlternativesToEverything(0);
                 if (_vertToParentEdgeInd == null)
                 {
                     OUT("    out makeItGood, returning false (oops, net wasn't complete)");
@@ -17005,52 +16927,16 @@ OFF
 
                     int cutToSwap = offBalanceCuts[generator.nextInt(nOffBalanceCuts)];
                     OUT("              picked cutToSwap e"+cutToSwap);
-                    int cutAlternatives[] = alternativesToEverything[cutToSwap];
+                    int cutAlternatives[] = findAlternatives(cutToSwap);
                     OUT("              cutAlternatives = "+VecMath.toString(cutAlternatives));
                     int foldToSwap = cutAlternatives[generator.nextInt(cutAlternatives.length)];
                     OUT("              picked foldToSwap e"+foldToSwap);
-                    int foldAlternatives[] = alternativesToEverything[foldToSwap];
-                    OUT("              foldAlternatives = "+VecMath.toString(foldAlternatives));
 
                     // CBB: O(n), can't be doing that here!
                     OUT("              calling swapCutAndFold");
                     swapCutAndFold(cutToSwap, foldToSwap);
                     OUT("              returned from swapCutAndFold");
                     nSwapsDone++;
-
-                    // Fix alternativesToEverything
-                    if (false)
-                    {
-                        // Splice at cutToSwap and foldToSwap.
-                        //PRINTMAT(alternativesToEverything);
-                        spliceAlternativesToEverything(alternativesToEverything, cutToSwap, foldToSwap);
-                        //PRINTMAT(alternativesToEverything);
-                    }
-                    else
-                    {
-                        // XXX for now, just recompute from scratch
-                        alternativesToEverything = findAlternativesToEverything(0);
-                    }
-
-                    if (true)
-                    {
-                        // sanity check
-                        OUT("              sanity checking that alternativesToEverything is still correct...");
-                        int shouldBeAlternativesToEverything[][] = findAlternativesToEverything(0);
-                        //PRINTMAT(alternativesToEverything);
-                        //PRINTMAT(shouldBeAlternativesToEverything);
-                        OUT("                  straightforward part...");
-                        FORI (iEdge, nEdges)
-                        {
-                            if (iEdge/2 != cutToSwap/2 && iEdge/2 != foldToSwap/2)
-                            {
-                                assert(VecMath.equals(alternativesToEverything[iEdge], shouldBeAlternativesToEverything[iEdge]));
-                            }
-                        }
-                        OUT("                  tricky part...");
-                        assert(VecMath.equals(alternativesToEverything, shouldBeAlternativesToEverything));
-                        OUT("              done.");
-                    }
                 }
             } // makeItGood
 
