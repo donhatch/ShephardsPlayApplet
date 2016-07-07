@@ -654,10 +654,10 @@ they become evident from playing with planar tilings:
         - for every polygon, for every point in interior, there's at least two
             verts at local maximum distance (FALSE)
         - for every polygon, there's at least two verts at local maximum distance from cc
-            (UNKNOWN, implies every polygon has at least two good exits)
+            (FALSE, just take a polygon and point for which there's only one vert at local maximum distance,
+            and tweak quill angles til cc is exactly that point)
         ...
         - for every lagoon, there's at least two verts at local maximum dist from cc
-            (UNKNOWN, implies previous)
         - add "all faces tangent to sphere" to any/all of above conjectures (weaker)
         - replace "lagoon/polygon" with "left-right symmetric lagoon/polygon" in any/all of above conjectures (weaker)
         - call an edge within a lagoon "reversible" or "doublegood" if it's good from the point of view
