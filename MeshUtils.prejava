@@ -1,0 +1,1737 @@
+#include "macros.h"
+
+public class MeshUtils
+{
+    //
+    // Assumes mesh is topologically a polyhedron,
+    // The dual vertex is well defined iff the corresponding primal face
+    // is a non-degenerate triangle.
+    // Otherwise the primal face will be triangulated arbitrarily
+    // and the dual vertex will be set to the weighted average
+    // of the vertices computed from each triangle.
+    // Indexing of dual edges is same as indexing of original edges.
+    // The dual edge points from right to left,
+    // with respect to the forward direction of the primal edge.
+    //
+    public static Mesh makeDualMesh(Mesh primal,
+                                    boolean includeNonArity3,
+                                    boolean includeInsideOut,  // always true these days
+                                    boolean wrapAroundSphereFlagValue,
+                                    boolean centerSphereFlagValue,
+                                    double wrapSphereCurvatureValue)
+    {
+        System.out.println("    in makeDualMesh(wrapAroundSphereFlagValue="+wrapAroundSphereFlagValue+")");
+        Mesh dual = new Mesh();
+        int nEdges = primal.edges.size();
+        FORI (iEdge, nEdges)
+            dual.newEdge(false); // adds itself to dual.edges
+        assert_eq(dual.edges.size(), nEdges);
+        FORI (iEdge, nEdges)
+        {
+            Mesh.Edge dualEdge = dual.getEdge(iEdge);
+            Mesh.Edge primalEdge = primal.getEdge(iEdge);
+            dualEdge._opposite = dual.getEdge(primalEdge._opposite._myIndex);
+            if (false)
+            {
+                // CCW faces in primal
+                // produce CCW faces in dual.
+                // If we do this, then applying makeDualMesh twice
+                // will reverse all the edges,
+                // I think.
+                // (assumimg calcInsideOutDualVertsFlag is true)
+                dualEdge._next = dual.getEdge(primalEdge._prev._opposite._myIndex);
+                dualEdge._prev = dual.getEdge(primalEdge._opposite._next._myIndex);
+            }
+            else
+            {
+                // CCW faces in primal
+                // produce CW faces in dual.
+                // If we do this, then makeDualMesh(makeDualMesh(mesh))
+                // should return something identical to the original,
+                // I think.
+                // (assumimg calcInsideOutDualVertsFlag is true)
+                // XXX Odd, this seems to behave better all around (I expected rays to go in wrong direction,
+                // but it works better than the other way... should think about why)
+                dualEdge._next = dual.getEdge(primalEdge._next._opposite._myIndex);
+                dualEdge._prev = dual.getEdge(primalEdge._opposite._prev._myIndex);
+            }
+        }
+
+        //
+        // Find all the dual vertices.
+        // These correspond to primal faces.
+        // Include inside-out ones for starters,
+        // to avoid lots of redundant calculation.  We'll remove them afterwards.
+        //
+        double vertCoords3d[][] = null;
+        if (wrapAroundSphereFlagValue)
+        {
+            int nVerts = primal.verts.size();
+            vertCoords3d = new double[nVerts][3];
+            FORI (iVert, nVerts)
+            {
+                double coord[] = vertCoords3d[iVert];
+                Mesh.Vertex v = primal.getVert(iVert);
+                coord[0] = v.x();
+                coord[1] = v.y();
+                coord[2] = v.z();
+
+            }
+        }
+        FORI (iEdge, nEdges)
+        {
+            Mesh.Edge dualEdge0 = dual.getEdge(iEdge);
+            if (dualEdge0._opposite._initialVertex != null)
+                continue; // did this one already
+
+            Mesh.Vertex dualVert; // TODO: merge this back when ported to new way
+
+            if (wrapAroundSphereFlagValue)
+            {
+                // Triangulate,
+                // using primalEdge0's initial vertex as the hub.
+
+                double totalWeightedNormal[] = new double[3]; // zero initially
+
+                {
+                    // TODO: move these more outward
+                    double edgeVec1[] = new double[3]; // scratch for loop
+                    double edgeVec2[] = new double[3]; // scratch for loop
+                    double edgeCenter[] = new double[3]; // scratch for loop
+
+                    Mesh.Edge primalEdge0 = primal.getEdge(iEdge);
+                    Mesh.Vertex v0 = primalEdge0._initialVertex;
+                    double v0coords[] = {v0.x(), v0.y(), v0.z()};
+                    for (Mesh.Edge primalEdge = primalEdge0.next();
+                         primalEdge.finalVertex() != v0;
+                         primalEdge = primalEdge.next())
+                    {
+                        double v1coords[] = vertCoords3d[primalEdge.initialVertex().myIndex()];
+                        double v2coords[] = vertCoords3d[primalEdge.finalVertex().myIndex()];
+
+                        VecMath.vmv(edgeVec1, v1coords, v0coords);
+                        VecMath.vmv(edgeVec2, v2coords, v0coords);
+
+                        VecMath.vpvxv3(totalWeightedNormal,
+                                       totalWeightedNormal,
+                                       edgeVec1,
+                                       edgeVec2);
+                    }
+                }
+
+                // want triangulation-independent representative point--
+                // use the perimeter center.
+                double perimeterMomentAndLength[] = new double[4]; // zero initially
+                {
+                    Mesh.Edge primalEdge0 = primal.getEdge(iEdge);
+                    Mesh.Edge primalEdge = primalEdge0;
+                    do {
+                        double v1coords[] = vertCoords3d[primalEdge.initialVertex().myIndex()];
+                        double v2coords[] = vertCoords3d[primalEdge.finalVertex().myIndex()];
+                        double edgeLength = VecMath.dist(v1coords, v2coords);
+                        VecMath.vpsxvpsxv(3, perimeterMomentAndLength,
+                                             perimeterMomentAndLength, .5*edgeLength, v1coords,
+                                                                       .5*edgeLength, v2coords);
+                        perimeterMomentAndLength[3] += edgeLength;
+                    } while ((primalEdge=primalEdge.next()) != primalEdge0);
+                }
+
+                // working with unit normal simplifies things, though I'm not sure it's really necessary
+                double unitNormal[] = VecMath.normalize(totalWeightedNormal);
+
+                // take dot product of normal with perimeter center
+                double dotProd = VecMath.dot(3, perimeterMomentAndLength, unitNormal) / perimeterMomentAndLength[3];
+                if (!centerSphereFlagValue)
+                    dotProd += unitNormal[2]/wrapSphereCurvatureValue; // TODO: can we get rid of the divide and make it a multiply somewhere else?
+
+                // want length of answer to be r^2 / dotProd.
+                // so, could just return unitNormalOut scaled by r^2/dotProd,
+                // but now we can be clever and stick the denominator in the W part,
+                // so that the answer is correct and robust even if dotProd is 0 or close to it.
+                // We also put wrapSphereCurvature in there too-- not sure whether this matters,
+                // but it makes the XYZ part be the unit normal (if centerSphereFlag), which is nice maybe.
+                double X = unitNormal[0];
+                double Y = unitNormal[1];
+                double Z = unitNormal[2];
+                double W = dotProd * SQR(wrapSphereCurvatureValue);
+                if (!centerSphereFlagValue)
+                    Z -= dotProd*wrapSphereCurvatureValue; // wrapSphereRadius*W but more robust when curvature is close to 0
+
+                double weight = dotProd; // times SQR(wrapSphereCurvature)? or not?
+
+                dualVert = dual.newVertex(X,Y,Z,W);
+                dualVert.weight = weight;
+                dualVert.momentAndArea = new double[] {X,Y,Z,W}; // seems redundant at this point, at least for sphere... maybe try to get rid
+            }
+            else // paraboloid
+            {
+                //
+                // Triangulate,
+                // using primalEdge0's initial vertex as the hub.
+                // The final dual vertex will be the triangle-area-weighted average
+                // of the circumcenters of the triangles.
+                // (the answer is the same regardless of triangulation...
+                // at least for the x,y part.  not sure what this does to the h part.)
+                // XXX TODO: don't we already do this in some version of SolveForDualPoint or SolveForDualMomentAndArea or something?
+                //
+                double totalMomentAndArea[] = new double[4]; // zero initially
+
+                double triMomentAndArea[] = new double[4]; // scratch for loop
+                Mesh.Edge primalEdge0 = primal.getEdge(iEdge);
+                Mesh.Vertex v0 = primalEdge0._initialVertex;
+                for (Mesh.Edge primalEdge = primalEdge0.next();
+                     primalEdge.finalVertex() != v0;
+                     primalEdge = primalEdge.next())
+                {
+                    Mesh.Vertex v1 = primalEdge.initialVertex();
+                    Mesh.Vertex v2 = primalEdge.finalVertex();
+
+                    // We intentionally use 3d primal verts
+                    // rather than homo coords--
+                    // this is because the homo coords may have come from
+                    // unwrapping around sphere,
+                    // in which case the interpretation of the w coord isn't really
+                    // relevant to us here.
+                    SolveForDualMomentAndArea(v0.x(), v0.y(), v0.h(),
+                                              v1.x(), v1.y(), v1.h(),
+                                              v2.x(), v2.y(), v2.h(),
+                                              triMomentAndArea,
+                                              wrapAroundSphereFlagValue, // TODO: doesn't need to take this any more, we're paraboloid at this point.  oh fooey, still needed for other call to SolveForDualMomentAndArea, in optimization stuff
+                                              centerSphereFlagValue,
+                                              wrapSphereCurvatureValue); // TODO: doesn't need to take this any more, we're paraboloid at this point.  oh fooey, still needed for other call to SolveForDualMomentAndArea, in optimization stuff
+                    accumulateMomentAndArea(totalMomentAndArea, triMomentAndArea);
+                }
+
+                {
+                    double xa = totalMomentAndArea[0];
+                    double ya = totalMomentAndArea[1];
+                    double haa = totalMomentAndArea[2];
+                    double a = totalMomentAndArea[3];
+                    if (false)
+                    {
+                        // this produces normalized coords, with W=1 or -1.
+                        dualVert = dual.newVertex(xa/a,
+                                                  ya/a,
+                                                  haa/(a*a));
+                        //PRINT(dualVert);
+                    }
+                    if (true)
+                    {
+                        // this keeps it homogeneous, with w = twice tri area.
+                        // Known to break things downstream that call Xnaive() etc.,
+                        // but they deserve to be broken.
+                        dualVert = dual.newVertex(xa,
+                                                  ya,
+                                                  0., // ignored
+                                                  a,
+                                                  haa);
+                        //PRINT(dualVert);
+                    }
+                }
+
+                double twiceTotalArea = totalMomentAndArea[3]; // TODO: fix up
+                dualVert.weight = .5 * twiceTotalArea;
+                dualVert.momentAndArea = totalMomentAndArea;
+
+                // TODO REGARDING NEGATIVE WEIGHTS: don't do this, I don't think. at this point I think maybe i should be making all W's non-negative, retaining inside-outedness in weight?  not sure.
+                // haphazard fixup
+                if ((dualVert.weight < 0.) != (dualVert.W() < 0.))
+                {
+                    // This used to happen when maintaining dual verts naively with W=1 and weight signed.
+                    // Doesn't happen any more since now setting W = 2*weight = 2*triArea which has the same sign as weight.
+                    assert(false);
+                    dualVert.setXYZW(-dualVert.X(),
+                                     -dualVert.Y(),
+                                     -dualVert.Z(),
+                                     -dualVert.W());
+                }
+
+            }
+
+            // Set dualVert to be the *final* vertex (i.e. initial vertex of opposite)
+            // of each dual edge ending at it.
+            for (Mesh.Edge dualEdge = dualEdge0;
+                 dualEdge._opposite._initialVertex == null;
+                 dualEdge = dualEdge._next._opposite)
+            {
+                assert_eq(dualEdge._opposite._initialVertex, null);
+                dualEdge._opposite._initialVertex = dualVert;
+                dualEdge._opposite._initialVertex.arity++;
+            }
+        }
+
+        // Delete all verts that don't satisfy the criteria.
+        // Any edges beginning or ending at such verts
+        // will end up with null as their initial or final vertex instead.
+        FORI (iEdge, nEdges)
+        {
+            Mesh.Edge dualEdge0 = dual.getEdge(iEdge);
+            Mesh.Vertex initialDualVert = dualEdge0._initialVertex;
+            if (initialDualVert == null)
+                continue; // initial dual vertex is already gone
+            if ((!includeNonArity3 && initialDualVert.arity != 3)
+             || (!includeInsideOut && initialDualVert.momentAndArea[3] < 0.))
+            {
+                for (Mesh.Edge dualEdge = dualEdge0;
+                     dualEdge._initialVertex != null;
+                     dualEdge = dualEdge._opposite._next)
+                {
+                    assert_eq(dualEdge._initialVertex, initialDualVert);
+                    dualEdge._initialVertex = null;
+                    --initialDualVert.arity;
+                }
+                assert_eq(initialDualVert.arity, 0);
+                int iDualVert = initialDualVert.myIndex();
+                Mesh.Vertex lastDualVert = (Mesh.Vertex)dual.verts.remove(dual.verts.size()-1);
+                if (lastDualVert != initialDualVert)
+                {
+                    lastDualVert._myIndex = iDualVert;
+                    dual.verts.set(iDualVert, lastDualVert);
+                }
+            }
+        }
+        
+        //
+        // Give each dual edge a direction.
+        //
+        fixDualDirections(primal, dual, wrapAroundSphereFlagValue, centerSphereFlagValue, wrapSphereCurvatureValue);
+        System.out.println("    out makeDualMesh(wrapAroundSphereFlagValue="+wrapAroundSphereFlagValue+")");
+        return dual;
+    } // makeDualMesh()
+
+    // called at end of makeDualMesh,
+    // and also after rescaling or tweaking
+    public static void fixDualDirections(Mesh primal,
+                                         Mesh dual,
+                                         boolean wrapAroundSphereFlagValue,
+                                         boolean centerSphereFlagValue,
+                                         double wrapSphereCurvatureValue)
+    {
+        int nEdges = dual.edges.size();
+        FORI (iEdge, nEdges)
+            dual.getEdge(iEdge).direction = null;
+        FORI (iEdge, nEdges)
+        {
+            Mesh.Edge dualEdge = dual.getEdge(iEdge);
+            if (dualEdge.direction != null)
+                continue; // did this one already
+
+
+            // We want a consistent method that works even if the edge is "external"
+            // (i.e. direction is opposite the direction from initial to final vertex),
+            // and that works even if initial or final vertex is null.
+
+// TODO: remove this after it's been tested for a while
+#if 0
+            if (dualEdge._initialVertex != null
+             && dualEdge.finalVertex() != null)
+            {
+                // it's a usual edge... get the direction by subtracting vertices
+                // XXX but this is not robust? but it may be better in some senses, especially if we're doing non-triangles too
+                // XXX TODO: compute in homogeneous space
+                dualEdge.direction = VecMath.normalize(VecMath.vmv(
+                    new double[]{dualEdge.finalVertex().x(),
+                                 dualEdge.finalVertex().y(),
+                                 dualEdge.finalVertex().z()},
+                    new double[]{dualEdge._initialVertex.x(),
+                                 dualEdge._initialVertex.y(),
+                                 dualEdge._initialVertex.z()}));
+            }
+            else
+#endif
+            {
+                // We want a consistent method that works even if the edge is "external"
+                // (i.e. direction is opposite the direction from initial to final vertex),
+                // and that works even if initial or final vertex is null.
+                // We compute the direction
+                // as the perpendicular to the corresponding primal edge.
+                // In 2d, this is easy-- its direction is just the primal edge dir
+                // rotated 90 degrees.
+                // But in 3d, what should it be?
+                // Well, the line is the intersection of two dual face planes,
+                // corresponding to two primal vertices.
+                // So the line direction is the cross product
+                // of the two plane normal dirs.
+
+                if (wrapAroundSphereFlagValue)
+                {
+                    Mesh.Edge primalEdge = primal.getEdge(iEdge);
+                    Mesh.Vertex v0 = primalEdge.initialVertex();
+                    Mesh.Vertex v1 = primalEdge.finalVertex();
+                    double v0Coords[] = {v0.x(), v0.y(), v0.z()};
+                    double v1Coords[] = {v1.x(), v1.y(), v1.z()};
+                    double center[] = {0,0,centerSphereFlagValue?0:-1./wrapSphereCurvatureValue};
+                    VecMath.vmv(v0Coords, v0Coords, center);
+                    VecMath.vmv(v1Coords, v1Coords, center);
+                    double dir[] = VecMath.vxv3(v0Coords, v1Coords);
+                    VecMath.normalize(dir, dir);
+                    dualEdge.direction = dir;
+                }
+                else
+                {
+                    // Luckily, the plane normal dirs are functions
+                    // of the primal xy's (the h's don't matter; they just push the plane in or out).
+                    // So, what is the surface normal (not necessarily unit length)
+                    // of the paraboloid at x,y,(x^2+y^2)/2?
+                    // It's x,y,1.
+                    // That was easy.
+                    //
+                    Mesh.Edge primalEdge = primal.getEdge(iEdge);
+                    Mesh.Vertex v0 = primalEdge.initialVertex();
+                    Mesh.Vertex v1 = primalEdge.finalVertex();
+                    // XXX TODO: compute in homogeneous space?
+                    double n0[] = {v0.x(), v0.y(), 1};
+                    double n1[] = {v1.x(), v1.y(), 1};
+                    double dir[] = VecMath.vxv3(n0, n1);
+                    VecMath.normalize(dir,dir);
+                    dualEdge.direction = dir;
+                }
+            }
+
+            assert_eq(dualEdge._opposite.direction, null);
+            dualEdge._opposite.direction = VecMath.sxv(-1., dualEdge.direction);
+        }
+    } // fixDualDirections
+
+    // If canonicalOrder flag, order each face so that least-index vertex is first,
+    // and then sort faces by increasing size and then increasing contents.
+    // and then sort faces by increasing size and then contents.
+    private static int[][] getMeshFaces(Mesh mesh, boolean canonicalOrderFlag)
+    {
+        boolean seenEdge[] = new boolean[mesh.edges.size()]; // all false initially
+        int[][] faces = new int[mesh.edges.size()][];
+        int[] scratchFace = new int[mesh.verts.size()];
+        int nFaces = 0;
+        FORIDOWN(iEdge, mesh.edges.size())
+        {
+            if (seenEdge[iEdge]) continue;
+            Mesh.Edge edge0 = mesh.getEdge(iEdge);
+            if (canonicalOrderFlag)
+            {
+                // Advance edge0 til its initial vertex is the one with smallest index on the face
+                int minVertIndex = edge0.initialVertex().myIndex();
+                for (Mesh.Edge edge = edge0.next(); edge != edge0; edge = edge.next())
+                {
+                    int iVert = edge.initialVertex().myIndex();
+                    minVertIndex = MIN(minVertIndex, iVert);
+                }
+                while (edge0.initialVertex().myIndex() != minVertIndex)
+                    edge0 = edge0.next();
+            }
+            int faceSize = 0;
+            Mesh.Edge edge = edge0;
+            do {
+                seenEdge[edge.myIndex()] = true;
+                scratchFace[faceSize++] = edge.initialVertex().myIndex();
+            } while ((edge = edge.next()) != edge0);
+            faces[nFaces++] = (int[])Arrays.subarray(scratchFace, 0, faceSize);
+        }
+        faces = (int[][])Arrays.subarray(faces, 0, nFaces);
+        if (canonicalOrderFlag)
+        {
+            SortStuff.sort(faces, new SortStuff.Comparator() {
+                public int compare(Object a, Object b)
+                {
+                    int aTri[] = (int[])a;
+                    int bTri[] = (int[])b;
+                    if (aTri.length < bTri.length) return -1;
+                    if (aTri.length > bTri.length) return 1;
+                    for (int i = 0; i < aTri.length; ++i)
+                    {
+                        if (aTri[i] < bTri[i]) return -1;
+                        if (aTri[i] > bTri[i]) return 1;
+                    }
+                    return 0;
+                }
+            });
+        }
+        return faces;
+    } // getMeshFaces
+
+    private static double detDestructiveDouble(int n, java.math.BigInteger M[/*n*/][/*n*/])
+    {
+        // Not really destructive.
+        double Mdouble[][] = new double[n][n];
+        for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j)
+            Mdouble[i][j] = M[i][j].doubleValue();
+        double answer = VecMath.detDestructive(Mdouble);
+        return answer;
+    }
+
+    // Return an array of BigIntegers whose product is the determinant in question.
+    // First entry will be 1 or -1, the others will be positive.
+    private static java.math.BigInteger[] factorizeDetDestructive(int n, java.math.BigInteger M[][])
+    {
+        int verboseLevel = 0;
+        java.math.BigInteger ZERO = java.math.BigInteger.ZERO;
+        java.math.BigInteger ONE = java.math.BigInteger.ONE;
+        if (verboseLevel >= 1) OUT("        in factorizeDetDestructive(n="+n+")");
+        if (verboseLevel >= 1) OUT("          before:");
+        if (verboseLevel >= 1) PRINTMAT(M);
+        if (verboseLevel >= 1) PRINT(n);
+        int sign = 1;
+        FORI (i, n)
+        {
+            if (verboseLevel >= 2) OUT("              i="+i);
+            if (verboseLevel >= 2) PRINTMAT(M);
+
+            boolean pivotFlag = true;
+            if (pivotFlag)
+            {
+                // Optional, but helps keep numbers relatively small:
+                // Choose the pivot to be the smallest-magnitude entry in [>=i][>=i].
+                // This is a heuristic; I actually don't know the best way
+                // to do this.
+                int jPivot = -1;
+                int kPivot = -1;
+                java.math.BigInteger absPivot = null;
+                for (int j = i; j < n; ++j)
+                for (int k = i; k < n; ++k)
+                {
+                    if (M[j][k].signum() != 0)
+                    {
+                        java.math.BigInteger absEntry = M[j][k].abs();
+                        if (absPivot == null || absEntry.compareTo(absPivot) < 0)
+                        {
+                            jPivot = j;
+                            kPivot = k;
+                            absPivot = absEntry;
+                        }
+                    }
+                }
+                if (verboseLevel >= 2) OUT("              jPivot="+jPivot);
+                if (verboseLevel >= 2) OUT("              kPivot="+kPivot);
+                if (absPivot != null)
+                {
+                    if (jPivot != i)
+                    {
+                        java.math.BigInteger temp[];
+                        SWAP(M[i], M[jPivot], temp);
+                        sign *= -1;
+                    }
+                    if (kPivot != i)
+                    {
+                        // CBB: maybe maintain a column permutation instead of all these swaps?
+                        java.math.BigInteger temp;
+                        for (int j = i; j < n; ++j)
+                            SWAP(M[j][i], M[j][kPivot], temp);
+                        sign *= -1;
+                    }
+                }
+                if (verboseLevel >= 2) OUT("                  after pivoting:");
+                if (verboseLevel >= 2) PRINTMAT(M);
+            }
+
+            // Make sure everything we're going to deal with in this column is nonnegative
+            for (int j = i; j < n; ++j)
+            {
+                if (M[j][i].signum() < 0)
+                {
+                    sign *= -1;
+                    for (int k = i; k < n; ++k)
+                        M[j][k] = M[j][k].negate();
+                }
+            }
+            if (verboseLevel >= 2) OUT("                  after nonnegativizing:");
+            if (verboseLevel >= 2) PRINTMAT(M);
+
+            if (verboseLevel >= 2) OUT("                  after fixing:");
+            if (verboseLevel >= 2) PRINTMAT(M);
+            // Zero out all entries [>i][i]
+            // by doing row operations against row i.
+            for (int j = i+1; j < n; ++j)
+            {
+                if (verboseLevel >= 3) OUT("                  j="+j);
+                assert(M[j][i].signum() >= 0);
+                int iters = 0;
+                int maxIters = 1000;
+                // CBB: this isn't as efficient as it could be; should use CRT instead, I think.
+                while (M[j][i].signum() != 0)
+                {
+                    iters++;
+                    assert(iters < maxIters);
+                    java.math.BigInteger a = M[i][i];
+                    java.math.BigInteger b = M[j][i];
+                    if (verboseLevel >= 3) OUT("                      a = "+a);
+                    if (verboseLevel >= 3) OUT("                      b = "+b);
+                    java.math.BigInteger q = a.divide(b);
+                    // a,b = b,a%b
+                    // One step in euclidean algorithm: a -= q * b, then swap a,b
+                    // Do it to the whole row.
+                    for (int k = i; k < n; ++k)
+                    {
+                        //M[i][k] -= q * M[j][k];
+                        M[i][k] = M[i][k].subtract(M[j][k].multiply(q));
+                    }
+                    java.math.BigInteger temp[];
+                    SWAP(M[i], M[j], temp);
+                    sign *= -1;
+                }
+            }
+        }
+        if (verboseLevel >= 1) OUT("      after:");
+        if (verboseLevel >= 1) PRINTMAT(M);
+        java.math.BigInteger answer[] = new java.math.BigInteger[n+1];
+        answer[0] = sign<0 ? ONE.negate()
+                           : ONE;
+        for (int i = 0; i < n; ++i)
+            answer[i+1] = M[i][i];
+        if (verboseLevel >= 1) OUT("    out factorizeDetDestructive(n="+n+"), returning "+VecMath.toString(answer));
+        return answer;
+    }
+    // Unfortunately not sure whether I should be returning long or double.
+    // Long might be more exact, but can overflow.
+    private static java.math.BigInteger detDestructiveBigInteger(int n, java.math.BigInteger M[][])
+    {
+        int verboseLevel = 1;
+        if (verboseLevel >= 1) OUT("    in detDestructiveLong(n="+n+")");
+        java.math.BigInteger factors[] = factorizeDetDestructive(n, M);
+        java.math.BigInteger answer = java.math.BigInteger.ONE;
+        for (int i = 0; i < factors.length; ++i)
+            answer = answer.multiply(factors[i]);
+        if (verboseLevel >= 1) OUT("    out detDestructiveLong("+n+"), returning "+answer);
+        return answer;
+    }
+
+    private static java.math.BigInteger countSpanningTrees(Mesh mesh)
+    {
+        OUT("    in countSpanningTrees");
+        java.math.BigInteger ZERO = java.math.BigInteger.ZERO;
+        java.math.BigInteger ONE = java.math.BigInteger.ONE;
+        // Use Kirchoff's theorem. https://en.wikipedia.org/wiki/Kirchhoff%27s_theorem
+        int nVerts = mesh.verts.size();
+        if (nVerts == 0)
+            return ZERO;
+        java.math.BigInteger laplacian[][] = new java.math.BigInteger[nVerts+1][nVerts+1];
+        for (int i = 0; i < laplacian.length; ++i)
+        for (int j = 0; j < laplacian[0].length; ++j)
+            laplacian[i][j] = ZERO;
+
+        int nEdges = mesh.edges.size();
+        for (int iEdge = 0; iEdge < nEdges; ++iEdge)
+        {
+            Mesh.Edge edge = mesh.getEdge(iEdge);
+            Mesh.Vertex v0 = edge.initialVertex();
+            Mesh.Vertex v1 = edge.finalVertex();
+            int i0 = v0==null ? nVerts : v0.myIndex();
+            int i1 = v1==null ? nVerts : v1.myIndex();
+            if (i0 != i1) // self-loops are irrelevant
+            {
+                laplacian[i0][i0] = laplacian[i0][i0].add(ONE);
+                laplacian[i0][i1] = laplacian[i0][i1].subtract(ONE);
+            }
+        }
+        PRINTMAT(laplacian);
+        boolean hasEdgesToNowhere = laplacian[nVerts][nVerts].signum() != 0;
+        PRINT(hasEdgesToNowhere);
+        java.math.BigInteger detBigInteger = detDestructiveBigInteger(
+                                  hasEdgesToNowhere ? nVerts : nVerts-1,
+                                  (java.math.BigInteger[][])Arrays.copy(laplacian, 2));
+        PRINT(detBigInteger);
+        PRINT(detBigInteger.doubleValue());
+        assert(detBigInteger.signum() >= 0);
+        double detDouble = detDestructiveDouble(hasEdgesToNowhere ? nVerts : nVerts-1,
+                                          laplacian); // all but last nontrivial row&column
+        assert(detDouble >= 0);
+        PRINT(detDouble);
+        assert_almost_eq(detBigInteger.doubleValue(), detDouble, detDouble*1e-12);
+        OUT("    out countSpanningTrees, returning "+detBigInteger);
+        return detBigInteger;
+    } // countSpanningTrees
+
+    // Simpler mesh data structure, suitable for running
+    // the algorithm from David Bruce Wilson
+    // "Generating Random Spanning Trees More Quickly than the Cover Time".
+    //
+    // Subtleties:
+    //     - Depending on how original mesh was constructed,
+    //       it might have edges leading nowhere or coming from nowhere.
+    //       The "nowhere" gets made into a vertex (the "infinite vertex").
+    //     - We might or might not want to consider all inside-out vertices
+    //       to be part of the infinite vertex.
+    private static class SimplerMeshDataStructure
+    {
+        public int e2v[/*nEdges*/][/*2*/]; // edge to verts
+        public int v2e[/*nVerts*/][]; // vert to edges out
+        public SimplerMeshDataStructure(Mesh mesh, boolean mergeInsideOutVertsIntoInfiniteVert)
+        {
+            int nVerts = mesh.verts.size(); // may add 1 though
+            int nEdges = mesh.edges.size();
+            this.e2v = new int[nEdges][2];
+
+            int e2next[] = new int[nEdges];
+            boolean infiniteVertUsed = false; // until proven otherwise
+            FORI (iEdge, nEdges)
+            {
+                Mesh.Edge edge = mesh.getEdge(iEdge);
+                assert(edge.myIndex() == iEdge);
+                assert(edge.opposite().myIndex() == (iEdge^1));
+                Mesh.Vertex v0 = edge.initialVertex();
+                Mesh.Vertex v1 = edge.finalVertex();
+                if (v0 == null || v1 == null)
+                    infiniteVertUsed = true;
+                int i0 = v0==null ? nVerts : v0.myIndex();
+                int i1 = v1==null ? nVerts : v1.myIndex();
+                e2v[iEdge][0] = i0;
+                e2v[iEdge][1] = i1;
+                Mesh.Edge next = edge.next();
+                if (next == null)
+                {
+                    // final vertex is the infinite one; to find next, need to walk backwards around the face
+                    next = edge;
+                    while (next.prev() != null)
+                        next = next.prev();
+                }
+                e2next[iEdge] = next.myIndex();
+            }
+            if (mergeInsideOutVertsIntoInfiniteVert)
+            {
+                boolean isInsideOut[] = new boolean[nVerts+1];
+                FORI (iVert, nVerts)
+                    isInsideOut[iVert] = (mesh.getVert(iVert).weight < 0);
+                isInsideOut[nVerts] = true; // the infinite one, if any
+                PRINTVEC(isInsideOut);
+                FORI (iEdge, nEdges)
+                    FORI (iVertThisEdge, 2)
+                    {
+                        if (isInsideOut[e2v[iEdge][iVertThisEdge]])
+                        {
+                            e2v[iEdge][iVertThisEdge] = nVerts;
+                            infiniteVertUsed = true;
+                        }
+                    }
+                // Note that it may be that some original verts are now unused in e2v
+            }
+            if (infiniteVertUsed)
+                nVerts++;
+            this.v2e = new int[nVerts][];
+            {
+                int arities[] = new int[nVerts]; // zeros initially
+                FORI (iEdge, nEdges)
+                    arities[e2v[iEdge][0]]++;
+                FORI (iVert, nVerts)
+                {
+                    v2e[iVert] = new int[arities[iVert]];
+                    arities[iVert] = 0;
+                }
+                FORI (iEdge, nEdges)
+                {
+                    int iVert = e2v[iEdge][0];
+                    v2e[iVert][arities[iVert]++] = iEdge;
+                }
+                FORI (iVert, nVerts)
+                {
+                    assert_eq(v2e[iVert].length, arities[iVert]);
+                    FORI (iEdgeOut, v2e[iVert].length)
+                        assert_eq(e2v[v2e[iVert][iEdgeOut]][0], iVert);
+                }
+            }
+        } // SimplerMeshDataStructure ctor
+
+        public boolean isConnectedExceptMaybeForIsolatedVerts()
+        {
+            // DFS is actually faster supposedly but whatever
+            int nVerts = v2e.length;
+            int nEdges = e2v.length;
+            MergeFind mergeFind = new MergeFind(nVerts);
+            FORI (iEdge, nEdges)
+            {
+                int iVert = e2v[iEdge][0];
+                int jVert = e2v[iEdge][1];
+                mergeFind.merge(iVert, jVert);
+            }
+            int found = -1;
+            FORI (iVert, nVerts)
+            {
+                if (v2e[iVert].length == 0) continue; // vertex got removed (or was isolated)
+                if (found == -1)
+                    found = mergeFind.find(iVert);
+                else if (mergeFind.find(iVert) != found)
+                    return false;
+            }
+            return true;
+        } // isConnectedExceptMaybeForIsolatedVerts
+
+        // Do not call this unless connected! (in the sense that isConnectedExceptMaybeForIsolatedVerts returns).
+        public boolean[/*nEdges/2*/] randomSpanningTree(java.util.Random generator)
+        {
+            if (e2v.length == 0)
+                return new boolean[0];
+            // Use uniform random spanning tree algorithm, from David Bruce Wilson
+            // "Generating Random Spanning Trees More Quickly than the Cover Time"
+            // Must start with random vertex of random edge.
+            int r = e2v[generator.nextInt(e2v.length)][generator.nextInt(2)];
+            int nVerts = v2e.length;
+            boolean inTree[] = new boolean[nVerts]; // false initially
+            int theEdgeOut[] = new int[nVerts];
+            theEdgeOut[r] = -1;
+            inTree[r] = true;
+            FORI (iVert, nVerts)
+            {
+                if (v2e[iVert].length == 0)
+                    continue; // the vertex got removed (probably merged into the infinite vertex)
+                for (int u = iVert; !inTree[u]; u = e2v[theEdgeOut[u]][1])
+                    theEdgeOut[u] = v2e[u][generator.nextInt(v2e[u].length)];
+                for (int u = iVert; !inTree[u]; u = e2v[theEdgeOut[u]][1])
+                    inTree[u] = true;
+            }
+            boolean answer[] = new boolean[e2v.length/2]; // all false initially
+            FORI (iVert, nVerts)
+            {
+                if (v2e[iVert].length == 0)
+                    continue; // the vertex got removed (probably merged into the infinite vertex)
+                int iEdge = theEdgeOut[iVert];
+                assert((iEdge == -1) == (iVert==r));
+                if (iEdge != -1)
+                {
+                    assert(e2v[iEdge][0] == iVert);
+                    answer[iEdge/2] = true;
+                }
+            }
+            return answer;
+        } // randomSpanningTree
+
+        public int[] getVertToParentEdgeOut(int root,
+                                            boolean undirectedEdgeIsInSpanningTree[/*nUndirectedEdges*/])
+        {
+            int verboseLevel = 0;
+            if (verboseLevel >= 1) System.out.println("in getVertToParentEdgeOut");
+            // TODO: BUG: VecMath.toString messes up on int[][], it omits final closing brace
+            if (verboseLevel >= 1) System.out.println("  e2v = "+VecMath.toString(e2v));
+            if (verboseLevel >= 1) System.out.println("  v2e = "+VecMath.toString(v2e));
+            if (verboseLevel >= 1) System.out.println("  undirectedEdgeIsInSpanningTree = "+VecMath.toString(undirectedEdgeIsInSpanningTree));
+            int nVerts = this.v2e.length;
+            int vertToParentEdgeOut[] = VecMath.fillvec(nVerts, -1);
+            int queue[] = new int[nVerts];
+            int queueSize = 0;
+            queue[queueSize++] = root;
+            while (queueSize > 0)
+            {
+                int iVert = queue[--queueSize];
+                int edgesOut[] = this.v2e[iVert];
+                FORI (iEdgeOut, edgesOut.length)
+                {
+                    int iEdge = edgesOut[iEdgeOut];
+                    if (iEdge != vertToParentEdgeOut[iVert] // i.e. if didn't just come from there
+                     && undirectedEdgeIsInSpanningTree[iEdge/2])
+                    {
+                        assert(this.e2v[iEdge][0] == iVert);
+                        int jVert = this.e2v[iEdge][1];
+                        int parentEdgeOut = iEdge ^ 1; // opposite edge
+                        vertToParentEdgeOut[jVert] = parentEdgeOut;
+                        assert(this.e2v[parentEdgeOut][0] == jVert);
+                        assert(this.e2v[parentEdgeOut][1] == iVert);
+                        queue[queueSize++] = jVert;
+                    }
+                }
+            }
+            if (verboseLevel >= 1) System.out.println("  vertToParentEdgeOut = "+Arrays.toStringCompact(vertToParentEdgeOut));
+            if (verboseLevel >= 1) System.out.println("out getVertToParentEdgeOut");
+            return vertToParentEdgeOut;
+        } // getVertToParent
+    } // SimplerMeshDataStructure
+
+    // See paper "Generating Random Spanning Trees
+    // More Quickly than the Cover Time" by David Bruce Wilson.
+    // But, can't I do it in O(n) time,
+    // by simply growing the tree and picking a random new edge out of it on every step?
+    // (answer: no, the next edge out of the spanning tree can't be picked uniformly)
+    // Verify that Wilson's algorithm gives something uniformly random,
+    // or that the more well known random walk one does,
+    // or that a similar one doesn't.
+    private static void analyzeRandomSpanningTrees(Mesh mesh)
+    {
+        System.out.println("    in analyzeRandomSpanningTrees");
+        int nEdges = mesh.edges.size();
+        PRINT(nEdges);
+        if (nEdges > 26) // i.e. 13 undirected.
+        {
+            System.out.println("      too many edges, bailing");
+            System.out.println("    out analyzeRandomSpanningTrees");
+            return;
+        }
+
+        SimplerMeshDataStructure simplerMeshDataStructure = new SimplerMeshDataStructure(mesh, true);
+        if (!simplerMeshDataStructure.isConnectedExceptMaybeForIsolatedVerts())
+        {
+            System.out.println("      graph is disconnected; bailing");
+            System.out.println("    out analyzeRandomSpanningTrees");
+            return;
+        }
+
+        java.util.Random generator = new java.util.Random();
+
+        int counts[] = new int[1<<nEdges];
+
+        int nTries = 1000*1000;
+        FORI (iTry, nTries)
+        {
+            // Make a random spanning tree, and increment its count.
+
+            int whichTree;
+
+            if (true)
+            {
+                // Wilson's algorithm.
+                boolean answer[] = simplerMeshDataStructure.randomSpanningTree(generator);
+                whichTree = 0;
+                FORI (iUndirectedEdge, answer.length)
+                    if (answer[iUndirectedEdge])
+                        whichTree |= (1 << iUndirectedEdge);
+            }
+            else if (false)
+            {
+                // random walk from 0,
+                // keeping *last* edge to each new vertex.
+                // This apparently isn't uniform!
+
+                int e2v[][] = simplerMeshDataStructure.e2v;
+                int v2e[][] = simplerMeshDataStructure.v2e;
+                int nVerts = v2e.length; // may be 1 more than mesh.verts.size(). CBB: error prone!
+
+                boolean inTree[] = new boolean[nVerts]; // false initially
+                int prev[] = VecMath.fillvec(nVerts, -1); // vertex to prev *edge*, not vertex
+                int r = 0; // arbitrarily
+
+                inTree[r] = true;
+                int nVertsInTree = 1;
+                int u = r;
+                while (nVertsInTree < nVerts)
+                {
+                    int iEdge = v2e[u][generator.nextInt(v2e[u].length)];
+                    u = e2v[iEdge][1];
+                    prev[u] = iEdge; // clobber old value if any, so we retain last edge to u
+                    if (!inTree[u])
+                    {
+                        inTree[u] = true;
+                        nVertsInTree++;
+                    }
+                }
+
+                whichTree = 0;
+                FORI (iVert, nVerts)
+                {
+                    int iEdge = prev[iVert];
+                    if (iEdge != -1)
+                    {
+                        whichTree |= (1 << (iEdge/2));
+                    }
+                }
+            }
+            else if (false)
+            {
+                // random walk from 0,
+                // keeping *first* edge to each new vertex.
+                // This seems to be uniform.
+                // (and takes cover time, I think?)
+
+                int e2v[][] = simplerMeshDataStructure.e2v;
+                int v2e[][] = simplerMeshDataStructure.v2e;
+                int nVerts = v2e.length; // may be 1 more than mesh.verts.size(). CBB: error prone!
+
+                boolean inTree[] = new boolean[nVerts]; // false initially
+                int prev[] = VecMath.fillvec(nVerts, -1); // vertex to prev *edge*, not vertex
+                int r = 0; // arbitrarily
+
+                inTree[r] = true;
+                int nVertsInTree = 1;
+                int u = r;
+                while (nVertsInTree < nVerts)
+                {
+                    int iEdge = v2e[u][generator.nextInt(v2e[u].length)];
+                    u = e2v[iEdge][1];
+                    if (!inTree[u])
+                    {
+                        prev[u] = iEdge; // only record first edge to u
+                        inTree[u] = true;
+                        nVertsInTree++;
+                    }
+                }
+
+                whichTree = 0;
+                FORI (iVert, nVerts)
+                {
+                    int iEdge = prev[iVert];
+                    if (iEdge != -1)
+                    {
+                        whichTree |= (1 << (iEdge/2));
+                    }
+                }
+            }
+            else
+            {
+                assert(false);
+            }
+
+            //PRINT(whichTree);
+
+            counts[whichTree]++;
+        }
+        //PRINTARRAY(counts);
+
+        SortStuff.sort(counts);
+        int nZeros = 0;
+        while (nZeros < counts.length && counts[nZeros] == 0)
+            nZeros++;
+        counts = (int[])Arrays.subarray(counts, nZeros, counts.length-nZeros);
+        PRINTARRAY(counts);
+        PRINT(counts.length);
+
+        System.out.println("    out analyzeRandomSpanningTrees");
+    } // analyzeRandomSpanningTrees
+
+    private static Mesh.Vertex[] findAllVertsThatAreImages(Mesh mesh, double v[/*2*/], double group[][/*2*/][/*2*/], double tol)
+    {
+        int nVerts = mesh.verts.size();
+        boolean foundVert[] = new boolean[nVerts];
+        int nFound = 0;
+        FORI (iGroup, group.length)
+        {
+            assert_eq(v.length, 3);
+            double image[] = v3xm44(v,group[iGroup]);
+            assert_eq(image.length, 3);
+            FORI (iVert, nVerts)
+            {
+                if (!foundVert[iVert])
+                {
+                    Mesh.Vertex vertI = mesh.getVert(iVert);
+                    // TODO: compute in homo
+                    if (EQ(image[0], vertI.x(), tol)
+                     && EQ(image[1], vertI.y(), tol)
+                     && EQ(image[2], vertI.z(), tol))
+                    {
+                        foundVert[iVert] = true;
+                        nFound++;
+                    }
+                }
+            }
+        }
+        Mesh.Vertex answer[] = new Mesh.Vertex[nFound];
+        nFound = 0;
+        FORI (iVert, nVerts)
+            if (foundVert[iVert])
+                answer[nFound++] = mesh.getVert(iVert);
+        assert_eq(nFound, answer.length);
+        return answer;
+    } // findAllVertsThatAreImages
+
+    // TODO: move these to VecMath I think
+    // Normalize so max abs value of coordinates is 1.
+    private static void homoNormalize(int n, double answer[], double v[])
+    {
+        double divideByThis = ABS(v[0]);
+        for (int i = 1; i < n; ++i) // skip 0
+        {
+            double absvi = ABS(v[i]);
+            divideByThis = MAX(divideByThis, absvi);
+        }
+        VecMath.vxs(n, answer, v, 1./divideByThis);
+    }
+    private static void homoNormalize(double answer[], double v[])
+    {
+        homoNormalize(MIN(answer.length,v.length), answer, v);
+    }
+    private static double[] homoNormalize(double v[])
+    {
+        double answer[] = new double[v.length];
+        homoNormalize(v.length, answer, v);
+        return answer;
+    }
+
+    // Might or might not return the same mesh.
+    private static Mesh forceMeshSymmetryByDeletingVertsDestructive(Mesh mesh, double group[][][], boolean retainConnectivity)
+    {
+        System.out.println("    in forceMeshSymmetryByDeletingVertsDestructive");
+        int nVerts = mesh.verts.size();
+        System.out.println("          nVerts = "+nVerts);
+        double vertsHomo[][] = new double[nVerts][4];
+        FORI (iVert, nVerts)
+        {
+            Mesh.Vertex vert = mesh.getVert(iVert);
+            vertsHomo[iVert][0] = vert.X();
+            vertsHomo[iVert][1] = vert.Y();
+            vertsHomo[iVert][2] = vert.Z();
+            vertsHomo[iVert][3] = vert.W();
+        }
+
+        // as recommended in FuzzyPointHashTable doc...
+        FuzzyPointHashTable fuzzyTable = new FuzzyPointHashTable(1e-12, 1e-10, 1/1024.);
+        Object dummy = new Object(); // we really want a hash set, not hash table, so need a dummy object, distinct from null
+
+        // Initial pass adding originals, since those are the preferred images
+        FORI (iVert, nVerts)
+        {
+            if (fuzzyTable.put(homoNormalize(vertsHomo[iVert]),dummy) == null) // i.e. if it wasn't already there
+            {
+                // nothing. we don't dedup here (although maybe we should).
+            }
+        }
+        // Retain only verts in vertsHomo that are "all there".
+        // CBB: probably theres a more efficient algorithm; whatever
+        boolean bad[] = new boolean[nVerts];
+        int nBad = 0;
+        {
+            double scratchHomo[] = new double[4];
+            double scratchHomoNormalized[] = new double[4];
+            FORI (iVert, nVerts)
+            {
+                for (int iSymmetry = 1; iSymmetry < group.length; ++iSymmetry) // skip 0 since we did it already
+                {
+                    VecMath.vxm(scratchHomo, vertsHomo[iVert], group[iSymmetry]);
+                    homoNormalize(scratchHomoNormalized, scratchHomo);
+                    if (fuzzyTable.get(scratchHomoNormalized) == null)
+                    {
+                        bad[iVert] = true;
+                        nBad++;
+                        break;
+                    }
+                }
+            }
+        }
+        if (nBad == 0)
+        {
+            System.out.println("    out forceMeshSymmetryByDeletingVertsDestructive (nothing changed in "+nVerts+" verts)");
+            return mesh;
+        }
+        if (retainConnectivity)
+        {
+            // Note, each removal takes O(n) time, so this is quadratic.
+            FORIDOWN(iVert, nVerts) // backwards so that deleting won't mess up indices of future work
+            {
+                if (bad[iVert])
+                {
+                    mesh.deleteVertex(mesh.getVert(iVert), null, null);
+                }
+            }
+            System.out.println("    out forceMeshSymmetryByDeletingVertsDestructive (deleted "+nBad+"/"+nVerts+" verts in place))");
+            return mesh;
+        }
+        else
+        {
+            double goodVerts[][] = new double[nVerts-nBad][];
+            int nGood = 0;
+            FORI (iVert, nVerts)
+                if (!bad[iVert])
+                    goodVerts[nGood++] = vertsHomo[iVert];
+            assert(nGood == goodVerts.length);
+            Mesh answer = new Mesh(goodVerts, new int[0][]);
+            System.out.println("    out forceMeshSymmetryByDeletingVertsDestructive (created new mesh to delete "+nBad+"/"+nVerts+" verts)");
+            return answer;
+        }
+    } // forceMeshSymmetryByDeletingVertsDestructive
+
+    // Currently destroys connectivity. Another option would be to add verts one by one, the same as if user created them.
+    // Currently removes dups.
+    // CBB: should vert store notion of whether the intent was H or W?  we assume W.
+    // NOTE: I'm using normalized homogeneous coords as keys... however, the reason I'm doing that is because I thought it would fix the behavior on "crack goes in spiral small", but it doesn't!  so maybe go back to using 3d points?  Not sure.  Normalized homo does have the advantage that it should do something reasonable with very large coords though.  Hmm.
+    private static Mesh forceMeshSymmetryByReplicatingVerts(Mesh mesh, double group[][][])
+    {
+        System.out.println("    in forceMeshSymmetryByReplicatingVerts");
+        int nVerts = mesh.verts.size();
+        System.out.println("          nVerts = "+nVerts);
+        double vertsHomo[][] = new double[nVerts][4];
+        FORI (iVert, nVerts)
+        {
+            Mesh.Vertex vert = mesh.getVert(iVert);
+            vertsHomo[iVert][0] = vert.X();
+            vertsHomo[iVert][1] = vert.Y();
+            vertsHomo[iVert][2] = vert.Z();
+            vertsHomo[iVert][3] = vert.W();
+        }
+
+        // as recommended in FuzzyPointHashTable doc...
+        FuzzyPointHashTable fuzzyTable = new FuzzyPointHashTable(1e-12, 1e-10, 1/1024.);
+        Object dummy = new Object(); // we really want a hash set, not hash table, so need a dummy object, distinct from null
+
+        ArrayList/*<double[]>*/ finalVertsArrayList = new ArrayList();
+
+        // Initial pass adding originals, since those are the preferred images
+        FORI (iVert, nVerts)
+        {
+            if (fuzzyTable.put(homoNormalize(vertsHomo[iVert]),dummy) == null) // i.e. if it wasn't already there
+                finalVertsArrayList.add(vertsHomo[iVert]);
+        }
+        double scratchHomo[] = new double[4];
+        FORI (iVert, nVerts)
+        {
+            for (int iSymmetry = 1; iSymmetry < group.length; ++iSymmetry) // skip 0 since we did it already
+            {
+                VecMath.vxm(scratchHomo, vertsHomo[iVert], group[iSymmetry]);
+                if (fuzzyTable.put(homoNormalize(scratchHomo),dummy) == null) // i.e. if it wasn't already there
+                    finalVertsArrayList.add(VecMath.copyvec(scratchHomo));
+            }
+        }
+        double finalVerts[][] = new double[finalVertsArrayList.size()][4];
+        finalVertsArrayList.toArray(finalVerts);
+        finalVertsArrayList = null;
+
+        Mesh answer = new Mesh(finalVerts, new int[0][]);
+
+        System.out.println("    out forceMeshSymmetryByReplicatingVerts");
+        return answer;
+
+    } // forceMeshSymmetryByReplicatingVerts
+
+    private static Mesh changeMeshRotationalSymmetry(Mesh mesh,
+                                                     int oldP, int oldQ,
+                                                     int newP, int newQ)
+    {
+        System.out.println("    in changeMeshRotationalSymmetry");
+        ArrayList/*<double[]>*/ newVertsArrayList = new ArrayList();
+
+        if (oldQ == 1 && newQ == 1)
+        {
+            // Old and new fundamental regions are infinite pie slices
+            System.out.println("      remap fundamental region pie slice");
+
+            int nOldVerts = mesh.verts.size();
+            System.out.println("          nOldVerts = "+nOldVerts);
+            double oldVerts[][] = new double[nOldVerts][3];
+            FORI (iOldVert, nOldVerts)
+            {
+                Mesh.Vertex vert = mesh.getVert(iOldVert);
+                oldVerts[iOldVert][0] = vert.x();
+                oldVerts[iOldVert][1] = vert.y();
+                oldVerts[iOldVert][2] = vert.h(); // different from the other (hmm, should this be dependent on wrapAroundSphere instead? now I'm confused)
+            }
+            double oldBbox[][] = VecMath.bbox(oldVerts);
+            double workAreaSize = (nOldVerts==0 ? 1. : MAX4(ABS(oldBbox[0][0]),
+                                                            ABS(oldBbox[0][1]),
+                                                            ABS(oldBbox[1][0]),
+                                                            ABS(oldBbox[1][1])));
+
+            // as recommended in FuzzyPointHashTable doc...
+            double littleTol = 1e-12 * workAreaSize;
+            double bigTol = 1e-10 * workAreaSize;
+            double bucketSize = 1/1024. * workAreaSize;
+            FuzzyPointHashTable newVertsTable = new FuzzyPointHashTable(littleTol,
+                                                                        bigTol,
+                                                                        bucketSize);
+            Object dummy = new Object(); // we really want a hash set, not hash table, so need a dummy object, distinct from null
+
+            FORI (iOldVert, nOldVerts)
+            {
+                double oldVert[] = oldVerts[iOldVert];
+                double magnitude = MyMath.hypot(oldVert[0], oldVert[1]);
+                double oldAngle = Math.atan2(oldVert[1], oldVert[0]);
+                // find fraction in the canonical fundamental region...
+                double frac = (oldAngle/(2*Math.PI) + .25) // so -90 degrees produces frac=0
+                            * oldP;
+                frac -= Math.floor(frac); // so frac should now be between 0 and 1
+
+                if (false) // nah, this looks like hell
+                {
+                    // make it a conformal mapping (raising to a power in the complex plane)...
+                    magnitude = Math.pow(magnitude, (double)oldP/(double)newP);
+                }
+
+                FORI (iNewImage, newP)
+                {
+                    double newAngle = (((iNewImage+frac)) / newP - .25) * (2*Math.PI);
+                    double newVert[] = {
+                        magnitude * Math.cos(newAngle),
+                        magnitude * Math.sin(newAngle),
+                    };
+                    if (newVertsTable.put(newVert,dummy) == null) // i.e. if it wasn't already there
+                    {
+                        newVertsArrayList.add(new double[] {
+                            newVert[0],
+                            newVert[1],
+                            oldVert[2], // takes one of the old heights arbitrarily, if multiple.  CBB: can we set it to average?
+                        });
+                    }
+                }
+            }
+        } else if (oldP != 1 && oldQ != 1
+                && newP != 1 && newQ != 1)
+        {
+            // Old and new fundamental regions are triangles.  Or something.
+            System.out.println("      remap fundamental region quad");
+
+            int nOldVerts = mesh.verts.size();
+            System.out.println("          nOldVerts = "+nOldVerts);
+            double oldVerts[][] = new double[nOldVerts][3];
+            FORI (iOldVert, nOldVerts)
+            {
+                Mesh.Vertex vert = mesh.getVert(iOldVert);
+                oldVerts[iOldVert][0] = vert.x();
+                oldVerts[iOldVert][1] = vert.y();
+                oldVerts[iOldVert][2] = vert.z(); // different from the other  (hmm, should this be dependent on wrapAroundSphere instead? now I'm confused)
+            }
+            double oldBbox[][] = VecMath.bbox(oldVerts);
+            double workAreaSize = (nOldVerts==0 ? 1. : MAX4(ABS(oldBbox[0][0]),
+                                                            ABS(oldBbox[0][1]),
+                                                            ABS(oldBbox[1][0]),
+                                                            ABS(oldBbox[1][1])));
+
+
+            double oldGroup[][][] = computeSymmetryGroup3d(
+                oldP,
+                oldQ,
+                false, false, // no reflections taken into account here
+                false); // repeat work-in-progress not taken into account here, yet
+
+            System.out.println("          "+oldGroup.length+" old symmetries");
+
+            double oldFundamentalRegionVerts[][] = getFundamentalRegionVerts(oldP, oldQ, false);
+            int gonality = oldFundamentalRegionVerts.length;
+            assert(gonality == 4); // because no reflections
+            double oldFundamentalRegionInwardNormals[][] = new double[gonality][3];
+            FORI (i, gonality)
+            {
+                VecMath.vxv3(oldFundamentalRegionInwardNormals[i],
+                             oldFundamentalRegionVerts[i],
+                             oldFundamentalRegionVerts[(i+1)%gonality]);
+                VecMath.normalize(oldFundamentalRegionInwardNormals[i],
+                                  oldFundamentalRegionInwardNormals[i]);
+            }
+
+            double oldImages[][] = new double[nOldVerts][3];
+            {
+                double oldImage[] = new double[3]; // scratch for loop
+                double fakeBary[] = new double[gonality]; // scratch for loop
+
+                FORI (iOldVert, nOldVerts)
+                {
+                    double oldVert[] = oldVerts[iOldVert];
+
+                    // Which symmetry brings it into old fundamental region?
+                    // It's fuzzy, so make it a contest.
+                    double bestGoodness = Double.NEGATIVE_INFINITY;
+                    FORI (iOldSymmetry, oldGroup.length)
+                    {
+                        // CBB: could premultiply the two matrices together, i.e. precompute all images of schwarz triangles. would be less work if lots of oldVerts.
+                        VecMath.vxm(oldImage, oldVert, oldGroup[iOldSymmetry]);
+                        VecMath.mxv(fakeBary, oldFundamentalRegionInwardNormals, oldImage);
+                        double goodness = VecMath.min(fakeBary);
+                        if (goodness > bestGoodness)
+                        {
+                            bestGoodness = goodness;
+                            VecMath.copyvec(oldImages[iOldVert], oldImage);
+                        }
+                    }
+                }
+            }
+            if (true)
+            {
+                // De-dup oldImages.
+                // Note that there can actually still be dups, for images on the boundary of the fundamental region
+                // when not reflective symmetry,
+                // but comparatively few of them and we'll catch those later.
+                // TODO: make a utility function out of deduping?
+                int nDeDuped = 0;
+                {
+                    // TODO: make a FuzzyPointHashSet that does this?
+
+                    Object dummy = new Object(); // we really want a hash set, not hash table, so need a dummy object, distinct from null
+                    // as recommended in FuzzyPointHashTable doc...
+                    double littleTol = 1e-12 * workAreaSize;
+                    double bigTol = 1e-10 * workAreaSize;
+                    double bucketSize = 1/1024. * workAreaSize;
+                    FuzzyPointHashTable newVertsTable = new FuzzyPointHashTable(littleTol,
+                                                                                bigTol,
+                                                                                bucketSize);
+                    FuzzyPointHashTable fuzzyPointHashTable = new FuzzyPointHashTable(littleTol, bigTol, bucketSize);
+                    FORI (iOldVert, nOldVerts)
+                        if (newVertsTable.put(oldImages[iOldVert],dummy) == null) // i.e. if it wasn't already there
+                            VecMath.copyvec(oldImages[nDeDuped++], oldImages[iOldVert]);
+                }
+                System.out.println("          old images deduped "+oldImages.length+" -> "+nDeDuped);
+                oldImages = (double[][])Arrays.subarray(oldImages, 0, nDeDuped);
+            }
+
+            double newImages[][] = new double[oldImages.length][3];
+
+            double newFundamentalRegionVerts[][] = getFundamentalRegionVerts(newP, newQ, false);
+            assert(newFundamentalRegionVerts.length == gonality);
+            if (gonality == 3)
+            {
+                assert(false); // it turns out we only do this with rotational symmetry, so this doesn't happen
+                double bary[] = new double[3]; // scratch for loop
+                FORI (iImage, oldImages.length)
+                {
+                    double oldMagnitude = VecMath.normalize(oldImages[iImage],oldImages[iImage]); // destructive
+                    VecMath.getSphericalAverageWeights(bary, oldFundamentalRegionVerts, oldImages[iImage]);
+                    VecMath.sphericalAverage(newImages[iImage], newFundamentalRegionVerts, bary);
+                    VecMath.vxs(newImages[iImage], newImages[iImage], oldMagnitude);
+                }
+            }
+            else // gonality == 4
+            {
+                double oldTris[/*2*/][/*3*/][/*3*/] = {
+                    {oldFundamentalRegionVerts[0],oldFundamentalRegionVerts[1],oldFundamentalRegionVerts[2]},
+                    {oldFundamentalRegionVerts[0],oldFundamentalRegionVerts[2],oldFundamentalRegionVerts[3]},
+                };
+                double newTris[/*2*/][/*3*/][/*3*/] = {
+                    {newFundamentalRegionVerts[0],newFundamentalRegionVerts[1],newFundamentalRegionVerts[2]},
+                    {newFundamentalRegionVerts[0],newFundamentalRegionVerts[2],newFundamentalRegionVerts[3]},
+                };
+                double bary[] = new double[3]; // scratch for loop
+                FORI (iImage, oldImages.length)
+                {
+                    int which = oldImages[iImage][0]>=0 ? 0 : 1;
+                    double oldMagnitude = VecMath.normalize(oldImages[iImage],oldImages[iImage]); // destructive
+                    VecMath.getSphericalAverageWeights(bary, oldTris[which], oldImages[iImage]);
+                    VecMath.sphericalAverage(newImages[iImage], newTris[which], bary);
+                    VecMath.vxs(newImages[iImage], newImages[iImage], oldMagnitude);
+                }
+            }
+
+            double newGroup[][][] = computeSymmetryGroup3d(
+                newP,
+                newQ,
+                false, false, // no reflections taken into account here
+                false); // repeat work-in-progress not taken into account here, yet
+            System.out.println("          "+newGroup.length+" new symmetries");
+            {
+                Object dummy = new Object(); // we really want a hash set, not hash table, so need a dummy object, distinct from null
+                // as recommended in FuzzyPointHashTable doc...
+                double littleTol = 1e-12 * workAreaSize;
+                double bigTol = 1e-10 * workAreaSize;
+                double bucketSize = 1/1024. * workAreaSize;
+                FuzzyPointHashTable newVertsTable = new FuzzyPointHashTable(littleTol,
+                                                                            bigTol,
+                                                                            bucketSize);
+                double newVert[] = new double[3]; // scratch for loop
+                // CBB: probably theres a more efficient algorithm; whatever
+                FORI (iImage, newImages.length)
+                {
+                    FORI (iNewSymmetry, newGroup.length)
+                    {
+                        VecMath.vxm(newVert, newImages[iImage], newGroup[iNewSymmetry]);
+                        if (newVertsTable.put(newVert,dummy) == null) // i.e. if it wasn't already there
+                            newVertsArrayList.add(Arrays.append(newVert, 1.)); // xyzw (otherwise would be interpreted as xyh)
+                    }
+                }
+                System.out.println("          new verts deduped "+(newImages.length*newGroup.length)+" -> "+newVertsArrayList.size());
+            }
+
+            if (false)
+            {
+                // HACK-- show the new fundamental region verts
+                FORI (i, newFundamentalRegionVerts.length)
+                    newVertsArrayList.add(Arrays.append(newFundamentalRegionVerts[i], 1.));
+            }
+            if (false)
+            {
+                // HACK-- show old images
+                FORI (i, oldImages.length)
+                    newVertsArrayList.add(Arrays.append(oldImages[i], 1.));
+            }
+            if (false)
+            {
+                // HACK-- show new images
+                FORI (i, oldImages.length)
+                    newVertsArrayList.add(Arrays.append(newImages[i], 1.));
+            }
+        }
+
+        double newVerts[][] = new double[newVertsArrayList.size()][];
+        newVertsArrayList.toArray(newVerts);
+        newVertsArrayList = null;
+
+        // For now, don't try to retain any connectivity.
+        // A mesh will appear if "Keep delaunayized" is checked.
+        Mesh answer = new Mesh(newVerts, new int[0][]);
+
+        System.out.println("    out changeMeshRotationalSymmetry");
+        return answer;
+    } // changeMeshRotationalSymmetry
+
+    private static final int FACING_UNKNOWN = 0;
+    private static final int FACING_BACK = 1;
+    private static final int FACING_SIDE = 2;
+    private static final int FACING_FRONT = 3;
+    private static void getFacings(double eyeInLocalSpace[],
+                                   Mesh mesh, Mesh dualMesh, boolean meshIsReallyDualMesh,
+                                   int faceFacings[],
+                                   int edgeFacings[],
+                                   int vertFacings[],
+                                   boolean wrapAroundSphereFlagValue,
+                                   boolean centerSphereFlagValue,
+                                   double wrapSphereCurvatureValue)
+    {
+        int verboseLevel = 0;
+        if (verboseLevel >= 1) System.out.println("    in getFacings");
+        VecMath.fillvec(faceFacings, FACING_UNKNOWN);
+        VecMath.fillvec(edgeFacings, FACING_UNKNOWN);
+        VecMath.fillvec(vertFacings, FACING_UNKNOWN);
+
+        // XXX wait, is there some confusion here? aren't some of the array sizes one more than this?
+        int nVerts = mesh.verts.size();
+        int nEdges = mesh.edges.size();
+        int nDualVerts = dualMesh.verts.size();
+
+        if (verboseLevel >= 1) System.out.println("      eyeInLocalSpace = "+VecMath.toString(eyeInLocalSpace));
+        // compute face facings...
+        if (verboseLevel >= 1) System.out.println("      computing face facings");
+
+
+        // TODO: Do I need to abandon this first method??
+        // Problem is, in wrapped-around-sphere case, if whole polyhedron is eyeward of the origin, it's impossible
+        // to tell direction from 3d dual vertex position.
+        // However, for paraboloid case, it's awesome!  It magically gives the right answer given dual vertex, although I don't understand why.
+        if (false)
+        {
+            FORI (iFace, nDualVerts)
+            {
+                Mesh.Vertex dualVert = dualMesh.getVert(iFace);
+
+                // plane is all points p such that p dot facePlaneNormal == facePlaneOffset
+
+                double facePlaneNormal[];
+                double facePlaneOffset;
+
+                if (wrapAroundSphereFlagValue)
+                {
+                    // reciprocated wrt sphere.
+
+                    // just work with frickin actual coords,
+                    // homogeneous coords are too confusing
+                    // and w=0 is exceedingly rare in wrapped-around-sphere case anyway.
+                    // this is STILL too frickin complicated!
+
+                    facePlaneNormal = new double[] {
+                        dualVert.x(),
+                        dualVert.y(),
+                        centerSphereFlagValue ? dualVert.z() : dualVert.z() + 1./wrapSphereCurvatureValue
+                    };
+                    double dualVertDist2FromCenter = VecMath.normsqrd(facePlaneNormal);
+                    double facePlaneSmallestPoint[] = VecMath.vxs(facePlaneNormal, 1./dualVertDist2FromCenter);
+                    if (!centerSphereFlagValue)
+                        facePlaneSmallestPoint[2] -= 1./wrapSphereCurvatureValue;
+                    facePlaneOffset = VecMath.dot(facePlaneNormal, facePlaneSmallestPoint);
+
+                    // Hmm, that's wrong if face plane is facing the origin...
+                    // and useless if the face plane passes through the origin (in which case the dual vert is at infinity).
+                    // How the heck can we tell??
+                }
+                else
+                {
+                    // reciprocated wrt paraboloid
+                    facePlaneNormal = new double[] {dualVert.X(), dualVert.Y(), dualVert.W()}; // i.e. x,y,1.  not unit length.
+                    facePlaneOffset = -dualVert.Z(); // i.e. z.  magic!  I don't know why, but this is the correct value
+                }
+                // XXX not sure the epsilons make sense... maybe normalize facePlaneNormal and offset, just so we can think straight about that?
+                double frontness = VecMath.dot(facePlaneNormal, eyeInLocalSpace)
+                          - facePlaneOffset;
+                if (LT(frontness, 0., SQR(1e-6)))
+                    faceFacings[iFace] = FACING_BACK;
+                else if (GT(frontness, 0., SQR(1e-6)))
+                    faceFacings[iFace] = FACING_FRONT;
+                else
+                    faceFacings[iFace] = FACING_SIDE;
+            }
+        }
+        else
+        {
+            if (verboseLevel >= 1) System.out.println("          (NOT!)");
+        }
+
+        // Bleah, the faces that don't have dual verts
+        // need to be computed by a separate method.
+        // (and the above method sucks anyway, at least for wrapped-around-sphere).
+        if (verboseLevel >= 1) System.out.println("      computing face for faces that don't have dual verts");
+        FORI (iEdge, nEdges)
+        {
+            Mesh.Edge edgeI = mesh.getEdge(iEdge);
+            Mesh.Edge dualEdgeI = dualMesh.getEdge(iEdge);
+            Mesh.Vertex leftDualVert = dualEdgeI.finalVertex();
+            int iLeftFace = leftDualVert==null ? nDualVerts : leftDualVert.myIndex();
+            if (faceFacings[iLeftFace] == FACING_UNKNOWN)
+            {
+                if (verboseLevel >= 2) System.out.println("          iEdge = e"+iEdge+"/"+nEdges+" "+(edgeI.initialVertex()==null?"null":"v"+edgeI.initialVertex().myIndex())+"->"+(edgeI.finalVertex()==null?"null  ":"v"+edgeI.finalVertex().myIndex())+" ("+(edgeI.direction!=null?"has direction":"no direction")+")");
+                double normal[] = {0,0,0}; // for starters
+                double moment[] = {0,0,0}; // for starters
+                double centroid[] = null;
+                // XXX TODO: centroid of verts might be more robust than area centroid? yeah I think so, hmm
+                double area = 0.;
+                {
+                    Mesh.Vertex v0 = edgeI.initialVertex();
+                    if (v0 == null)
+                    {
+                        if (verboseLevel >= 2) System.out.println("              ouch! edge "+iEdge+" has null initial vertex ("+(edgeI.direction!=null?"has direction":"no direction")+")");
+                        // This shouldn't be a disaster; this face will be solved by some other edge on it.
+                        continue;
+                    }
+                    // CBB: compute in homogeneous space?  Hmm that would be ambitious.
+                    assert(v0 != null);
+                    double v0coords[] = {v0.x(), v0.y(), v0.z()};
+                    double v1coords[] = new double[3]; // scratch for loop
+                    double v2coords[] = new double[3]; // scratch for loop
+                    double thisCentroid[] = new double[3]; // scratch for loop
+                    double thisWeightedNormal[] = new double[3]; // scratch for loop
+                    Mesh.Edge edgeJ;
+                    for (edgeJ = edgeI.next(); edgeJ.next() != edgeI; edgeJ = edgeJ.next())
+                    {
+                        Mesh.Vertex v1 = edgeJ.initialVertex();
+                        Mesh.Vertex v2 = edgeJ.finalVertex();
+                        // a bit hackish, but prevents weird computation using vertices we shouldn't be using
+                        if (v1 != null && v1.weight < 0.) v1 = null;
+                        if (v2 != null && v2.weight < 0.) v2 = null;
+                        if (v1 == null && v2 == null)
+                        {
+                            if (verboseLevel >= 0) System.out.println("                  ouch! edge "+edgeJ.myIndex()+" has null initial and final vertex ("+(edgeJ.direction!=null?"has direction":"no direction")+")");
+                            break;
+                        }
+                        else if (v1 == null)
+                        {
+                            if (verboseLevel >= 2) System.out.println("                  ouch! edge "+edgeJ.myIndex()+" has null initial vertex ("+(edgeJ.direction!=null?"has direction":"no direction")+")");
+                            assert(edgeJ.direction != null);
+                            v2coords[0] = v2.x();
+                            v2coords[1] = v2.y();
+                            v2coords[2] = v2.z();
+                            VecMath.vmv(3, v1coords, v2coords, edgeJ.direction);
+                        }
+                        else if (v2 == null)
+                        {
+                            if (verboseLevel >= 2) System.out.println("                  ouch! edge "+edgeJ.myIndex()+" has null final vertex ("+(edgeJ.direction!=null?"has direction":"no direction")+")");
+                            assert(edgeJ.direction != null);
+                            v1coords[0] = v1.x();
+                            v1coords[1] = v1.y();
+                            v1coords[2] = v1.z();
+                            VecMath.vpv(3, v2coords, v1coords, edgeJ.direction);
+                        }
+                        else
+                        {
+                            v1coords[0] = v1.x();
+                            v1coords[1] = v1.y();
+                            v1coords[2] = v1.z();
+                            v2coords[0] = v2.x();
+                            v2coords[1] = v2.y();
+                            v2coords[2] = v2.z();
+                        }
+                        VecMath.vmv(v1coords, v1coords, v0coords); // so now relative to v0
+                        VecMath.vmv(v2coords, v2coords, v0coords); // so now relative to v0
+                        VecMath.vxv3(thisWeightedNormal, v1coords, v2coords);
+                        VecMath.vpv(normal, normal, thisWeightedNormal);
+                        if (verboseLevel >= 2) System.out.println("                  jEdge = e"+edgeJ.myIndex()+"/"+nEdges+" "+(edgeJ.initialVertex()==null?"null":"v"+edgeJ.initialVertex().myIndex())+"->"+(edgeJ.finalVertex()==null?"null  ":"v"+edgeJ.finalVertex().myIndex())+" adding weighted normal "+VecMath.toString(thisWeightedNormal));
+                        double thisArea = VecMath.norm(thisWeightedNormal);
+                        area += thisArea;
+                        VecMath.sxvpsxv(thisCentroid, 1/3., v1coords, 1/3., v2coords); // relative to v0
+                        VecMath.vpsxv(moment, moment, thisArea, thisCentroid);
+                    }
+                    if (edgeJ != edgeI) // if broke
+                    {
+                        if (verboseLevel >= 2) System.out.println("              ouch! continuing");
+                    }
+                    centroid = VecMath.vpsxv(v0coords, 1./area, moment);
+                }
+                if (verboseLevel >= 2) System.out.println("              normal = "+VecMath.toString(normal));
+                if (verboseLevel >= 2) System.out.println("              eyeInLocalSpace-centroid = "+VecMath.toString(VecMath.vmv(eyeInLocalSpace, centroid)));
+                double frontness = VecMath.dot(normal, eyeInLocalSpace)
+                                 - VecMath.dot(normal, centroid);
+                if (meshIsReallyDualMesh)
+                    frontness *= -1;
+                if (verboseLevel >= 2) System.out.println("              frontness = "+frontness);
+                // XXX not sure the epsilons make sense... maybe normalize normal, just so we can think straight about that?
+                if (LT(frontness, 0., SQR(1e-6)))
+                    faceFacings[iLeftFace] = FACING_BACK;
+                else if (GT(frontness, 0., SQR(1e-6)))
+                    faceFacings[iLeftFace] = FACING_FRONT;
+                else
+                    faceFacings[iLeftFace] = FACING_SIDE;
+                //PRINTVEC(normal);
+            }
+        }
+
+        // TODO: explain exactly what UNKNOWN in faceFacings means
+        if (verboseLevel >= 2)
+        {
+            FORI (i, faceFacings.length)
+                if (faceFacings[i] == FACING_UNKNOWN)
+                    OUT("HEY! faceFacings["+i+"/"+faceFacings.length+"] is UNKNOWN!");
+        }
+
+        // compute edge facings from incident face facings...
+        if (verboseLevel >= 1) System.out.println("      computing edge facings");
+        FORI (iEdge, nEdges)
+        {
+            if (edgeFacings[iEdge] == FACING_UNKNOWN)
+            {
+                Mesh.Edge edgeI = mesh.getEdge(iEdge);
+                Mesh.Edge dualEdgeI = dualMesh.getEdge(iEdge);
+                Mesh.Vertex leftDualVert = dualEdgeI.finalVertex();
+                Mesh.Vertex rightDualVert = dualEdgeI.initialVertex();
+                int iLeftFace = leftDualVert==null ? nDualVerts : leftDualVert.myIndex();
+                int iRightFace = rightDualVert==null ? nDualVerts : rightDualVert.myIndex();
+                int leftFaceFacing = faceFacings[iLeftFace];
+                int rightFaceFacing = faceFacings[iRightFace];
+                // UNKNOWN trumps all others
+                edgeFacings[iEdge] = (leftFaceFacing==FACING_UNKNOWN || rightFaceFacing==FACING_UNKNOWN) ? FACING_UNKNOWN
+                                   : leftFaceFacing==rightFaceFacing ? leftFaceFacing
+                                   : FACING_SIDE;
+                int oEdge = edgeI.opposite().myIndex();
+                assert(oEdge == (iEdge^1));
+                edgeFacings[oEdge] = edgeFacings[iEdge];
+            }
+        }
+
+        // TODO: explain exactly what UNKNOWN in edgeFacings means
+        if (verboseLevel >= 2)
+        {
+            FORI (i, edgeFacings.length)
+                if (edgeFacings[i] == FACING_UNKNOWN)
+                    OUT("HEY! edgeFacings["+i+"/"+edgeFacings.length+"] is UNKNOWN!");
+        }
+
+        // compute vert facings from incident edge facings...
+        if (verboseLevel >= 1) System.out.println("      computing vert facings");
+        // bleah, need some other value for "not yet initialized"
+        assert(-1 != FACING_UNKNOWN);
+        VecMath.fillvec(vertFacings, -1);
+        FORI (iEdge, nEdges)
+        {
+            // only need to do initial vertex-- edge.opposite() will do final vertex
+            Mesh.Vertex v0 = mesh.getEdge(iEdge).initialVertex();
+            if (v0 == null)
+                continue;
+            int i0 = v0.myIndex();
+            if (vertFacings[i0] == -1) // uninitialized
+                vertFacings[i0] = edgeFacings[iEdge];
+            else if (vertFacings[i0] == FACING_UNKNOWN || edgeFacings[iEdge] == FACING_UNKNOWN)
+                vertFacings[i0] = FACING_UNKNOWN;
+            else if (vertFacings[i0] != edgeFacings[iEdge])
+                vertFacings[i0] = FACING_SIDE;
+            // otherwise leave it what it is
+        }
+        FORI (iVert, vertFacings.length)
+        {
+            if (vertFacings[iVert] == -1)
+                vertFacings[iVert] = FACING_UNKNOWN;
+        }
+
+        // UNKNOWN in vertFacings means either it's an isolated vert,
+        // or it's incident on an edge with UNKNOWN facing.
+
+        if (verboseLevel >= 1)
+        {
+            OUT("      --------");
+            final char facingToChar[] = {'?','-','0','+'};
+            {
+                StringBuffer sb = new StringBuffer();
+                FORI (i, faceFacings.length)
+                    sb.append(facingToChar[faceFacings[i]]);
+                System.out.println("      face facings: "+sb);
+            }
+            {
+                StringBuffer sb = new StringBuffer();
+                FORI (i, edgeFacings.length)
+                    sb.append(facingToChar[edgeFacings[i]]);
+                System.out.println("      edge facings: "+sb);
+            }
+            {
+                StringBuffer sb = new StringBuffer();
+                FORI (i, vertFacings.length)
+                    sb.append(facingToChar[vertFacings[i]]);
+                System.out.println("      vert facings: "+sb);
+            }
+            OUT("      --------");
+        }
+        if (verboseLevel >= 1) System.out.println("    out getFacings");
+    } // getFacings
+
+
+
+}  // class MeshUtils
