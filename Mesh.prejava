@@ -1,0 +1,2256 @@
+#include "macros.h"
+
+import com.donhatchsw.compat.ArrayList;
+import com.donhatchsw.util.Arrays;
+import com.donhatchsw.util.LinearProgramming;
+import com.donhatchsw.util.TriangulationOptimizer;
+import com.donhatchsw.util.VecMath;
+
+public class Mesh
+{
+    private static int nonEventVerbose = 0; // so static classes can refer to it.  CBB: not hooked up to anything any more (used to be in ShephardsPlayApplet)
+
+    public String toString()
+    {
+        StringBuffer sb = new StringBuffer();
+        sb.append(""+verts.size()+" verts:\n");
+        FORI (iVert, verts.size())
+        {
+            Vertex vert = (Vertex)verts.get(iVert);
+            sb.append("    "+vert);
+            if (vert.weight != 1.)
+            {
+                sb.append("  * weight="+vert.weight); // I don't even remember what this is at the moment. for dual verts, it seems to be tri area, i.e. 1/2 W coord.
+            }
+
+            sb.append("\n");
+        }
+        sb.append(""+edges.size()+" edges:\n");
+        FORI (iEdge, edges.size())
+        {
+            Edge edge = (Edge)edges.get(iEdge);
+            Vertex v0 = edge.initialVertex();
+            Vertex v1 = edge.finalVertex();
+            sb.append("    "
+                    + (v0==null ? "null" : "v"+v0.myIndex())
+                    + " -> "
+                    + (v1==null ? "null" : "v"+v1.myIndex())
+                    + "\n");
+        }
+        return sb.toString();
+    }
+
+    public class Vertex
+    {
+        /*
+           X,Y,Z,W homo
+           x,y,z actual
+           h = z + (x^2+y^2)/2 = height above paraboloid z=-(x^2+y^2)/2 which has curvature 1 at origin
+
+           x = X/W
+           y = Y/W
+           z = Z/W
+           h = H/W^2
+           X = x*W
+           Y = y*W
+           Z = z*W
+           H = h*W^2
+
+           migration strategy:
+           a zillion callers assumed w=1 before and not clear
+           whether they really want x or X.
+           those have all been changed to:
+                Xnaive()
+                setXnaive()
+           and should be consciously changed to x()/setx() or X()/setXnaive()
+           as desired.
+        */
+                
+        private double _X;
+        private double _Y;
+        private double _Z;
+        private double _W; // homogeneous "thing to divide by"
+        private double _H; // height above the paraboloid z = -(x^2+y^2)/2 (has curvature 1 at origin). not all that meaningful when reference surface is sphere instead of that paraboloid.
+
+        // TODO: can weight be merged with w?  I think currently they are always the same for dual verts, but maybe not for primals sometimes, when unwrapped/unwrapped from sphere. in that case w can convey infinite position
+        public double weight = 1.; // optional, if this is a computed dual vertex, this should be the original triangle area (projected to xy plane I think)
+        public double momentAndArea[/*4*/] = null; // optional... similar to weight. x*A,y*A,h*A^2,A where A is twice tri area (projected to xy plane I think)
+        public int arity = 0; // number of edges having this vertex as initial vertex
+
+        private int _myIndex = -1;
+        public Vertex(double x, double y, double h)
+        {
+            _W = 1.;
+            this.setXYHnaive(x,y,h);
+            verts.add(this);
+            fixVertIndices(verts.size()-1);
+        }
+        public Vertex(double X, double Y, double Z, double W)
+        {
+            this.setXYZW(X,Y,Z,W);
+            verts.add(this);
+            fixVertIndices(verts.size()-1);
+        }
+        public Vertex(double X, double Y, double Zignored, double W, double H) // Zignored is just to distinguish prototype from others
+        {
+            this.setXYHW(X,Y,H,W);
+            verts.add(this);
+            fixVertIndices(verts.size()-1);
+        }
+
+        // A Vertex can belong to only one Mesh.
+        // myIndex() returns the index into the Mesh's edges.
+        public int myIndex()
+        {
+            //return Arrays.indexOfUsingEqualsSymbol(verts, this);
+            return _myIndex;
+        }
+
+        public double X() { return _X; }
+        public double Y() { return _Y; }
+        public double Z() { return _Z; }
+        public double H() { return _H; }
+        public double W() { return _W; }
+
+        // XXX TODO: but what about when _W is 0? isn't that a legit case?  I think that shows we shouldn't really ever be calling these!  or, protect with W()!=0. first or something
+        public double x() { return _X/_W; }
+        public double y() { return _Y/_W; }
+        public double z() { return _Z/_W; }
+        public double h() { return _H/SQR(_W); } // seems to work, not quite sure of the logic
+
+        // TODO: maybe get rid of this?, it's just setXYHW(x,y,h,1.)
+        public void setxyh(double x, double y, double h) // calculate z
+        {
+            _W = 1.;
+            _X = x;
+            _Y = y;
+            _H = h;
+            _Z = h - .5 * (x*x + y*y);
+        }
+
+        public void setXYZW(double X, double Y, double Z, double W) // calculate H
+        {
+            _X = X;
+            _Y = Y;
+            _Z = Z;
+            _W = W;
+            _H = _Z*_W + .5 * (_X*_X+_Y*_Y);
+        }
+        public void setXYHW(double X, double Y, double H, double W) // calculate Z; unfortunate divide
+        {
+            _X = X;
+            _Y = Y;
+            _H = H;
+            _W = W;
+            _Z = (_H - .5 * (_X*_X+_Y*_Y)) / _W;
+        }
+
+        //
+        // "Naive" setting functions,
+        // that set h in terms of z or vice versa.
+        // These require _W is 1.
+        //
+        public void setXYHnaive(double X, double Y, double H) // infer Z
+        {
+            assert_eq(_W, 1.);
+            _X = X;
+            _Y = Y;
+            _H = H;
+            _Z = _H - .5 * (_X*_X + _Y*_Y);
+        }
+        public void setXYZnaive(double X, double Y, double Z) // infer H
+        {
+            assert_eq(_W, 1.);
+            _X = X;
+            _Y = Y;
+            _Z = Z;
+            _H = _Z + .5 * (_X*_X + _Y*_Y);
+        }
+        public void setXYnaive(double X, double Y) // leave H fixed, adjust Z
+        {
+            assert_eq(_W, 1.);
+            _X = X;
+            _Y = Y;
+            _Z = _H - .5 * (_X*_X + _Y*_Y);
+        }
+        public void setXnaive(double X) // leave Y,H fixed, adjust Z
+        {
+            assert_eq(_W, 1.);
+            _X = X;
+            _Z = _H - .5 * (_X*_X + _Y*_Y);
+        }
+        public void setYnaive(double Y) // leave X,H fixed, adjust Z
+        {
+            assert_eq(_W, 1.);
+            _Y = Y;
+            _Z = _H - .5 * (_X*_X + _Y*_Y);
+        }
+        public void setHnaive(double H) // leave X,Y fixed, adjust Z
+        {
+            assert_eq(_W, 1.);
+            _H = H;
+            _Z = _H - .5 * (_X*_X + _Y*_Y);
+        }
+        public void setZnaive(double Z) // leave X,Y fixed, adjust H
+        {
+            assert_eq(_W, 1.);
+            _Z = Z;
+            _H = _Z + .5 * (_X*_X + _Y*_Y);
+        }
+
+
+        public double Xnaive()
+        {
+            assert_eq(_W, 1.);
+            return X();
+        }
+        public double Ynaive()
+        {
+            assert_eq(_W, 1.);
+            return Y();
+        }
+        public double Znaive()
+        {
+            assert_eq(_W, 1.);
+            return Z();
+        }
+        public double Hnaive()
+        {
+            assert_eq(_W, 1.);
+            return H();
+        }
+        public double Wnaive()
+        {
+            assert_eq(_W, 1.);
+            return W();
+        }
+
+        public String toString()
+        {
+            // not too attached to this format
+            return "v"+myIndex()+" = ("+X()+" "+Y()+" "+Z()+" "+W()+" H="+H()+")" 
+                 + " = "
+                 + "("+x()+" "+y()+" "+z()+" h="+h()+")" ;
+        }
+    } // public class Vertex
+    public class Edge
+    {
+        private Vertex _initialVertex;
+        private Edge _opposite; // opposite edge
+        private Edge _next; // next edge CCW around the face to my left
+        private Edge _prev; // prev edge (next edge CW) around the face to my left
+        private int _myIndex = -1;
+        public double direction[] = null; // optional, not kept up to date by mesh editing operations, only really used in dual, which is constructed and not edited
+
+        public Edge(boolean andBack)
+        {
+            this._myIndex = -1; // will get fixed
+            edges.add(this);
+            fixEdgeIndices(edges.size()-1);
+            if (andBack)
+            {
+                Edge opposite = new Edge(false);
+                setOpposite(opposite, true);
+            }
+        }
+
+        //
+        // Accessor methods...
+        //
+        public Vertex initialVertex()
+        {
+            return _initialVertex;
+        }
+        public Edge opposite()
+        {
+            return _opposite;
+        }
+        // next edge CCW around the face to my left
+        public Edge next()
+        {
+            return _next;
+        }
+        // prev edge (next edge CW) around the face to my left
+        public Edge prev()
+        {
+            return _prev;
+        }
+
+        //
+        // Helper methods...
+        // From the caller's point of view,
+        // these are just like the accessor methods
+        //
+        public Vertex finalVertex()
+        {
+            return _opposite._initialVertex;
+        }
+
+
+        // An Edge can belong to only one Mesh.
+        // myIndex() returns the index into the Mesh's edges.
+        public int myIndex()
+        {
+            //return Arrays.indexOfUsingEqualsSymbol(edges, this);
+            return _myIndex;
+        }
+
+
+        public void setInitialVertex(Vertex v)
+        {
+            assert_eq(_initialVertex, null); // initial vertex can't be changed
+            _initialVertex = v;
+            _initialVertex.arity++;
+        }
+
+        public void setOpposite(Edge opposite, boolean andBack)
+        {
+            _opposite = opposite;
+            if (andBack)
+                _opposite.setOpposite(this, false);
+        }
+        public void setNext(Edge next, boolean andBack)
+        {
+            _next = next;
+            if (andBack)
+                next.setPrev(this, false);
+        }
+        public void setPrev(Edge prev, boolean andBack)
+        {
+            _prev = prev;
+            if (andBack)
+                prev.setNext(this, false);
+        }
+
+        public String toString()
+        {
+            StringBuffer sb = new StringBuffer();
+            sb.append("e");
+            sb.append(myIndex());
+            sb.append(" (");
+
+            if (initialVertex() != null)
+            {
+                sb.append("v");
+                sb.append(initialVertex().myIndex());
+            }
+            else
+                sb.append("null");
+            sb.append("->");
+            if (finalVertex() != null)
+            {
+                sb.append("v");
+                sb.append(finalVertex().myIndex());
+            }
+            else
+                sb.append("null");
+
+            sb.append(")");
+            return sb.toString();
+        }
+
+    } // public class Edge
+
+    // Called whenever verts array changes
+    private void fixVertIndices(int i0)
+    {
+        for (int iVert = i0; iVert < verts.size(); ++iVert)
+            ((Vertex)verts.get(iVert))._myIndex = iVert;
+    }
+    // Called whenever edges array changes
+    private void fixEdgeIndices(int i0)
+    {
+        for (int iEdge = i0; iEdge < edges.size(); ++iEdge)
+            ((Edge)edges.get(iEdge))._myIndex = iEdge;
+    }
+
+    public void sanityCheck()
+    {
+        int nVerts = this.verts.size();
+        int nEdges = this.edges.size();
+
+        Vertex verts[] = new Vertex[nVerts];
+        Edge edges[] = new Edge[nEdges];
+
+        FORI (iVert, nVerts)
+        {
+            Vertex vert = (Vertex)this.getVert(iVert);
+            assert_eq(vert.myIndex(), iVert);
+            verts[iVert] = vert;
+        }
+        FORI (iEdge, nEdges)
+        {
+            Edge edge = (Edge)this.getEdge(iEdge);
+            assert_eq(edge.myIndex(), iEdge);
+            edges[iEdge] = edge;
+        }
+
+        int nTimesSawVertAsInitial[] = new int[nVerts]; // all zero
+        boolean sawEdgeAsOpposite[] = new boolean[nEdges]; // all false
+        boolean sawEdgeAsNext[] = new boolean[nEdges]; // all false
+        boolean sawEdgeAsPrev[] = new boolean[nEdges]; // all false
+        FORI (iEdge, nEdges)
+        {
+            Edge e = edges[iEdge];
+            Vertex initialVertex = e.initialVertex();
+            Edge opposite = e.opposite();
+            Edge next = e.next();
+            Edge prev = e.prev();
+
+            assert(initialVertex != null);
+            assert(opposite != null);
+            assert(next != null);
+            assert(prev != null);
+
+            int initialVertIndex = initialVertex.myIndex();
+            int oppositeIndex = opposite.myIndex();
+            int nextIndex = next.myIndex();
+            int prevIndex = prev.myIndex();
+
+            assert_eq(verts[initialVertIndex], initialVertex);
+            assert_eq(edges[oppositeIndex], opposite);
+            assert_eq(edges[nextIndex], next);
+            assert_eq(edges[prevIndex], prev);
+
+            assert_ne(initialVertex, e.finalVertex());
+            assert_ne(opposite, e);
+            assert_ne(next, e);
+            assert_ne(prev, e);
+            assert_eq(opposite.opposite(), e);
+            assert_eq(next.prev(), e);
+            assert_eq(prev.next(), e);
+
+
+            // Okay for a vert to be initial more than once...
+            nTimesSawVertAsInitial[initialVertIndex]++;
+
+            // But not the others...
+            assert(!sawEdgeAsOpposite[oppositeIndex]);
+            sawEdgeAsOpposite[oppositeIndex] = true;
+            assert(!sawEdgeAsNext[nextIndex]);
+            sawEdgeAsNext[nextIndex] = true;
+            assert(!sawEdgeAsPrev[prevIndex]);
+            sawEdgeAsPrev[prevIndex] = true;
+        }
+
+        FORI (iVert, nVerts)
+        {
+            assert_eq(nTimesSawVertAsInitial[iVert], verts[iVert].arity);
+        }
+        FORI (iEdge, nEdges)
+        {
+            assert(sawEdgeAsOpposite[iEdge]);
+            assert(sawEdgeAsNext[iEdge]);
+            assert(sawEdgeAsPrev[iEdge]);
+        }
+    } // sanityCheck
+
+
+
+
+    /*                    ^
+         insertThisEdge   | beforeThisEdge
+        <-----------------*
+                         /|\
+                        / | \
+    */
+    public void insertEdgeBefore(Edge insertThisEdge, Edge beforeThisEdge)
+    {
+        if (nonEventVerbose >= 1)
+            System.out.println("        In insertEdgeBefore(insertThisEdge="+insertThisEdge.myIndex()+", beforeThisEdge="+beforeThisEdge.myIndex()+"");
+        beforeThisEdge.prev().setNext(insertThisEdge, true);
+        insertThisEdge.opposite().setNext(beforeThisEdge, true);
+        insertThisEdge.setInitialVertex(beforeThisEdge.initialVertex());
+        if (nonEventVerbose >= 1)
+            System.out.println("        Out insertEdgeBefore(insertThisEdge="+insertThisEdge.myIndex()+", beforeThisEdge="+beforeThisEdge.myIndex()+"");
+    }
+    public void addWhisker(Edge beforeThisEdge,
+                           Vertex v) // to this vertex
+    {
+        Edge e = new Edge(true);
+        e.opposite().setInitialVertex(v);
+        e.setNext(e.opposite(), true);
+        insertEdgeBefore(e, beforeThisEdge);
+    }
+    public void addDiagonal(Edge beforeThisEdge, Edge beforeThatEdge)
+    {
+        if (nonEventVerbose >= 1)
+            System.out.println("    In addDiagonal(beforeThisEdge="+beforeThisEdge.myIndex()+", beforeThatEdge="+beforeThatEdge.myIndex()+"");
+        Edge e = new Edge(true);
+        insertEdgeBefore(e, beforeThisEdge);
+        insertEdgeBefore(e.opposite(), beforeThatEdge);
+        if (nonEventVerbose >= 1)
+            System.out.println("    Out addDiagonal(beforeThisEdge="+beforeThisEdge.myIndex()+", beforeThatEdge="+beforeThatEdge.myIndex()+"");
+    }
+    // returns true iff did something
+    public boolean swapDiagonal(Edge e, boolean onlyIfMoreDelaunay, boolean verbose)
+    {
+        if (e.next().next().next() != e
+         || e.opposite().next().next().next() != e.opposite())
+        {
+            if (verbose)
+                System.out.println("    Can't swap diagonal, it's not on a quad");
+            return false;
+        }
+
+        Edge beforeThisEdge = e.prev();
+        Edge beforeThatEdge = e.opposite().prev();
+
+        //
+        // Another subtle thing to check...
+        // Make sure the other diagonal doesn't
+        // already exist.
+        //
+        {
+            Vertex v0 = beforeThisEdge.initialVertex();
+            Vertex v1 = beforeThatEdge.initialVertex();
+            // Could do this faster by walking around the vert,
+            // but this is more complete since it checks for some pathological cases
+            FORIDOWN (iEdge, edges.size())
+            {
+                Edge edge = (Edge)edges.get(iEdge);
+                if (edge.initialVertex() == v0
+                 && edge.finalVertex() == v1)
+                {
+                    if (verbose)
+                        System.out.println("    Can't swap diagonal, the other diagonal already exists");
+                    return false;
+                }
+            }
+        }
+
+        if (onlyIfMoreDelaunay)
+        {
+            Vertex a = beforeThisEdge.finalVertex();
+            Vertex b = beforeThatEdge.initialVertex();
+            Vertex c = beforeThatEdge.finalVertex();
+            Vertex d = beforeThisEdge.initialVertex();
+            // comfort of ac relative to bd
+            double comfort = TriangulationOptimizer.calcQuadComfort(new double[]{a.Xnaive(),a.Ynaive()},
+                                                                    new double[]{b.Xnaive(),b.Ynaive()},
+                                                                    new double[]{c.Xnaive(),c.Ynaive()},
+                                                                    new double[]{d.Xnaive(),d.Ynaive()},
+                                                                    0, 1);
+            // XXX TODO: take height into account!!!!!
+            if (verbose)
+                System.out.println("    comfort = "+comfort);
+            if (comfort >= 0) // should this be fuzzy? I won't worry about it for now
+            {
+                if (verbose)
+                    System.out.println("    Swapping diagonal would not improve it");
+                return false;
+            }
+        }
+
+        if (true)
+        {
+            // This works, but leaves dual verts in a different order
+            deleteEdge(e);
+            addDiagonal(beforeThisEdge, beforeThatEdge);
+        }
+        else
+        {
+            // TODO: why did this work in temp branch but fails here?
+            // OH, it's because the assertion in setInitialVertex is new.
+            // hmm, can try to fix it, or just get rid of this case since it was somewhat ill-advised anyway.
+
+            // Aww fooey, still in different order :-(
+            beforeThatEdge.setNext(beforeThisEdge.prev(), true);
+            beforeThisEdge.setNext(beforeThatEdge.prev(), true);
+            insertEdgeBefore(e, beforeThisEdge);
+            insertEdgeBefore(e.opposite(), beforeThatEdge);
+            // no need to fix up edge indices
+        }
+        return true;
+    } // swapDiagonal
+    public void addEdgeBetweenTwoIsolatedVertices(Vertex v0, Vertex v1)
+    {
+        Edge e = new Edge(true);
+        e.setInitialVertex(v0);
+        e.opposite().setInitialVertex(v1);
+        e.setNext(e.opposite(), true);
+        e.setPrev(e.opposite(), true);
+    }
+    public void addEdgeBetweenTwoVertices(Vertex v0, Vertex v1)
+    {
+        assert_ne(v0, v1);
+        int nEdges = edges.size();
+
+        // First find any edge beginning at v0,
+        // and any beginning at v1
+        Edge someEdgeStartingAtV0 = null;
+        Edge someEdgeStartingAtV1 = null;
+        FORI (iEdge, nEdges)
+        {
+            Edge e = (Edge)edges.get(iEdge);
+            if (e.initialVertex() == v0)
+            {
+                someEdgeStartingAtV0 = e;
+                if (e.finalVertex() == v1)
+                    return; // v0,v1 already connected-- definitely don't do anything!
+            }
+            else if (e.initialVertex() == v1)
+            {
+                someEdgeStartingAtV1 = e;
+                // no need to check whether final is v0, we'll catch it in the other direction
+            }
+        }
+
+        // Then walk around ccw to find the *best* place to insert the edge
+        // among v0's edges and among v1's edges
+
+        if (someEdgeStartingAtV1 != null)
+        {
+            // figure out the best place among v1's edges
+            // to add v0.
+            double bestGoodness = Double.NEGATIVE_INFINITY;
+            Edge bestBeforeThisEdge = null;
+            double ang = Math.atan2(v0.Ynaive()-v1.Ynaive(), v0.Xnaive()-v1.Xnaive());
+            // for each edge out of v1, ccw
+            Edge nextEdgeOutOfV1 = null;
+            for (Edge thisEdgeOutOfV1 = someEdgeStartingAtV1; ; thisEdgeOutOfV1 = nextEdgeOutOfV1)
+            {
+                // XXX dup code!
+                nextEdgeOutOfV1 = thisEdgeOutOfV1.prev().opposite();
+                //PRINT(thisEdgeOutOfV1);
+                //PRINT(nextEdgeOutOfV1);
+                Vertex thisNeighbor = thisEdgeOutOfV1.finalVertex();
+                Vertex nextNeighbor = nextEdgeOutOfV1.finalVertex();
+                double thisAng = Math.atan2(thisNeighbor.Ynaive()-v1.Ynaive(),
+                                            thisNeighbor.Xnaive()-v1.Xnaive());
+                // change thisAng by multiples of 2*Math.PI
+                // so that it's >= ang by as little as possible
+                // XXX not sure this is robust... can something fall between the cracks?
+                while (thisAng < ang) thisAng += 2*Math.PI;
+                while (thisAng > ang) thisAng -= 2*Math.PI;
+
+                double thisGoodness = -(ang-thisAng); // want to minimize ang-thisAng, so maximize -(ang-thisAng)
+                //PRINT(RTOD(thisGoodness));
+                if (thisGoodness > bestGoodness)
+                {
+                    bestBeforeThisEdge = thisEdgeOutOfV1;
+                    bestGoodness = thisGoodness;
+                }
+
+                if (nextEdgeOutOfV1 == someEdgeStartingAtV1)
+                    break;
+            }
+            assert(bestBeforeThisEdge != null);
+            System.out.println("    Sticking v"+v0.myIndex()+" between v"+bestBeforeThisEdge.finalVertex().myIndex()+" and v"+bestBeforeThisEdge.prev().opposite().finalVertex().myIndex()+" in v"+v1.myIndex()+"'s neighbors");
+            someEdgeStartingAtV1 = bestBeforeThisEdge;
+        }
+        if (someEdgeStartingAtV0 != null)
+        {
+            // figure out the best place among v0's edges
+            // to add v1.
+            double bestGoodness = Double.NEGATIVE_INFINITY;
+            Edge bestBeforeThisEdge = null;
+            double ang = Math.atan2(v1.Ynaive()-v0.Ynaive(), v1.Xnaive()-v0.Xnaive());
+            // for each edge out of v0, ccw
+            Edge nextEdgeOutOfV0 = null;
+            for (Edge thisEdgeOutOfV0 = someEdgeStartingAtV0; ; thisEdgeOutOfV0 = nextEdgeOutOfV0)
+            {
+                // XXX dup code!
+                nextEdgeOutOfV0 = thisEdgeOutOfV0.prev().opposite();
+                //PRINT(thisEdgeOutOfV0);
+                //PRINT(nextEdgeOutOfV0);
+                Vertex thisNeighbor = thisEdgeOutOfV0.finalVertex();
+                Vertex nextNeighbor = nextEdgeOutOfV0.finalVertex();
+                double thisAng = Math.atan2(thisNeighbor.Ynaive()-v0.Ynaive(),
+                                            thisNeighbor.Xnaive()-v0.Xnaive());
+                // change thisAng by multiples of 2*Math.PI
+                // so that it's >= ang by as little as possible
+                // XXX not sure this is robust... can something fall between the cracks? think about it
+                while (thisAng < ang) thisAng += 2*Math.PI;
+                while (thisAng > ang) thisAng -= 2*Math.PI;
+
+                double thisGoodness = -(ang-thisAng); // want to minimize ang-thisAng, so maximize -(ang-thisAng)
+                //PRINT(RTOD(thisGoodness));
+                if (thisGoodness > bestGoodness)
+                {
+                    bestBeforeThisEdge = thisEdgeOutOfV0;
+                    bestGoodness = thisGoodness;
+                }
+
+                if (nextEdgeOutOfV0 == someEdgeStartingAtV0)
+                    break;
+            }
+            assert(bestBeforeThisEdge != null);
+            System.out.println("    Sticking v"+v1.myIndex()+" between v"+bestBeforeThisEdge.finalVertex().myIndex()+" and v"+bestBeforeThisEdge.prev().opposite().finalVertex().myIndex()+" in v"+v0.myIndex()+"'s neighbors");
+            someEdgeStartingAtV0 = bestBeforeThisEdge;
+        }
+
+
+        if (someEdgeStartingAtV0 != null)
+            if (someEdgeStartingAtV1 != null)
+                addDiagonal(someEdgeStartingAtV0,
+                            someEdgeStartingAtV1);
+            else
+                addWhisker(someEdgeStartingAtV0, v1);
+        else
+            if (someEdgeStartingAtV1 != null)
+                addWhisker(someEdgeStartingAtV1, v0);
+            else
+                addEdgeBetweenTwoIsolatedVertices(v0, v1);
+    } // addEdgeBetweenTwoVertices
+
+    // twice area (of projection in XY plane) of the face obtained by walking around the edge.
+    public double twiceFaceArea(Edge e0)
+    {
+        double sum = 0;
+        Vertex v0 = e0.initialVertex();
+        // All edges e not containing v0...
+        for (Edge e = e0.next(); e.finalVertex() != v0; e = e.next())
+        {
+            Vertex v1 = e.initialVertex();
+            Vertex v2 = e.finalVertex();
+            // TODO: this dangerous. should be using a different method to show what's inside out!
+            sum += GeomUtils.twiceTriangleArea(v0.x(), v0.y(),
+                                               v1.x(), v1.y(),
+                                               v2.x(), v2.y());
+        }
+        return sum;
+    } // twiceFaceArea
+
+    public void addIsolatedVertex(double x, double y, double h)
+    {
+        new Vertex(x,y,h); // adds itself to verts
+    }
+    public void addIsolatedVertex(double X, double Y, double Z, double W)
+    {
+        new Vertex(X,Y,Z,W); // adds itself to verts
+    }
+    // This is the "kis" operation, the dual of truncating a vertex.
+    public void kisIsolatedVertex(Vertex v, Edge someEdgeOnFace)
+    {
+        if (nonEventVerbose >= 1)
+            System.out.println("In kis(v="+v.myIndex()+", someEdgeOnFac="+someEdgeOnFace.myIndex()+"");
+        //
+        // Start by attaching a single whisker to the new vertex...
+        //
+        if (nonEventVerbose >= 1)
+            System.out.println("    adding a whisker from edge "+someEdgeOnFace.myIndex()+" to vert "+v.myIndex());
+        addWhisker(someEdgeOnFace, v);
+        if (nonEventVerbose >= 1)
+        {
+            System.out.println("    did that at least.");
+            PRINT(this);
+        }
+
+        //
+        // Now fill in with triangles,
+        // connecting everything to the new vertex v.
+        //
+        while (someEdgeOnFace.next()
+                             .next()
+                             .next() != someEdgeOnFace)
+        {
+            if (nonEventVerbose >= 1)
+                System.out.println("    adding diagonal from start of edge "+someEdgeOnFace.prev().myIndex()+" to start of edge "+someEdgeOnFace.prev().prev().prev().myIndex()+"");
+            addDiagonal(someEdgeOnFace.prev(),
+                        someEdgeOnFace.prev()
+                                      .prev()
+                                      .prev());
+            if (nonEventVerbose >= 1)
+            {
+                System.out.println("    did that diagonal.");
+                PRINT(this);
+            }
+        }
+        if (nonEventVerbose >= 1)
+            System.out.println("Out kis(v="+v.myIndex()+", someEdgeOnFac="+someEdgeOnFace.myIndex()+"");
+    }
+    public void deleteEdge(Edge e)
+    {
+        // TODO: use totally generic splice operation?
+        e.prev().setNext(e.opposite().next(), true);
+        e.opposite().prev().setNext(e.next(), true);
+
+        // these don't hold, currently, but might if we use splice
+        //assert_eq(e.next(), e.opposite());
+        //assert_eq(e.prev(), e.opposite());
+
+        int i = e.myIndex();
+        edges.remove(i);
+        fixEdgeIndices(i);
+
+        int j = e.opposite().myIndex();
+        edges.remove(j);
+        fixEdgeIndices(j);
+
+        e._initialVertex.arity--;
+        e._initialVertex = null;
+
+        e.opposite()._initialVertex.arity--;
+        e.opposite()._initialVertex = null;
+    }
+    public void deleteVertex(Vertex v, int oldToNew[], int newToOld[])
+    {
+        FORI (iEdge, edges.size())
+        {
+            Edge edge = (Edge)edges.get(iEdge);
+            if (edge.initialVertex() == v
+             || edge.finalVertex() == v)
+            {
+                deleteEdge(edge);
+                iEdge--; // so when we increment we get back to here
+            }
+        }
+        assert_eq(v.arity, 0);
+        int iVert = v.myIndex();
+        verts.remove(iVert);
+        fixVertIndices(iVert);
+
+        // XXX should we do the fast remove, moving the last one into the slot?  well, is there an advantage to keeping the vertices in order?  Probably.
+
+        // adjust oldToNew and newToOld, assuming *not* fastRemove
+        if (oldToNew != null)
+        {
+            assert(newToOld != null);
+            int nVertsNew = verts.size();
+            oldToNew[newToOld[iVert]] = -1; // using previous newToOld values
+            for (int jVert = iVert; jVert < nVertsNew; ++jVert)
+                oldToNew[newToOld[jVert+1]] = jVert; // using previous newToOld values
+        }
+        if (newToOld != null)
+        {
+            int nVertsNew = verts.size();
+            for (int jVert = iVert; jVert < nVertsNew; ++jVert)
+                newToOld[jVert] = newToOld[jVert+1];
+            newToOld[nVertsNew] = -1;
+        }
+    } // deleteVertex
+
+    // XXX TODO: this shouldn't need graphics, just the xform
+    public int indexOfClosestVert(double x, double y, MyGraphics3D mg3d)
+    {
+        double closestDistSqrd = Double.POSITIVE_INFINITY;
+        int closestVertIndex = -1;
+        double scratch[] = new double[3];
+        FORI (iVert, verts.size()) // beginning to end, so we choose first of equal
+        {
+            Vertex vert = (Vertex)verts.get(iVert);
+            mg3d.xform(vert.X(), vert.Y(), vert.Z(), vert.W(), scratch);
+            double thisDistSqrd = SQR(scratch[0]-x)
+                                + SQR(scratch[1]-y);
+            if (thisDistSqrd < closestDistSqrd)
+            {
+                closestDistSqrd = thisDistSqrd;
+                closestVertIndex = iVert;
+            }
+        }
+        return closestVertIndex; // -1 if none
+    } // indexOfClosestVert
+
+    public int indexOfClosestEdge(double point[/*2*/], boolean isDualMesh)
+    {
+        double x = point[0], y = point[1];
+        double closestDistSqrd = Double.POSITIVE_INFINITY;
+        int closestEdgeIndex = -1;
+        FORI (iEdge, edges.size()) // beginning to end, so we choose first of equal
+        {
+            Edge edge = (Edge)edges.get(iEdge);
+            double thisDistSqrd =
+                edge.initialVertex() == null ? Double.POSITIVE_INFINITY : // no need to deal with edges whose initial vertex is NULL and final vertex isn't, since we'll encounter its opposite anyway
+                edge.finalVertex() == null ? GeomUtils.distSqrdFromPointToRay(x,y,
+                                                                              edge.initialVertex().x(),
+                                                                              edge.initialVertex().y(),
+                                                                              edge.direction[0],
+                                                                              edge.direction[1]) :
+                edge.initialVertex().myIndex() > edge.finalVertex().myIndex() ? Double.POSITIVE_INFINITY
+                                            : GeomUtils.distSqrdFromPointToSeg(x,y,
+                                                                               edge.initialVertex().x(),
+                                                                               edge.initialVertex().y(),
+                                                                               edge.finalVertex().x(),
+                                                                               edge.finalVertex().y());
+            if (thisDistSqrd < closestDistSqrd)
+            {
+                closestDistSqrd = thisDistSqrd;
+                closestEdgeIndex = iEdge;
+            }
+        }
+        if (closestEdgeIndex != -1)
+        {
+            // Make sure point is on left side of edge.
+            // If not, choose edge's opposite instead.
+            Edge edge = (Edge)edges.get(closestEdgeIndex);
+            double edgeDirection[] = edge.direction;
+            if (edgeDirection == null) // currently it's null for the primal, non-null for dual
+            {
+                Vertex v0 = edge.initialVertex();
+                Vertex v1 = edge.finalVertex();
+                edgeDirection = new double[]{v1.x()-v0.x(), v1.y()-v0.y()};
+            }
+            Vertex v = edge.initialVertex();
+            if (v == null) v = edge.finalVertex();
+            double vToPoint[] = {point[0]-v.x(), point[1]-v.y()};
+            if (VecMath.vxv2(edgeDirection, vToPoint) * (isDualMesh ? -1. : 1.) < 0.)
+            {
+                closestEdgeIndex = edge.opposite().myIndex();
+            }
+        }
+        return closestEdgeIndex; // -1 if none
+    } // indexOfClosestEdge
+
+    // TODO: This stuff doesn't belong here, move it to MeshUtil or something
+    public static final int OPTIMIZE_BARYCENTRICS_LEAST_SQUARES = 0;
+    public static final int OPTIMIZE_BARYCENTRICS_INFINITY_NORM = 1;
+    public static final int OPTIMIZE_BARYCENTRICS_MAX_MIN = 2;
+    public static final int OPTIMIZE_LENGTHS_LEAST_SQUARES = 3;
+    public static final int OPTIMIZE_LENGTHS_INFINITY_NORM = 4;
+    public static final int OPTIMIZE_LENGTHS_MAX_MIN = 5;
+    public static final int OPTIMIZE_LENGTHS_SUM = 6;
+    public static final String optimizationTypeNames[] = {
+        "BARYCENTRICS_LEAST_SQUARES from all 1/3's",
+        "BARYCENTRICS_INFINITY_NORM from all 1/3's",
+        "BARYCENTRICS_MAX_MIN",
+        "LENGTHS_LEAST_SQUARES from all .25's",
+        "LENGTHS_INFINITY_NORM from all .25's",
+        "LENGTHS_MAX_MIN with fixed sum",
+        //"LENGTHS_SUM with every edge length >= .25",
+    };
+    public static final int availableOptimizationTypes[] = {
+        OPTIMIZE_BARYCENTRICS_LEAST_SQUARES,
+        OPTIMIZE_BARYCENTRICS_INFINITY_NORM,
+        OPTIMIZE_BARYCENTRICS_MAX_MIN,
+        OPTIMIZE_LENGTHS_LEAST_SQUARES,
+        OPTIMIZE_LENGTHS_INFINITY_NORM,
+        OPTIMIZE_LENGTHS_MAX_MIN,
+        //OPTIMIZE_LENGTHS_SUM,
+    };
+    public double[] findOptimalVertexHeights(int optimizationType)
+    {
+        if (verts.size() < 3)
+            return new double[verts.size()]; // zeros
+
+        if (nonEventVerbose >= 1)
+            System.out.println("in findOptimalVertexHeights");
+
+        int nDependentVerts = 3;
+        int dependentVertIndices[] = {0,1,2};
+        // Prefer the triangle that contains the origin...
+        {
+            FORI (iEdge, edges.size())
+            {
+                Edge edge = (Edge)edges.get(iEdge);
+                if (edge.next().next().next() != edge)
+                    continue;
+                Vertex v0 = edge.initialVertex();
+                Vertex v1 = edge.next().initialVertex();
+                Vertex v2 = edge.next().next().initialVertex();
+                if (GeomUtils.twiceTriangleArea(0,0,
+                                                v0.Xnaive(),v0.Ynaive(),
+                                                v1.Xnaive(),v1.Ynaive()) >= 0
+                 && GeomUtils.twiceTriangleArea(0,0,
+                                                v1.Xnaive(),v1.Ynaive(),
+                                                v2.Xnaive(),v2.Ynaive()) >= 0
+                 && GeomUtils.twiceTriangleArea(0,0,
+                                                v2.Xnaive(),v2.Ynaive(),
+                                                v0.Xnaive(),v0.Ynaive()) >= 0)
+                {
+                    dependentVertIndices[0] = v0.myIndex();
+                    dependentVertIndices[1] = v1.myIndex();
+                    dependentVertIndices[2] = v2.myIndex();
+                    break; // origin is inside this tri CCW
+                }
+            }
+        }
+
+        // Figure out the desired dualEdgeLength...
+        // XXX just hard code for now
+        double desiredDualEdgeLength = .25;
+
+        // edge2dualVert[iEdge] will be the dual vert on the left of edges[iEdge]
+        int edge2dualVert[] = VecMath.fillvec(edges.size(), -1);
+        int nDualVerts;
+        {
+            nDualVerts = 0;
+            FORI (iEdge, edges.size())
+            {
+                if (edge2dualVert[iEdge] != -1)
+                    continue; // already saw some other edge on this tri
+                Edge e0 = (Edge)edges.get(iEdge);
+                Edge e1 = e0.next();
+                Edge e2 = e1.next();
+                boolean thisIsATri = (e2.next() == e0);
+                if (!thisIsATri)
+                    continue;
+
+                Mesh.Vertex v0 = e0.initialVertex();
+                Mesh.Vertex v1 = e1.initialVertex();
+                Mesh.Vertex v2 = e2.initialVertex();
+
+                double dualVertArea = GeomUtils.twiceTriangleArea(v0.Xnaive(),v0.Ynaive(),
+                                                                  v1.Xnaive(),v1.Ynaive(),
+                                                                  v2.Xnaive(),v2.Ynaive());
+                if (dualVertArea < 0.)
+                    continue; // triangle is inside out
+
+                edge2dualVert[iEdge] = nDualVerts;
+                edge2dualVert[e1.myIndex()] = nDualVerts;
+                edge2dualVert[e2.myIndex()] = nDualVerts;
+                nDualVerts++;
+            }
+        }
+        if (nonEventVerbose >= 1)
+            PRINT(nDualVerts);
+
+        // there is only one dual edge per pair (edge,edge.opposite()).
+        int edge2dualEdge[] = VecMath.fillvec(edges.size(), -1);
+        int nDualEdges;
+        {
+            nDualEdges = 0;
+            FORI (iEdge, edges.size())
+            {
+                if (edge2dualEdge[iEdge] != -1)
+                    continue; // already seen it from the opposite edge
+
+                Edge edge = (Edge)edges.get(iEdge);
+                if (edge2dualVert[iEdge] != -1
+                 && edge2dualVert[edge.opposite().myIndex()] != -1)
+                {
+                    // Opposite edge is also on a tri
+                    // that we haven't counted yet
+                    edge2dualEdge[iEdge] = nDualEdges;
+                    edge2dualEdge[edge.opposite().myIndex()] = nDualEdges;
+                    nDualEdges++;
+                }
+            }
+        }
+        if (nonEventVerbose >= 1)
+            PRINT(nDualEdges);
+
+        int dualVert2verts[][] = VecMath.fillmat(nDualVerts, 3, -1);
+        int dualEdge2edge[] = VecMath.fillvec(nDualEdges, -1); // XXX not used?
+        int dualEdge2dualVerts[][] = VecMath.fillmat(nDualEdges, 2, -1);
+        {
+            FORI (iEdge, edges.size())
+            {
+                Edge edge = (Edge)edges.get(iEdge);
+                int iDualEdge = edge2dualEdge[iEdge];
+                if (iDualEdge != -1 // if it has a dual edge
+                 && dualEdge2dualVerts[iDualEdge][0] == -1) // if we didn't already do this dual edge from the opposite
+                {
+                    dualEdge2edge[iDualEdge] = iEdge;
+                    dualEdge2dualVerts[iDualEdge][0] = edge2dualVert[iEdge];
+                    dualEdge2dualVerts[iDualEdge][1] = edge2dualVert[edge.opposite().myIndex()];
+                }
+
+                int iDualVert = edge2dualVert[iEdge];
+                if (iDualVert != -1 // if this edge is on a triangle
+                 && dualVert2verts[iDualVert][0] == -1) // if we didn't already do this dual vert
+                {
+                    dualVert2verts[iDualVert][0] = edge.initialVertex().myIndex();
+                    dualVert2verts[iDualVert][1] = edge.next().initialVertex().myIndex();
+                    dualVert2verts[iDualVert][2] = edge.next().next().initialVertex().myIndex();
+                }
+            }
+            FORI (iDualVert, nDualVerts)
+                FORI (j, 3)
+                    assert(dualVert2verts[iDualVert][j] != -1);
+
+            FORI (iDualEdge, nDualEdges)
+            {
+                assert(dualEdge2edge[iDualEdge] != -1);
+                assert(dualEdge2dualVerts[iDualEdge][0] != -1);
+                assert(dualEdge2dualVerts[iDualEdge][1] != -1);
+            }
+        }
+
+
+        // can optimize positions or lengths.  I think optimizing positions is more robust.
+        boolean optimizingBarycentrics = optimizationType == OPTIMIZE_BARYCENTRICS_LEAST_SQUARES
+                                      || optimizationType == OPTIMIZE_BARYCENTRICS_MAX_MIN
+                                      || optimizationType == OPTIMIZE_BARYCENTRICS_INFINITY_NORM;
+        if (optimizingBarycentrics)
+        {
+            nDependentVerts = 1; // XXX not right in general, should be number of connected components maybe
+            dependentVertIndices = new int[] {0};
+        }
+
+        if (nonEventVerbose >= 1)
+        {
+            PRINTVEC(dependentVertIndices);
+        }
+
+
+        int nIndependentVerts = verts.size() - nDependentVerts;
+
+        if (nIndependentVerts > (optimizingBarycentrics ? 2*nDualVerts : nDualEdges))
+        {
+            //PRINT((optimizingBarycentrics ? 2*nDualVerts : nDualEdges));
+            System.out.println("Out findOptimalVertexHeights (too many independent verts, it's underconstrained)");
+            return new double[verts.size()]; // zeros
+        }
+
+        int vert2independentVert[] = new int[verts.size()];
+        int independentVert2verts[] = new int[nIndependentVerts];
+        {
+            int iIndependentVert = 0;
+            FORIDOWN (iVert, verts.size())
+            {
+                if (Arrays.indexOf(dependentVertIndices, iVert) == -1)
+                {
+                    vert2independentVert[iVert] = iIndependentVert;
+                    independentVert2verts[iIndependentVert] = iVert;
+                    iIndependentVert++;
+                }
+                else
+                    vert2independentVert[iVert] = -1;
+            }
+            assert_eq(iIndependentVert, nIndependentVerts);
+        }
+        if (nonEventVerbose >= 1)
+        {
+            PRINTVEC(vert2independentVert);
+            PRINTVEC(independentVert2verts);
+        }
+
+
+        int nSamples = nIndependentVerts+1;
+        double sampleResultVerts[][][] = new double[nSamples][nDualVerts][2]; // SolveForDualPoint actually only needs 2, contrary to all the other comments
+        {
+            double sampleHeights[][] = new double[nIndependentVerts+1][nIndependentVerts];
+            VecMath.identitymat(sampleHeights); // the unit basis vectors, and a row of zeros at the end
+
+            FORI (iSample, nSamples)
+            {
+                //
+                // Input sampleHeights[iSample]
+                // and get out sampleResultVerts[iSample]
+                //
+                FORI (iDualVert, nDualVerts)
+                {
+                    int iVert0 = dualVert2verts[iDualVert][0];
+                    int iVert1 = dualVert2verts[iDualVert][1];
+                    int iVert2 = dualVert2verts[iDualVert][2];
+                    int iIndependentVert0 = vert2independentVert[iVert0];
+                    int iIndependentVert1 = vert2independentVert[iVert1];
+                    int iIndependentVert2 = vert2independentVert[iVert2];
+                    double h0 = (iIndependentVert0 == -1 ? 0. : sampleHeights[iSample][iIndependentVert0]);
+                    double h1 = (iIndependentVert1 == -1 ? 0. : sampleHeights[iSample][iIndependentVert1]);
+                    double h2 = (iIndependentVert2 == -1 ? 0. : sampleHeights[iSample][iIndependentVert2]);
+                    Vertex v0 = (Vertex)verts.get(iVert0);
+                    Vertex v1 = (Vertex)verts.get(iVert1);
+                    Vertex v2 = (Vertex)verts.get(iVert2);
+                    GeomUtils.SolveForDualPoint(v0.Xnaive(),v0.Ynaive(),h0,
+                                                v1.Xnaive(),v1.Ynaive(),h1,
+                                                v2.Xnaive(),v2.Ynaive(),h2,
+                                                sampleResultVerts[iSample][iDualVert], // dimension 2-- last coord is simply ignored
+                                                false, // wrapAroundSphereFlagValue
+                                                false, // centerSphereFlag
+                                                0.); // wrapCurvatureValue
+                }
+            }
+            //PRINTMAT(sampleHeights);
+        }
+
+        double solvedHeights[];
+
+        if (optimizingBarycentrics)
+        {
+            // We want to maximize the minimum barycentric occurring
+            // anywhere in the result.
+            double sampleBarycentrics[][][] = new double[nSamples][nDualVerts][3];
+            FORI (iSample, nSamples)
+            {
+                FORI (iDualVert, nDualVerts)
+                {
+                    int tri[] = dualVert2verts[iDualVert];
+                    double wholeArea = GeomUtils.twiceTriangleArea(((Vertex)verts.get(tri[0])).Xnaive(), ((Vertex)verts.get(tri[0])).Ynaive(),
+                                                                   ((Vertex)verts.get(tri[1])).Xnaive(), ((Vertex)verts.get(tri[1])).Ynaive(),
+                                                                   ((Vertex)verts.get(tri[2])).Xnaive(), ((Vertex)verts.get(tri[2])).Ynaive());
+                    double dualVert[] = sampleResultVerts[iSample][iDualVert];
+                    FORI (iVertOnTri, 3)
+                    {
+                        sampleBarycentrics[iSample][iDualVert][iVertOnTri] =
+                            GeomUtils.twiceTriangleArea(dualVert[0], dualVert[1],
+                                                        ((Vertex)verts.get(tri[(iVertOnTri+1)%3])).Xnaive(),
+                                                        ((Vertex)verts.get(tri[(iVertOnTri+1)%3])).Ynaive(),
+                                                        ((Vertex)verts.get(tri[(iVertOnTri+2)%3])).Xnaive(),
+                                                        ((Vertex)verts.get(tri[(iVertOnTri+2)%3])).Ynaive())
+                              / wholeArea;
+                    }
+                }
+            }
+            double sampleResultVectors[][] = (double[][])Arrays.flatten(sampleBarycentrics, 1, 2);
+            double desiredResultVector[] = VecMath.fillvec(sampleResultVectors[0].length,
+                                optimizationType==OPTIMIZE_BARYCENTRICS_MAX_MIN ? 0. : 1./3.);
+
+            //
+            // Find C and d
+            // such that x -> C x - d
+            // maps heights to barycentrics.
+            //
+
+            //
+            // Column i of C is the result from the i'th basis sample,
+            // minus the result from the 0 vector.
+            //
+            double C[][] = new double[sampleResultVectors.length-1][sampleResultVectors[0].length]; // start transposed...
+            FORI (iSample, sampleResultVectors.length-1)
+                VecMath.vmv(C[iSample],
+                            sampleResultVectors[iSample],
+                            sampleResultVectors[sampleResultVectors.length-1]);
+            C = VecMath.transpose(C);
+
+            //
+            // d is the desired result minus the result from the zero vector.
+            //
+            double d[] = VecMath.vmv(desiredResultVector,
+                                     sampleResultVectors[sampleResultVectors.length-1]);
+
+            // XXX could get clean up the dependent/intependent lookup tables if we want by expressing the independent vertex's constraints here...
+            double A[][] = {}; // no equality constraints
+            double b[] = {}; // no equality constraints
+
+            LinearProgramming.debugLevel = 0;
+
+            if (optimizationType == OPTIMIZE_BARYCENTRICS_LEAST_SQUARES)
+            {
+                if (nonEventVerbose >= 1)
+                {
+                    System.out.print("    Solving barycentrics least squares from all 1/3's...");
+                    System.out.flush();
+                }
+                solvedHeights = VecMath.invmxv(C,d);
+                if (nonEventVerbose >= 1)
+                    System.out.println("    done.");
+            }
+            else if (optimizationType == OPTIMIZE_BARYCENTRICS_INFINITY_NORM)
+            {
+                solvedHeights = new double[sampleResultVectors.length-1];
+                if (nonEventVerbose >= 1)
+                {
+                    System.out.print("    Solving barycentrics infinity norm from all 1/3's...");
+                    System.out.flush();
+                }
+                int result = LinearProgramming.LInfinitySolve(solvedHeights, C,d);
+                if (nonEventVerbose >= 1)
+                    System.out.println("    done.");
+                if (result != 0)
+                    System.out.println("WARNING: LPSolve returned "+result);
+            }
+            else if (optimizationType == OPTIMIZE_BARYCENTRICS_MAX_MIN)
+            {
+                solvedHeights = new double[sampleResultVectors.length-1];
+                if (nonEventVerbose >= 1)
+                {
+                    System.out.print("    Solving barycentrics maximizing minimal element...");
+                    System.out.flush();
+                }
+                int result = LinearProgramming.maximizeMinimum(solvedHeights,
+                                                               A, b,
+                                                               C, d);
+                if (nonEventVerbose >= 1)
+                    System.out.println("    done.");
+                if (false)
+                {
+                    PRINTMAT(A);
+                    PRINTVEC(b);
+                    PRINTMAT(C);
+                    PRINTVEC(d);
+                    PRINT(result);
+                    PRINTVEC(solvedHeights);
+                }
+                if (result != 0)
+                    System.out.println("WARNING: LPSolve returned "+result);
+            }
+            else
+            {
+                assert(false);
+            }
+        }
+        else // optimize lengths
+        {
+            double sampleResultVectors[][];
+            double desiredResultVector[];
+
+            {
+                double sampleResultLengths[][] = new double[nSamples][nDualEdges];
+                FORI (iSample, nSamples)
+                {
+                    //
+                    // Calculate sampleResultLengths[iSample]
+                    // from sampleResultVerts[iSample]
+                    //
+                    FORI (iDualEdge, nDualEdges)
+                    {
+                        sampleResultLengths[iSample][iDualEdge] =
+                            VecMath.dist(2,
+                                         sampleResultVerts[iSample][dualEdge2dualVerts[iDualEdge][0]],
+                                         sampleResultVerts[iSample][dualEdge2dualVerts[iDualEdge][1]]);
+                        // Need to figure out the sign.
+                        // If dual edge length is positive,
+                        // it will point from the original edge's left face
+                        // to the original edge's right face.
+                        // So the dual edge dir cross the original edge dir
+                        // should be > 0.
+                        double dualEdgeDir[] = VecMath.vmv(2,
+                                                          sampleResultVerts[iSample][dualEdge2dualVerts[iDualEdge][1]],
+                                                           sampleResultVerts[iSample][dualEdge2dualVerts[iDualEdge][0]]);
+                        double originalEdgeDir[] = VecMath.vmv(
+                            new double[] {((Edge)edges.get(dualEdge2edge[iDualEdge])).finalVertex().Xnaive(),
+                                          ((Edge)edges.get(dualEdge2edge[iDualEdge])).finalVertex().Ynaive()},
+                            new double[] {((Edge)edges.get(dualEdge2edge[iDualEdge])).initialVertex().Xnaive(),
+                                          ((Edge)edges.get(dualEdge2edge[iDualEdge])).initialVertex().Ynaive()}
+                        );
+                        if (VecMath.vxv2(dualEdgeDir, originalEdgeDir) < 0)
+                        {
+                            sampleResultLengths[iSample][iDualEdge] *= -1;
+                        }
+                    }
+                }
+                sampleResultVectors = sampleResultLengths;
+            }
+            desiredResultVector = VecMath.fillvec(nDualEdges, desiredDualEdgeLength);
+
+            // the following is general, could optimize something else if desired
+            {
+
+                //
+                // Row i of A is the result from the i'th basis sample,
+                // minus the result from the 0 vector.
+                //
+                double A[][] = new double[sampleResultVectors.length-1][sampleResultVectors[0].length];
+                FORI (iSample, sampleResultVectors.length-1)
+                    VecMath.vmv(A[iSample],
+                                sampleResultVectors[iSample],
+                                sampleResultVectors[sampleResultVectors.length-1]);
+                //
+                // b is the desired result
+                // minus the result from the 0 vector.
+                //
+                double b[] = VecMath.vmv(desiredResultVector,
+                                         sampleResultVectors[sampleResultVectors.length-1]);
+
+                //PRINTMAT(A);
+                //PRINTVEC(b);
+
+                double leastSquaresSolution[];
+                if (optimizationType == OPTIMIZE_LENGTHS_LEAST_SQUARES)
+                {
+                    if (nonEventVerbose >= 1)
+                    {
+                        System.out.print("    Solving for lengths least squares from all "+desiredDualEdgeLength+" ...");
+                        System.out.flush();
+                    }
+                    leastSquaresSolution = VecMath.vxinvm(b, A);
+                    if (nonEventVerbose >= 1)
+                        System.out.println("    done.");
+                }
+                else if (optimizationType == OPTIMIZE_LENGTHS_INFINITY_NORM)
+                {
+                    leastSquaresSolution = new double[sampleResultVectors.length-1];
+                    if (nonEventVerbose >= 1)
+                    {
+                        assert_eq(desiredDualEdgeLength, .25);
+                        System.out.print("    Solving lengths infinity norm from all .25's...");
+                        System.out.flush();
+                    }
+                    int result = LinearProgramming.LInfinitySolve(leastSquaresSolution, VecMath.transpose(A),b);
+                    if (nonEventVerbose >= 1)
+                        System.out.println("    done.");
+                    if (result != 0)
+                        System.out.println("WARNING: LPSolve returned "+result);
+                }
+                else if (optimizationType == OPTIMIZE_LENGTHS_MAX_MIN)
+                {
+                    double[] result0 = sampleResultVectors[sampleResultVectors.length-1];
+
+                    leastSquaresSolution = new double[sampleResultVectors.length-1];
+                    if (nonEventVerbose >= 1)
+                    {
+                        System.out.print("    Solving lengths maximizing minimum with sum 1...");
+                        System.out.flush();
+                    }
+
+                    // Set desired sum to be the sum of the primal edge lengths
+                    // (to get something roughly commensurate, that scales with the original)
+                    double desiredSum = 0.;
+                    FORI (iEdge, edges.size())
+                    {
+                        Edge edge = (Edge)edges.get(iEdge);
+                        if (edge.myIndex() > edge.opposite().myIndex())
+                            continue; // only use canonical one of the two
+                        Vertex v0 = edge.initialVertex();
+                        Vertex v1 = edge.finalVertex();
+                        desiredSum += Math.sqrt(SQR(v1.Xnaive()-v0.Xnaive()) + SQR(v1.Ynaive()-v0.Ynaive()));
+                    }
+                    if (nonEventVerbose >= 1)
+                        PRINT(desiredSum);
+
+                    if (true)
+                    {
+                        // Empirically, it's a bit bigger than I want,
+                        // especially if there are a lot of infinite edges in the dual
+                        // (i.e. much fewer finite edges in the dual than in primal).
+                        // So scale down desiredSum by nDualEdges/nEdges.
+                        // (nEdges is actually half of edges.size())
+                        //PRINT(nDualEdges);
+                        //PRINT(edges.size());
+                        desiredSum *= ((double)nDualEdges/
+                                       (double)(edges.size()/2));
+                        // and, final hack... seems to work better scaled by 1/2 anyway
+                        desiredSum /= 2.;
+                    }
+
+
+
+
+                    // Want solution column vector x
+                    // that satisfies [1,1,...,1] (transpose(A) x + result0) = desiredSum
+                    //           i.e. [1,1,...,1] (transpose(A) x) + sum(result0) = desiredSum
+                    //           i.e. [1,1,...,1] (transpose(A) x) = desiredSum - sum(result0)
+                    // and maximizes the minimum element of transpose(A) x + result0.
+
+                    double AA[][] = {VecMath.mxv(A, VecMath.fillvec(nDualEdges, 1.))};
+                    double bb[] = {desiredSum - VecMath.sum(result0)};
+                    double CC[][] = VecMath.transpose(A);
+                    double dd[] = VecMath.sxv(-1.,result0);
+                    int result =
+                                 leastSquaresSolution.length == 0 ? 0 : // XXX TODO: FIX maximizeMiniumum so it returns 0 instead of -1 in this case!
+                                 LinearProgramming.maximizeMinimum(leastSquaresSolution,
+                                                                   AA, bb, // AA x = bb
+                                                                   CC, dd); // maximize min of CC x - dd, i.e. A^T x + result0
+                    if (nonEventVerbose >= 1)
+                        System.out.println("    done.");
+                    if (result != 0)
+                        System.out.println("WARNING: maximizeMinumum returned "+result);
+
+                    if (nonEventVerbose >= 1)
+                    {
+                        PRINTMAT(AA);
+                        PRINTVEC(bb);
+                        PRINTVEC(VecMath.vmv(VecMath.mxv(AA, leastSquaresSolution), bb));
+                        PRINTVEC(leastSquaresSolution);
+                        PRINTVEC(VecMath.vxm(leastSquaresSolution, A));
+                        PRINTVEC(VecMath.vpv(VecMath.vxm(leastSquaresSolution,A), result0));
+                        PRINT(VecMath.sum(VecMath.vpv(VecMath.vxm(leastSquaresSolution,A), result0)));
+                    }
+
+                }
+                else if (optimizationType == OPTIMIZE_LENGTHS_SUM)
+                {
+                    if (nonEventVerbose >= 1)
+                    {
+                        assert_eq(desiredDualEdgeLength, .25);
+                        System.out.print("    Solving lengths minimizing sum with each length >= .25...");
+                        System.out.flush();
+                    }
+                    // XXX not implemented yet
+                    assert(false);
+                }
+                else
+                    assert(false);
+
+                //PRINTVEC(leastSquaresSolution);
+                double gotLengths[] = VecMath.vxm(leastSquaresSolution, A);
+                //PRINTVEC(gotLengths);
+
+                boolean checkLeastSquaresSolutionFlag = false; // I'm convinced it works
+                if (checkLeastSquaresSolutionFlag)
+                {
+                    System.out.print("    Checking");
+                    System.out.flush();
+
+                    int nTests = 100;
+                    FORI (iTest, nTests)
+                    {
+                        System.out.print(".");
+
+                        //
+                        // Perturb each element of the solution
+                        // by a random amount
+                        //
+                        double foo[] = VecMath.copyvec(leastSquaresSolution);
+                        double dir[] = VecMath.random(leastSquaresSolution.length);
+                        VecMath.normalize(dir);
+                        double fudges[] = {.01, -.01};
+                        FORI (iFudge, fudges.length)
+                        {
+                            VecMath.vpsxv(foo, leastSquaresSolution, fudges[iFudge], dir);
+                            double bar[] = VecMath.vxm(foo, A);
+                            //PRINT(VecMath.dist(bar, b));
+                            if (foo.length > 0)
+                                assert_lt(VecMath.dist(gotLengths, b), VecMath.dist(bar, b));
+                        }
+                    }
+                    System.out.println("    done.");
+                }
+                solvedHeights = leastSquaresSolution;
+            }
+        } // optimize lengths
+
+        assert_eq(solvedHeights.length, independentVert2verts.length);
+        double optimalVertexHeights[] = new double[verts.size()];
+        FORI (iIndex, independentVert2verts.length)
+        {
+            optimalVertexHeights[independentVert2verts[iIndex]] = solvedHeights[iIndex];
+        }
+        FORI (iDependentVert, dependentVertIndices.length)
+            optimalVertexHeights[dependentVertIndices[iDependentVert]] = 0.;
+
+
+        if (true)
+        {
+            // Now we want to adjust the solution
+            // so that the dual verts are shifted in the plane
+            // so that the average of the dual verts
+            // is equal to the average of the original verts.
+            // (This is somewhat arbitrary,
+            // but at least it makes the dual translate with the primal)
+            double[] avgPrimal = new double[2]; // zero initially
+            {
+                FORI (iVert, verts.size())
+                {
+                    Vertex vert = (Vertex)verts.get(iVert);
+                    avgPrimal[0] += vert.Xnaive();
+                    avgPrimal[1] += vert.Ynaive();
+                }
+                VecMath.vxs(avgPrimal, avgPrimal, 1./verts.size());
+            }
+            double[] avgDual = new double[2]; // zero initially
+            {
+                double scratchDualVert[] = new double[3];
+                FORI (iDualVert, nDualVerts)
+                {
+                    int iVert0 = dualVert2verts[iDualVert][0];
+                    int iVert1 = dualVert2verts[iDualVert][1];
+                    int iVert2 = dualVert2verts[iDualVert][2];
+                    Vertex v0 = (Vertex)verts.get(iVert0);
+                    Vertex v1 = (Vertex)verts.get(iVert1);
+                    Vertex v2 = (Vertex)verts.get(iVert2);
+                    double h0 = optimalVertexHeights[iVert0];
+                    double h1 = optimalVertexHeights[iVert1];
+                    double h2 = optimalVertexHeights[iVert2];
+                    GeomUtils.SolveForDualPoint(v0.Xnaive(),v0.Ynaive(),h0,
+                                                v1.Xnaive(),v1.Ynaive(),h1,
+                                                v2.Xnaive(),v2.Ynaive(),h2,
+                                                scratchDualVert,
+                                                false, // wrapAroundSphereFlag
+                                                false, // centerSphereFlag
+                                                0.); // wrapSphereCurvature
+                    VecMath.vpv(2, avgDual, avgDual, scratchDualVert); // only 2 of 3
+                }
+                VecMath.vxs(avgDual, avgDual, 1./nDualVerts);
+            }
+            double[] desiredDelta = VecMath.vmv(avgPrimal, avgDual);
+            //PRINTVEC(avgPrimal);
+            //PRINTVEC(avgDual);
+            //PRINTVEC(desiredDelta);
+            FORI (iVert, optimalVertexHeights.length)
+            {
+                Vertex vert = (Vertex)verts.get(iVert);
+                optimalVertexHeights[iVert] -= vert.Xnaive() * desiredDelta[0]
+                                             + vert.Ynaive() * desiredDelta[1];
+            }
+        }
+
+
+        if (nonEventVerbose >= 1)
+            System.out.println("out findOptimalVertexHeights");
+
+        return optimalVertexHeights;
+    } // findOptimalVertexHeights
+
+    public void findAndApplyOptimalVertexHeights(int optimizationType)
+    {
+        double optimalVertexHeights[] = findOptimalVertexHeights(
+                        optimizationType);
+        FORIDOWN (iVert, verts.size())
+        {
+            //PRINTSUB(optimalVertexHeights,iVert);
+            ((Mesh.Vertex)verts.get(iVert)).setHnaive(optimalVertexHeights[iVert]);
+        }
+    } // findAndApplyOptimalVertexHeights
+
+    public void flipLeftRight()
+    {
+        FORIDOWN (iVert, verts.size())
+        {
+            Mesh.Vertex vert = (Mesh.Vertex)verts.get(iVert);
+            vert.setXYZW(-vert.X(),
+                         vert.Y(),
+                         vert.Z(),
+                         vert.W());
+        }
+        // XXX rest is dup code
+        Mesh.Vertex finalInitials[] = new Mesh.Vertex[edges.size()];
+        FORIDOWN(iEdge, edges.size())
+        {
+            Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
+            finalInitials[iEdge] = edge.finalVertex();
+        }
+        FORIDOWN(iEdge, edges.size())
+        {
+            Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
+            edge._initialVertex.arity--;
+            edge._initialVertex = null;
+        }
+        FORIDOWN(iEdge, edges.size())
+        {
+            Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
+            Mesh.Edge tempEdge;
+            SWAP(edge._next, edge._prev, tempEdge);
+            assert_eq(edge._initialVertex, null);
+            edge._initialVertex = finalInitials[iEdge];
+            edge._initialVertex.arity++;
+        }
+        sanityCheck();
+    } // flipLeftRight
+    public void flipUpDown()
+    {
+        FORIDOWN (iVert, verts.size())
+        {
+            Mesh.Vertex vert = (Mesh.Vertex)verts.get(iVert);
+            vert.setXYZW(vert.X(),
+                         -vert.Y(),
+                         vert.Z(),
+                         vert.W());
+        }
+        // XXX rest is dup code
+        Mesh.Vertex finalInitials[] = new Mesh.Vertex[edges.size()];
+        FORIDOWN(iEdge, edges.size())
+        {
+            Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
+            finalInitials[iEdge] = edge.finalVertex();
+        }
+        FORIDOWN(iEdge, edges.size())
+        {
+            Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
+            edge._initialVertex.arity--;
+            edge._initialVertex = null;
+        }
+        FORIDOWN(iEdge, edges.size())
+        {
+            Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
+            Mesh.Edge tempEdge;
+            SWAP(edge._next, edge._prev, tempEdge);
+            assert_eq(edge._initialVertex, null);
+            edge._initialVertex = finalInitials[iEdge];
+            edge._initialVertex.arity++;
+        }
+        sanityCheck();
+    } // flipUpDown
+    public void flipUpperLeftLowerRight()
+    {
+        FORIDOWN (iVert, verts.size())
+        {
+            Mesh.Vertex vert = (Mesh.Vertex)verts.get(iVert);
+            vert.setXYZW(vert.Y(), // switch X and Y
+                         vert.X(),
+                         vert.Z(),
+                         vert.W());
+        }
+        // XXX rest is dup code
+        Mesh.Vertex finalInitials[] = new Mesh.Vertex[edges.size()];
+        FORIDOWN(iEdge, edges.size())
+        {
+            Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
+            finalInitials[iEdge] = edge.finalVertex();
+        }
+        FORIDOWN(iEdge, edges.size())
+        {
+            Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
+            edge._initialVertex.arity--;
+            edge._initialVertex = null;
+        }
+        FORIDOWN(iEdge, edges.size())
+        {
+            Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
+            Mesh.Edge tempEdge;
+            SWAP(edge._next, edge._prev, tempEdge);
+            assert_eq(edge._initialVertex, null);
+            edge._initialVertex = finalInitials[iEdge];
+            edge._initialVertex.arity++;
+        }
+        sanityCheck();
+    } // flipUpperLeftLowerRight
+    public void flipLowerLeftUpperRight()
+    {
+        FORIDOWN (iVert, verts.size())
+        {
+            Mesh.Vertex vert = (Mesh.Vertex)verts.get(iVert);
+            vert.setXYZW(-vert.Y(), // switch X and Y and negate them
+                         -vert.X(),
+                         vert.Z(),
+                         vert.W());
+        }
+        // XXX rest is dup code
+        Mesh.Vertex finalInitials[] = new Mesh.Vertex[edges.size()];
+        FORIDOWN(iEdge, edges.size())
+        {
+            Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
+            finalInitials[iEdge] = edge.finalVertex();
+        }
+        FORIDOWN(iEdge, edges.size())
+        {
+            Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
+            edge._initialVertex.arity--;
+            edge._initialVertex = null;
+        }
+        FORIDOWN(iEdge, edges.size())
+        {
+            Mesh.Edge edge = (Mesh.Edge)edges.get(iEdge);
+            Mesh.Edge tempEdge;
+            SWAP(edge._next, edge._prev, tempEdge);
+            assert_eq(edge._initialVertex, null);
+            edge._initialVertex = finalInitials[iEdge];
+            edge._initialVertex.arity++;
+        }
+        sanityCheck();
+    } // flipLowerLeftUpperRight
+
+    public Mesh()
+    {}
+
+    public Mesh(double vertPositions[][],
+                int faceIndices[][])
+    {
+        {
+            // Sanity check face indices,
+            // since it's really hard to debug later
+            // if they are insane...
+            java.util.HashSet boundary = new java.util.HashSet();
+            FORI (iFace, faceIndices.length)
+                FORI (iVertThisFace, faceIndices[iFace].length)
+                {
+                    int v0 = faceIndices[iFace][iVertThisFace];
+                    int v1 = faceIndices[iFace][(iVertThisFace+1)%faceIndices[iFace].length];
+                    assert(INRANGE(0 <=, v0, < vertPositions.length)); // TODO: use or write an assert variation
+                    assert(INRANGE(0 <=, v1, < vertPositions.length)); // TODO: use or write an assert variation
+                    String v0_v1 = ""+v0+"_"+v1;
+                    String v1_v0 = ""+v1+"_"+v0;
+                    if (boundary.contains(v0_v1))
+                    {
+                        System.out.println("ERROR in Mesh ctor: "+v0_v1+" appears twice");
+                        assert(false);
+                    }
+                    if (!boundary.remove(v1_v0))
+                        boundary.add(v0_v1);
+                }
+            if (!boundary.isEmpty())
+            {
+                System.out.println("ERROR in Mesh ctor: unmatched edge(s):");
+                java.util.Iterator iter = boundary.iterator();
+                while (iter.hasNext())
+                {
+                    String v0_v1 = (String)iter.next();
+                    System.out.println("    "+v0_v1);
+                }
+                assert(false);
+            }
+        }
+
+        FORI (i, vertPositions.length)
+        {
+            // Vertex ctor adds itself to verts...
+            double vertPosition[] = vertPositions[i];
+            if (vertPosition.length == 2)
+                new Vertex(vertPosition[0],  // x
+                           vertPosition[1],  // y
+                           0); // h
+            else if (vertPosition.length == 3)
+                new Vertex(vertPosition[0],  // x
+                           vertPosition[1],  // y
+                           vertPosition[2]); // h
+            else if (vertPosition.length == 4)
+                new Vertex(vertPosition[0],  // X
+                           vertPosition[1],  // Y
+                           vertPosition[2],  // Z
+                           vertPosition[3]); // W
+            else
+                assert(false);
+        }
+        java.util.HashMap vertIndsToEdge = new java.util.HashMap();
+        FORI (i, faceIndices.length)
+        FORI (j, faceIndices[i].length)
+        {
+            int v0 = faceIndices[i][j];
+            int v1 = faceIndices[i][(j+1)%faceIndices[i].length];
+            assert(INRANGE(0 <=, v0, < vertPositions.length)); // TODO: use or write an assert variation
+            assert(INRANGE(0 <=, v1, < vertPositions.length)); // TODO: use or write an assert variation
+            String v0_v1 = ""+v0+"_"+v1;
+            String v1_v0 = ""+v1+"_"+v0;
+            if (vertIndsToEdge.get(v0_v1) == null)
+            {
+                Edge edge = new Edge(true); // adds itself, and opposite, to verts
+                vertIndsToEdge.put(v0_v1, edge);
+                vertIndsToEdge.put(v1_v0, edge.opposite());
+                edge.setInitialVertex((Vertex)verts.get(v0));
+                edge.opposite().setInitialVertex((Vertex)verts.get(v1));
+            }
+        }
+        FORI (i, faceIndices.length)
+        FORI (j, faceIndices[i].length)
+        {
+            int v0 = faceIndices[i][j];
+            int v1 = faceIndices[i][(j+1)%faceIndices[i].length];
+            int v2 = faceIndices[i][(j+2)%faceIndices[i].length];
+            String v0_v1 = ""+v0+"_"+v1;
+            String v1_v2 = ""+v1+"_"+v2;
+            Edge e01 = (Edge)vertIndsToEdge.get(v0_v1);
+            Edge e12 = (Edge)vertIndsToEdge.get(v1_v2);
+            e01.setNext(e12, true);
+        }
+        sanityCheck();
+    } // Mesh from vertex positions and face indices
+
+    // copy ctor
+    public Mesh(Mesh original)
+    {
+        int nVerts = original.verts.size();
+        FORI (iVert, nVerts)
+        {
+            Vertex originalVert = (Vertex)original.getVert(iVert);
+            Vertex newVert = new Vertex(originalVert.X(),
+                                        originalVert.Y(),
+                                        originalVert.Z(),
+                                        originalVert.W()); // adds itself to verts
+            newVert.weight = originalVert.weight;
+            if (originalVert.momentAndArea != null)
+                newVert.momentAndArea = VecMath.copyvec(originalVert.momentAndArea);
+        }
+        int nEdges = original.edges.size();
+        FORI (iEdge, nEdges)
+            new Edge(false); // adds itself to edges
+        assert_eq(verts.size(), nVerts);
+        assert_eq(edges.size(), nEdges);
+
+        FORI (iEdge, nEdges)
+        {
+            Edge edge = (Edge)edges.get(iEdge);
+            Edge originalEdge = (Edge)original.getEdge(iEdge);
+            assert_eq(edge._initialVertex, null);
+            edge._initialVertex = (Vertex)verts.get(originalEdge._initialVertex._myIndex);
+            edge._initialVertex.arity++;
+            edge._opposite = (Edge)edges.get(originalEdge._opposite._myIndex);
+            edge._prev = (Edge)edges.get(originalEdge._prev._myIndex);
+            edge._next = (Edge)edges.get(originalEdge._next._myIndex);
+        }
+    } // Mesh copy constructor
+
+    public ArrayList/*<Vertex>*/ verts = new ArrayList();
+    public ArrayList/*<Edge>*/ edges = new ArrayList();
+
+    // Convenience functions to get a particular vertex or edge without casting,
+    // since this is done a kajillion times
+    public final Vertex getVert(int iVert) { return (Vertex)verts.get(iVert); }
+    public final Edge   getEdge(int iEdge) { return (Edge)edges.get(iEdge); }
+
+
+    // Accessors for construction of inner class objects
+    // XXX not sure this is the right way to do it
+    Edge newEdge(boolean andBack)
+    {
+        return new Edge(andBack);
+    }
+    Vertex newVertex(double x, double y, double h)
+    {
+        return new Vertex(x, y, h);
+    }
+    Vertex newVertex(double X, double Y, double Z, double W)
+    {
+        return new Vertex(X, Y, Z, W);
+    }
+    Vertex newVertex(double X, double Y, double Zignored, double W, double H)
+    {
+        return new Vertex(X, Y, Zignored, W, H);
+    }
+
+    //
+    // Assumes mesh is topologically a polyhedron,
+    // The dual vertex is well defined iff the corresponding primal face
+    // is a non-degenerate triangle.
+    // Otherwise the primal face will be triangulated arbitrarily
+    // and the dual vertex will be set to the weighted average
+    // of the vertices computed from each triangle.
+    // Indexing of dual edges is same as indexing of original edges.
+    // The dual edge points from right to left,
+    // with respect to the forward direction of the primal edge.
+    //
+    public static Mesh makeDualMesh(Mesh primal,
+                                    boolean includeNonArity3,
+                                    boolean includeInsideOut,  // always true these days
+                                    boolean wrapAroundSphereFlagValue,
+                                    boolean centerSphereFlagValue,
+                                    double wrapSphereCurvatureValue)
+    {
+        System.out.println("    in makeDualMesh(wrapAroundSphereFlagValue="+wrapAroundSphereFlagValue+")");
+        Mesh dual = new Mesh();
+        int nEdges = primal.edges.size();
+        FORI (iEdge, nEdges)
+            dual.newEdge(false); // adds itself to dual.edges
+        assert_eq(dual.edges.size(), nEdges);
+        FORI (iEdge, nEdges)
+        {
+            Mesh.Edge dualEdge = dual.getEdge(iEdge);
+            Mesh.Edge primalEdge = primal.getEdge(iEdge);
+            dualEdge._opposite = dual.getEdge(primalEdge._opposite._myIndex);
+            if (false)
+            {
+                // CCW faces in primal
+                // produce CCW faces in dual.
+                // If we do this, then applying makeDualMesh twice
+                // will reverse all the edges,
+                // I think.
+                // (assumimg calcInsideOutDualVertsFlag is true)
+                dualEdge._next = dual.getEdge(primalEdge._prev._opposite._myIndex);
+                dualEdge._prev = dual.getEdge(primalEdge._opposite._next._myIndex);
+            }
+            else
+            {
+                // CCW faces in primal
+                // produce CW faces in dual.
+                // If we do this, then makeDualMesh(makeDualMesh(mesh))
+                // should return something identical to the original,
+                // I think.
+                // (assumimg calcInsideOutDualVertsFlag is true)
+                // XXX Odd, this seems to behave better all around (I expected rays to go in wrong direction,
+                // but it works better than the other way... should think about why)
+                dualEdge._next = dual.getEdge(primalEdge._next._opposite._myIndex);
+                dualEdge._prev = dual.getEdge(primalEdge._opposite._prev._myIndex);
+            }
+        }
+
+        //
+        // Find all the dual vertices.
+        // These correspond to primal faces.
+        // Include inside-out ones for starters,
+        // to avoid lots of redundant calculation.  We'll remove them afterwards.
+        //
+        double vertCoords3d[][] = null;
+        if (wrapAroundSphereFlagValue)
+        {
+            int nVerts = primal.verts.size();
+            vertCoords3d = new double[nVerts][3];
+            FORI (iVert, nVerts)
+            {
+                double coord[] = vertCoords3d[iVert];
+                Mesh.Vertex v = primal.getVert(iVert);
+                coord[0] = v.x();
+                coord[1] = v.y();
+                coord[2] = v.z();
+
+            }
+        }
+        FORI (iEdge, nEdges)
+        {
+            Mesh.Edge dualEdge0 = dual.getEdge(iEdge);
+            if (dualEdge0._opposite._initialVertex != null)
+                continue; // did this one already
+
+            Mesh.Vertex dualVert; // TODO: merge this back when ported to new way
+
+            if (wrapAroundSphereFlagValue)
+            {
+                // Triangulate,
+                // using primalEdge0's initial vertex as the hub.
+
+                double totalWeightedNormal[] = new double[3]; // zero initially
+
+                {
+                    // TODO: move these more outward
+                    double edgeVec1[] = new double[3]; // scratch for loop
+                    double edgeVec2[] = new double[3]; // scratch for loop
+                    double edgeCenter[] = new double[3]; // scratch for loop
+
+                    Mesh.Edge primalEdge0 = primal.getEdge(iEdge);
+                    Mesh.Vertex v0 = primalEdge0._initialVertex;
+                    double v0coords[] = {v0.x(), v0.y(), v0.z()};
+                    for (Mesh.Edge primalEdge = primalEdge0.next();
+                         primalEdge.finalVertex() != v0;
+                         primalEdge = primalEdge.next())
+                    {
+                        double v1coords[] = vertCoords3d[primalEdge.initialVertex().myIndex()];
+                        double v2coords[] = vertCoords3d[primalEdge.finalVertex().myIndex()];
+
+                        VecMath.vmv(edgeVec1, v1coords, v0coords);
+                        VecMath.vmv(edgeVec2, v2coords, v0coords);
+
+                        VecMath.vpvxv3(totalWeightedNormal,
+                                       totalWeightedNormal,
+                                       edgeVec1,
+                                       edgeVec2);
+                    }
+                }
+
+                // want triangulation-independent representative point--
+                // use the perimeter center.
+                double perimeterMomentAndLength[] = new double[4]; // zero initially
+                {
+                    Mesh.Edge primalEdge0 = primal.getEdge(iEdge);
+                    Mesh.Edge primalEdge = primalEdge0;
+                    do {
+                        double v1coords[] = vertCoords3d[primalEdge.initialVertex().myIndex()];
+                        double v2coords[] = vertCoords3d[primalEdge.finalVertex().myIndex()];
+                        double edgeLength = VecMath.dist(v1coords, v2coords);
+                        VecMath.vpsxvpsxv(3, perimeterMomentAndLength,
+                                             perimeterMomentAndLength, .5*edgeLength, v1coords,
+                                                                       .5*edgeLength, v2coords);
+                        perimeterMomentAndLength[3] += edgeLength;
+                    } while ((primalEdge=primalEdge.next()) != primalEdge0);
+                }
+
+                // working with unit normal simplifies things, though I'm not sure it's really necessary
+                double unitNormal[] = VecMath.normalize(totalWeightedNormal);
+
+                // take dot product of normal with perimeter center
+                double dotProd = VecMath.dot(3, perimeterMomentAndLength, unitNormal) / perimeterMomentAndLength[3];
+                if (!centerSphereFlagValue)
+                    dotProd += unitNormal[2]/wrapSphereCurvatureValue; // TODO: can we get rid of the divide and make it a multiply somewhere else?
+
+                // want length of answer to be r^2 / dotProd.
+                // so, could just return unitNormalOut scaled by r^2/dotProd,
+                // but now we can be clever and stick the denominator in the W part,
+                // so that the answer is correct and robust even if dotProd is 0 or close to it.
+                // We also put wrapSphereCurvature in there too-- not sure whether this matters,
+                // but it makes the XYZ part be the unit normal (if centerSphereFlag), which is nice maybe.
+                double X = unitNormal[0];
+                double Y = unitNormal[1];
+                double Z = unitNormal[2];
+                double W = dotProd * SQR(wrapSphereCurvatureValue);
+                if (!centerSphereFlagValue)
+                    Z -= dotProd*wrapSphereCurvatureValue; // wrapSphereRadius*W but more robust when curvature is close to 0
+
+                double weight = dotProd; // times SQR(wrapSphereCurvature)? or not?
+
+                dualVert = dual.newVertex(X,Y,Z,W);
+                dualVert.weight = weight;
+                dualVert.momentAndArea = new double[] {X,Y,Z,W}; // seems redundant at this point, at least for sphere... maybe try to get rid
+            }
+            else // paraboloid
+            {
+                //
+                // Triangulate,
+                // using primalEdge0's initial vertex as the hub.
+                // The final dual vertex will be the triangle-area-weighted average
+                // of the circumcenters of the triangles.
+                // (the answer is the same regardless of triangulation...
+                // at least for the x,y part.  not sure what this does to the h part.)
+                // XXX TODO: don't we already do this in some version of SolveForDualPoint or SolveForDualMomentAndArea or something?
+                //
+                double totalMomentAndArea[] = new double[4]; // zero initially
+
+                double triMomentAndArea[] = new double[4]; // scratch for loop
+                Mesh.Edge primalEdge0 = primal.getEdge(iEdge);
+                Mesh.Vertex v0 = primalEdge0._initialVertex;
+                for (Mesh.Edge primalEdge = primalEdge0.next();
+                     primalEdge.finalVertex() != v0;
+                     primalEdge = primalEdge.next())
+                {
+                    Mesh.Vertex v1 = primalEdge.initialVertex();
+                    Mesh.Vertex v2 = primalEdge.finalVertex();
+
+                    // We intentionally use 3d primal verts
+                    // rather than homo coords--
+                    // this is because the homo coords may have come from
+                    // unwrapping around sphere,
+                    // in which case the interpretation of the w coord isn't really
+                    // relevant to us here.
+                    GeomUtils.SolveForDualMomentAndArea(v0.x(), v0.y(), v0.h(),
+                                                        v1.x(), v1.y(), v1.h(),
+                                                        v2.x(), v2.y(), v2.h(),
+                                                        triMomentAndArea,
+                                                        wrapAroundSphereFlagValue, // TODO: doesn't need to take this any more, we're paraboloid at this point.  oh fooey, still needed for other call to SolveForDualMomentAndArea, in optimization stuff
+                                                        centerSphereFlagValue,
+                                                        wrapSphereCurvatureValue); // TODO: doesn't need to take this any more, we're paraboloid at this point.  oh fooey, still needed for other call to SolveForDualMomentAndArea, in optimization stuff
+                    GeomUtils.accumulateMomentAndArea(totalMomentAndArea, triMomentAndArea);
+                }
+
+                {
+                    double xa = totalMomentAndArea[0];
+                    double ya = totalMomentAndArea[1];
+                    double haa = totalMomentAndArea[2];
+                    double a = totalMomentAndArea[3];
+                    if (false)
+                    {
+                        // this produces normalized coords, with W=1 or -1.
+                        dualVert = dual.newVertex(xa/a,
+                                                  ya/a,
+                                                  haa/(a*a));
+                        //PRINT(dualVert);
+                    }
+                    if (true)
+                    {
+                        // this keeps it homogeneous, with w = twice tri area.
+                        // Known to break things downstream that call Xnaive() etc.,
+                        // but they deserve to be broken.
+                        dualVert = dual.newVertex(xa,
+                                                  ya,
+                                                  0., // ignored
+                                                  a,
+                                                  haa);
+                        //PRINT(dualVert);
+                    }
+                }
+
+                double twiceTotalArea = totalMomentAndArea[3]; // TODO: fix up
+                dualVert.weight = .5 * twiceTotalArea;
+                dualVert.momentAndArea = totalMomentAndArea;
+
+                // TODO REGARDING NEGATIVE WEIGHTS: don't do this, I don't think. at this point I think maybe i should be making all W's non-negative, retaining inside-outedness in weight?  not sure.
+                // haphazard fixup
+                if ((dualVert.weight < 0.) != (dualVert.W() < 0.))
+                {
+                    // This used to happen when maintaining dual verts naively with W=1 and weight signed.
+                    // Doesn't happen any more since now setting W = 2*weight = 2*triArea which has the same sign as weight.
+                    assert(false);
+                    dualVert.setXYZW(-dualVert.X(),
+                                     -dualVert.Y(),
+                                     -dualVert.Z(),
+                                     -dualVert.W());
+                }
+
+            }
+
+            // Set dualVert to be the *final* vertex (i.e. initial vertex of opposite)
+            // of each dual edge ending at it.
+            for (Mesh.Edge dualEdge = dualEdge0;
+                 dualEdge._opposite._initialVertex == null;
+                 dualEdge = dualEdge._next._opposite)
+            {
+                assert_eq(dualEdge._opposite._initialVertex, null);
+                dualEdge._opposite._initialVertex = dualVert;
+                dualEdge._opposite._initialVertex.arity++;
+            }
+        }
+
+        // Delete all verts that don't satisfy the criteria.
+        // Any edges beginning or ending at such verts
+        // will end up with null as their initial or final vertex instead.
+        FORI (iEdge, nEdges)
+        {
+            Mesh.Edge dualEdge0 = dual.getEdge(iEdge);
+            Mesh.Vertex initialDualVert = dualEdge0._initialVertex;
+            if (initialDualVert == null)
+                continue; // initial dual vertex is already gone
+            if ((!includeNonArity3 && initialDualVert.arity != 3)
+             || (!includeInsideOut && initialDualVert.momentAndArea[3] < 0.))
+            {
+                for (Mesh.Edge dualEdge = dualEdge0;
+                     dualEdge._initialVertex != null;
+                     dualEdge = dualEdge._opposite._next)
+                {
+                    assert_eq(dualEdge._initialVertex, initialDualVert);
+                    dualEdge._initialVertex = null;
+                    --initialDualVert.arity;
+                }
+                assert_eq(initialDualVert.arity, 0);
+                int iDualVert = initialDualVert.myIndex();
+                Mesh.Vertex lastDualVert = (Mesh.Vertex)dual.verts.remove(dual.verts.size()-1);
+                if (lastDualVert != initialDualVert)
+                {
+                    lastDualVert._myIndex = iDualVert;
+                    dual.verts.set(iDualVert, lastDualVert);
+                }
+            }
+        }
+        
+        //
+        // Give each dual edge a direction.
+        //
+        fixDualDirections(primal, dual, wrapAroundSphereFlagValue, centerSphereFlagValue, wrapSphereCurvatureValue);
+        System.out.println("    out makeDualMesh(wrapAroundSphereFlagValue="+wrapAroundSphereFlagValue+")");
+        return dual;
+    } // makeDualMesh()
+
+    // called at end of makeDualMesh,
+    // and also after rescaling or tweaking
+    public static void fixDualDirections(Mesh primal,
+                                         Mesh dual,
+                                         boolean wrapAroundSphereFlagValue,
+                                         boolean centerSphereFlagValue,
+                                         double wrapSphereCurvatureValue)
+    {
+        int nEdges = dual.edges.size();
+        FORI (iEdge, nEdges)
+            dual.getEdge(iEdge).direction = null;
+        FORI (iEdge, nEdges)
+        {
+            Mesh.Edge dualEdge = dual.getEdge(iEdge);
+            if (dualEdge.direction != null)
+                continue; // did this one already
+
+
+            // We want a consistent method that works even if the edge is "external"
+            // (i.e. direction is opposite the direction from initial to final vertex),
+            // and that works even if initial or final vertex is null.
+
+// TODO: remove this after it's been tested for a while
+#if 0
+            if (dualEdge._initialVertex != null
+             && dualEdge.finalVertex() != null)
+            {
+                // it's a usual edge... get the direction by subtracting vertices
+                // XXX but this is not robust? but it may be better in some senses, especially if we're doing non-triangles too
+                // XXX TODO: compute in homogeneous space
+                dualEdge.direction = VecMath.normalize(VecMath.vmv(
+                    new double[]{dualEdge.finalVertex().x(),
+                                 dualEdge.finalVertex().y(),
+                                 dualEdge.finalVertex().z()},
+                    new double[]{dualEdge._initialVertex.x(),
+                                 dualEdge._initialVertex.y(),
+                                 dualEdge._initialVertex.z()}));
+            }
+            else
+#endif
+            {
+                // We want a consistent method that works even if the edge is "external"
+                // (i.e. direction is opposite the direction from initial to final vertex),
+                // and that works even if initial or final vertex is null.
+                // We compute the direction
+                // as the perpendicular to the corresponding primal edge.
+                // In 2d, this is easy-- its direction is just the primal edge dir
+                // rotated 90 degrees.
+                // But in 3d, what should it be?
+                // Well, the line is the intersection of two dual face planes,
+                // corresponding to two primal vertices.
+                // So the line direction is the cross product
+                // of the two plane normal dirs.
+
+                if (wrapAroundSphereFlagValue)
+                {
+                    Mesh.Edge primalEdge = primal.getEdge(iEdge);
+                    Mesh.Vertex v0 = primalEdge.initialVertex();
+                    Mesh.Vertex v1 = primalEdge.finalVertex();
+                    double v0Coords[] = {v0.x(), v0.y(), v0.z()};
+                    double v1Coords[] = {v1.x(), v1.y(), v1.z()};
+                    double center[] = {0,0,centerSphereFlagValue?0:-1./wrapSphereCurvatureValue};
+                    VecMath.vmv(v0Coords, v0Coords, center);
+                    VecMath.vmv(v1Coords, v1Coords, center);
+                    double dir[] = VecMath.vxv3(v0Coords, v1Coords);
+                    VecMath.normalize(dir, dir);
+                    dualEdge.direction = dir;
+                }
+                else
+                {
+                    // Luckily, the plane normal dirs are functions
+                    // of the primal xy's (the h's don't matter; they just push the plane in or out).
+                    // So, what is the surface normal (not necessarily unit length)
+                    // of the paraboloid at x,y,(x^2+y^2)/2?
+                    // It's x,y,1.
+                    // That was easy.
+                    //
+                    Mesh.Edge primalEdge = primal.getEdge(iEdge);
+                    Mesh.Vertex v0 = primalEdge.initialVertex();
+                    Mesh.Vertex v1 = primalEdge.finalVertex();
+                    // XXX TODO: compute in homogeneous space?
+                    double n0[] = {v0.x(), v0.y(), 1};
+                    double n1[] = {v1.x(), v1.y(), 1};
+                    double dir[] = VecMath.vxv3(n0, n1);
+                    VecMath.normalize(dir,dir);
+                    dualEdge.direction = dir;
+                }
+            }
+
+            assert_eq(dualEdge._opposite.direction, null);
+            dualEdge._opposite.direction = VecMath.sxv(-1., dualEdge.direction);
+        }
+    } // fixDualDirections
+
+
+
+} // class Mesh
+

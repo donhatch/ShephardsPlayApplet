@@ -1,0 +1,704 @@
+#include "macros.h"
+
+import com.donhatchsw.util.Arrays;
+import com.donhatchsw.util.Listenable;
+import com.donhatchsw.util.MergeFind;
+import com.donhatchsw.util.VecMath;
+
+public class Net
+{
+    // note that our mesh,dualMesh is generally the reverse of the applet's
+    // (since we want a net of the applet's dual mesh).
+    public Net(Mesh mesh, Mesh dualMesh)
+    {
+        int nEdges = mesh.edges.size();
+        int nVerts = mesh.verts.size();
+        int nFaces = dualMesh.verts.size();
+
+        this._mesh = mesh;
+        this._dualMesh = dualMesh;
+        this._edgeStatuses = Arrays.fill(nEdges, UNDECIDED);
+        this._nFolds = 0;
+        this._nCuts = 0;
+        this._nUndecideds = nEdges;
+        this._vertComponents = new SizeTrackingMergeFind(nVerts+1); // last may or may not be used
+        this._faceComponents = new SizeTrackingMergeFind(nFaces+1); // last may or may not be used
+
+        this._vertToParentEdgeInd = null; // only makes sense when net is complete
+        this._topSortedVertInds = null; // only makes sense when net is complete.  TODO: this is root to leaves. maybe reverse, but in any case put that in the var name
+    }
+
+    public Net(Mesh mesh, Mesh dualMesh, int edgeStatuses[])
+    {
+        this(mesh, dualMesh);
+
+        assert_eq(edgeStatuses.length, mesh.edges.size());
+
+        FORI (iEdge, edgeStatuses.length)
+            if (edgeStatuses[iEdge] == CUT)
+                cut(iEdge, true);
+        FORI (iEdge, edgeStatuses.length)
+            if (edgeStatuses[iEdge] == FOLD)
+                fold(iEdge, true);
+
+        if (_nUndecideds == 0)
+            chooseDirections(mesh.verts.size());
+    }
+
+    // Accessors
+    public int nUndecideds()
+    {
+        return this._nUndecideds;
+    }
+    public int getEdgeStatus(int iEdge)
+    {
+        return this._edgeStatuses[iEdge];
+    }
+    // pointer to internal stuff. read-only.
+    public int[] getEdgeStatuses()
+    {
+        return this._edgeStatuses;
+    }
+
+    // This can be called after all edges
+    // have been cut or folded.
+    // Sets and populates _vertToParentEdgeInd and _topSortedVertInds.
+    // _vertToParentEdgeInd[iVert] will point from iVert towards the root vertex.
+    // _topSortedVertInds is in order from root to leafs.
+    // root==mesh.verts.size() means root is the infinite end of all the infinite edges.
+    public void chooseDirections(int root)
+    {
+        int verboseLevel = 0;
+        if (verboseLevel >= 1) System.out.println("    in chooseDirections");
+        if (verboseLevel >= 1) PRINT(root);
+        assert_eq(_nUndecideds, 0);
+
+        int nEdges = _mesh.edges.size();
+        int nVerts = _mesh.verts.size();
+        Mesh.Edge cutsOut[][] = new Mesh.Edge[nVerts+1][]; // cut edges leading out of each vertex
+        {
+            int nCutsOut[] = new int[cutsOut.length]; // zeros initially
+            FORI (iEdge, nEdges)
+                if (_edgeStatuses[iEdge] == CUT)
+                {
+                    Mesh.Edge edge = _mesh.getEdge(iEdge);
+                    Mesh.Vertex v0 = edge.initialVertex();
+                    int i0 = (v0!=null&&v0.weight>0 ? v0.myIndex() : nVerts);
+                    nCutsOut[i0]++;
+                }
+            FORI (iVert, cutsOut.length)
+            {
+                cutsOut[iVert] = new Mesh.Edge[nCutsOut[iVert]];
+                nCutsOut[iVert] = 0; // reset for filling step
+            }
+            FORI (iEdge, nEdges)
+                if (_edgeStatuses[iEdge] == CUT)
+                {
+                    Mesh.Edge edge = _mesh.getEdge(iEdge);
+                    Mesh.Vertex v0 = edge.initialVertex();
+                    int i0 = (v0!=null&&v0.weight>0 ? v0.myIndex() : nVerts);
+                    cutsOut[i0][nCutsOut[i0]++] = edge;
+                }
+            FORI (iVert, cutsOut.length)
+                assert_eq(nCutsOut[iVert], cutsOut[iVert].length);
+        }
+
+        _topSortedVertInds = new int[nVerts+1];
+        _vertToParentEdgeInd = Arrays.fill(nVerts+1, -1);
+
+        boolean isSorted[] = new boolean[nVerts+1]; // all false initially
+        int nSorted = 0;
+        _topSortedVertInds[nSorted++] = root;
+        isSorted[root] = true;
+        FORI (iSorted, nSorted) // while nSorted is growing!
+        {
+            int iVert = _topSortedVertInds[iSorted];
+            FORI (iCutOut, cutsOut[iVert].length)
+            {
+                Mesh.Edge edge = cutsOut[iVert][iCutOut];
+                Mesh.Vertex finalVertex = edge.finalVertex();
+                int jVert = (finalVertex!=null ? finalVertex.myIndex() : nVerts);
+                if (!isSorted[jVert])
+                {
+                    isSorted[jVert] = true;
+                    _topSortedVertInds[nSorted++] = jVert;
+                    _vertToParentEdgeInd[jVert] = edge.opposite().myIndex();
+                }
+            }
+        }
+        if (verboseLevel >= 1) PRINTARRAY(isSorted);
+        if (verboseLevel >= 1) PRINTARRAY(_topSortedVertInds);
+        if (verboseLevel >= 1) PRINTARRAY(_vertToParentEdgeInd);
+        if (verboseLevel >= 1) PRINT(nVerts);
+        if (verboseLevel >= 1) PRINT(nSorted);
+        assert_eq(nSorted, nVerts+1);
+
+        if (verboseLevel >= 1) System.out.println("    out chooseDirections");
+    } // chooseDirections
+
+    // Walk around the boundary of the tree,
+    // traversing both tree edges and things sticking out.
+    private Mesh.Edge nextInTreeOrExit(int treeType, Mesh.Edge edge)
+    {
+        int iEdge = edge.myIndex();
+        Mesh originalMesh = (_mesh.getEdge(iEdge) == edge ? _mesh : _dualMesh);
+        assert_eq(originalMesh.getEdge(iEdge), edge);
+
+        Mesh meshToUse = (treeType==CUT ? _mesh : _dualMesh);
+        edge = meshToUse.getEdge(iEdge); // switch from _mesh to meshToUse
+
+        // advance edge (its index will no longer be iEdge)
+        if (_edgeStatuses[iEdge] == treeType)
+            edge = edge.next();
+        else
+            edge = edge.opposite().next(); // next spoke
+
+        // switch back from meshToUse to original mesh
+        edge = originalMesh.getEdge(edge.myIndex());
+
+        return edge;
+    }
+
+    // next in either cut tree or fold tree.
+    // tree need not be complete.
+    // if edge is from dual mesh, return something from dual mesh.
+    public Mesh.Edge nextInTree(Mesh.Edge edge)
+    {
+        int treeType = _edgeStatuses[edge.myIndex()];
+        do {
+            edge = nextInTreeOrExit(treeType, edge);
+        } while (_edgeStatuses[edge.myIndex()] != treeType);
+        return edge;
+    }
+
+    // If iEdge is a cut, return a list of all the folds
+    // that are alternate exits out of the same lagoon (in same direction),
+    // in CCW order around the lagoon.
+    // If iEdge is a fold, do the dual thing in the dual mesh,
+    // resulting in "forward" order (i.e. edge to its next CCW around face, roughly).
+    public int[] findAlternatives(int iEdge)
+    {
+        assert_eq(_nUndecideds, 0);
+        Mesh meshToUse = (_edgeStatuses[iEdge]==CUT ? _mesh : _dualMesh);
+        int nVerts = meshToUse.verts.size();
+        int nEdges = meshToUse.edges.size();
+
+        Mesh.Edge edge = meshToUse.getEdge(iEdge);
+        Mesh.Vertex v0 = edge.initialVertex();
+        Mesh.Vertex v1 = edge.finalVertex();
+        int i0 = (v0!=null ? v0.myIndex() : nVerts);
+        int i1 = (v1!=null ? v1.myIndex() : nVerts);
+
+        int oEdge = edge.opposite().myIndex();
+        assert_eq(_edgeStatuses[oEdge], _edgeStatuses[iEdge]);
+
+
+        // could do it in O(n) instead of O(n alpha(n))... whatever
+        MergeFind mergeFind = new MergeFind(nVerts+1);
+        FORI (jEdge, nEdges)
+        {
+            if (_edgeStatuses[jEdge] == _edgeStatuses[iEdge]
+             && jEdge != iEdge
+             && jEdge != oEdge)
+            {
+                Mesh.Edge edgeJ = meshToUse.getEdge(jEdge);
+                Mesh.Vertex w0 = edgeJ.initialVertex();
+                Mesh.Vertex w1 = edgeJ.finalVertex();
+                int j0 = (w0!=null ? w0.myIndex() : meshToUse.verts.size());
+                int j1 = (w1!=null ? w1.myIndex() : meshToUse.verts.size());
+                mergeFind.merge(j0, j1);
+            }
+        }
+        int results[] = new int[nEdges];
+        int nResults = 0;
+
+        int treeType = _edgeStatuses[iEdge];
+        for (Mesh.Edge edgeJ = edge.opposite(); // just before entering lagoon
+             edgeJ != edge;
+             edgeJ = nextInTreeOrExit(treeType, edgeJ))
+        {
+            int jEdge = edgeJ.myIndex();
+            if (_edgeStatuses[jEdge] != treeType) // if it's an exit rather than a tree edge
+            {
+                Mesh.Vertex w0 = meshToUse.getEdge(jEdge).initialVertex();
+                Mesh.Vertex w1 = meshToUse.getEdge(jEdge).finalVertex();
+                int j0 = (w0!=null ? w0.myIndex() : meshToUse.verts.size());
+                int j1 = (w1!=null ? w1.myIndex() : meshToUse.verts.size());
+                if (mergeFind.find(j0) == mergeFind.find(i0)
+                 && mergeFind.find(j1) == mergeFind.find(i1))
+                {
+                    // note edgeJ isn't necessarily the actual alternative since it's on meshToUse
+                    // which isn't necessarily _mesh; however its index is correct.
+                    // result is NOT necessarily edgeJ since meshToUse isn't necessarily _mesh.
+                    results[nResults++] = jEdge;
+                }
+            }
+        }
+
+        results = (int[])Arrays.subarray(results, 0, nResults);
+        return results;
+    } // findAlternatives()
+
+    // TODO: need incremental version of this too
+    // TODO: who varnishes?  make that more clear and perhaps principled.  oh, that's chooseDirections().
+    public double[][] computeMomentAndWeightStrictlyBelowEachVertexInitially()
+    {
+        assert(_topSortedVertInds != null); // only call this when net is complete and varnished
+        assert(_vertToParentEdgeInd != null); // only call this when net is complete and varnished
+
+        int nVerts = _mesh.verts.size();
+        double momentAndWeightStrictlyBelowEachVertex[][] = new double[nVerts][3]; // initially zeros
+        FORIDOWN(iiChild, _topSortedVertInds.length) // leaves to roots
+        {
+            int iChild = _topSortedVertInds[iiChild];
+            if (iChild == nVerts)
+                continue; // it's the infinite vertex, i.e. the root
+            Mesh.Vertex child = _mesh.getVert(iChild);
+            int parentEdgeInd = _vertToParentEdgeInd[iChild];
+            if (parentEdgeInd != -1)
+            {
+                  Mesh.Edge parentEdge = _mesh.getEdge(parentEdgeInd);
+                  Mesh.Vertex parent = parentEdge.finalVertex();
+                  if (parent != null)
+                  {
+                      int iParent = parent.myIndex();
+                      GeomUtils.accumulateMomentAndArea(momentAndWeightStrictlyBelowEachVertex[iParent],
+                                                        momentAndWeightStrictlyBelowEachVertex[iChild]);
+                      GeomUtils.accumulateMomentAndArea(momentAndWeightStrictlyBelowEachVertex[iParent],
+                                                        child.momentAndArea);
+                  }
+            }
+        }
+        return momentAndWeightStrictlyBelowEachVertex;
+    } // computeMomentAndWeightStrictlyBelowEachVertexInitially
+
+    // TODO: need incremental version of this too
+    public int figureOutWhatsOffBalanceInitially(double momentAndWeightStrictlyBelowEachVertex[][], // in
+                                                 boolean edgeIsOffBalanceCut[], // out
+                                                  int offBalanceCuts[]) // out
+    {
+        int nVerts = _mesh.verts.size();
+        int nEdges = _mesh.edges.size();
+        assert(edgeIsOffBalanceCut.length == nEdges);
+        assert(offBalanceCuts.length == nEdges);
+        VecMath.fillvec(edgeIsOffBalanceCut, false);
+        int nOffBalanceCuts = 0;
+        FORI (iVert, nVerts)
+        {
+            double momentAndWeightStrictlyBelowVertex[] = momentAndWeightStrictlyBelowEachVertex[iVert];
+            double weightStrictlyBelowVertex = momentAndWeightStrictlyBelowVertex[2];
+            if (weightStrictlyBelowVertex != 0.)
+            {
+                int iEdge = _vertToParentEdgeInd[iVert];
+                if (iEdge == -1)
+                    continue; // this is the root / highest node
+                Mesh.Edge edge = _mesh.getEdge(iEdge);
+                Mesh.Vertex vert = edge.initialVertex();
+                assert_eq(vert.myIndex(), iVert);
+                if (vert.weight < 0.)
+                    continue; // "nodes on the boundary are automatically ok" (what did this mean exactly?)
+                double centerX = momentAndWeightStrictlyBelowVertex[0] / weightStrictlyBelowVertex;
+                double centerY = momentAndWeightStrictlyBelowVertex[1] / weightStrictlyBelowVertex;
+                if (GT(edge.direction[0] * (centerX - vert.x())
+                     + edge.direction[1] * (centerY - vert.y()), 0., 1e-6)) // XXX is this a reasonable tolerance?
+                {
+                    edgeIsOffBalanceCut[edge.myIndex()] = true;
+                    edgeIsOffBalanceCut[edge.opposite().myIndex()] = true;
+                    offBalanceCuts[nOffBalanceCuts++] = iEdge;
+                    //OUT("                  edge at vert "+iVert+" is off balance!");
+                }
+                else
+                {
+                    //OUT("                  edge at vert "+iVert+" is balanced");
+                }
+            }
+        }
+        return nOffBalanceCuts;
+    } // figureOutWhatsOffBalanceInitially
+
+    // Net must be complete (i.e. _nUndecideds==0) and chooseDirections() must have been called.
+    public boolean makeGood(int maxSwaps, java.util.Random generator, Listenable.Boolean keepGoing)
+    {
+        int verboseLevel = 1;
+        if (verboseLevel >= 1) OUT("    in makeGood");
+        if (_vertToParentEdgeInd == null)
+        {
+            if (verboseLevel >= 1) OUT("    out makeGood, returning false (oops, net wasn't complete)");
+            return false;
+        }
+
+        int nVerts = _mesh.verts.size();
+        int nEdges = _mesh.edges.size();
+
+        int nSwapsDone = 0;
+        while (true)
+        {
+            synchronized(keepGoing)
+            {
+                if (!keepGoing.get())
+                {
+                    if (verboseLevel >= 1) OUT("    out makeGood, returning false (animation stopped, I guess)");
+                    return false;
+                }
+            }
+            if (verboseLevel >= 2) OUT("          top of loop: nSwapsDone = "+nSwapsDone+"/"+maxSwaps);
+
+            if (verboseLevel >= 2) OUT("              computing moment-and-weight strictly below each vertex");
+            // TODO: make incremental
+            double momentAndWeightStrictlyBelowEachVertex[][] = computeMomentAndWeightStrictlyBelowEachVertexInitially();
+
+            if (verboseLevel >= 2) OUT("              figuring out what's balanced");
+            boolean edgeIsOffBalanceCut[] = new boolean[nEdges];
+            int offBalanceCuts[] = new int[nEdges];
+            // TODO: make incremental
+            int nOffBalanceCuts = figureOutWhatsOffBalanceInitially(momentAndWeightStrictlyBelowEachVertex, edgeIsOffBalanceCut, offBalanceCuts);
+
+            if (verboseLevel >= 2) OUT("              nOffBalanceCuts = "+nOffBalanceCuts);
+            if (verboseLevel >= 2) OUT("              offBalanceCuts = "+VecMath.toString((int[])Arrays.subarray(offBalanceCuts,0,nOffBalanceCuts)));
+            if (nOffBalanceCuts == 0)
+            {
+                if (verboseLevel >= 1) OUT("      nSwapsDone = "+nSwapsDone);
+                if (verboseLevel >= 1) OUT("    out makeGood, returning true (succeeded!)");
+                return true;
+            }
+            if (nSwapsDone == maxSwaps)
+            {
+                if (verboseLevel >= 1) OUT("      nSwapsDone = "+nSwapsDone);
+                if (verboseLevel >= 1) OUT("    out makeGood, returning false (failed!)");
+                return false;
+            }
+
+            // Take a random off-balance cut,
+            // and swap it with a random alternative.
+            // CBB: there must be at least one good alternative, but take any alternative for now.
+
+            int cutToSwap = offBalanceCuts[generator.nextInt(nOffBalanceCuts)];
+            if (verboseLevel >= 2) OUT("              picked cutToSwap e"+cutToSwap);
+            int cutAlternatives[] = findAlternatives(cutToSwap);
+            if (verboseLevel >= 2) OUT("              cutAlternatives = "+VecMath.toString(cutAlternatives));
+            int foldToSwap = cutAlternatives[generator.nextInt(cutAlternatives.length)];
+            if (verboseLevel >= 2) OUT("              picked foldToSwap e"+foldToSwap);
+
+            if (verboseLevel == 1) OUT("          nSwapsDone="+nSwapsDone+"/"+maxSwaps+" "+nOffBalanceCuts+" bad cuts: "+VecMath.toString((int[])Arrays.subarray(offBalanceCuts,0,nOffBalanceCuts))+" -> e"+cutToSwap+"; "+cutAlternatives.length+" alternative folds: "+VecMath.toString(cutAlternatives)+" -> e"+foldToSwap);
+
+            // CBB: O(n), can't be doing that here!
+            if (verboseLevel >= 2) OUT("              calling swapCutAndFold");
+            swapCutAndFold(cutToSwap, foldToSwap);
+            if (verboseLevel >= 2) OUT("              returned from swapCutAndFold");
+
+            nSwapsDone++;
+        }
+    } // makeGood
+
+    // Make the cut a fold, and vice-versa.
+    // The result must still be a tree. (I.e. only call this if each is in findAlternatives() of the other).
+    // In the worst case this has to be O(n),
+    // so we don't think too hard, we just do it in O(n) (actually O(n alpha(n))).
+    public void swapCutAndFold(int iCut, int iFold)
+    {
+        // must have called chooseDirections already...
+        assert(_vertToParentEdgeInd != null);
+        assert(_topSortedVertInds != null);
+
+        if (_edgeStatuses[iCut] == FOLD)
+        {
+            int temp;
+            SWAP(iCut, iFold, temp);
+        }
+        Mesh.Edge cut = _mesh.getEdge(iCut);
+        Mesh.Edge fold = _mesh.getEdge(iFold);
+        int oCut = cut.opposite().myIndex();
+        int oFold = fold.opposite().myIndex();
+        assert_eq(_edgeStatuses[iCut], CUT);
+        assert_eq(_edgeStatuses[oCut], CUT);
+        assert_eq(_edgeStatuses[iFold], FOLD);
+        assert_eq(_edgeStatuses[oFold], FOLD);
+
+        {
+            // check that the fold connects the same two components
+            // that are disconnected by removing the cut.
+            // Don't think too hard, just do this with a simple merge-find thing
+            // (even though we could do it in O(n)... whatever)
+
+            int nVerts = _mesh.verts.size();
+            int nEdges = _mesh.edges.size();
+            MergeFind mergeFind = new MergeFind(nVerts+1);
+            FORI (iEdge, nEdges)
+            {
+                if (_edgeStatuses[iEdge] == CUT
+                 && iEdge != iCut
+                 && iEdge != oCut)
+                {
+                    Mesh.Edge edge = _mesh.getEdge(iEdge);
+                    Mesh.Vertex v0 = edge.initialVertex();
+                    Mesh.Vertex v1 = edge.finalVertex();
+                    int i0 = (v0!=null ? v0.myIndex() : nVerts);
+                    int i1 = (v1!=null ? v1.myIndex() : nVerts);
+                    mergeFind.merge(i0, i1);
+                }
+            }
+
+            {
+                Mesh.Vertex v0 = cut.initialVertex();
+                Mesh.Vertex v1 = cut.finalVertex();
+                int i0 = (v0!=null ? v0.myIndex() : nVerts);
+                int i1 = (v1!=null ? v1.myIndex() : nVerts);
+                assert_ne(mergeFind.find(i0), mergeFind.find(i1)); // logically true since we're starting with a tree
+            }
+            {
+                Mesh.Vertex v0 = fold.initialVertex();
+                Mesh.Vertex v1 = fold.finalVertex();
+                int i0 = (v0!=null ? v0.myIndex() : nVerts);
+                int i1 = (v1!=null ? v1.myIndex() : nVerts);
+                assert_ne(mergeFind.find(i0), mergeFind.find(i1)); // make sure it's a legal alternative
+            }
+        }
+
+        _edgeStatuses[iCut] = FOLD;
+        _edgeStatuses[oCut] = FOLD;
+        _edgeStatuses[iFold] = CUT;
+        _edgeStatuses[oFold] = CUT;
+
+        // nCuts,nFolds stay the same
+        
+        int root = _topSortedVertInds[0];
+        // CBB: eek! surely directions can be fixed up more quickly than O(n)
+        chooseDirections(root);
+    } // swapCutAndFold
+
+    // XXX TODO: is this necessary? should be automatically tracking cuttability now using the andForcedFolds stuff
+    public boolean cuttable(int iEdge)
+    {
+        if (_edgeStatuses[iEdge] != UNDECIDED)
+            return false;
+        Mesh.Edge edge = _mesh.getEdge(iEdge);
+        Mesh.Vertex v0 = edge.initialVertex();
+        Mesh.Vertex v1 = edge.finalVertex();
+        int i0 = (v0!=null ? v0.myIndex() : _mesh.verts.size());
+        int i1 = (v1!=null ? v1.myIndex() : _mesh.verts.size());
+        return _vertComponents.find(i0)
+            != _vertComponents.find(i1);
+    }
+    public boolean foldable(int iEdge)
+    {
+        if (_edgeStatuses[iEdge] != UNDECIDED)
+            return false;
+        Mesh.Edge edge = _dualMesh.getEdge(iEdge);
+        Mesh.Vertex f0 = edge.initialVertex();
+        Mesh.Vertex f1 = edge.finalVertex();
+        int i0 = (f0!=null ? f0.myIndex() : _dualMesh.verts.size());
+        int i1 = (f1!=null ? f1.myIndex() : _dualMesh.verts.size());
+        return _faceComponents.find(i0)
+            != _faceComponents.find(i1);
+    }
+    // O(n), has to rebuild everything
+    public void uncut(int iEdge)
+    {
+        assert_eq(_edgeStatuses[iEdge], CUT);
+        
+        // Unfortunately, need to tear everything down
+        // and rebuild the merge-find structures.
+        {
+            int nEdges = _mesh.edges.size();
+            int nVerts = _mesh.verts.size();
+            int nFaces = _dualMesh.verts.size();
+
+            int newEdgeStatuses[] = VecMath.copyvec(_edgeStatuses);
+            newEdgeStatuses[iEdge] = UNDECIDED;
+            newEdgeStatuses[_mesh.getEdge(iEdge).opposite().myIndex()] = UNDECIDED;
+
+            VecMath.fillvec(_edgeStatuses, UNDECIDED);
+            _nFolds = 0;
+            _nCuts = 0;
+            _nUndecideds = nEdges;
+            _vertComponents = new SizeTrackingMergeFind(nVerts+1);
+            _faceComponents = new SizeTrackingMergeFind(nFaces+1);
+
+            // now it's all clear (maybe need a clear() or reset()?)
+
+            FORI (jEdge, newEdgeStatuses.length)
+                if (newEdgeStatuses[jEdge] == CUT)
+                    cut(jEdge, true);
+        }
+
+        _vertToParentEdgeInd = null; // only makes sense when net is complete
+        _topSortedVertInds = null; // only makes sense when net is complete
+    }
+    public void cut(int iEdge, boolean andForcedFolds)
+    {
+        if (_edgeStatuses[iEdge] == CUT)
+            return;
+
+        assert(cuttable(iEdge)); // redundant with checks below, but exercises it
+
+        Mesh.Edge edge = _mesh.getEdge(iEdge);
+        int oEdge = edge.opposite().myIndex();
+
+        assert_eq(_edgeStatuses[iEdge], UNDECIDED);
+        assert_eq(_edgeStatuses[oEdge], UNDECIDED);
+        _edgeStatuses[iEdge] = CUT;
+        _edgeStatuses[oEdge] = CUT;
+        _nUndecideds -= 2;
+        _nCuts += 2;
+
+        Mesh.Vertex v0 = edge.initialVertex();
+        Mesh.Vertex v1 = edge.finalVertex();
+        int i0 = (v0!=null ? v0.myIndex() : _mesh.verts.size());
+        int i1 = (v1!=null ? v1.myIndex() : _mesh.verts.size());
+        assert_ne(_vertComponents.find(i0),
+                  _vertComponents.find(i1));
+
+        if (andForcedFolds)
+        {
+            // After setting status
+            // but before merging,
+            // walk around the *smaller* of the two vert components
+            // and fold any edges (other than iEdge itself)
+            // between the two components we're about to merge.
+            // Choosing the smaller guarantees time O(n log(n))
+            // for constructing the whole tree
+            // (well, maybe more in the case of a very-large-arity vert).
+            // 
+            Mesh.Edge towardsSmaller;
+            int biggerComponentLeader;
+            int smallerComponentLeader;
+            if (_vertComponents.size(i0) < _vertComponents.size(i1))
+            {
+                towardsSmaller = edge.opposite();
+                biggerComponentLeader = _vertComponents.find(i1);
+                smallerComponentLeader = _vertComponents.find(i0);
+            }
+            else
+            {
+                towardsSmaller = edge;
+                biggerComponentLeader = _vertComponents.find(i0);
+                smallerComponentLeader = _vertComponents.find(i1);
+            }
+            for (Mesh.Edge nextEdge = nextInTreeOrExit(CUT, towardsSmaller);
+                 nextEdge != towardsSmaller.opposite();
+                 nextEdge = nextInTreeOrExit(CUT, nextEdge))
+            {
+                if (_edgeStatuses[nextEdge.myIndex()] == UNDECIDED) // it's an exit, and it hasn't already been decided to be a fold
+                {
+                    int jEdge = nextEdge.myIndex();
+                    Mesh.Vertex w0 = nextEdge.initialVertex();
+                    Mesh.Vertex w1 = nextEdge.finalVertex();
+                    int j0 = (w0!=null ? w0.myIndex() : _mesh.verts.size());
+                    int j1 = (w1!=null ? w1.myIndex() : _mesh.verts.size());
+                    assert_eq(_vertComponents.find(j0), smallerComponentLeader);
+                    if (_vertComponents.find(j1) == biggerComponentLeader)
+                    {
+                        fold(jEdge, false);
+                    }
+                }
+            }
+        }
+
+        _vertComponents.merge(i0, i1);
+
+        // TODO:
+        // for each undecided edge out of v0 or v1
+        //     if it's to same component
+        //         fold it
+        // eek, need to do this for entire component! argh!
+        // or, at least, entire smaller of the two components before the merge.
+        // total O(n log n)
+
+    } // cut
+    public void fold(int iEdge, boolean andForcedCuts)
+    {
+        if (_edgeStatuses[iEdge] == FOLD)
+            return;
+
+        assert(foldable(iEdge)); // redundant with checks below, but exercises it
+
+        Mesh.Edge dualEdge = _dualMesh.getEdge(iEdge);
+        int oEdge = dualEdge.opposite().myIndex();
+
+        assert_eq(_edgeStatuses[iEdge], UNDECIDED);
+        _edgeStatuses[iEdge] = FOLD;
+        _edgeStatuses[oEdge] = FOLD;
+        _nUndecideds -= 2;
+        _nFolds += 2;
+
+        Mesh.Vertex f0 = dualEdge.initialVertex();
+        Mesh.Vertex f1 = dualEdge.finalVertex();
+        int i0 = (f0!=null ? f0.myIndex() : _dualMesh.verts.size());
+        int i1 = (f1!=null ? f1.myIndex() : _dualMesh.verts.size());
+        assert_ne(_faceComponents.find(i0),
+                  _faceComponents.find(i1));
+
+        if (andForcedCuts)
+        {
+            // Note, I'm just doing this blindly,
+            // using the code copied from cut() with cut changed to fold and vice-versa
+
+            // After setting status
+            // but before merging,
+            // walk around the *smaller* of the two face components
+            // and fold any edges (other than iEdge itself)
+            // between the two components we're about to merge.
+            // Choosing the smaller guarantees time O(n log(n))
+            // for constructing the whole tree
+            // (well, maybe more in the case of a very-large-arity vert).
+            // 
+            Mesh.Edge towardsSmaller;
+            int biggerComponentLeader;
+            int smallerComponentLeader;
+            if (_faceComponents.size(i0) < _faceComponents.size(i1))
+            {
+                towardsSmaller = dualEdge.opposite();
+                biggerComponentLeader = _faceComponents.find(i1);
+                smallerComponentLeader = _faceComponents.find(i0);
+            }
+            else
+            {
+                towardsSmaller = dualEdge;
+                biggerComponentLeader = _faceComponents.find(i0);
+                smallerComponentLeader = _faceComponents.find(i1);
+            }
+            for (Mesh.Edge nextEdge = nextInTreeOrExit(FOLD, towardsSmaller);
+                 nextEdge != towardsSmaller.opposite();
+                 nextEdge = nextInTreeOrExit(FOLD, nextEdge))
+            {
+                if (_edgeStatuses[nextEdge.myIndex()] == UNDECIDED) // it's an exit, and it hasn't already been decided to be a fold
+                {
+                    int jEdge = nextEdge.myIndex();
+                    Mesh.Vertex w0 = nextEdge.initialVertex();
+                    Mesh.Vertex w1 = nextEdge.finalVertex();
+                    int j0 = (w0!=null ? w0.myIndex() : _mesh.verts.size());
+                    int j1 = (w1!=null ? w1.myIndex() : _mesh.verts.size());
+                    assert_eq(_faceComponents.find(j0), smallerComponentLeader);
+                    if (_faceComponents.find(j1) == biggerComponentLeader)
+                    {
+                        cut(jEdge, false);
+                    }
+                }
+            }
+        }
+
+        _faceComponents.merge(i0, i1);
+    } // fold
+
+
+
+    private Mesh _mesh;
+    private Mesh _dualMesh;
+
+    public static final int UNDECIDED = -1;
+    public static final int FOLD = 0;
+    public static final int CUT = 1;
+    private int _nFolds, _nCuts, _nUndecideds;
+    private int _edgeStatuses[];
+    private SizeTrackingMergeFind _vertComponents;
+    private SizeTrackingMergeFind _faceComponents;
+
+    // These get set by chooseDirections().
+    // They should be considered publicly read-only.
+    // (TODO: make accessors for them?)
+    public int _vertToParentEdgeInd[];
+    public int _topSortedVertInds[];
+
+} // class Net
+
+

@@ -54,6 +54,14 @@ CLASSES = \
         MyGraphics.class \
         MyGraphics3D.class \
         Misc.class \
+        ExactTrig.class \
+        GeomUtils.class \
+        SymmetryUtils.class \
+        SizeTrackingMergeFind.class \
+        SymmetryUtils.class \
+        Mesh.class \
+        MeshUtils.class \
+        Net.class \
         Surface.class \
         ShephardsPlayApplet.class \
         PoincareDiskIsometry.class \

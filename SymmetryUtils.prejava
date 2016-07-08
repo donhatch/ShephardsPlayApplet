@@ -1,0 +1,316 @@
+#include "macros.h"
+
+import com.donhatchsw.util.Arrays;
+import com.donhatchsw.util.VecMath;
+
+class SymmetryUtils {
+
+
+
+
+    // Note, it turns out this is only called with leftRightSymmetry=false, currently...
+    // i.e. it always returns a quad, not a triangle.
+    public static double[][] getFundamentalRegionVerts(int p, int q, boolean leftRightSymmetry)
+    {
+        assert(p >= 2);
+        assert(q >= 2);
+        assert((p-2)*(q-2) < 4);
+        double answer[][];
+
+        // Verts of schwarz triangle:
+        //     V2 = +z axis, angle pi/p
+        //     V0 = between +z and +y axis, angle pi/q
+        //     V1 = somewhere in +x +y +z, angle pi/2
+        // By https://en.wikipedia.org/wiki/Solution_of_triangles#Three_angles_given_.28spherical_AAA.29,
+        // the corresponding spherical side lengths are:
+        //     S01 = acos((cos(pi/p) + cos(pi/q)cos(pi/2)) / (sin(pi/q)sin(pi/2)))
+        //         = acos((cos(pi/p) / sin(pi/q))
+        //     S12 = acos((cos(pi/q) + cos(pi/2)cos(pi/p)) / (sin(pi/2)sin(pi/p)))
+        //         = acos((cos(pi/q) / sin(pi/p))
+        //         = (pi-dihedral{p,q})/2
+        //     S20 = acos((cos(pi/2) + cos(pi/p)cos(pi/q)) / (sin(pi/p)sin(pi/q))
+        //         = acos(cos(pi/p)cos(pi/q) / (sin(pi/p)sin(pi/q))
+        //         = acos(cot(pi/p)cot(pi/q))
+        double cosSqrdS12 = ExactTrig.cosSquaredPiTimes(1,q) / ExactTrig.sinSquaredPiTimes(1,p);
+        double cosS12 = Math.sqrt(cosSqrdS12);
+        double sinS12 = Math.sqrt(1.-cosSqrdS12);
+        double cosSqrdS20 = ExactTrig.cotSquaredPiTimes(1,p) * ExactTrig.cotSquaredPiTimes(1,q);  // increases with p,q
+        double cosS20 = Math.sqrt(cosSqrdS20);
+        double sinS20 = Math.sqrt(1.-cosSqrdS20);
+
+        double V2[] = {0,0,1};
+        // V1 is: +z axis, rotated +z->+y by s12, rotated +y->+x by pi/p
+        // = {0,cosS12,sinS12} rotated +y->+x by pi/p
+        double V1[] = VecMath.vxm(new double[]{0,sinS12,cosS12},
+                                  VecMath.makeRowRotMat(3, 1, 0, Math.PI/p));
+        // V0 is: +z axis, rotated +z->+y by S20
+        double V0[] = {0,sinS20,cosS20};
+
+
+        if (leftRightSymmetry)
+        {
+            // fundamental region is a triangle
+            return new double[][] {V2, V1, V0};
+        }
+        else
+        {
+            // fundamental region is a quad
+            return new double[][] {V2, V1, V0, new double[]{-V1[0],V1[1],V1[2]}};
+        }
+    } // getFundamentalRegionVerts
+
+    // 3d symmetry groups.
+    // Rotation of order p around z axis,
+    // and rotation of order q around some point between the +z and +y axis.
+    // Note, we don't return a minimal set;
+    // rather, we add in mathematically redundant generators
+    // for all powers of p and q, since the math for generating them
+    // is a bit more accurate than we'd get by products of the minimal set of generators.
+    //
+    // Instead of returning a flat list, we return a list of sub-lists;
+    // each of the sub-lists are assumed to be powers of a single generator,
+    // so there's no need to try more than one thing out of a given sub-list consecutively.
+    //
+    private static double[][][/*4*/][/*4*/] computeSymmetryGroupGenerators3d(int p, int q, boolean leftRightSymmetry, boolean sphereCentralSymmetry)
+    {
+        double genGroups[][][][] = new double[0][][][];
+
+        // add reflection first, so it will get favored when generating,
+        // since multiplying by it doesn't add any roundoff error.
+        if (leftRightSymmetry)
+            genGroups = (double[][][][])Arrays.append(genGroups, new double[][][]{{{-1,0,0,0},{0,1,0,0},{0,0,1,0},{0,0,0,1}}});
+
+        if (sphereCentralSymmetry)
+            genGroups = (double[][][][])Arrays.append(genGroups, new double[][][]{{{-1,0,0,0},{0,-1,0,0},{0,0,-1,0},{0,0,0,1}}});
+
+
+
+        if (p > 1)
+        {
+            genGroups = (double[][][][])Arrays.append(genGroups, new double[p-1][][]);
+            double subGens[][][] = genGroups[genGroups.length-1];
+
+            for (int i = 1; i < p; ++i) // skip 0
+            {
+                double c = ExactTrig.cosPiTimes(2*i,p); // cos(2*pi * i/p)
+                double s = ExactTrig.sinPiTimes(2*i,p); // sin(2*pi * i/p)
+                double gen[][] = {
+                    { c,s,0,0},
+                    {-s,c,0,0},
+                    { 0,0,1,0},
+                    { 0,0,0,1},
+                };
+                subGens[i-1] = gen;
+            }
+        }
+        if (q > 1)
+        {
+            genGroups = (double[][][][])Arrays.append(genGroups, new double[q-1][][]);
+            double subGens[][][] = genGroups[genGroups.length-1];
+
+            // The rotation of order p is centered on the z axis;
+            // where do we want to center the rotation of order q?
+            // Figure out the cosine and sine of the tilt,
+            // that is, distance from vert to face center of spherical {p,q}.
+            double cosSqrdTilt = MIN(p,q)==1 ? 1. : // angle = 0; just produce identity matrix so no effect   XXX think about this again
+                                 ExactTrig.cotSquaredPiTimes(1,p)*ExactTrig.cotSquaredPiTimes(1,q);
+            double cosTilt = Math.sqrt(cosSqrdTilt);
+            double sinTilt = Math.sqrt(1.-cosSqrdTilt);
+            // tilt from +z towards +y
+            double tiltMat[][] = {
+                {1,      0,       0,0},
+                {0,cosTilt,-sinTilt,0},
+                {0,sinTilt, cosTilt,0},
+                {0,      0,       0,1},
+            };
+            for (int i = 1; i < q; ++i) // skip 0
+            {
+                double c = ExactTrig.cosPiTimes(2*i,q); // cos(2*pi * i/q)
+                double s = ExactTrig.sinPiTimes(2*i,q); // sin(2*pi * i/q)
+                double gen[][] = {
+                    { c,s,0,0},
+                    {-s,c,0,0},
+                    { 0,0,1,0},
+                    { 0,0,0,1},
+                };
+                gen = VecMath.mxmxm(VecMath.transpose(tiltMat), gen, tiltMat);
+                subGens[i-1] = gen;
+            }
+        }
+
+        return genGroups;
+    } // computeSymmetryGroupGenerators3d
+
+    // 3d symmetry groups that hold origin fixed.
+    // rotation of order p around z axis,
+    // and rotation of order q around some point between the +z and +y axis.
+    public static double[][/*4*/][/*4*/] computeSymmetryGroup3d(int p, int q, boolean leftRightSymmetry, boolean sphereCentralSymmetry, boolean repeatSymmetryWorkInProgress)
+    {
+        double gens[][][][] = computeSymmetryGroupGenerators3d(p, q, leftRightSymmetry, sphereCentralSymmetry);
+
+        if (false)
+            System.out.println("gens = "+Arrays.toStringNonCompact(gens,
+                                                                   "", // indentString
+                                                                   "    "));  // indentIncr
+
+        int nExpected = (MIN(p,q) == 1 ? MAX(p,q) :
+                         MIN(p,q) == 2 ? 2*MAX(p,q) :
+                         MIN(p,q)==3 && MAX(p,q)==3 ? 12 :
+                         MIN(p,q)==3 && MAX(p,q)==4 ? 24 :
+                         MIN(p,q)==3 && MAX(p,q)==5 ? 60 : -1);
+        assert(nExpected != -1);
+        if (leftRightSymmetry)
+            nExpected *= 2;
+        if (sphereCentralSymmetry)
+            nExpected *= 2;
+        // In some cases, leftRightSymmetry is redundant with sphereCentralSymmetry.
+        // I don't know of any rhyme or reason to this, it just is.
+        if (leftRightSymmetry && sphereCentralSymmetry)
+            if ((MIN(p,q)==2 && MAX(p,q)%2==0) || MIN(p,q)==3&&MAX(p,q)>=4)
+            {
+                nExpected /= 2;
+            }
+
+        double group[][][] = new double[nExpected][4][4];
+        int lastSubgroupIndex[] = new int[group.length];
+
+        int n = 0;
+        VecMath.identitymat(group[n]);
+        lastSubgroupIndex[n] = -1; // so nothing will match it
+        n++;
+
+        double scratch[][] = new double[4][4];
+        FORI (i, n) // while n is growing
+        {
+            FORI (iSubgroup, gens.length)
+            {
+                if (iSubgroup == lastSubgroupIndex[i])
+                    continue; // no need to look at two in a row from the same subgroup
+                double subgroupGens[][][] = gens[iSubgroup];
+                FORI (iGen, subgroupGens.length)
+                {
+                    VecMath.mxm(scratch, subgroupGens[iGen], group[i]); // or other order? not sure it matters
+                    int j;
+                    FOR (j, n)
+                        if (VecMath.equals(scratch, group[j], 1e-3))
+                            break;
+                    if (j == n) // if didn't find it
+                    {
+                        VecMath.copymat(group[n], scratch);
+                        lastSubgroupIndex[n] = iSubgroup;
+                        n++;
+                    }
+                }
+            }
+        }
+        assert_eq(n, group.length);
+
+        if (repeatSymmetryWorkInProgress)
+        {
+            // WORK IN PROGRESS
+            // Experiment with planar repeat.
+            int r = 2;
+            double tileWidth = 1.;
+            int multiplicity = SQR(2*r+1);
+            double bigGroup[][][] = new double[group.length * multiplicity][4][4];
+            int N = 0;
+            int nReps = 10;
+            for (int ix = -2; ix <= 2; ++ix)
+            for (int iy = -2; iy <= 2; ++iy)
+            {
+                double translation[][] = {
+                    {1,0,0,0},
+                    {0,1,0,0},
+                    {0,0,1,0},
+                    {ix*tileWidth,iy*tileWidth,0,1},
+                };
+                FORI (iGroup, group.length)
+                    VecMath.mxm(bigGroup[N++], group[iGroup], translation);
+            }
+            assert(N == bigGroup.length);
+            group = bigGroup;
+        }
+        return group;
+    } // computeSymmetryGroup3d
+
+    public static double[][/*4*/][/*4*/] getSymmetryGroup(int p, int q, boolean leftRight, boolean sphereCentral,  boolean wrapAroundSphereFlag, double wrapSphereCurvature, boolean centerSphereFlag, boolean repeatSymmetryWorkInProgress)
+    {
+        double group[][][] = computeSymmetryGroup3d(p, q, leftRight, sphereCentral, repeatSymmetryWorkInProgress);
+
+        if (!centerSphereFlag) // XXX TODO: wait a minute, this test can't be right when not wrapped, can it?
+        {
+            // un-center the symmetry group
+            double wrapSphereRadius = 1./wrapSphereCurvature;
+            double originToSphereCenter[][] = {
+                {1,0,0,0},
+                {0,1,0,0},
+                {0,0,1,0},
+                {0,0,-wrapSphereRadius,1},
+            };
+            double sphereCenterToOrigin[][] = {
+                {1,0,0,0},
+                {0,1,0,0},
+                {0,0,1,0},
+                {0,0,wrapSphereRadius,1},
+            };
+            FORI (iGroup, group.length)
+            {
+                group[iGroup] = VecMath.mxmxm(sphereCenterToOrigin,
+                                              group[iGroup],
+                                              originToSphereCenter);
+            }
+        }
+        if (!wrapAroundSphereFlag)
+        {
+            // unwrap the symmetry group
+            double wrapMat[][] = GeomUtils.getWrapAroundSphereMatrix(wrapSphereCurvature, centerSphereFlag);
+            double unwrapMat[][] = GeomUtils.getUnwrapAroundSphereMatrix(wrapSphereCurvature, centerSphereFlag);
+            FORI (iGroup, group.length)
+                group[iGroup] = VecMath.mxmxm(wrapMat,
+                                              group[iGroup],
+                                              unwrapMat);
+        }
+        return group;
+    } // getTheSymmetryGroup
+
+    // does at most each vert generator times each xform, omitting dups.
+    //  CBB: should use a fuzzy point hash table if a lot of verts and/or xforms.
+    public static double[][] generateVertices(double vertGenerators[][],
+                                              double xforms[][][])
+    {
+        OUT("    in generateVertices");
+        double tol = 1e-9;
+        double verts[][] = new double[vertGenerators.length*xforms.length][4];
+        int nVerts = 0;
+        double vert4in[] = {0,0,0,1};
+        double vert4out[] = new double[4];
+        double vert3out[] = new double[3];
+
+        FORI (ixform, xforms.length)
+        FORI (iVertGenerator, vertGenerators.length)
+        {
+            assert_eq(vertGenerators[iVertGenerator].length, 3);
+            // TODO: really need homogeneous stuff
+            VecMath.copyvec(3, vert4in, vertGenerators[iVertGenerator]);
+            VecMath.vxm(vert4out,
+                        vert4in,
+                        xforms[ixform]);
+            VecMath.vxs(3, vert3out, vert4out, 1./vert4out[3]);
+
+            int jVert;
+            FOR (jVert, nVerts)
+                if (VecMath.equals(3, vert3out, verts[jVert], tol))
+                    break;
+            if (jVert == nVerts)
+            {
+                VecMath.copyvec(3, verts[nVerts], vert3out);
+                verts[nVerts][3] = 1.;
+                nVerts++;
+            }
+        }
+        verts = (double[][])Arrays.subarray(verts, 0, nVerts);
+        OUT("    out generateVertices, returning "+verts.length+"/"+(vertGenerators.length*xforms.length)+" verts");
+        return verts;
+    } // generateVertices
+
+} // class SymmetryUtils

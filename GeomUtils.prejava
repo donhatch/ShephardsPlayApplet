@@ -1,0 +1,758 @@
+#include "macros.h"
+
+import com.donhatchsw.util.Arrays;
+import com.donhatchsw.util.VecMath;
+
+class GeomUtils
+{
+    /*
+        Note, the h given here are the "actual" positions v.h - .5 * (x^2 + y^2).
+        where v.h is the offset stored in the vertex.
+
+        Given:
+            x0,y0,h0
+            x1,y1,h1
+            x2,y2,h2
+        representing an infinitesimal triangle
+        whose vertices are infinitesimally-squared away from the unit sphere
+        at the tangent plane z=1:
+            x0 eps, y0 eps, 1 + h0 eps^2
+            x1 eps, y1 eps, 1 + h1 eps^2
+            x2 eps, y2 eps, 1 + h2 eps^2
+        we want to find x,y,h
+        representing the point:
+            x eps, y eps, 1 + h eps^2
+        that is the intersection point of the 3 planes
+        whose closest-points-to-origin are the reciprocals of the original 3 points.
+        That is,
+            [x0 eps, y0 eps, 1 + h0 eps^2] [x eps      ]   [1]
+            [x1 eps, y1 eps, 1 + h1 eps^2] [y eps      ] = [1]
+            [x2 eps, y2 eps, 1 + h2 eps^2] [1 + h eps^2]   [1]
+        i.e.
+            [ x x0 eps^2 + y y0 eps^2 + 1 + (h+h0)eps^2 + h h0 eps^4]   [1]
+            [ x x1 eps^2 + y y1 eps^2 + 1 + (h+h1)eps^2 + h h1 eps^4] = [1]
+            [ x x2 eps^2 + y y2 eps^2 + 1 + (h+h2)eps^2 + h h2 eps^4]   [1]
+        the eps^4 terms are insignificant, so drop them:
+            [ x x0 eps^2 + y y0 eps^2 + 1 + (h+h0)eps^2]   [1]
+            [ x x1 eps^2 + y y1 eps^2 + 1 + (h+h1)eps^2] = [1]
+            [ x x2 eps^2 + y y2 eps^2 + 1 + (h+h2)eps^2]   [1]
+        i.e.
+            [ x x0 eps^2 + y y0 eps^2 + (h+h0)eps^2]   [0]
+            [ x x1 eps^2 + y y1 eps^2 + (h+h1)eps^2] = [0]
+            [ x x2 eps^2 + y y2 eps^2 + (h+h2)eps^2]   [0]
+        Divide both sides by eps^2:
+            [ x x0 + y y0 + (h+h0)]   [0]
+            [ x x1 + y y1 + (h+h1)] = [0]
+            [ x x2 + y y2 + (h+h2)]   [0]
+        i.e.
+            [ x x0 + y y0 + h]   [-h0]
+            [ x x1 + y y1 + h] = [-h1]
+            [ x x2 + y y2 + h]   [-h2]
+        i.e.
+            [ x0 y0 1] [x]   [-h0]
+            [ x1 y1 1] [y] = [-h1]
+            [ x2 y2 1] [h]   [-h2]
+        Easy!
+
+        Alternate way of thinking about it:
+        Given verts of a triangle:
+            x0,y0,h0
+            x1,y1,h1
+            x2,y2,h2
+        we want to find x,y,h that is the intersection point
+        of the 3 planes that are the polars of the original 3 points
+        with respect to the paraboloid z=-.5*(x^2+y^2).
+        Or, equivalently, the pole of the plane passing through the original 3 points.
+
+    */
+    public static void SolveForDualPointActual(double x0, double y0, double h0,
+                                               double x1, double y1, double h1,
+                                               double x2, double y2, double h2,
+                                               double result[])
+    {
+        double M[][] = {
+            {x0,y0,1},
+            {x1,y1,1},
+            {x2,y2,1},
+        };
+        double b[] = {
+            -h0,
+            -h1,
+            -h2,
+        };
+
+        if (result.length == 3)
+            VecMath.invmxv(result,M,b);
+        else // result.length == 2, just copy the first two
+            VecMath.copyvec(result, VecMath.invmxv(M,b));
+    } // SolveForDualPointActual
+
+    // TODO: isn't this defunct at this point? maybe not, but shouldn't use SolveForDualPointActual, should always use the moment method?  hmm except when wrapped?  hmm.
+    public static void SolveForDualPoint(double x0, double y0, double h0,
+                                         double x1, double y1, double h1,
+                                         double x2, double y2, double h2,
+                                         double result[],
+                                         boolean wrapAroundSphereFlagValue,
+                                         boolean centerSphereFlagValue,
+                                         double wrapSphereCurvatureValue)
+    {
+        if ((result.length == 2 || result.length == 3)
+         && !wrapAroundSphereFlagValue)
+        {
+            if (result.length > 2)
+                result[2] += .5 * (SQR(result[0]) + SQR(result[1]));
+
+            double dualMomentAndArea[] = new double[4];
+            SolveForDualMomentAndArea(x0,y0,h0,
+                                      x1,y1,h1,
+                                      x2,y2,h2,
+                                      dualMomentAndArea,
+                                      wrapAroundSphereFlagValue,
+                                      centerSphereFlagValue,
+                                      wrapSphereCurvatureValue);
+            double A = dualMomentAndArea[3];
+            double shouldBeResult[] = {
+                dualMomentAndArea[0] / A,
+                dualMomentAndArea[1] / A,
+                dualMomentAndArea[2] / (A*A),
+            };
+            VecMath.copyvec(result.length, result, shouldBeResult);
+        }
+        else
+        {
+            // paraboloid
+            SolveForDualPointActual(x0, y0, h0 - .5 * (SQR(x0) + SQR(y0)),
+                                    x1, y1, h1 - .5 * (SQR(x1) + SQR(y1)),
+                                    x2, y2, h2 - .5 * (SQR(x2) + SQR(y2)),
+                                    result);
+        }
+    } // SolveForDualPoint
+
+
+    // Optimized robust version of SolveForDualPoint.
+    // Moments can be used in robust center-of-mass calculations
+    // even if individual weights are tiny (or zero).
+    // Works in local *virtual* coord space of x0,y0,h0.
+    // That is, the h's are heights above parabola.
+    public static void SolveForDualMomentAndArea(double x0, double y0, double h0,
+                                                 double x1, double y1, double h1,
+                                                 double x2, double y2, double h2,
+                                                 double result[], // x*A, y*A, A, or
+                                                                  // x*A, y*A, h*A^2, A
+                                                 boolean wrapAroundSphereFlagValue,
+                                                 boolean centerSphereFlagValue,
+                                                 double wrapSphereCurvatureValue)
+    {
+        double iSmallest = MINI3(SQR(x0)+SQR(y0),
+                                 SQR(x1)+SQR(y1),
+                                 SQR(x2)+SQR(y2));
+        if (iSmallest == 0)
+            _SolveForDualMomentAndArea(x0, y0, h0,
+                                       x1, y1, h1,
+                                       x2, y2, h2,
+                                       result,
+                                       wrapAroundSphereFlagValue,
+                                       centerSphereFlagValue,
+                                       wrapSphereCurvatureValue);
+        else if (iSmallest == 1)
+            _SolveForDualMomentAndArea(x1, y1, h1,
+                                       x2, y2, h2,
+                                       x0, y0, h0,
+                                       result,
+                                       wrapAroundSphereFlagValue,
+                                       centerSphereFlagValue,
+                                       wrapSphereCurvatureValue);
+        else
+            _SolveForDualMomentAndArea(x2, y2, h2,
+                                       x0, y0, h0,
+                                       x1, y1, h1,
+                                       result,
+                                       wrapAroundSphereFlagValue,
+                                       centerSphereFlagValue,
+                                       wrapSphereCurvatureValue);
+    }
+    private static void _SolveForDualMomentAndArea(double x0, double y0, double h0,
+                                                   double x1, double y1, double h1,
+                                                   double x2, double y2, double h2,
+                                                   double result[], // x*A, y*A, A, or
+                                                                    // x*A, y*A, h*A^2, A
+                                                   boolean wrapAroundSphereFlagValue,
+                                                   boolean centerSphereFlagValue,
+                                                   double wrapSphereCurvatureValue)
+    {
+        if (wrapAroundSphereFlagValue)
+        {
+            //System.out.println("            in SolveForDualMomentAndArea(wrap=true, curvature="+wrapSphereCurvatureValue+")");
+            // reciprocate with respect to the wrap sphere,
+            // which has radius wrapSphereRadius
+            // and is centered at (0,0,-wrapSphereRadius).
+
+            double wrapSphereRadius = 1./wrapSphereCurvatureValue;
+
+
+            // convert to actual (from somewhat nonsensical virtual, for wrapped case)
+            double z0 = h0 -= .5 * (SQR(x0) + SQR(y0));
+            double z1 = h1 -= .5 * (SQR(x1) + SQR(y1));
+            double z2 = h2 -= .5 * (SQR(x2) + SQR(y2));
+
+            if (!centerSphereFlagValue)
+            {
+                z0 += wrapSphereRadius;
+                z1 += wrapSphereRadius;
+                z2 += wrapSphereRadius;
+            }
+
+            double e01[] = new double[] {x1-x0,y1-y0,z1-z0};
+            double e02[] = new double[] {x2-x0,y2-y0,z2-z0};
+
+            VecMath.vxv3(result, e01, e02);
+            // result is now the normal, some length
+            //double A = VecMath.norm(3, result); // XXX TODO: doesn't exist in VecMath yet
+            double A = Math.sqrt(VecMath.dot(3, result, result));
+            if (A == 0.)
+                VecMath.zerovec(result);
+            else
+            {
+                // result is now unit normal times A
+                double offsetTimesA = x0*result[0] + y0*result[1] + z0*result[2]; // result dot v0
+                double reciprocationMultiplier = SQR(wrapSphereRadius)/offsetTimesA*A;
+                VecMath.vxs(3, result, result, reciprocationMultiplier);
+                if (!centerSphereFlagValue)
+                    result[2] -= wrapSphereRadius*A;
+                // convert from actual to somewhat nonsensical virtual, for wrapped case
+                result[2] += (.5 * (SQR(result[0])+SQR(result[1]))) / A;
+
+                if (result.length == 3)
+                {
+                    // return x*A, y*A, A
+                    // XXX wait a minute, we're not doing this right! shouldn't divide, I don't think?
+                    // XXX I think this is done in GeneralOptimizationStuff
+                    // XXX probably should not offer length=3, it confuses things... maybe
+                    assert(false);
+                    result[0] /= A;
+                    result[1] /= A;
+                    result[2] = A;
+                }
+                else // result.length == 4
+                {
+                    // return x*A, y*A, h*A^2, A
+                    result[3] = A;
+                }
+            }
+
+            //System.out.println("            out SolveForDualMomentAndArea(wrap=true)");
+            return;
+        }
+
+        //System.out.println("            in SolveForDualMomentAndArea(wrap=false)");
+
+
+        // convert from global virtual coord space to local virtual coord space
+        // (local relative to v0)
+        double X1 = x1 - x0;
+        double Y1 = y1 - y0;
+        double H1 = h1 - h0;
+        double X2 = x2 - x0;
+        double Y2 = y2 - y0;
+        double H2 = h2 - h0;
+
+        // convert from virtual to actual...
+        H1 -= .5 * (SQR(X1) + SQR(Y1));
+        H2 -= .5 * (SQR(X2) + SQR(Y2));
+
+        // We're solving:
+        //    0  0  1     X =   0
+        //    X1 Y1 1  *  Y    -H1
+        //    X2 Y2 1     H    -H2
+        // I.e. H = 0 and:
+        //    X1 Y1  *  X  =  -H1
+        //    X2 Y2     Y  =  -H2
+        //
+        //    X  =  Y2 -Y1  *  -H1
+        //    Y    -X2  X1     -H2
+        //         ---------------
+        //          X1*Y2 - X2*Y1
+
+        double A = X1*Y2 - X2*Y1;
+        double XA = -Y2*H1 + Y1*H2;
+        double YA =  X2*H1 - X1*H2;
+
+        // to convert from local actual coord space to global actual coord space:
+        //         x = x0 + X
+        //           = x0 + XA/A
+        //   so  x*A = (x0 + XA/A)*A
+        //           = x0*A + XA
+        // etc.
+
+        result[0] = XA + x0*A;
+        result[1] = YA + y0*A;
+
+        if (result.length == 3)
+            result[2] = A;
+        else
+        {
+            // convert from actual (H=0) to virtual...
+            double HAA = .5 * (SQR(XA) + SQR(YA));
+            result[2] = HAA - h0*(A*A);  // - instead of +, because raising features in the primal corresponds to lowering them in the dual (I think that's why)
+            result[3] = A;
+        }
+        //System.out.println("            out SolveForDualMomentAndArea(wrap=false)");
+    } // SolveForDualMomentAndArea
+
+
+
+    //
+    // From Tom Davis's paper "Homogeneous Coordinates and Computer Graphics"
+    // Except it's of no use to us whatsoever.
+    // TODO: maybe move this to VecMath
+    //
+
+    //
+    // Find homogeneous row matrix that takes
+    // an augmented identity matrix to (some multiples of) out:
+    //     1 0 0 0  p00 p01 p02 p03  =  k0 x0  k0 y0  k0 z0  k0 w0
+    //     0 1 0 0  p10 p11 p12 p13     k1 x1  k1 y1  k1 z1  k1 w1
+    //     0 0 1 0  p20 p21 p22 p23     k2 x2  k2 y2  k2 z2  k2 w2
+    //     0 0 0 1  p30 p31 p32 p33     k3 x3  k3 y3  k3 z3  k3 w3
+    //     1 1 1 1                         x4     y4     z4     w4
+    // Multiplying out the matrix on the left:
+    //           p00             p01             p02             p03
+    //           p10             p11             p12             p13
+    //           p20             p21             p22             p23
+    //           p30             p31             p32             p33
+    //     p00+p10+p20+p30 p01+p11+p21+p31 p02+p12+p22+p32 p03+p13+p23+p33
+    // Equating the top 4x4 matrix on left and right
+    // lets us express all the pij's in terms of k's and x,y,z's.
+    // Equating the last row on the left to the last row on the right:
+    //     k0 x0 + k1 x1 + k2 x2 + k3 x3 = x4
+    //     k0 y0 + k1 y1 + k2 y2 + k3 y3 = y4
+    //     k0 z0 + k1 z1 + k2 z2 + k3 z3 = z4
+    //     k0 w0 + k1 w1 + k2 w2 + k3 w3 = w4
+    // In other words,
+    //     x0 x1 x2 x3 * k0 = x4
+    //     y0 y1 y2 y3   k1   y4
+    //     z0 z1 z2 z3   k2   z4
+    //     w0 w1 w2 w3   k3   w4
+    // i.e.
+    //    k0 k1 k2 k3 * x0 y0 z0 w0 = x4 y4 z4 w4
+    //                  x1 y1 z1 w1
+    //                  x2 y2 z2 w2
+    //                  x3 y3 z3 w3
+    //
+    private static double[/*d+1*/][/*d+1*/] rowProjectiveMatrixFromTiePointsHelper(double out[/*d+2*/][/*d+1*/])
+    {
+        int d = out.length - 2;
+        double allButLastOut[][] = (double[][])Arrays.subarray(out, 0, d+1);
+        double lastOut[] = out[d+1];
+        double k[] = VecMath.vxinvm(lastOut, allButLastOut);
+        double answer[][] = new double[d+1][d+1];
+        FORI (i, d+1)
+            VecMath.sxv(answer[i], k[i], out[i]);
+        return answer;
+    } // rowProjectiveMatrixFromTiePointsHelper
+
+    public static double[/*d+1*/][/*d+1*/] rowProjectiveMatrixFromTiePoints(double in[/*d+2*/][/*d+1*/],
+                                                              double out[/*d+2*/][/*d+1*/])
+    {
+        // answer is P^-1 Q where
+        // P is matrix that takes "identity" to in
+        // Q is matrix that takes "identity" to out
+        double P[][] = rowProjectiveMatrixFromTiePointsHelper(in);
+        double Q[][] = rowProjectiveMatrixFromTiePointsHelper(out);
+        return VecMath.invmxm(P,Q);
+    } // rowProjectiveMatrixFromTiePoints
+
+    private static void testOneRowProjectiveMatrixFromTiePoints(double in[][], double out[][])
+    {
+        System.out.println("===================================");
+        PRINTMAT(in);
+        PRINTMAT(out);
+        double answer[][] = rowProjectiveMatrixFromTiePoints(in, out);
+        PRINTMAT(answer);
+        double shouldBeMultiplesOfOut[][] = VecMath.mxm(in, answer);
+        PRINTMAT(shouldBeMultiplesOfOut);
+        double outNormalized[][] = new double[out.length][out.length-1];
+        double shouldBeOutNormalized[][] = new double[out.length][out.length-1];
+        FORI (i, out.length)
+        {
+            VecMath.normalize(outNormalized[i], out[i]);
+            VecMath.normalize(shouldBeOutNormalized[i], shouldBeMultiplesOfOut[i]);
+            if (VecMath.dot(outNormalized[i], shouldBeOutNormalized[i]) < 0.)
+                VecMath.sxv(shouldBeOutNormalized[i], -1., shouldBeOutNormalized[i]);
+        }
+        PRINTMAT(outNormalized);
+        PRINTMAT(shouldBeOutNormalized);
+        FORI (i, out.length)
+        {
+            double dist = VecMath.dist(outNormalized[i], shouldBeOutNormalized[i]);
+            PRINT(dist);
+            assert_le(dist, 1e-12);
+        }
+        System.out.println("===================================");
+    } // testRowProjectiveMatrixFromTiePoints
+
+
+    public static void testRowProjectiveMatrixFromTiePoints()
+    {
+        // test rowProjectiveMatrixFromTiePoints
+        double I0[][] = {
+            {1},
+            {1},
+        };
+        double I1[][] = {
+            {1,0},
+            {0,1},
+            {1,1},
+        };
+        double I2[][] = {
+            {1,0,0},
+            {0,1,0},
+            {0,0,1},
+            {1,1,1},
+        };
+        double I3[][] = {
+            {1,0,0,0},
+            {0,1,0,0},
+            {0,0,1,0},
+            {0,0,0,1},
+            {1,1,1,1},
+        };
+        testOneRowProjectiveMatrixFromTiePoints(I0,I0);
+        testOneRowProjectiveMatrixFromTiePoints(I1,I1);
+        testOneRowProjectiveMatrixFromTiePoints(I2,I2);
+        testOneRowProjectiveMatrixFromTiePoints(I3,I3);
+        testOneRowProjectiveMatrixFromTiePoints(I0,VecMath.sxm(10.,I0));
+        testOneRowProjectiveMatrixFromTiePoints(I1,VecMath.sxm(10.,I1));
+        testOneRowProjectiveMatrixFromTiePoints(I2,VecMath.sxm(10.,I2));
+        testOneRowProjectiveMatrixFromTiePoints(I3,VecMath.sxm(10.,I3));
+        for (int d = 0; d <= 4; ++d)
+        {
+            double in[][] = new double[d+2][d+1];
+            double out[][] = new double[d+2][d+1];
+            FORI (i, in.length)
+                VecMath.random(in[i]);
+            FORI (i, out.length)
+                VecMath.random(out[i]);
+            testOneRowProjectiveMatrixFromTiePoints(in, out);
+        }
+
+        if (false) // this just doesn't work with tiepoints!  TODO: fails really ungracefully in luDecompose though, should fix that
+        {
+            // into an ellipse
+            double t = .5;
+            testOneRowProjectiveMatrixFromTiePoints(new double[][] {
+                {-1,0,1},
+                {0,0,1},
+                {1,0,1},
+                {0,1,1},
+            }, new double[][] {
+                {-1,0,1},
+                {t,0,1},
+                {1,0,1},
+                {t,1,1},
+            });
+        }
+    } // testRowProjectiveMatrixFromTiePoints
+
+
+
+
+    // Calculate the angle C, opposite side c,
+    // given side lengths a, b, c,
+    // using c^2 = a^2 + b^2 - 2*a*b*cos(C)
+    public static double triangleAngle(double a, double b, double c)
+    {
+        return Math.acos((a*a + b*b - c*c) / (2*a*b));
+    }
+
+    // Find vertex v2 that completes the triangle with given edge lengths,
+    // such that v0,v1,v2 are CCW.
+    public static double[] completeTriangle(double v0[],
+                                            double v1[],
+                                            double dist12,
+                                            double dist20)
+    {
+        // Make sure has only 2 entries
+        v0 = new double[]{v0[0],v0[1]};
+        v1 = new double[]{v1[0],v1[1]};
+        double ang0 = triangleAngle(VecMath.dist(v0,v1), dist20, dist12);
+        double dir01[] = VecMath.normalize(VecMath.vmv(v1,v0));
+        double v2[] = VecMath.sxvpsxvpsxv(
+            1.,                    v0,
+            dist20*Math.cos(ang0), dir01,
+            dist20*Math.sin(ang0), VecMath.xv2(dir01));
+        return v2;
+    } // completeTriangle
+
+    public static double twiceTriangleArea(double x0, double y0,
+                                           double x1, double y1,
+                                           double x2, double y2)
+    {
+        return (x1-x0)*(y2-y0) - (x2-x0)*(y1-y0);
+    }
+    public static double twiceTriangleArea(double v0[],
+                                           double v1[],
+                                           double v2[])
+    {
+        return twiceTriangleArea(v0[0], v0[1],
+                                 v1[0], v1[1],
+                                 v2[0], v2[1]);
+    }
+
+    // tol is in linear units
+    public static boolean edgesCrossOrCloseToIt(double a0x, double a0y,
+                                                double a1x, double a1y,
+                                                double b0x, double b0y,
+                                                double b1x, double b1y,
+                                                double tol)
+    {
+        return twiceTriangleArea(a0x,a0y,
+                                 a1x,a1y,
+                                 b1x,b1y)
+             * twiceTriangleArea(a1x,a1y,
+                                 a0x,a0y,
+                                 b0x,b0y) >= -(tol*tol)*(tol*tol)
+            && twiceTriangleArea(b0x,b0y,
+                                 b1x,b1y,
+                                 a0x,a0y)
+             * twiceTriangleArea(b1x,b1y,
+                                 b0x,b0y,
+                                 a1x,a1y) >= -(tol*tol)*(tol*tol);
+    } // edgesCrossOrCloseToIt
+
+    public static double distSqrdFromPointToSeg(double x, double y,
+                                                double x0, double y0,
+                                                double x1, double y1)
+    {
+        double v[] = {x-x0,y-y0};
+        double v1[] = {x1-x0,y1-y0};
+        if (VecMath.normsqrd(v1) == 0.)
+            return VecMath.normsqrd(v);
+        double t = VecMath.dot(v,v1)
+                 / VecMath.dot(v1,v1);
+        t = CLAMP(t, 0., 1.);
+        double vprojectedOntoV1[] = VecMath.sxv(t, v1);
+        return VecMath.distsqrd(v, vprojectedOntoV1);
+    }
+    public static double distSqrdFromPointToRay(double x, double y,
+                                                double x0, double y0,
+                                                double xDir, double yDir) // need not be unit length
+    {
+        double v[] = {x-x0,y-y0};
+        double v1[] = {xDir, yDir};
+        if (VecMath.normsqrd(v1) == 0.)
+            return VecMath.normsqrd(v);
+        double t = VecMath.dot(v,v1)
+                 / VecMath.dot(v1,v1);
+        t = MAX(t, 0.);
+        double vprojectedOntoV1[] = VecMath.sxv(t, v1);
+        return VecMath.distsqrd(v, vprojectedOntoV1);
+    }
+
+    // XXX unused... but should it be in VecMath or something?
+    private static double[][] axisAngleRotationMatrix(double axis[], double radians)
+    {
+        double invAxisLength = 1./VecMath.norm(axis);
+        double x = axis[0]*invAxisLength;
+        double y = axis[1]*invAxisLength;
+        double z = axis[2]*invAxisLength;
+        double c = Math.cos(radians);
+        double s = Math.sin(radians);
+        double C = 1. - c;
+        // http://en.wikipedia.org/wiki/Rotation_matrix,
+        // but transposed since we are using row-oriented transforms
+        double M[][] = {
+            {x*x*C+c, x*x*C+z*s, x*z*C-y*s},
+            {x*y*C-z*s, y*y*C+c, y*z*C+x*s},
+            {z*x*C+y*s, z*y*C-x*s, z*z*C+c},
+        };
+        return M;
+    }
+
+
+
+    // Find the row-oriented 3x3 rotation matrix that rotates unit vectors u to v,
+    // using householder reflections.
+    public static double[][] parallelTransport(double u[], double v[])
+    {
+        // reflect u to -v,
+        // then reflect -v to v.
+        double h[] = VecMath.vpv(u,v);
+        // H = I - 2 (h h^T) / (h^T h)
+        double H[][] = VecMath.mmm(VecMath.identitymat(h.length),
+                                   VecMath.mxs(VecMath.outerProduct(h,h),
+                                               2/VecMath.normsqrd(h)));
+        // V = I - 2 (v v^T) / (v^T v)
+        //   = I - 2 (v v^T)  since v has unit length
+        // XXX actually in the case we use this, v is the +z axis,
+        // XXX in which case V just negates the z coord, trivial.
+        // XXX should probably have a special version of this function
+        // XXX for which v is a coord axis, or something
+        double V[][] = VecMath.mmm(VecMath.identitymat(v.length),
+                                   VecMath.mxs(VecMath.outerProduct(v,v),
+                                               2.));
+        double answer[][] = VecMath.mxm(H,V);
+        return answer;
+    }
+
+    public static void accumulateMomentAndArea(double accumulator[/*3 or 4*/],
+                                                double increment[/*3 or 4*/])
+    {
+        accumulator[0] += increment[0]; // x*A
+        accumulator[1] += increment[1]; // y*A
+        if (accumulator.length == 4
+         && increment.length == 4)
+            accumulator[2] += increment[2]; // h*A^2, or z*A
+        accumulator[accumulator.length-1] += increment[increment.length-1]; // A
+    }
+
+
+
+    // find intersection point of p0+t*v0
+    //                        and p1+t*v1
+    public static void intersectLines(double answer[/*2*/],
+                                      double p0[/*2*/], double v0[/*2*/],
+                                      double p1[/*2*/], double v1[/*2*/])
+    {
+        // want point p such that:
+        //     perpdot(v0) dot p = perpdot(v0) dot p0
+        //     perpdot(v1) dot p = perpdot(v1) dot p1
+        double M[][] = {
+            {-v0[1],v0[0]}, // perpdot(v0)
+            {-v1[1],v1[0]}, // perpdot(v1)
+        };
+        double v[] = {VecMath.dot(2,M[0],p0),
+                      VecMath.dot(2,M[1],p1)};
+
+        VecMath.invmxv(answer, M, v);
+
+        if (true)
+        {
+            // Blech, even if p0,v0 are exact mirror images of p1,v1,
+            // sometimes the x coord of the answer comes out nonzero!
+            // TODO: why? is there a more robust way to do it?
+            // Apply evil fudge in this case.
+            // TODO: could do same in y case, but only the x case is embarrassingly evident in the current usage
+            //
+            // To reproduce: n=7 before=3 after=3 quillSlope=1/10  synthesized??
+            //    p0 = <2.120151391373195,5.8239002062807765>
+            //    p1 = <-2.120151391373195,5.8239002062807765>
+            //    v0 = <-0.900968867902419,0.43388373911755823>
+            //    v1 = <0.900968867902419,0.43388373911755823>
+            if (p1[0]==-p0[0]
+             && v1[0]==-v0[0]
+             && p1[1]==p0[1]
+             && v1[1]==v0[1])
+            {
+                if (answer[0] != 0.)
+                {
+                    if (false)
+                    {
+                        PRINTVEC(p0);
+                        PRINTVEC(p1);
+                        PRINTVEC(v0);
+                        PRINTVEC(v1);
+                        PRINTVEC(M);
+                        PRINTVEC(v);
+                        PRINTVEC(answer);
+                        PRINTVEC(VecMath.invertmat(M));
+                        PRINTVEC(VecMath.mxv(VecMath.invertmat(M), v));
+                    }
+
+                    System.out.println("HEY! fixing nonzero x coord of symmetric intersectionfrom "+answer[0]+" to 0!");
+                    answer[0] = 0.;
+                }
+            }
+        }
+    } // intersectLines
+
+
+    // Wait, what? shouldn't we multiply the whole thing by wrapSphereCurvature so it can be zero?
+    // Hmm, maybe not, then center-and-uncenter wouldn't be identity.  Weird.
+    // I don't think the xform is invertible in the curvature=0 case anyway,
+    // so shouldn't be centering the sphere in that case.
+    public static double[][] getCenterSphereMatrix(double wrapSphereCurvature)
+    {
+        return new double[][] {
+            {1,0,0,0},
+            {0,1,0,0},
+            {0,0,1,0},
+            {0,0,1./wrapSphereCurvature,1},
+        };
+    }
+    public static double[][] getUncenterSphereMatrix(double wrapSphereCurvature)
+    {
+        return new double[][] {
+            {1,0,0,0},
+            {0,1,0,0},
+            {0,0,1,0},
+            {0,0,-1./wrapSphereCurvature,1},
+        };
+    }
+    public static double[][] getWrapAroundSphereMatrix(double wrapSphereCurvature, boolean centerSphereFlag)
+    {
+        // inverse of getUnwrapAroundSphereMatrix, I don't claim to understand it directly
+        double m[][] = {
+            {1,0,0,0},
+            {0,1,0,0},
+            {0,0,wrapSphereCurvature,-.5*SQR(wrapSphereCurvature)},
+            {0,0,0,1},
+        };
+        if (centerSphereFlag)
+        {
+            // end by moving center from -r to origin
+            m = VecMath.mxm(m, getCenterSphereMatrix(wrapSphereCurvature));
+        }
+        return m;
+    } // getWrapAroundSphereMatrix
+    public static double[][] getUnwrapAroundSphereMatrix(double wrapSphereCurvature, boolean centerSphereFlag)
+    {
+        /*
+        // divide by wrap sphere radius, to wrap around unit sphere
+           1/r 0 0 0
+           0 1/r 0 0
+           0 0 1/r 0
+           0 0  0  1
+        // divide by 1+z/2, to send far point to infinity
+            1  0  0  0
+            0  1  0  0
+            0  0  1  .5
+            0  0  0  1
+        // multiply by wrap sphere radius, to get original scale and curvature at origin
+           r 0 0 0
+           0 r 0 0
+           0 0 r 0
+           0 0 0 1
+        i.e. 
+            1  0  0  0
+            0  1  0  0
+            0  0  1  .5/r
+            0  0  0  1
+        // Then, since we want paraboloid to have curvature 1 instead of 1/r,
+        // multiply by:
+           1 0 0 0
+           0 1 0 0
+           0 0 r 0
+           0 0 0 1
+        // i.e. (if we cared, which we probably don't since we don't unwrap around infinite radius sphere, do we?)
+           1/r 0  0  0
+           0  1/r 0  0
+           0   0  1  0
+           0   0  0 1/r
+        */
+
+        double m[][] = {
+            {1,0,0,0},
+            {0,1,0,0},
+            {0,0,1./wrapSphereCurvature,.5*wrapSphereCurvature},
+            {0,0,0,1},
+        };
+        if (centerSphereFlag)
+        {
+            // start by moving center from origin to -r
+            m = VecMath.mxm(getUncenterSphereMatrix(wrapSphereCurvature), m);
+        }
+        return m;
+    } // getUnwrapAroundSphereMatrix
+
+}  // class GeomUtils
