@@ -2472,7 +2472,7 @@ public class ShephardsPlayApplet
                                         @Override public void actionPerformed(java.awt.event.ActionEvent e)
                                         {
                                             boolean newLeftRightSymmetry = isSelected();
-                                            applet.changeSymmetry(applet.pRotationalSymmetry.get(), applet.qRotationalSymmetry.get(), newLeftRightSymmetry, applet.sphereCentralSymmetry.get());
+                                            applet.changeSymmetry(applet.pRotationalSymmetry.get(), applet.qRotationalSymmetry.get(), newLeftRightSymmetry, applet.sphereCentralSymmetry.get(), applet.repeatSymmetryWorkInProgressFlag.get());
                                         }
                                     });
                                     setSelected(applet.leftRightSymmetry.get());
@@ -2494,7 +2494,7 @@ public class ShephardsPlayApplet
                                         @Override public void actionPerformed(java.awt.event.ActionEvent e)
                                         {
                                             boolean newSphereCentralSymmetry = isSelected();
-                                            applet.changeSymmetry(applet.pRotationalSymmetry.get(), applet.qRotationalSymmetry.get(), applet.leftRightSymmetry.get(), newSphereCentralSymmetry);
+                                            applet.changeSymmetry(applet.pRotationalSymmetry.get(), applet.qRotationalSymmetry.get(), applet.leftRightSymmetry.get(), newSphereCentralSymmetry, applet.repeatSymmetryWorkInProgressFlag.get());
                                         }
                                     });
                                     setSelected(applet.sphereCentralSymmetry.get());
@@ -2613,7 +2613,7 @@ public class ShephardsPlayApplet
                                                     // to deselect itself.  More details above.
                                                     pButtonGroup.clearSelection();
                                                 }
-                                                applet.changeSymmetry(applet.pRotationalSymmetryIntent.get(), applet.qRotationalSymmetryIntent.get(), applet.leftRightSymmetry.get(), applet.sphereCentralSymmetry.get());
+                                                applet.changeSymmetry(applet.pRotationalSymmetryIntent.get(), applet.qRotationalSymmetryIntent.get(), applet.leftRightSymmetry.get(), applet.sphereCentralSymmetry.get(), applet.repeatSymmetryWorkInProgressFlag.get());
                                             }
                                         });
                                     }
@@ -2683,12 +2683,14 @@ public class ShephardsPlayApplet
                                                 // Yes, necessary, see explanation above
                                                 if (applet.qRotationalSymmetryIntent.get() > maxpq) // from outside button group
                                                     pButtonGroup.clearSelection();
-                                                applet.changeSymmetry(applet.pRotationalSymmetryIntent.get(), applet.qRotationalSymmetryIntent.get(), applet.leftRightSymmetry.get(), applet.sphereCentralSymmetry.get());
+                                                applet.changeSymmetry(applet.pRotationalSymmetryIntent.get(), applet.qRotationalSymmetryIntent.get(), applet.leftRightSymmetry.get(), applet.sphereCentralSymmetry.get(), applet.repeatSymmetryWorkInProgressFlag.get());
                                             }
                                         });
                                     }
                                 }
                             });
+                            add(new JLabel("    "));
+                            add(new JCheckBoxForBoolean("repeat work-in-progress", applet.repeatSymmetryWorkInProgressFlag));
                         }});
                         add(new JCol() {{
                             add(new JCheckBox("remap fundamental region when changing rotational symmetry") { Listenable.Listener listener; {
@@ -2753,7 +2755,8 @@ public class ShephardsPlayApplet
                                     boolean enabled = (applet.pRotationalSymmetry.get() > 1
                                                     || applet.qRotationalSymmetry.get() > 1
                                                     || applet.leftRightSymmetry.get()
-                                                    || applet.sphereCentralSymmetry.get());
+                                                    || applet.sphereCentralSymmetry.get()
+                                                    || applet.repeatSymmetryWorkInProgressFlag.get());
                                     int n = this.getComponentCount();
                                     FORI (i, n)
                                     {
@@ -2791,6 +2794,7 @@ public class ShephardsPlayApplet
                                     applet.qRotationalSymmetry.addListener(listener);
                                     applet.leftRightSymmetry.addListener(listener);
                                     applet.sphereCentralSymmetry.addListener(listener);
+                                    applet.repeatSymmetryWorkInProgressFlag.addListener(listener);
                                     fixEnableds();
                                 }
                             });
@@ -4431,12 +4435,13 @@ public class ShephardsPlayApplet
         } // xformTheMesh
 
 
-        private void changeSymmetry(int p, int q, boolean leftRight, boolean central)
+        private void changeSymmetry(int p, int q, boolean leftRight, boolean central, boolean repeatWorkInProgress)
         {
             if (p == pRotationalSymmetry.get()
              && q == qRotationalSymmetry.get()
              && leftRight == leftRightSymmetry.get()
-             && central == sphereCentralSymmetry.get())
+             && central == sphereCentralSymmetry.get()
+             && repeatWorkInProgress == repeatSymmetryWorkInProgressFlag.get())
             {
                 return; // no change
             }
@@ -4786,7 +4791,8 @@ public class ShephardsPlayApplet
                 double oldGroup[][][] = computeSymmetryGroup3d(
                     oldP,
                     oldQ,
-                    false, false); // no reflections taken into account here
+                    false, false, // no reflections taken into account here
+                    false); // repeat work-in-progress not taken into account here, yet
 
                 System.out.println("          "+oldGroup.length+" old symmetries");
 
@@ -4897,7 +4903,8 @@ public class ShephardsPlayApplet
                 double newGroup[][][] = computeSymmetryGroup3d(
                     newP,
                     newQ,
-                    false, false);  // no reflections here
+                    false, false, // no reflections taken into account here
+                    false); // repeat work-in-progress not taken into account here, yet
                 System.out.println("          "+newGroup.length+" new symmetries");
                 {
                     Object dummy = new Object(); // we really want a hash set, not hash table, so need a dummy object, distinct from null
@@ -5294,7 +5301,8 @@ public class ShephardsPlayApplet
                                 if (pRotationalSymmetry.get() > 1
                                  || qRotationalSymmetry.get() > 1
                                  || leftRightSymmetry.get()
-                                 || sphereCentralSymmetry.get())
+                                 || sphereCentralSymmetry.get()
+                                 || repeatSymmetryWorkInProgressFlag.get())
                                 {
                                     double group[][][] = getTheSymmetryGroup();
                                     vertsToAdd = generateVertices(vertsToAdd, group);
@@ -5887,7 +5895,8 @@ public class ShephardsPlayApplet
                             if (pRotationalSymmetry.get() > 1
                              || qRotationalSymmetry.get() > 1
                              || leftRightSymmetry.get()
-                             || sphereCentralSymmetry.get())
+                             || sphereCentralSymmetry.get()
+                             || repeatSymmetryWorkInProgressFlag.get())
                             {
                                 double beingDraggedVertOldCoords[] = {beingDraggedVert.x(),
                                                                       beingDraggedVert.y(),
@@ -5966,7 +5975,7 @@ public class ShephardsPlayApplet
                                     }
                                 }
                             }
-                            else // no non-identity symmetries, just the vert
+                            else // there are no non-identity symmetries, just the vert
                             {
                                 if (wrapAroundSphereFlag.get())
                                 {
@@ -7038,13 +7047,13 @@ public class ShephardsPlayApplet
                     case '1': case '2': case '3': case '4': case '5':
                     case '6': case '7': case '8': case '9': case '0':
                     {
-                        changeSymmetry(c=='0' ? 10 : c-'0', qRotationalSymmetry.get(), false, false);
+                        changeSymmetry(c=='0' ? 10 : c-'0', qRotationalSymmetry.get(), false, false, false);
                         break;
                     }
                     case '!': case '@': case '#': case '$': case '%':
                     case '^': case '&': case '*': case '(': case ')':
                     {
-                        changeSymmetry(c==')' ? 10 : ")!@#$%^&*(".indexOf(c), qRotationalSymmetry.get(), true, false);
+                        changeSymmetry(c==')' ? 10 : ")!@#$%^&*(".indexOf(c), qRotationalSymmetry.get(), true, false, false);
                         break;
                     }
 
@@ -13571,7 +13580,7 @@ OFF
             {
                 OUT("    in generateVertices");
                 double tol = 1e-9;
-                double verts[][] = new double[vertGenerators.length*xforms.length][3];
+                double verts[][] = new double[vertGenerators.length*xforms.length][4];
                 int nVerts = 0;
                 double vert4in[] = {0,0,0,1};
                 double vert4out[] = new double[4];
@@ -13590,10 +13599,14 @@ OFF
 
                     int jVert;
                     FOR (jVert, nVerts)
-                        if (VecMath.equals(vert3out, verts[jVert], tol))
+                        if (VecMath.equals(3, vert3out, verts[jVert], tol))
                             break;
                     if (jVert == nVerts)
-                        VecMath.copyvec(3, verts[nVerts++], vert3out);
+                    {
+                        VecMath.copyvec(3, verts[nVerts], vert3out);
+                        verts[nVerts][3] = 1.;
+                        nVerts++;
+                    }
                 }
                 verts = (double[][])Arrays.subarray(verts, 0, nVerts);
                 OUT("    out generateVertices, returning "+verts.length+"/"+(vertGenerators.length*xforms.length)+" verts");
@@ -13608,7 +13621,7 @@ OFF
                     {0,3/8., 0.},
                 };
 
-                double xforms[][][] = computeSymmetryGroup3d(3, 1, true, false);
+                double xforms[][][] = computeSymmetryGroup3d(3, 1, true, false, false);
                 double verts[][] = generateVertices(vertsGenerators,
                                                     xforms);
 
@@ -18588,7 +18601,7 @@ OFF
         // 3d symmetry groups that hold origin fixed.
         // rotation of order p around z axis,
         // and rotation of order q around some point between the +z and +y axis.
-        private static double[][/*4*/][/*4*/] computeSymmetryGroup3d(int p, int q, boolean leftRightSymmetry, boolean sphereCentralSymmetry)
+        private static double[][/*4*/][/*4*/] computeSymmetryGroup3d(int p, int q, boolean leftRightSymmetry, boolean sphereCentralSymmetry, boolean repeatSymmetryWorkInProgress)
         {
             double gens[][][][] = computeSymmetryGroupGenerators3d(p, q, leftRightSymmetry, sphereCentralSymmetry);
 
@@ -18649,12 +18662,12 @@ OFF
             }
             assert_eq(n, group.length);
 
-            if (false)
+            if (repeatSymmetryWorkInProgress)
             {
                 // WORK IN PROGRESS
                 // Experiment with planar repeat.
                 int r = 2;
-                double tileWidth = .5;
+                double tileWidth = 1.;
                 int multiplicity = SQR(2*r+1);
                 double bigGroup[][][] = new double[group.length * multiplicity][4][4];
                 int N = 0;
@@ -18686,7 +18699,8 @@ OFF
                 false, // ignore sphereCentralSymmetry
                 wrapAroundSphereFlag.get(),
                 wrapSphereCurvature.get(),
-                centerSphereFlag.get());
+                centerSphereFlag.get(),
+                repeatSymmetryWorkInProgressFlag.get());
         }
         private double[][/*4*/][/*4*/] getTheSymmetryGroup()
         {
@@ -18697,11 +18711,12 @@ OFF
                 sphereCentralSymmetry.get(),
                 wrapAroundSphereFlag.get(),
                 wrapSphereCurvature.get(),
-                centerSphereFlag.get());
+                centerSphereFlag.get(),
+                repeatSymmetryWorkInProgressFlag.get());
         }
-        private static double[][/*4*/][/*4*/] getSymmetryGroup(int p, int q, boolean leftRight, boolean sphereCentral,  boolean wrapAroundSphereFlag, double wrapSphereCurvature, boolean centerSphereFlag)
+        private static double[][/*4*/][/*4*/] getSymmetryGroup(int p, int q, boolean leftRight, boolean sphereCentral,  boolean wrapAroundSphereFlag, double wrapSphereCurvature, boolean centerSphereFlag, boolean repeatSymmetryWorkInProgress)
         {
-            double group[][][] = computeSymmetryGroup3d(p, q, leftRight, sphereCentral);
+            double group[][][] = computeSymmetryGroup3d(p, q, leftRight, sphereCentral, repeatSymmetryWorkInProgress);
 
             if (!centerSphereFlag) // XXX TODO: wait a minute, this test can't be right when not wrapped, can it?
             {
@@ -19331,6 +19346,7 @@ OFF
         private Listenable.Int qRotationalSymmetry = new Listenable.Int(1,10, 1);
         private Listenable.Boolean leftRightSymmetry = new Listenable.Boolean(false);
         private Listenable.Boolean sphereCentralSymmetry = new Listenable.Boolean(false);
+        private Listenable.Boolean repeatSymmetryWorkInProgressFlag = new Listenable.Boolean(false);
         private Listenable.Boolean remapFundamentalRegionWhenChangingRotationalSymmetry = new Listenable.Boolean(false);
         private Listenable.Boolean deleteUnmatchedVertsWhenChangingRotationalSymmetry = new Listenable.Boolean(false);
 
@@ -20173,7 +20189,8 @@ OFF
                     int q = pqs[i][1];
                     {
                         System.out.println("    testing computeSymmetryGroup3d(p="+p+", q="+q+", leftRight="+leftRightSymmetry+", central="+sphereCentralSymmetry);
-                        computeSymmetryGroup3d(p, q, leftRightSymmetry, sphereCentralSymmetry);
+                        boolean repeatSymmetryWorkInProgress = false; // not testing it, currently
+                        computeSymmetryGroup3d(p, q, leftRightSymmetry, sphereCentralSymmetry, repeatSymmetryWorkInProgress);
                     }
                 }
             }
