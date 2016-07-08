@@ -138,7 +138,7 @@ public class Net
 
     // Walk around the boundary of the tree,
     // traversing both tree edges and things sticking out.
-    public Mesh.Edge nextInTreeOrExit(int treeType, Mesh.Edge edge)
+    private Mesh.Edge nextInTreeOrExit(int treeType, Mesh.Edge edge)
     {
         int iEdge = edge.myIndex();
         Mesh originalMesh = (_mesh.getEdge(iEdge) == edge ? _mesh : _dualMesh);
@@ -240,8 +240,8 @@ public class Net
     } // findAlternatives()
 
     // TODO: need incremental version of this too
-    // TODO: who varnishes?  make that more clear and perhaps principled
-    private double[][] computeMomentAndWeightStrictlyBelowEachVertexInitially()
+    // TODO: who varnishes?  make that more clear and perhaps principled.  oh, that's chooseDirections().
+    public double[][] computeMomentAndWeightStrictlyBelowEachVertexInitially()
     {
         assert(_topSortedVertInds != null); // only call this when net is complete and varnished
         assert(_vertToParentEdgeInd != null); // only call this when net is complete and varnished
@@ -273,8 +273,8 @@ public class Net
     } // computeMomentAndWeightStrictlyBelowEachVertexInitially
 
     // TODO: need incremental version of this too
-    private int figureOutWhatsOffBalanceInitially(double momentAndWeightStrictlyBelowEachVertex[][], // in
-                                                  boolean edgeIsOffBalanceCut[], // out
+    public int figureOutWhatsOffBalanceInitially(double momentAndWeightStrictlyBelowEachVertex[][], // in
+                                                 boolean edgeIsOffBalanceCut[], // out
                                                   int offBalanceCuts[]) // out
     {
         int nVerts = _mesh.verts.size();
@@ -316,7 +316,8 @@ public class Net
         return nOffBalanceCuts;
     } // figureOutWhatsOffBalanceInitially
 
-    private boolean makeGood(int maxSwaps, java.util.Random generator, Listenable.Boolean keepGoing)
+    // Net must be complete (i.e. _nUndecideds==0) and chooseDirections() must have been called.
+    public boolean makeGood(int maxSwaps, java.util.Random generator, Listenable.Boolean keepGoing)
     {
         int verboseLevel = 1;
         if (verboseLevel >= 1) OUT("    in makeGood");
@@ -390,11 +391,15 @@ public class Net
     } // makeGood
 
     // Make the cut a fold, and vice-versa.
-    // The result must still be a tree.
+    // The result must still be a tree. (I.e. only call this if each is in findAlternatives() of the other).
     // In the worst case this has to be O(n),
     // so we don't think too hard, we just do it in O(n) (actually O(n alpha(n))).
     public void swapCutAndFold(int iCut, int iFold)
     {
+        // must have called chooseDirections already...
+        assert(_vertToParentEdgeInd != null);
+        assert(_topSortedVertInds != null);
+
         if (_edgeStatuses[iCut] == FOLD)
         {
             int temp;
@@ -408,10 +413,6 @@ public class Net
         assert_eq(_edgeStatuses[oCut], CUT);
         assert_eq(_edgeStatuses[iFold], FOLD);
         assert_eq(_edgeStatuses[oFold], FOLD);
-
-        // must have called chooseDirections already...
-        assert(_vertToParentEdgeInd != null);
-        assert(_topSortedVertInds != null);
 
         {
             // check that the fold connects the same two components
@@ -461,6 +462,7 @@ public class Net
         // nCuts,nFolds stay the same
         
         int root = _topSortedVertInds[0];
+        // CBB: eek! surely directions can be fixed up more quickly than O(n)
         chooseDirections(root);
     } // swapCutAndFold
 
@@ -690,8 +692,12 @@ public class Net
     private int _edgeStatuses[];
     private SizeTrackingMergeFind _vertComponents;
     private SizeTrackingMergeFind _faceComponents;
-    private int _vertToParentEdgeInd[];
-    private int _topSortedVertInds[];
+
+    // These get set by chooseDirections().
+    // They should be considered publicly read-only.
+    // (TODO: make accessors for them?)
+    public int _vertToParentEdgeInd[];
+    public int _topSortedVertInds[];
 
 } // class Net
 

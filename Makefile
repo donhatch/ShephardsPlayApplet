@@ -54,6 +54,7 @@ CLASSES = \
         MyGraphics.class \
         MyGraphics3D.class \
         Misc.class \
+        ExactTrig.class \
         GeomUtils.class \
         SymmetryUtils.class \
         SizeTrackingMergeFind.class \

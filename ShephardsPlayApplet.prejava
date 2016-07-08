@@ -3798,16 +3798,18 @@ public class ShephardsPlayApplet
 
                 if (theNet != null)
                 {
+                    int nEdges = mesh.edges.size();
+                    assert(nEdges == theNet.getEdgeStatuses().length);
                     writer.print("# Cuts:");
-                    FORI (iEdge, theNet._edgeStatuses.length)
-                        if (theNet._edgeStatuses[iEdge] == Net.CUT
+                    FORI (iEdge, nEdges)
+                        if (theNet.getEdgeStatus(iEdge) == Net.CUT
                          && mesh.getEdge(iEdge).myIndex() < mesh.getEdge(iEdge).opposite().myIndex())
                             writer.print(" "+edgeToOutputIndex[iEdge]);
                     writer.println();
 
                     writer.print("# Folds:");
-                    FORI (iEdge, theNet._edgeStatuses.length)
-                        if (theNet._edgeStatuses[iEdge] == Net.FOLD
+                    FORI (iEdge, nEdges)
+                        if (theNet.getEdgeStatus(iEdge) == Net.FOLD
                          && mesh.getEdge(iEdge).myIndex() < mesh.getEdge(iEdge).opposite().myIndex())
                             writer.print(" "+edgeToOutputIndex[iEdge]);
                     writer.println();
@@ -4099,7 +4101,7 @@ public class ShephardsPlayApplet
                 }
 
                 // dual directions are now totally messed up... fix them
-                fixDualDirections(mesh, dualMesh, wrapAroundSphereFlag.get(), centerSphereFlag.get(), wrapSphereCurvature.get());
+                Mesh.fixDualDirections(mesh, dualMesh, wrapAroundSphereFlag.get(), centerSphereFlag.get(), wrapSphereCurvature.get());
             }
             if (undoRedoFlag)
             {
@@ -4306,14 +4308,14 @@ public class ShephardsPlayApplet
         // wrap from parabola to sphere
         private void wrapAroundSphere(double wrapSphereCurvature, boolean centerSphereFlag)
         {
-            xformTheMesh(getWrapAroundSphereMatrix(wrapSphereCurvature, centerSphereFlag));
+            xformTheMesh(GeomUtils.getWrapAroundSphereMatrix(wrapSphereCurvature, centerSphereFlag));
         } // wrapAroundSphere
 
 
         // unwrap from sphere to parabola
         private void unwrapAroundSphere(double wrapSphereCurvature, boolean centerSphereFlag)
         {
-            xformTheMesh(getUnwrapAroundSphereMatrix(wrapSphereCurvature, centerSphereFlag));
+            xformTheMesh(GeomUtils.getUnwrapAroundSphereMatrix(wrapSphereCurvature, centerSphereFlag));
         } // unwrapAroundSphere
 
         private void xformTheMesh(double mat[/*4*/][/*4*/])
@@ -4370,7 +4372,7 @@ public class ShephardsPlayApplet
                 {
                     double group[][][] = getTheRotationalSymmetryGroup(); // ignore reflective symmetries here
                     boolean retainConnectivity = false; // since the changeMeshRotationalSymmetry afterwards loses the mesh anyway
-                    this.mesh = forceMeshSymmetryByDeletingVertsDestructive(this.mesh, group, retainConnectivity);
+                    this.mesh = MeshUtils.forceMeshSymmetryByDeletingVertsDestructive(this.mesh, group, retainConnectivity);
                 }
                 else
                 {
@@ -4396,13 +4398,13 @@ public class ShephardsPlayApplet
                 }
                 else if (needToCenterAndUncenter)
                 {
-                    xformTheMesh(getCenterSphereMatrix(wrapSphereCurvature.get()));
+                    xformTheMesh(GeomUtils.getCenterSphereMatrix(wrapSphereCurvature.get()));
                 }
 
-                this.mesh = changeMeshRotationalSymmetry(this.mesh,
-                                                         pRotationalSymmetry.get(),
-                                                         qRotationalSymmetry.get(),
-                                                         p, q);
+                this.mesh = MeshUtils.changeMeshRotationalSymmetry(this.mesh,
+                                                                   pRotationalSymmetry.get(),
+                                                                   qRotationalSymmetry.get(),
+                                                                   p, q);
 
                 if (needToWrapAndUnwrap)
                 {
@@ -4410,7 +4412,7 @@ public class ShephardsPlayApplet
                 }
                 else if (needToCenterAndUncenter)
                 {
-                    xformTheMesh(getUncenterSphereMatrix(wrapSphereCurvature.get()));
+                    xformTheMesh(GeomUtils.getUncenterSphereMatrix(wrapSphereCurvature.get()));
                 }
             }
             // probably a lot of excess messages going on...
@@ -4429,7 +4431,7 @@ public class ShephardsPlayApplet
         {
             double group[][][] = getTheSymmetryGroup();
             UndoItem.State before = newUndoItemState();
-            this.mesh = forceMeshSymmetryByReplicatingVerts(this.mesh, group);
+            this.mesh = MeshUtils.forceMeshSymmetryByReplicatingVerts(this.mesh, group);
             if (continuouslyDelaunayizeFlag.get()) delaunayize();
             UndoItem.State after = newUndoItemState();
             undoTreeSquirrel.Do(new UndoItem(before, after));
@@ -4440,7 +4442,7 @@ public class ShephardsPlayApplet
             double group[][][] = getTheSymmetryGroup();
             UndoItem.State before = newUndoItemState();
             boolean retainConnectivity = true; // hard-coded, but could be an option
-            this.mesh = forceMeshSymmetryByDeletingVertsDestructive(this.mesh, group, retainConnectivity);
+            this.mesh = MeshUtils.forceMeshSymmetryByDeletingVertsDestructive(this.mesh, group, retainConnectivity);
             dirtyDualMesh(); // necessary if it did in-place operations and returned original
             if (continuouslyDelaunayizeFlag.get()) delaunayize();
             UndoItem.State after = newUndoItemState();
@@ -4793,7 +4795,7 @@ public class ShephardsPlayApplet
                                  || repeatSymmetryWorkInProgressFlag.get())
                                 {
                                     double group[][][] = getTheSymmetryGroup();
-                                    vertsToAdd = generateVertices(vertsToAdd, group);
+                                    vertsToAdd = SymmetryUtils.generateVertices(vertsToAdd, group);
                                 }
 
                                 // we add them in reverse order, so that the original one
@@ -5725,7 +5727,7 @@ public class ShephardsPlayApplet
                                 else
                                 {
                                     System.out.println("HEY! edge "+_dualMesh.getEdge(highlightedDualEdgeIndex)+" has no alternative! status="+theNet.getEdgeStatus(highlightedDualEdgeIndex));
-                                    assert_eq(theNet.getEdgeStatuses(highlightedDualEdgeIndex), Net.FOLD);
+                                    assert_eq(theNet.getEdgeStatus(highlightedDualEdgeIndex), Net.FOLD);
                                     assert(false); // wtf? this shouldn't happen
                                 }
 
@@ -6409,12 +6411,12 @@ public class ShephardsPlayApplet
                                 break;
                             }
 
-                        mesh = makeDualMesh(mesh,
-                                            true, // includeNonArity3 (so we get full mesh)
-                                            true, // includeInsideOut
-                                            wrapAroundSphereFlag.get(),
-                                            centerSphereFlag.get(),
-                                            wrapSphereCurvature.get());
+                        mesh = Mesh.makeDualMesh(mesh,
+                                                 true, // includeNonArity3 (so we get full mesh)
+                                                 true, // includeInsideOut
+                                                 wrapAroundSphereFlag.get(),
+                                                 centerSphereFlag.get(),
+                                                 wrapSphereCurvature.get());
 
                         // this seems to make it a bit better, though I don't really understand.
                         if (heightsWereAllZero)
@@ -6522,7 +6524,7 @@ public class ShephardsPlayApplet
                     case CTRL('o'): // cycle optimizationType
                         optimizationTypeIndex.set((optimizationTypeIndex.get()+1)%Mesh.availableOptimizationTypes.length);
                         optimizationType = Mesh.availableOptimizationTypes[optimizationTypeIndex.get()];
-                        System.out.println("optimizationType -> "+optimizationTypeNames[optimizationType]);
+                        System.out.println("optimizationType -> "+Mesh.optimizationTypeNames[optimizationType]);
                         theCanvas.repaint();
                         break;
 
@@ -6597,12 +6599,12 @@ public class ShephardsPlayApplet
                     {
                         if (true)
                         {
-                            analyzeRandomSpanningTrees(mesh);
-                            analyzeRandomSpanningTrees(getDualMesh());
+                            MeshUtils.analyzeRandomSpanningTrees(mesh);
+                            MeshUtils.analyzeRandomSpanningTrees(getDualMesh());
                         }
                         if (false)
                         {
-                            java.math.BigInteger nPrimalSpanningTrees = countSpanningTrees(mesh);
+                            java.math.BigInteger nPrimalSpanningTrees = MeshUtils.countSpanningTrees(mesh);
                             PRINT(nPrimalSpanningTrees);
                             // If fully triangulated, then the number of spanning trees will be same
                             // for primal and dual, in which case we don't really need to compute it
@@ -6614,7 +6616,7 @@ public class ShephardsPlayApplet
 
                             if (getDualMesh().verts.size() <= 100)
                             {
-                                java.math.BigInteger nDualSpanningTrees = countSpanningTrees(getDualMesh());
+                                java.math.BigInteger nDualSpanningTrees = MeshUtils.countSpanningTrees(getDualMesh());
                                 PRINT(isTriangulated);
                                 PRINT(mesh.verts.size());
                                 PRINT(getDualMesh().verts.size());
@@ -6907,8 +6909,8 @@ public class ShephardsPlayApplet
                              translateVector[1],
                              translateVector[2],1},
                         };
-                        double rotMat33[][] = parallelTransport(VecMath.normalize(startDualFacePlaneNormal),
-                                                                new double[]{0,0,1});
+                        double rotMat33[][] = GeomUtils.parallelTransport(VecMath.normalize(startDualFacePlaneNormal),
+                                                                          new double[]{0,0,1});
                         // XXX bleah, this seems awkward
                         double rotMat44[][] = VecMath.identitymat(4);
                         VecMath.copymat(rotMat44, rotMat33);
@@ -6977,8 +6979,8 @@ public class ShephardsPlayApplet
 
 
 
-                            double rotMat33[][] = parallelTransport(VecMath.normalize(jDualFacePlaneNormal),
-                                                                    new double[]{0,0,1});
+                            double rotMat33[][] = GeomUtils.parallelTransport(VecMath.normalize(jDualFacePlaneNormal),
+                                                                              new double[]{0,0,1});
                             // XXX bleah, this seems awkward
                             double rotMat44[][] = VecMath.identitymat(4);
                             VecMath.copymat(rotMat44, rotMat33);
@@ -7029,7 +7031,7 @@ public class ShephardsPlayApplet
                         };
                         FORI (i, 2)
                             coords[i] = VecMath.vxm(coords[i], M);
-                        if (theNet.getEdgeStatuses(iEdge) == Net.CUT)
+                        if (theNet.getEdgeStatus(iEdge) == Net.CUT)
                             mg3d.setColor(java.awt.Color.yellow);
                         else
                             mg3d.setColor(new java.awt.Color(0.f,0.f,1/4.f)); // XXX darkBlue
@@ -7471,8 +7473,8 @@ public class ShephardsPlayApplet
                 if (!wrapAroundSphereFlag.get())
                     eyeInLocalSpace[2] /= MAX(localScaleZ, 1e-6);
 
-                getFacings(eyeInLocalSpace, mesh, dualMesh, false, faceFacings, edgeFacings, vertFacings, wrapAroundSphereFlag.get(), centerSphereFlag.get(), wrapSphereCurvature.get());
-                getFacings(eyeInLocalSpace, dualMesh, mesh, true, dualFaceFacings, dualEdgeFacings, dualVertFacings, wrapAroundSphereFlag.get(), centerSphereFlag.get(), wrapSphereCurvature.get());
+                MeshUtils.getFacings(eyeInLocalSpace, mesh, dualMesh, false, faceFacings, edgeFacings, vertFacings, wrapAroundSphereFlag.get(), centerSphereFlag.get(), wrapSphereCurvature.get());
+                MeshUtils.getFacings(eyeInLocalSpace, dualMesh, mesh, true, dualFaceFacings, dualEdgeFacings, dualVertFacings, wrapAroundSphereFlag.get(), centerSphereFlag.get(), wrapSphereCurvature.get());
                 //PRINTARRAY(faceFacings);
                 //PRINTARRAY(dualFaceFacings);
 
@@ -7674,7 +7676,7 @@ public class ShephardsPlayApplet
                                 continue;
                             dualVertColors[ind] = dualVertSelectionColor;
                             Mesh.Vertex dualVert = dualMesh.getVert(ind);
-                            accumulateMomentAndArea(momentAndAreaSum, dualVert.momentAndArea);
+                            GeomUtils.accumulateMomentAndArea(momentAndAreaSum, dualVert.momentAndArea);
                         }
                         if (selectedDualVertIndices.length > 0)
                             PRINTVEC(momentAndAreaSum);
@@ -7691,6 +7693,8 @@ public class ShephardsPlayApplet
                     // If showing net, compute a net.
                     // If it ends up complete,
                     // color good edges green and off-balance ones red.
+                    //
+                    // TODO: move net computation to NetUtils.prejava
                     //
 
                     if (showNetFlag.get())
@@ -7710,7 +7714,7 @@ public class ShephardsPlayApplet
                                     int netVerboseLevel = !(showNetFlag.get() && showNetFlowFlag.get()) ? 1 : 0;
                                     if (netVerboseLevel >= 1) System.out.println("   computing random net");
 
-                                    SimplerMeshDataStructure simplerMeshDataStructure = new SimplerMeshDataStructure(dualMesh, true);
+                                    MeshUtils.SimplerMeshDataStructure simplerMeshDataStructure = new MeshUtils.SimplerMeshDataStructure(dualMesh, true);
                                     if (!simplerMeshDataStructure.isConnectedExceptMaybeForIsolatedVerts())
                                     {
                                         System.out.println("      graph is disconnected; not computing net");
@@ -8177,11 +8181,11 @@ public class ShephardsPlayApplet
 
                 int frontBrightness = 240;
                 int backBrightness = (int)(backfaceBrightness.get() * frontBrightness);
-                int passFacings[] = {FACING_BACK, FACING_SIDE, FACING_FRONT, FACING_UNKNOWN};
+                int passFacings[] = {MeshUtils.FACING_BACK, MeshUtils.FACING_SIDE, MeshUtils.FACING_FRONT, MeshUtils.FACING_UNKNOWN};
                 FORI (_iFacingPass, passFacings.length)
                 {
                     int passFacing = passFacings[_iFacingPass];
-                    if (passFacing == FACING_BACK && backBrightness <= 0)
+                    if (passFacing == MeshUtils.FACING_BACK && backBrightness <= 0)
                         continue;
 
                     if (showPrimalVertsFlag.get() || showPrimalEdgesFlag.get())
@@ -8190,13 +8194,13 @@ public class ShephardsPlayApplet
                         ArrayList edges = mesh.edges;
                         ArrayList dualEdges = dualMesh.edges;
 
-                        if (passFacing == FACING_BACK)
+                        if (passFacing == MeshUtils.FACING_BACK)
                             mg3d.setColor(new java.awt.Color(backBrightness,backBrightness,backBrightness));
-                        else if (passFacing == FACING_FRONT)
+                        else if (passFacing == MeshUtils.FACING_FRONT)
                             mg3d.setColor(new java.awt.Color(frontBrightness,frontBrightness,frontBrightness));
-                        else if (passFacing == FACING_SIDE)
+                        else if (passFacing == MeshUtils.FACING_SIDE)
                             mg3d.setColor(java.awt.Color.yellow);
-                        else if (passFacing == FACING_UNKNOWN)
+                        else if (passFacing == MeshUtils.FACING_UNKNOWN)
                             mg3d.setColor(java.awt.Color.magenta);
                         else
                             assert(false);
@@ -8219,7 +8223,7 @@ public class ShephardsPlayApplet
 #if 1 // XXX was this just an experiment? can I get rid?  oh wait, it's actually cool!
                         //if (showTriangles.get() == 3) // spherical barycentrics experiment
                         //if (!showPrimalVertsFlag.get() && !showPrimalEdgesFlag.get()) // spherical barycentrics experiment
-                        if (sbaryExperimentType.get() != 0 && passFacing == FACING_FRONT) // CBB: honor facing for this
+                        if (sbaryExperimentType.get() != 0 && passFacing == MeshUtils.FACING_FRONT) // CBB: honor facing for this
                         {
                             OUT("barycentrics experiment! type="+sbaryExperimentType.get());
                             double wrapSphereRadius = 1./wrapSphereCurvature.get();
@@ -8439,11 +8443,11 @@ public class ShephardsPlayApplet
                                 {
                                     dualEdgeColors[iEdge] = java.awt.Color.red;
                                 }
-                                else if (theNet.getEdgeStatuses(iEdge) == Net.CUT)
+                                else if (theNet.getEdgeStatus(iEdge) == Net.CUT)
                                 {
                                     dualEdgeColors[iEdge] = java.awt.Color.green;
                                 }
-                                else if (theNet._edgeStatuses(iEdge) == Net.FOLD)
+                                else if (theNet.getEdgeStatus(iEdge) == Net.FOLD)
                                 {
                                     dualEdgeColors[iEdge] = darkBlue;
                                 }
@@ -8455,7 +8459,7 @@ public class ShephardsPlayApplet
 
                             if (beingDraggedNetEdgeIndex != -1)
                             {
-                                boolean itsACut = (theNet.EdgeStatuses(beingDraggedNetEdgeIndex) == Net.CUT);
+                                boolean itsACut = (theNet.getEdgeStatus(beingDraggedNetEdgeIndex) == Net.CUT);
                                 if (itsACut)
                                 {
                                     // Make sure beingDraggedNetEdgeIndex points towards root of cut tree--
@@ -8471,8 +8475,8 @@ public class ShephardsPlayApplet
                                         Mesh.Vertex initialVertex = netEdgeBeingDragged.initialVertex();
 
                                         double lagoonMomentAndWeight[] = new double[4]; // zeros
-                                        accumulateMomentAndArea(lagoonMomentAndWeight, momentAndWeightStrictlyBelowEachDualVertex[initialVertex.myIndex()]);
-                                        accumulateMomentAndArea(lagoonMomentAndWeight, initialVertex.momentAndArea);
+                                        GeomUtils.accumulateMomentAndArea(lagoonMomentAndWeight, momentAndWeightStrictlyBelowEachDualVertex[initialVertex.myIndex()]);
+                                        GeomUtils.accumulateMomentAndArea(lagoonMomentAndWeight, initialVertex.momentAndArea);
                                         lagoonCenter = new double[] {
                                             lagoonMomentAndWeight[0] / lagoonMomentAndWeight[3],
                                             lagoonMomentAndWeight[1] / lagoonMomentAndWeight[3],
@@ -8582,14 +8586,14 @@ public class ShephardsPlayApplet
                                 FORIDOWN (iDualEdge, mesh.edges.size())
                                 {
                                     if (nPasses == 2
-                                     && (theNet.getEdgeStatuses(iDualEdge)==Net.CUT) != (iPass==1))
+                                     && (theNet.getEdgeStatus(iDualEdge)==Net.CUT) != (iPass==1))
                                         continue; // when two passes, draw cuts iff iPass==1
 
                                     if (dualEdgeFacings[iDualEdge] != passFacing)
                                         continue;
 
                                     java.awt.Color frontColor = dualEdgeColors[iDualEdge];
-                                    if (passFacing == FACING_BACK)
+                                    if (passFacing == MeshUtils.FACING_BACK)
                                     {
                                         // holy moly this is inefficient, probably
                                         int rgb = frontColor.getRGB();
@@ -8664,7 +8668,7 @@ public class ShephardsPlayApplet
                                 continue;
 
                             java.awt.Color frontColor = dualVertColors[iDualVert];
-                            if (passFacing == FACING_BACK)
+                            if (passFacing == MeshUtils.FACING_BACK)
                             {
                                 // holy moly this is inefficient, probably
                                 int rgb = frontColor.getRGB();
@@ -8735,7 +8739,7 @@ public class ShephardsPlayApplet
                                 if (parentEdgeInd != -1)
                                 {
                                     if (!showInsideOutDualVertsFlagValue
-                                     && dualEdgeFacings[parentEdgeInd] == FACING_BACK)
+                                     && dualEdgeFacings[parentEdgeInd] == MeshUtils.FACING_BACK)
                                     {
                                         //System.out.println("        skipping flow on e"+parentEdgeInd+" from v"+iChild+" to "+(dualMesh.getEdge(parentEdgeInd).finalVertex()!=null ? "v"+dualMesh.getEdge(parentEdgeInd).finalVertex().myIndex() : "null"));
                                         continue;
@@ -9414,7 +9418,7 @@ public class ShephardsPlayApplet
                 double vertsForHull[][] = new double[nVerts][/*3*/];
                 double scratchVert4in[] = new double[4];
                 double scratchVert4out[] = new double[4];
-                double wrapMat[][] = wrapAroundSphereFlagValue ? null : getWrapAroundSphereMatrix(wrapSphereCurvatureValue, centerSphereFlag.get());
+                double wrapMat[][] = wrapAroundSphereFlagValue ? null : GeomUtils.getWrapAroundSphereMatrix(wrapSphereCurvatureValue, centerSphereFlag.get());
                 FORI (iVert, nVerts)
                 {
                     Mesh.Vertex v = mesh.getVert(iVert);
@@ -9738,13 +9742,13 @@ public class ShephardsPlayApplet
                             FORI (iSample, 2)
                             {
                                 verts[iVert][2] = (double)iSample; // 0. or 1.
-                                SolveForDualPoint(v0[0],v0[1],v0[2],
-                                                  v1[0],v1[1],v1[2],
-                                                  v2[0],v2[1],v2[2],
-                                                  sampleResultVerts[iSample],
-                                                  false, // wrapAroundSphereFlag
-                                                  false, // centerSphereFlag
-                                                  0.); // wrapSphereCurvature
+                                GeomUtils.SolveForDualPoint(v0[0],v0[1],v0[2],
+                                                            v1[0],v1[1],v1[2],
+                                                            v2[0],v2[1],v2[2],
+                                                            sampleResultVerts[iSample],
+                                                            false, // wrapAroundSphereFlag
+                                                            false, // centerSphereFlag
+                                                            0.); // wrapSphereCurvature
                             }
                             double toDesired[] = VecMath.vmv(2, desiredDualVerts[iDualVert], sampleResultVerts[0]);
                             double toSample1[] = VecMath.vmv(2, sampleResultVerts[1], sampleResultVerts[0]);
@@ -9753,13 +9757,13 @@ public class ShephardsPlayApplet
 
                             // check...
                             double finalResultVert[] = new double[3];
-                            SolveForDualPoint(v0[0],v0[1],v0[2],
-                                              v1[0],v1[1],v1[2],
-                                              v2[0],v2[1],v2[2],
-                                              finalResultVert,
-                                              false, // wrapAroundSphereFlag
-                                              false, // centerSphereFlag
-                                              0.); // wrapSphereCurvature
+                            GeomUtils.SolveForDualPoint(v0[0],v0[1],v0[2],
+                                                        v1[0],v1[1],v1[2],
+                                                        v2[0],v2[1],v2[2],
+                                                        finalResultVert,
+                                                        false, // wrapAroundSphereFlag
+                                                        false, // centerSphereFlag
+                                                        0.); // wrapSphereCurvature
                             PRINTVEC(desiredDualVerts[iDualVert]);
                             PRINTVEC(finalResultVert);
                             assert_le(VecMath.dist(desiredDualVerts[iDualVert], finalResultVert), 1e-6);
@@ -9948,13 +9952,13 @@ public class ShephardsPlayApplet
                         FORI (iSample, 2)
                         {
                             verts[iVert][2] = (double)iSample; // 0. or 1.
-                            SolveForDualPoint(v0[0],v0[1],v0[2],
-                                              v1[0],v1[1],v1[2],
-                                              v2[0],v2[1],v2[2],
-                                              sampleResultVerts[iSample],
-                                              false, // wrapAroundSphereFlag
-                                              false, // centerSphereFlag
-                                              0.); // wrapSphereCurvature
+                            GeomUtils.SolveForDualPoint(v0[0],v0[1],v0[2],
+                                                        v1[0],v1[1],v1[2],
+                                                        v2[0],v2[1],v2[2],
+                                                        sampleResultVerts[iSample],
+                                                        false, // wrapAroundSphereFlag
+                                                        false, // centerSphereFlag
+                                                        0.); // wrapSphereCurvature
                         }
                         double toDesired[] = VecMath.vmv(2, desiredDualVerts[iDualVert], sampleResultVerts[0]);
                         double toSample1[] = VecMath.vmv(2, sampleResultVerts[1], sampleResultVerts[0]);
@@ -9963,13 +9967,13 @@ public class ShephardsPlayApplet
 
                         // check...
                         double finalResultVert[] = new double[3];
-                        SolveForDualPoint(v0[0],v0[1],v0[2],
-                                          v1[0],v1[1],v1[2],
-                                          v2[0],v2[1],v2[2],
-                                          finalResultVert,
-                                          false, // wrapAroundSphereFlag
-                                          false, // centerSphereFlag
-                                          0.); // wrapSphereCurvature
+                        GeomUtils.SolveForDualPoint(v0[0],v0[1],v0[2],
+                                                    v1[0],v1[1],v1[2],
+                                                    v2[0],v2[1],v2[2],
+                                                    finalResultVert,
+                                                    false, // wrapAroundSphereFlag
+                                                    false, // centerSphereFlag
+                                                    0.); // wrapSphereCurvature
                         //PRINTVEC(desiredDualVerts[iDualVert]);
                         //PRINTVEC(finalResultVert);
                         assert_almost_eq(desiredDualVerts[iDualVert][1], finalResultVert[1], 1e-6);
@@ -9985,13 +9989,13 @@ public class ShephardsPlayApplet
                         FORI (iSample, 2)
                         {
                             verts[iVert][2] = (double)iSample; // 0. or 1.
-                            SolveForDualPoint(v0[0],v0[1],v0[2],
-                                              v1[0],v1[1],v1[2],
-                                              v2[0],v2[1],v2[2],
-                                              sampleResultVerts[iSample],
-                                              false, // wrapAroundSphereFlag
-                                              false, // centerSphereFlag
-                                              0.); // wrapSphereCurvature
+                            GeomUtils.SolveForDualPoint(v0[0],v0[1],v0[2],
+                                                        v1[0],v1[1],v1[2],
+                                                        v2[0],v2[1],v2[2],
+                                                        sampleResultVerts[iSample],
+                                                        false, // wrapAroundSphereFlag
+                                                        false, // centerSphereFlag
+                                                        0.); // wrapSphereCurvature
                         }
                         double toDesired[] = VecMath.vmv(2, desiredDualVerts[iDualVert], sampleResultVerts[0]);
                         double toSample1[] = VecMath.vmv(2, sampleResultVerts[1], sampleResultVerts[0]);
@@ -10000,13 +10004,13 @@ public class ShephardsPlayApplet
 
                         // check...
                         double finalResultVert[] = new double[3];
-                        SolveForDualPoint(v0[0],v0[1],v0[2],
-                                          v1[0],v1[1],v1[2],
-                                          v2[0],v2[1],v2[2],
-                                          finalResultVert,
-                                          false, // wrapAroundSphereFlag
-                                          false, // centerSphereFlag
-                                          0.); // wrapSphereCurvature
+                        GeomUtils.SolveForDualPoint(v0[0],v0[1],v0[2],
+                                                    v1[0],v1[1],v1[2],
+                                                    v2[0],v2[1],v2[2],
+                                                    finalResultVert,
+                                                    false, // wrapAroundSphereFlag
+                                                    false, // centerSphereFlag
+                                                    0.); // wrapSphereCurvature
                         PRINTVEC(desiredDualVerts[iDualVert]);
                         PRINTVEC(finalResultVert);
                         //assert_le(VecMath.dist(desiredDualVerts[iDualVert], finalResultVert), 1e-6);
@@ -10108,8 +10112,8 @@ public class ShephardsPlayApplet
                     verts[iVert][0] = 0; verts[iVert][1] = 0; iVert++;
                     FORI (iRot, nRots)
                     {
-                        double c = cosPiTimes(iRot, 3);
-                        double s = sinPiTimes(iRot, 3);
+                        double c = ExactTrig.cosPiTimes(iRot, 3);
+                        double s = ExactTrig.sinPiTimes(iRot, 3);
                         double m[][] = {{c,s},{-s,c}};
                         FORI (iY, nX-1)
                             FORI (iX, nX-iY-1)
@@ -10928,13 +10932,13 @@ OFF
                         double A[] = primalCoords[tri[0]];
                         double B[] = primalCoords[tri[1]];
                         double C[] = primalCoords[tri[2]];
-                        SolveForDualMomentAndArea(A[0],A[1],A[2],
-                                                  B[0],B[1],B[2],
-                                                  C[0],C[1],C[2],
-                                                  dualMomentsAndAreas[iDualVert],
-                                                  wrapAroundSphereFlagValue,
-                                                  centerSphereFlagValue,
-                                                  wrapSphereCurvatureValue);
+                        GeomUtils.SolveForDualMomentAndArea(A[0],A[1],A[2],
+                                                            B[0],B[1],B[2],
+                                                            C[0],C[1],C[2],
+                                                            dualMomentsAndAreas[iDualVert],
+                                                            wrapAroundSphereFlagValue,
+                                                            centerSphereFlagValue,
+                                                            wrapSphereCurvatureValue);
                     }
                 }
 
@@ -11088,12 +11092,12 @@ OFF
                     assert_eq(fromsAndTosTris.length, toLeftOfEdgeEndIndices.length);
                     assert_eq(mustBeFarthestExit.length, toLeftOfEdgeEndIndices.length);
 
-                    final Mesh dual = makeDualMesh(primal,
-                                                   false, // includeNonArity3
-                                                   false, // includeInsideOut
-                                                   wrapAroundSphereFlagValue,
-                                                   centerSphereFlagValue,
-                                                   wrapSphereCurvatureValue);
+                    final Mesh dual = Mesh.makeDualMesh(primal,
+                                                        false, // includeNonArity3
+                                                        false, // includeInsideOut
+                                                        wrapAroundSphereFlagValue,
+                                                        centerSphereFlagValue,
+                                                        wrapSphereCurvatureValue);
                     final int nVerts = primal.verts.size();
                     final int nDualVerts = dual.verts.size();
                     final int nEdges = primal.edges.size();
@@ -11560,7 +11564,7 @@ OFF
                                          VecMath.normalize(VecMath.vmv(polyVerts[apex],polyVerts[(apex+1)%n])));
                     VecMath.normalize(apexDir, apexDir);
                     apexDir = Arrays.append(apexDir, 0.);
-                    double m33[][] = parallelTransport(apexDir, new double[] {0,1,0});
+                    double m33[][] = GeomUtils.parallelTransport(apexDir, new double[] {0,1,0});
                     double m22[][] = {{m33[0][0],m33[0][1]},
                                       {m33[1][0],m33[1][1]}};
                     polyVerts = VecMath.mxm(polyVerts, m22);
@@ -11642,9 +11646,10 @@ OFF
                         {
                             int i = iDualVert / 2;
                             int tri[] = tris[i];
-                            double area = .5*twiceTriangleArea(trisVerts[tri[0]][0], trisVerts[tri[0]][1],
-                                                               trisVerts[tri[1]][0], trisVerts[tri[1]][1],
-                                                               trisVerts[tri[2]][0], trisVerts[tri[2]][1]);
+                            double area = .5*GeomUtils.twiceTriangleArea(
+                                trisVerts[tri[0]][0], trisVerts[tri[0]][1],
+                                trisVerts[tri[1]][0], trisVerts[tri[1]][1],
+                                trisVerts[tri[2]][0], trisVerts[tri[2]][1]);
                             finalVerts[iDualVert] = new double[] {finalVerts[iDualVert][0]*area,
                                                                   finalVerts[iDualVert][1]*area,
                                                                   0.*area,
@@ -11789,16 +11794,16 @@ OFF
 
                             // want to intersect the line from origin to vert
                             // with the previous edge line.
-                            intersectLines(answerVerts[iVert],
-                                           prevVert, prevEdgeDir,
-                                           origin, originToVertDir);
+                            GeomUtils.intersectLines(answerVerts[iVert],
+                                                     prevVert, prevEdgeDir,
+                                                     origin, originToVertDir);
 
 
                             double originToDualVertDir[] = VecMath.xv2(nextEdgeDir); // actually reversed, but it doesn't matter
                             double dualEdgeDir[] = VecMath.xv2(answerQuillDirs[iVert]); // actually reversed, but it doesn't matter
-                            intersectLines(answerTriVerts[iVert+2],
-                                           answerTriVerts[iVert+1], dualEdgeDir,
-                                           origin, originToDualVertDir);
+                            GeomUtils.intersectLines(answerTriVerts[iVert+2],
+                                                     answerTriVerts[iVert+1], dualEdgeDir,
+                                                     origin, originToDualVertDir);
 
 
                             // prepare for next iteration
@@ -11835,16 +11840,16 @@ OFF
                             double originToVertDirAngBackwards = quillDirAngBackwards + Math.PI/2;
                             double originToVertDir[] = {-Math.cos(originToVertDirAngBackwards),Math.sin(originToVertDirAngBackwards)};
 
-                            intersectLines(answerVerts[iVert],
-                                           prevVert, prevEdgeDir,
-                                           origin, originToVertDir);
+                            GeomUtils.intersectLines(answerVerts[iVert],
+                                                     prevVert, prevEdgeDir,
+                                                     origin, originToVertDir);
 
 
                             double originToDualVertDir[] = VecMath.xv2(nextEdgeDir);
                             double dualEdgeDir[] = VecMath.xv2(answerQuillDirs[iVert]); // actually reversed, but it doesn't matter, we only use it for intersection
-                            intersectLines(answerTriVerts[iVert+1],
-                                           answerTriVerts[((iVert+2)-1)%n+1], dualEdgeDir,
-                                           origin, originToDualVertDir);
+                            GeomUtils.intersectLines(answerTriVerts[iVert+1],
+                                                     answerTriVerts[((iVert+2)-1)%n+1], dualEdgeDir,
+                                                     origin, originToDualVertDir);
 
                             // prepare for next iteration
                             prevVert = answerVerts[iVert];
@@ -11855,9 +11860,9 @@ OFF
                     }
 
                     // compute the apex
-                    intersectLines(answerVerts[apex],
-                                   answerVerts[MOD(apex-1,n)],beforeApexToApexDir,
-                                   answerVerts[(apex+1)%n],afterApexToApexDir);
+                    GeomUtils.intersectLines(answerVerts[apex],
+                                             answerVerts[MOD(apex-1,n)],beforeApexToApexDir,
+                                             answerVerts[(apex+1)%n],afterApexToApexDir);
 
                     // Since we have the dual,
                     // we can now compute the apex quill direction
@@ -11925,20 +11930,20 @@ OFF
                             double xk = answerTriVerts[kTriVert][0];
                             double yk = answerTriVerts[kTriVert][1];
                             double hk = answerTriVerts[kTriVert][2];
-                            SolveForDualPoint(xi,yi,0.,
-                                              xj,yj,hj,
-                                              xk,yk,hk,
-                                              v0, // put answer here
-                                              false, // wrapAroundSphereFlag
-                                              false, // centerSphereFlag
-                                              0.); // wrapSphereCurvature
-                            SolveForDualPoint(xi,yi,1.,
-                                              xj,yj,hj,
-                                              xk,yk,hk,
-                                              v1, // put answer here
-                                              false, // wrapAroundSphereFlag
-                                              false, // centerSphereFlag
-                                              0.); // wrapSphereCurvature
+                            GeomUtils.SolveForDualPoint(xi,yi,0.,
+                                                        xj,yj,hj,
+                                                        xk,yk,hk,
+                                                        v0, // put answer here
+                                                        false, // wrapAroundSphereFlag
+                                                        false, // centerSphereFlag
+                                                        0.); // wrapSphereCurvature
+                            GeomUtils.SolveForDualPoint(xi,yi,1.,
+                                                        xj,yj,hj,
+                                                        xk,yk,hk,
+                                                        v1, // put answer here
+                                                        false, // wrapAroundSphereFlag
+                                                        false, // centerSphereFlag
+                                                        0.); // wrapSphereCurvature
                             double dv_dh[] = VecMath.vmv(2,v1,v0);
                             double dv[] = VecMath.vmv(v,v0);
                             double h = VecMath.dot(dv,   dv_dh)
@@ -11954,13 +11959,13 @@ OFF
                                 {
                                     // re-estimate dv_dh based on bigger finite difference
                                     double shouldBeV[] = new double[2];
-                                    SolveForDualPoint(xi,yi,h,
-                                                      xj,yj,hj,
-                                                      xk,yk,hk,
-                                                      shouldBeV, // put answer here
-                                                      false, // wrapAroundSphereFlag
-                                                      false, // centerSphereFlag
-                                                      0.); // wrapSphereCurvature
+                                    GeomUtils.SolveForDualPoint(xi,yi,h,
+                                                                xj,yj,hj,
+                                                                xk,yk,hk,
+                                                                shouldBeV, // put answer here
+                                                                false, // wrapAroundSphereFlag
+                                                                false, // centerSphereFlag
+                                                                0.); // wrapSphereCurvature
                                     double dv_dh_again[] = VecMath.vmv(2,shouldBeV,v0); // and divide by h...
                                         VecMath.vxs(dv_dh_again, dv_dh_again, 1./h);
                                     double h_again = VecMath.dot(dv,          dv_dh_again)
@@ -12341,7 +12346,7 @@ OFF
                     double center[] = {0.,0.};
                     FORI (i, dualVertsBeingAveraged.length)
                     {
-                        double area = twiceTriangleArea(
+                        double area = GeomUtils.twiceTriangleArea(
                             verts[tris[dualVertsBeingAveraged[i]][0]],
                             verts[tris[dualVertsBeingAveraged[i]][1]],
                             verts[tris[dualVertsBeingAveraged[i]][2]]);
@@ -12383,13 +12388,13 @@ OFF
                         double x2 = verts[tri[2]][0];
                         double y2 = verts[tri[2]][1];
                         double h2 = verts[tri[2]][2];
-                        SolveForDualPoint(x0,y0,h0,
-                                          x1,y1,h1,
-                                          x2,y2,h2,
-                                          dualVerts[iDualVert],
-                                          false, // wrapAroundSphereFlag
-                                          false, // centerSphereFlag
-                                          0.); // wrapSphereCurvature
+                        GeomUtils.SolveForDualPoint(x0,y0,h0,
+                                                    x1,y1,h1,
+                                                    x2,y2,h2,
+                                                    dualVerts[iDualVert],
+                                                    false, // wrapAroundSphereFlag
+                                                    false, // centerSphereFlag
+                                                    0.); // wrapSphereCurvature
                     }
                     return dualVerts;
                 } // vertsToDualVertsInNetless8
@@ -12457,10 +12462,10 @@ OFF
                             // penalties for tri areas being too small (not sure why though)
                             FORI (iTri, tris.length)
                             {
-                                double area = twiceTriangleArea(
-                                              verts[tris[iTri][0]],
-                                              verts[tris[iTri][1]],
-                                              verts[tris[iTri][2]]);
+                                double area = GeomUtils.twiceTriangleArea(
+                                    verts[tris[iTri][0]],
+                                    verts[tris[iTri][1]],
+                                    verts[tris[iTri][2]]);
                                 if (area <= 0.)
                                     return Double.POSITIVE_INFINITY;
                                 answer += 1./Math.pow(area, triAreaExponent);
@@ -12475,7 +12480,7 @@ OFF
                                 double center[] = {0.,0.};
                                 FORI (i, 3)
                                 {
-                                    double area = twiceTriangleArea(
+                                    double area = GeomUtils.twiceTriangleArea(
                                         verts[tris[dualVertsBeingAveraged[i]][0]],
                                         verts[tris[dualVertsBeingAveraged[i]][1]],
                                         verts[tris[dualVertsBeingAveraged[i]][2]]);
@@ -12615,13 +12620,13 @@ OFF
                         double x2 = verts[tri[2]][0];
                         double y2 = verts[tri[2]][1];
                         double h2 = verts[tri[2]][2];
-                        SolveForDualPoint(x0,y0,h0,
-                                          x1,y1,h1,
-                                          x2,y2,h2,
-                                          leftDualVerts[iDualVert],
-                                          false, // wrapAroundSphereFlag
-                                          false, // centerSphereFlag
-                                          0.); // wrapSphereCurvature
+                        GeomUtils.SolveForDualPoint(x0,y0,h0,
+                                                    x1,y1,h1,
+                                                    x2,y2,h2,
+                                                    leftDualVerts[iDualVert],
+                                                    false, // wrapAroundSphereFlag
+                                                    false, // centerSphereFlag
+                                                    0.); // wrapSphereCurvature
                     }
                     return leftDualVerts;
                 } // vertsToDualVertsInNetless8
@@ -12769,46 +12774,6 @@ OFF
                 theOptimizationPathGoodnesses = optimizationPathGoodnesses;
             } // doCannedThingNetless8Optimized
 
-            // does at most each vert generator times each xform, omitting dups.
-            //  CBB: should use a fuzzy point hash table if a lot of verts and/or xforms.
-            private static double[][] generateVertices(double vertGenerators[][],
-                                                       double xforms[][][])
-            {
-                OUT("    in generateVertices");
-                double tol = 1e-9;
-                double verts[][] = new double[vertGenerators.length*xforms.length][4];
-                int nVerts = 0;
-                double vert4in[] = {0,0,0,1};
-                double vert4out[] = new double[4];
-                double vert3out[] = new double[3];
-
-                FORI (ixform, xforms.length)
-                FORI (iVertGenerator, vertGenerators.length)
-                {
-                    assert_eq(vertGenerators[iVertGenerator].length, 3);
-                    // TODO: really need homogeneous stuff
-                    VecMath.copyvec(3, vert4in, vertGenerators[iVertGenerator]);
-                    VecMath.vxm(vert4out,
-                                vert4in,
-                                xforms[ixform]);
-                    VecMath.vxs(3, vert3out, vert4out, 1./vert4out[3]);
-
-                    int jVert;
-                    FOR (jVert, nVerts)
-                        if (VecMath.equals(3, vert3out, verts[jVert], tol))
-                            break;
-                    if (jVert == nVerts)
-                    {
-                        VecMath.copyvec(3, verts[nVerts], vert3out);
-                        verts[nVerts][3] = 1.;
-                        nVerts++;
-                    }
-                }
-                verts = (double[][])Arrays.subarray(verts, 0, nVerts);
-                OUT("    out generateVertices, returning "+verts.length+"/"+(vertGenerators.length*xforms.length)+" verts");
-                return verts;
-            } // generateVertices
-
             private void doCannedThingNetless8Symmetric()
             {
                 double vertsGenerators[][] = new double[][] {
@@ -12817,9 +12782,9 @@ OFF
                     {0,3/8., 0.},
                 };
 
-                double xforms[][][] = computeSymmetryGroup3d(3, 1, true, false, false);
-                double verts[][] = generateVertices(vertsGenerators,
-                                                    xforms);
+                double xforms[][][] = SymmetryUtils.computeSymmetryGroup3d(3, 1, true, false, false);
+                double verts[][] = SymmetryUtils.generateVertices(vertsGenerators,
+                                                                  xforms);
 
                 if (true)
                 {
@@ -12859,7 +12824,7 @@ OFF
                         double a = 1;
                         double b = s*s*s*s*s;
                         double c = s*s*s*s*s*s;
-                        double C = triangleAngle(a, b, c);
+                        double C = GeomUtils.triangleAngle(a, b, c);
                         // All right, the southwest angle at the center
                         // is C, a bit more than pi/3.
                         // Distribute the rest of the spokes evenly.
@@ -12906,9 +12871,9 @@ OFF
                         double b = a*s;
                         //PRINT(a);
                         //PRINT(b);
-                        double target[] = completeTriangle(verts[oldestPerimeterEdge[1]],
-                                                           verts[oldestPerimeterEdge[0]],
-                                                           a, b);
+                        double target[] = GeomUtils.completeTriangle(verts[oldestPerimeterEdge[1]],
+                                                                     verts[oldestPerimeterEdge[0]],
+                                                                     a, b);
                         double ang0 = Math.atan2(verts[i-1][1]-verts[oldestPerimeterEdge[0]][1],
                                                  verts[i-1][0]-verts[oldestPerimeterEdge[0]][0]);
                         double ang1 = Math.atan2(target[1]-verts[oldestPerimeterEdge[0]][1],
@@ -13072,7 +13037,7 @@ OFF
                 mesh = new Mesh(verts, faces);
             } // doCannedThingEyeball
 
-            // XXX unused?
+            // XXX unused? get rid?
             private static double[] triangleApex(double v0[], double ang0,
                                                  double v1[], double ang1)
             {
@@ -13225,7 +13190,7 @@ OFF
 
                 int nLittleVerts = mesh.verts.size();
                 int nLittleEdges = mesh.edges.size();
-                int littleTris[][] = getMeshFaces(mesh, true);
+                int littleTris[][] = MeshUtils.getMeshFaces(mesh, true);
                 int nLittleTris = littleTris.length;
                 PRINT(nLittleTris);
                 PRINT(nLittleEdges);
@@ -13302,7 +13267,7 @@ OFF
                         double a = 1;
                         double b = s*s*s*s*s;
                         double c = s*s*s*s*s*s;
-                        double C = triangleAngle(a, b, c);
+                        double C = GeomUtils.triangleAngle(a, b, c);
                         // All right, the southwest angle at the center
                         // is C, a bit more than pi/3.
                         // Distribute the rest of the spokes evenly.
@@ -13352,9 +13317,9 @@ OFF
                         double b = a*s;
                         //PRINT(a);
                         //PRINT(b);
-                        double target[] = completeTriangle(verts[oldestPerimeterEdge[1]],
-                                                           verts[oldestPerimeterEdge[0]],
-                                                           a, b);
+                        double target[] = GeomUtils.completeTriangle(verts[oldestPerimeterEdge[1]],
+                                                                     verts[oldestPerimeterEdge[0]],
+                                                                     a, b);
                         double ang0 = Math.atan2(verts[i-1][1]-verts[oldestPerimeterEdge[0]][1],
                                                  verts[i-1][0]-verts[oldestPerimeterEdge[0]][0]);
                         double ang1 = Math.atan2(target[1]-verts[oldestPerimeterEdge[0]][1],
@@ -13432,8 +13397,8 @@ OFF
                 ArrayList vertsList = new ArrayList();
                 vertsList.add(new double[]{0,0});
                 vertsList.add(new double[]{r,0});
-                vertsList.add(completeTriangle((double[])vertsList.get(0),
-                                           (double[])vertsList.get(1), r, R));
+                vertsList.add(GeomUtils.completeTriangle((double[])vertsList.get(0),
+                                                         (double[])vertsList.get(1), r, R));
 
                 ArrayList facesList = new ArrayList();
                 facesList.add(new int[]{0,1,2});
@@ -13442,9 +13407,9 @@ OFF
                 int oldestOnBoundary = 0;
                 while (vertsList.size() < nVerts)
                 {
-                    double newVertex[] = completeTriangle((double[])vertsList.get(oldestOnBoundary),
-                                                          (double[])vertsList.get(vertsList.size()-1),
-                                                          r, R);
+                    double newVertex[] = GeomUtils.completeTriangle((double[])vertsList.get(oldestOnBoundary),
+                                                                    (double[])vertsList.get(vertsList.size()-1),
+                                                                    r, R);
                     if (VecMath.distsqrd((double[])vertsList.get(oldestOnBoundary+1),
                                          newVertex) <= R*R)
                     {
@@ -13708,7 +13673,7 @@ OFF
 
         private double[][/*4*/][/*4*/] getTheRotationalSymmetryGroup()
         {
-            return getSymmetryGroup(
+            return SymmetryUtils.getSymmetryGroup(
                 pRotationalSymmetry.get(),
                 qRotationalSymmetry.get(),
                 false, // ignore leftRightSymmetry
@@ -13720,7 +13685,7 @@ OFF
         }
         private double[][/*4*/][/*4*/] getTheSymmetryGroup()
         {
-            return getSymmetryGroup(
+            return SymmetryUtils.getSymmetryGroup(
                 pRotationalSymmetry.get(),
                 qRotationalSymmetry.get(),
                 leftRightSymmetry.get(),
@@ -13824,12 +13789,12 @@ OFF
             if (_dualMesh == null
              || _primalMeshOfDualMesh != mesh)
             {
-                _dualMesh = makeDualMesh(mesh,
-                                         false,  // includeNonArity3
-                                         calcInsideOutDualVertsFlag.get(), // includeInsideOut
-                                         wrapAroundSphereFlag.get(),
-                                         centerSphereFlag.get(),
-                                         wrapSphereCurvature.get());
+                _dualMesh = Mesh.makeDualMesh(mesh,
+                                              false,  // includeNonArity3
+                                              calcInsideOutDualVertsFlag.get(), // includeInsideOut
+                                              wrapAroundSphereFlag.get(),
+                                              centerSphereFlag.get(),
+                                              wrapSphereCurvature.get());
                 _primalMeshOfDualMesh = mesh;
                 theNet = null;
             }
@@ -14532,97 +14497,6 @@ OFF
     }
 
 
-    //
-    // From Tom Davis's paper "Homogeneous Coordinates and Computer Graphics"
-    // Except it's of no use to us whatsoever.
-    // TODO: maybe move this to VecMath
-    //
-
-    //
-    // Find homogeneous row matrix that takes
-    // an augmented identity matrix to (some multiples of) out:
-    //     1 0 0 0  p00 p01 p02 p03  =  k0 x0  k0 y0  k0 z0  k0 w0
-    //     0 1 0 0  p10 p11 p12 p13     k1 x1  k1 y1  k1 z1  k1 w1
-    //     0 0 1 0  p20 p21 p22 p23     k2 x2  k2 y2  k2 z2  k2 w2
-    //     0 0 0 1  p30 p31 p32 p33     k3 x3  k3 y3  k3 z3  k3 w3
-    //     1 1 1 1                         x4     y4     z4     w4
-    // Multiplying out the matrix on the left:
-    //           p00             p01             p02             p03
-    //           p10             p11             p12             p13
-    //           p20             p21             p22             p23
-    //           p30             p31             p32             p33
-    //     p00+p10+p20+p30 p01+p11+p21+p31 p02+p12+p22+p32 p03+p13+p23+p33
-    // Equating the top 4x4 matrix on left and right
-    // lets us express all the pij's in terms of k's and x,y,z's.
-    // Equating the last row on the left to the last row on the right:
-    //     k0 x0 + k1 x1 + k2 x2 + k3 x3 = x4
-    //     k0 y0 + k1 y1 + k2 y2 + k3 y3 = y4
-    //     k0 z0 + k1 z1 + k2 z2 + k3 z3 = z4
-    //     k0 w0 + k1 w1 + k2 w2 + k3 w3 = w4
-    // In other words,
-    //     x0 x1 x2 x3 * k0 = x4
-    //     y0 y1 y2 y3   k1   y4
-    //     z0 z1 z2 z3   k2   z4
-    //     w0 w1 w2 w3   k3   w4
-    // i.e.
-    //    k0 k1 k2 k3 * x0 y0 z0 w0 = x4 y4 z4 w4
-    //                  x1 y1 z1 w1
-    //                  x2 y2 z2 w2
-    //                  x3 y3 z3 w3
-    //
-    private static double[/*d+1*/][/*d+1*/] rowProjectiveMatrixFromTiePointsHelper(double out[/*d+2*/][/*d+1*/])
-    {
-        int d = out.length - 2;
-        double allButLastOut[][] = (double[][])Arrays.subarray(out, 0, d+1);
-        double lastOut[] = out[d+1];
-        double k[] = VecMath.vxinvm(lastOut, allButLastOut);
-        double answer[][] = new double[d+1][d+1];
-        FORI (i, d+1)
-            VecMath.sxv(answer[i], k[i], out[i]);
-        return answer;
-    } // rowProjectiveMatrixFromTiePointsHelper
-
-    public static double[/*d+1*/][/*d+1*/] rowProjectiveMatrixFromTiePoints(double in[/*d+2*/][/*d+1*/],
-                                                              double out[/*d+2*/][/*d+1*/])
-    {
-        // answer is P^-1 Q where
-        // P is matrix that takes "identity" to in
-        // Q is matrix that takes "identity" to out
-        double P[][] = rowProjectiveMatrixFromTiePointsHelper(in);
-        double Q[][] = rowProjectiveMatrixFromTiePointsHelper(out);
-        return VecMath.invmxm(P,Q);
-    } // projectiveMatrixFromTiePoints
-
-    private static void testRowProjectiveMatrixFromTiePoints(double in[][], double out[][])
-    {
-        System.out.println("===================================");
-        PRINTMAT(in);
-        PRINTMAT(out);
-        double answer[][] = rowProjectiveMatrixFromTiePoints(in, out);
-        PRINTMAT(answer);
-        double shouldBeMultiplesOfOut[][] = VecMath.mxm(in, answer);
-        PRINTMAT(shouldBeMultiplesOfOut);
-        double outNormalized[][] = new double[out.length][out.length-1];
-        double shouldBeOutNormalized[][] = new double[out.length][out.length-1];
-        FORI (i, out.length)
-        {
-            VecMath.normalize(outNormalized[i], out[i]);
-            VecMath.normalize(shouldBeOutNormalized[i], shouldBeMultiplesOfOut[i]);
-            if (VecMath.dot(outNormalized[i], shouldBeOutNormalized[i]) < 0.)
-                VecMath.sxv(shouldBeOutNormalized[i], -1., shouldBeOutNormalized[i]);
-        }
-        PRINTMAT(outNormalized);
-        PRINTMAT(shouldBeOutNormalized);
-        FORI (i, out.length)
-        {
-            double dist = VecMath.dist(outNormalized[i], shouldBeOutNormalized[i]);
-            PRINT(dist);
-            assert_le(dist, 1e-12);
-        }
-        System.out.println("===================================");
-    } // testRowProjectiveMatrixFromTiePoints
-
-
 
     //
     // Half-assed clone.
@@ -14717,70 +14591,13 @@ OFF
 
         if (false)
         {
-            // test projectiveMatrixFromTiePoints
-            double I0[][] = {
-                {1},
-                {1},
-            };
-            double I1[][] = {
-                {1,0},
-                {0,1},
-                {1,1},
-            };
-            double I2[][] = {
-                {1,0,0},
-                {0,1,0},
-                {0,0,1},
-                {1,1,1},
-            };
-            double I3[][] = {
-                {1,0,0,0},
-                {0,1,0,0},
-                {0,0,1,0},
-                {0,0,0,1},
-                {1,1,1,1},
-            };
-            testRowProjectiveMatrixFromTiePoints(I0,I0);
-            testRowProjectiveMatrixFromTiePoints(I1,I1);
-            testRowProjectiveMatrixFromTiePoints(I2,I2);
-            testRowProjectiveMatrixFromTiePoints(I3,I3);
-            testRowProjectiveMatrixFromTiePoints(I0,VecMath.sxm(10.,I0));
-            testRowProjectiveMatrixFromTiePoints(I1,VecMath.sxm(10.,I1));
-            testRowProjectiveMatrixFromTiePoints(I2,VecMath.sxm(10.,I2));
-            testRowProjectiveMatrixFromTiePoints(I3,VecMath.sxm(10.,I3));
-            for (int d = 0; d <= 4; ++d)
-            {
-                double in[][] = new double[d+2][d+1];
-                double out[][] = new double[d+2][d+1];
-                FORI (i, in.length)
-                    VecMath.random(in[i]);
-                FORI (i, out.length)
-                    VecMath.random(out[i]);
-                testRowProjectiveMatrixFromTiePoints(in, out);
-            }
-
-            if (false) // this just doesn't work with tiepoints!  TODO: fails really ungracefully in luDecompose though, should fix that
-            {
-                // into an ellipse
-                double t = .5;
-                testRowProjectiveMatrixFromTiePoints(new double[][] {
-                    {-1,0,1},
-                    {0,0,1},
-                    {1,0,1},
-                    {0,1,1},
-                }, new double[][] {
-                    {-1,0,1},
-                    {t,0,1},
-                    {1,0,1},
-                    {t,1,1},
-                });
-            }
-
+            GeomUtils.testRowProjectiveMatrixFromTiePoints();
             System.exit(0);
         }
 
         if (false)
         {
+            // CBB: put this in SymmetryUtils?
             // test computeSymmetryGroup3d
             int pqs[][] = {
                 {1,1},
@@ -14824,7 +14641,7 @@ OFF
                     {
                         System.out.println("    testing computeSymmetryGroup3d(p="+p+", q="+q+", leftRight="+leftRightSymmetry+", central="+sphereCentralSymmetry);
                         boolean repeatSymmetryWorkInProgress = false; // not testing it, currently
-                        computeSymmetryGroup3d(p, q, leftRightSymmetry, sphereCentralSymmetry, repeatSymmetryWorkInProgress);
+                        SymmetryUtils.computeSymmetryGroup3d(p, q, leftRightSymmetry, sphereCentralSymmetry, repeatSymmetryWorkInProgress);
                     }
                 }
             }
