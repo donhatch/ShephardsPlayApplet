@@ -161,7 +161,6 @@ BUGS:
         radius 1/2:
             left is too right by 1 pixel
     - why do I need that extendAndOrthogonalize?  it shouldn't be getting non-orthogonal so quickly! (that was when using trackball... maybe a moot issue now)
-    - use exact group calculation rather than generateVertices when adding a point
 
 TO DO:
     - way to automatically fix up bad lagoon exits (random search, for starters)
@@ -5297,8 +5296,8 @@ public class ShephardsPlayApplet
                                  || leftRightSymmetry.get()
                                  || sphereCentralSymmetry.get())
                                 {
-                                    double gens[][][] = getTheSymmetryGroupGenerators();
-                                    vertsToAdd = generateVertices(vertsToAdd, gens);
+                                    double group[][][] = getTheSymmetryGroup();
+                                    vertsToAdd = generateVertices(vertsToAdd, group);
                                 }
 
                                 // we add them in reverse order, so that the original one
@@ -13565,34 +13564,39 @@ OFF
                 theOptimizationPathGoodnesses = optimizationPathGoodnesses;
             } // doCannedThingNetless8Optimized
 
+            // does at most each vert generator times each xform, omitting dups.
+            //  CBB: should use a fuzzy point hash table if a lot of verts and/or xforms.
             private static double[][] generateVertices(double vertGenerators[][],
                                                        double xforms[][][])
             {
+                OUT("    in generateVertices");
                 double tol = 1e-9;
-                double verts[][] = vertGenerators; // make this an arraylist if we ever do a lot
+                double verts[][] = new double[vertGenerators.length*xforms.length][3];
+                int nVerts = 0;
                 double vert4in[] = {0,0,0,1};
                 double vert4out[] = new double[4];
                 double vert3out[] = new double[3];
-                FORI (iVert, verts.length) // while verts is growing
-                {
-                    FORI (ixform, xforms.length)
-                    {
-                        assert_eq(verts[iVert].length, 3);
-                        // TODO: really need homogeneous stuff
-                        VecMath.copyvec(3, vert4in, verts[iVert]);
-                        VecMath.vxm(vert4out,
-                                    vert4in,
-                                    xforms[ixform]);
-                        VecMath.vxs(3, vert3out, vert4out, 1./vert4out[3]);
 
-                        int jVert;
-                        FOR (jVert, verts.length)
-                            if (VecMath.equals(vert3out, verts[jVert], tol))
-                                break;
-                        if (jVert == verts.length)
-                            verts = (double[][])Arrays.append(verts, VecMath.copyvec(vert3out));
-                    }
+                FORI (ixform, xforms.length)
+                FORI (iVertGenerator, vertGenerators.length)
+                {
+                    assert_eq(vertGenerators[iVertGenerator].length, 3);
+                    // TODO: really need homogeneous stuff
+                    VecMath.copyvec(3, vert4in, vertGenerators[iVertGenerator]);
+                    VecMath.vxm(vert4out,
+                                vert4in,
+                                xforms[ixform]);
+                    VecMath.vxs(3, vert3out, vert4out, 1./vert4out[3]);
+
+                    int jVert;
+                    FOR (jVert, nVerts)
+                        if (VecMath.equals(vert3out, verts[jVert], tol))
+                            break;
+                    if (jVert == nVerts)
+                        VecMath.copyvec(3, verts[nVerts++], vert3out);
                 }
+                verts = (double[][])Arrays.subarray(verts, 0, nVerts);
+                OUT("    out generateVertices, returning "+verts.length+"/"+(vertGenerators.length*xforms.length)+" verts");
                 return verts;
             } // generateVertices
 
@@ -13603,22 +13607,8 @@ OFF
                     //{0,1/5., 0.}, // looks nice but doesn't work well
                     {0,3/8., 0.},
                 };
-                double xforms[][][] = {
-                    // left-right reflection
-                    {
-                        {-1,0,0,0},
-                        {0,1,0,0},
-                        {0,0,1,0},
-                        {0,0,0,1},
-                    },
-                    // rotation by 120 degrees, row-oriented
-                    {
-                       { Math.cos(DTOR(120)), Math.sin(DTOR(120)), 0, 0},
-                       {-Math.sin(DTOR(120)), Math.cos(DTOR(120)), 0, 0},
-                       {0, 0, 1, 0},
-                       {0, 0, 0, 1},
-                    },
-                };
+
+                double xforms[][][] = computeSymmetryGroup3d(3, 1, true, false);
                 double verts[][] = generateVertices(vertsGenerators,
                                                     xforms);
 
@@ -18485,7 +18475,6 @@ OFF
             //     S20 = acos((cos(pi/2) + cos(pi/p)cos(pi/q)) / (sin(pi/p)sin(pi/q))
             //         = acos(cos(pi/p)cos(pi/q) / (sin(pi/p)sin(pi/q))
             //         = acos(cot(pi/p)cot(pi/q))
-            // TODO: can probably do this better, see the math I did in computeSymmetryGroupGenerators3d
             double cosSqrdS12 = cosSquaredPiTimes(1,q) / sinSquaredPiTimes(1,p);
             double cosS12 = Math.sqrt(cosSqrdS12);
             double sinS12 = Math.sqrt(1.-cosSqrdS12);
@@ -18659,6 +18648,32 @@ OFF
                 }
             }
             assert_eq(n, group.length);
+
+            if (false)
+            {
+                // WORK IN PROGRESS
+                // Experiment with planar repeat.
+                int r = 2;
+                double tileWidth = .5;
+                int multiplicity = SQR(2*r+1);
+                double bigGroup[][][] = new double[group.length * multiplicity][4][4];
+                int N = 0;
+                int nReps = 10;
+                for (int ix = -2; ix <= 2; ++ix)
+                for (int iy = -2; iy <= 2; ++iy)
+                {
+                    double translation[][] = {
+                        {1,0,0,0},
+                        {0,1,0,0},
+                        {0,0,1,0},
+                        {ix*tileWidth,iy*tileWidth,0,1},
+                    };
+                    FORI (iGroup, group.length)
+                        VecMath.mxm(bigGroup[N++], group[iGroup], translation);
+                }
+                assert(N == bigGroup.length);
+                group = bigGroup;
+            }
             return group;
         } // computeSymmetryGroup3d
 
