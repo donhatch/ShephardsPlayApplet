@@ -1,4 +1,220 @@
+#include "macros.h"
+
+import com.donhatchsw.util.Arrays;
+import com.donhatchsw.util.VecMath;
+
 class SymmetryUtils {
+        // =============== BEGIN: stolen from CSG.prejava
+
+            // greatest common divisor
+            private static int gcd(int a, int b)
+            {
+                return b==0 ? a : gcd(b, a%b);
+            }
+
+            // sin(pi*n/d) squared times sign, but do it without trig if it's a nice angle
+            private static double sinSquaredPiTimes(int n, int d)
+            {
+                assert(d != 0);
+                int sign = 1;
+                if (n < 0)
+                {
+                    n *= -1;
+                    sign *= -1;
+                }
+                if (d < 0)
+                {
+                    d *= -1;
+                    sign *= -1;
+                }
+                int gcd = gcd(n,d);
+                n /= gcd;
+                d /= gcd;
+                n %= 2*d;
+                // so now 0 <= n/d < 2, i.e. in [0..360] degrees
+                if (n > d)
+                {
+                    n = 2*d - n;
+                    sign *= -1;
+                }
+                // so now 0 <= n/d <= 1, i.e. in [0..180] degrees
+                if (2*n > d)
+                {
+                    n = d - n;
+                }
+                // so now 0 <= n/d <= 1/2, i.e. in [0..90] degrees
+                if (4*n > d)
+                    return sign*(1 - cosSquaredPiTimes(n, d));
+                // so now 0 <= n/d <= 1/4, i.e. in [0..45] degrees
+                assert_le(0, n);
+                assert_le(4*n, d);
+                //System.out.println("    "+n+"/"+d+"");
+                if (true)
+                {
+                    // http://mathworld.wolfram.com/TrigonometryAngles.html
+                    // TODO: lots more linked from there
+                    // TODO: now there's a bunch more on http://en.wikipedia.org/wiki/Exact_trigonometric_constants
+                    // http://mathworld.wolfram.com/TrigonometryAnglesPi5.html
+                    //     2/5
+                    // http://mathworld.wolfram.com/TrigonometryAnglesPi8.html
+                    //     3/8
+                    // http://mathworld.wolfram.com/TrigonometryAnglesPi10.html
+                    //     3/10
+                    // http://mathworld.wolfram.com/TrigonometryAnglesPi12.html
+                    //     5/12
+                    //     5/12
+                    // http://mathworld.wolfram.com/TrigonometryAnglesPi15.html
+                    //     1/15
+                    //     2/15
+                    //     4/15
+                    //     7/15
+                    // http://mathworld.wolfram.com/TrigonometryAnglesPi16.html
+                    //     1/16
+                    //     3/16
+                    //     5/16
+                    //     7/16
+                    // http://mathworld.wolfram.com/TrigonometryAnglesPi17.html
+                    //     1/17
+                    //     2/17
+                    //     4/17
+                    //     8/17
+                    //     (what about 3,5,6,7? hmm)
+                    // http://mathworld.wolfram.com/TrigonometryAnglesPi20.html
+                    //     1/20
+                    //     3/20
+                    //     7/20
+                    //     9/20
+                    // http://mathworld.wolfram.com/TrigonometryAnglesPi24.html
+                    //     1/24
+                    //     5/24
+                    //     7/24
+                    //     11/24
+                    // http://mathworld.wolfram.com/TrigonometryAnglesPi30.html
+                    //     1/30
+                    //     7/30
+                    //     11/30
+                    //     13/30
+                    // http://mathworld.wolfram.com/TrigonometryAnglesPi32.html
+                    //     1/32
+                    //     3/32
+                    //     5/32
+                    //     7/32
+                    //     9/32
+                    //     11/32
+                    //     13/32
+                    //     15/32
+                    // hey, what about 1/60??
+                    // even the mathematica calculator doesn't get it,
+                    // but sin(pi/60) = sqrt((1-cos(pi/30))/2)
+                    //                = sqrt((1-  sqrt(7+sqrt(5)+sqrt(6*(5+sqrt(5))))/4.  )/2.)
+                    // hmm, maybe can do a lot of these recursively using the half-angle
+                    // formula?
+                    if (n==0)          // 0 degrees
+                        return sign * 0;
+                    if (n==1 && d==12) // 15 degrees
+                        return sign * ((2.-Math.sqrt(3.))/4.);
+                    if (n==1 && d==10) // 18 degrees
+                        return sign * ((3.-Math.sqrt(5.))/8.);
+                    if (n==1 && d==8) // 22.5 degrees
+                        return sign * ((2.-Math.sqrt(2.))/4.);
+                    if (n==1 && d==6)  // 30 degrees
+                        return sign * (1./4.);
+                    if (n==1 && d==5)  // 36 degrees
+                        return sign * ((5.-Math.sqrt(5.))/8.);
+                    if (n==1 && d==4)  // 45 degrees
+                        return sign * (1./2.);
+                }
+                if (true)
+                {
+                    // half-assed attempt at patching up some of the holes...
+                    // XXX none of this has been tested
+                    // XXX shouldn't do this unless denominator is of form that can prevent a trig call at the end... not sure how to predict that easily
+                    if (d % 2 == 0)
+                    {
+                        // use half-angle formula sin(a/2) = sqrt((1-cos(a))/2)
+                        // this is recursively calling with a bigger angle pi*n/(d/2),
+                        // but it's sign-safe since we know pi*n/d < 45 degrees
+                        // which implies pi*n/(d/2) < 90 degrees.
+                        return sign * ((1.-Math.sqrt(cosSquaredPiTimes(n, d/2))) / 2.);
+                    }
+                    else if (n % 2 == 0)
+                    {
+                        // use double-angle formula sin(2a) = 2 sin(a) cos(a)
+                        double s = sinSquaredPiTimes(n/2, d);
+                        return sign * (4 * s * (1-s));
+                    }
+                    else if (n % 3 == 0)
+                    {
+                        // use triple-angle formula sin(3a) = 3 sin a - 4 sin^3 a
+                        double s = sinSquaredPiTimes(n/3, d);
+                        return sign * (s * SQR(4*s-3));
+                    }
+                    else if (n > 3)
+                    {
+                        // use angle-sum identity: sin(a+b) = sin(a)cos(b) + cos(a)sin(b)
+                        int a = (n+1)/2;
+                        int b = (n-1)/2;
+                        double s2a = sinSquaredPiTimes(a,d);
+                        double s2b = sinSquaredPiTimes(b,d);
+                        double s = Math.sqrt(s2a*(1-s2b)) + Math.sqrt((1-s2a)*s2b);
+                        return sign * (s*s);
+                    }
+                }
+                //System.out.println("    "+n+"/"+d+" !!!");
+                double s = Math.sin(Math.PI*n/d);
+                return sign*s*s;
+            } // sinSquaredPiTimes
+
+            // cos(pi*n/d) squared times sign, but do it without trig if it's a nice angle
+            private static double cosSquaredPiTimes(int n, int d)
+            {
+                // cos(pi*n/d) = sin(pi/2 - pi*n/d)
+                //             = sin(pi * (1/2 - n/d))
+                //             = sin(pi * (d/(2*d) - 2*n/(2*d)))
+                //             = sin(pi * (d-2*n)/(2*d))
+                return sinSquaredPiTimes(d-2*n, 2*d);
+            }
+
+            // tan(pi*n/d) squared, but do it without trig if it's a nice angle
+            private static double tanSquaredPiTimes(int n, int d)
+            {
+                double s = sinSquaredPiTimes(n, d);
+                return s / (1 - s); // XXX pretty sure sign is wrong if anything negative
+            }
+            // cot(pi*n/d) squared, but do it without trig if it's a nice angle
+            private static double cotSquaredPiTimes(int n, int d)
+            {
+                double s = sinSquaredPiTimes(n, d);
+                return (1 - s) / s; // XXX pretty sure sign is wrong if anything negative
+            }
+        // =============== END: stolen from CSG.prejava
+
+        private static double sinPiTimes(int n, int d)
+        {
+            double temp = sinSquaredPiTimes(n, d);
+            return temp<0 ? -Math.sqrt(-temp)
+                          :  Math.sqrt(temp);
+        }
+        private static double cosPiTimes(int n, int d)
+        {
+            double temp = cosSquaredPiTimes(n, d);
+            return temp<0 ? -Math.sqrt(-temp)
+                          :  Math.sqrt(temp);
+        }
+        private static double tanPiTimes(int n, int d)
+        {
+            double temp = tanSquaredPiTimes(n, d);
+            return temp<0 ? -Math.sqrt(-temp)
+                          :  Math.sqrt(temp);
+        }
+        private static double cotPiTimes(int n, int d)
+        {
+            double temp = cotSquaredPiTimes(n, d);
+            return temp<0 ? -Math.sqrt(-temp)
+                          :  Math.sqrt(temp);
+        }
+
+
     // Note, it turns out this is only called with leftRightSymmetry=false, currently...
     // i.e. it always returns a quad, not a triangle.
     private static double[][] getFundamentalRegionVerts(int p, int q, boolean leftRightSymmetry)
@@ -263,4 +479,94 @@ class SymmetryUtils {
         }
         return group;
     } // getTheSymmetryGroup
+
+    // Wait, what? shouldn't we multiply the whole thing by wrapSphereCurvature so it can be zero?
+    // Hmm, maybe not, then center-and-uncenter wouldn't be identity.  Weird.
+    // I don't think the xform is invertible in the curvature=0 case anyway,
+    // so shouldn't be centering the sphere in that case.
+    private static double[][] getCenterSphereMatrix(double wrapSphereCurvature)
+    {
+        return new double[][] {
+            {1,0,0,0},
+            {0,1,0,0},
+            {0,0,1,0},
+            {0,0,1./wrapSphereCurvature,1},
+        };
+    }
+    private static double[][] getUncenterSphereMatrix(double wrapSphereCurvature)
+    {
+        return new double[][] {
+            {1,0,0,0},
+            {0,1,0,0},
+            {0,0,1,0},
+            {0,0,-1./wrapSphereCurvature,1},
+        };
+    }
+    private static double[][] getWrapAroundSphereMatrix(double wrapSphereCurvature, boolean centerSphereFlag)
+    {
+        // inverse of getUnwrapAroundSphereMatrix, I don't claim to understand it directly
+        double m[][] = {
+            {1,0,0,0},
+            {0,1,0,0},
+            {0,0,wrapSphereCurvature,-.5*SQR(wrapSphereCurvature)},
+            {0,0,0,1},
+        };
+        if (centerSphereFlag)
+        {
+            // end by moving center from -r to origin
+            m = VecMath.mxm(m, getCenterSphereMatrix(wrapSphereCurvature));
+        }
+        return m;
+    } // getWrapAroundSphereMatrix
+    private static double[][] getUnwrapAroundSphereMatrix(double wrapSphereCurvature, boolean centerSphereFlag)
+    {
+        /*
+        // divide by wrap sphere radius, to wrap around unit sphere
+           1/r 0 0 0
+           0 1/r 0 0
+           0 0 1/r 0
+           0 0  0  1
+        // divide by 1+z/2, to send far point to infinity
+            1  0  0  0
+            0  1  0  0
+            0  0  1  .5
+            0  0  0  1
+        // multiply by wrap sphere radius, to get original scale and curvature at origin
+           r 0 0 0
+           0 r 0 0
+           0 0 r 0
+           0 0 0 1
+        i.e. 
+            1  0  0  0
+            0  1  0  0
+            0  0  1  .5/r
+            0  0  0  1
+        // Then, since we want paraboloid to have curvature 1 instead of 1/r,
+        // multiply by:
+           1 0 0 0
+           0 1 0 0
+           0 0 r 0
+           0 0 0 1
+        // i.e. (if we cared, which we probably don't since we don't unwrap around infinite radius sphere, do we?)
+           1/r 0  0  0
+           0  1/r 0  0
+           0   0  1  0
+           0   0  0 1/r
+        */
+
+        double m[][] = {
+            {1,0,0,0},
+            {0,1,0,0},
+            {0,0,1./wrapSphereCurvature,.5*wrapSphereCurvature},
+            {0,0,0,1},
+        };
+        if (centerSphereFlag)
+        {
+            // start by moving center from origin to -r
+            m = VecMath.mxm(getUncenterSphereMatrix(wrapSphereCurvature), m);
+        }
+        return m;
+    } // getUnwrapAroundSphereMatrix
+
+
 } // class SymmetryUtils

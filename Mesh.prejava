@@ -1,7 +1,15 @@
 #include "macros.h"
 
+import com.donhatchsw.compat.ArrayList;
+import com.donhatchsw.util.Arrays;
+import com.donhatchsw.util.LinearProgramming;
+import com.donhatchsw.util.TriangulationOptimizer;
+import com.donhatchsw.util.VecMath;
+
 public class Mesh
 {
+    private static int nonEventVerbose = 0; // so static classes can refer to it.  CBB: not hooked up to anything any more (used to be in ShephardsPlayApplet)
+
     public String toString()
     {
         StringBuffer sb = new StringBuffer();
@@ -697,9 +705,9 @@ public class Mesh
             Vertex v1 = e.initialVertex();
             Vertex v2 = e.finalVertex();
             // TODO: this dangerous. should be using a different method to show what's inside out!
-            sum += twiceTriangleArea(v0.x(), v0.y(),
-                                     v1.x(), v1.y(),
-                                     v2.x(), v2.y());
+            sum += GeomUtils.twiceTriangleArea(v0.x(), v0.y(),
+                                               v1.x(), v1.y(),
+                                               v2.x(), v2.y());
         }
         return sum;
     } // twiceFaceArea
@@ -844,17 +852,17 @@ public class Mesh
             Edge edge = (Edge)edges.get(iEdge);
             double thisDistSqrd =
                 edge.initialVertex() == null ? Double.POSITIVE_INFINITY : // no need to deal with edges whose initial vertex is NULL and final vertex isn't, since we'll encounter its opposite anyway
-                edge.finalVertex() == null ? distSqrdFromPointToRay(x,y,
-                                                                    edge.initialVertex().x(),
-                                                                    edge.initialVertex().y(),
-                                                                    edge.direction[0],
-                                                                    edge.direction[1]) :
+                edge.finalVertex() == null ? GeomUtils.distSqrdFromPointToRay(x,y,
+                                                                              edge.initialVertex().x(),
+                                                                              edge.initialVertex().y(),
+                                                                              edge.direction[0],
+                                                                              edge.direction[1]) :
                 edge.initialVertex().myIndex() > edge.finalVertex().myIndex() ? Double.POSITIVE_INFINITY
-                                            : distSqrdFromPointToSeg(x,y,
-                                                                     edge.initialVertex().x(),
-                                                                     edge.initialVertex().y(),
-                                                                     edge.finalVertex().x(),
-                                                                     edge.finalVertex().y());
+                                            : GeomUtils.distSqrdFromPointToSeg(x,y,
+                                                                               edge.initialVertex().x(),
+                                                                               edge.initialVertex().y(),
+                                                                               edge.finalVertex().x(),
+                                                                               edge.finalVertex().y());
             if (thisDistSqrd < closestDistSqrd)
             {
                 closestDistSqrd = thisDistSqrd;
@@ -884,6 +892,32 @@ public class Mesh
         return closestEdgeIndex; // -1 if none
     } // indexOfClosestEdge
 
+    // TODO: This stuff doesn't belong here, move it to MeshUtil or something
+    public static final int OPTIMIZE_BARYCENTRICS_LEAST_SQUARES = 0;
+    public static final int OPTIMIZE_BARYCENTRICS_INFINITY_NORM = 1;
+    public static final int OPTIMIZE_BARYCENTRICS_MAX_MIN = 2;
+    public static final int OPTIMIZE_LENGTHS_LEAST_SQUARES = 3;
+    public static final int OPTIMIZE_LENGTHS_INFINITY_NORM = 4;
+    public static final int OPTIMIZE_LENGTHS_MAX_MIN = 5;
+    public static final int OPTIMIZE_LENGTHS_SUM = 6;
+    public static final String optimizationTypeNames[] = {
+        "BARYCENTRICS_LEAST_SQUARES from all 1/3's",
+        "BARYCENTRICS_INFINITY_NORM from all 1/3's",
+        "BARYCENTRICS_MAX_MIN",
+        "LENGTHS_LEAST_SQUARES from all .25's",
+        "LENGTHS_INFINITY_NORM from all .25's",
+        "LENGTHS_MAX_MIN with fixed sum",
+        //"LENGTHS_SUM with every edge length >= .25",
+    };
+    public static final int availableOptimizationTypes[] = {
+        OPTIMIZE_BARYCENTRICS_LEAST_SQUARES,
+        OPTIMIZE_BARYCENTRICS_INFINITY_NORM,
+        OPTIMIZE_BARYCENTRICS_MAX_MIN,
+        OPTIMIZE_LENGTHS_LEAST_SQUARES,
+        OPTIMIZE_LENGTHS_INFINITY_NORM,
+        OPTIMIZE_LENGTHS_MAX_MIN,
+        //OPTIMIZE_LENGTHS_SUM,
+    };
     public double[] findOptimalVertexHeights(int optimizationType)
     {
         if (verts.size() < 3)
@@ -904,15 +938,15 @@ public class Mesh
                 Vertex v0 = edge.initialVertex();
                 Vertex v1 = edge.next().initialVertex();
                 Vertex v2 = edge.next().next().initialVertex();
-                if (twiceTriangleArea(0,0,
-                                      v0.Xnaive(),v0.Ynaive(),
-                                      v1.Xnaive(),v1.Ynaive()) >= 0
-                 && twiceTriangleArea(0,0,
-                                      v1.Xnaive(),v1.Ynaive(),
-                                      v2.Xnaive(),v2.Ynaive()) >= 0
-                 && twiceTriangleArea(0,0,
-                                      v2.Xnaive(),v2.Ynaive(),
-                                      v0.Xnaive(),v0.Ynaive()) >= 0)
+                if (GeomUtils.twiceTriangleArea(0,0,
+                                                v0.Xnaive(),v0.Ynaive(),
+                                                v1.Xnaive(),v1.Ynaive()) >= 0
+                 && GeomUtils.twiceTriangleArea(0,0,
+                                                v1.Xnaive(),v1.Ynaive(),
+                                                v2.Xnaive(),v2.Ynaive()) >= 0
+                 && GeomUtils.twiceTriangleArea(0,0,
+                                                v2.Xnaive(),v2.Ynaive(),
+                                                v0.Xnaive(),v0.Ynaive()) >= 0)
                 {
                     dependentVertIndices[0] = v0.myIndex();
                     dependentVertIndices[1] = v1.myIndex();
@@ -946,9 +980,9 @@ public class Mesh
                 Mesh.Vertex v1 = e1.initialVertex();
                 Mesh.Vertex v2 = e2.initialVertex();
 
-                double dualVertArea = twiceTriangleArea(v0.Xnaive(),v0.Ynaive(),
-                                                        v1.Xnaive(),v1.Ynaive(),
-                                                        v2.Xnaive(),v2.Ynaive());
+                double dualVertArea = GeomUtils.twiceTriangleArea(v0.Xnaive(),v0.Ynaive(),
+                                                                  v1.Xnaive(),v1.Ynaive(),
+                                                                  v2.Xnaive(),v2.Ynaive());
                 if (dualVertArea < 0.)
                     continue; // triangle is inside out
 
@@ -1099,13 +1133,13 @@ public class Mesh
                     Vertex v0 = (Vertex)verts.get(iVert0);
                     Vertex v1 = (Vertex)verts.get(iVert1);
                     Vertex v2 = (Vertex)verts.get(iVert2);
-                    SolveForDualPoint(v0.Xnaive(),v0.Ynaive(),h0,
-                                      v1.Xnaive(),v1.Ynaive(),h1,
-                                      v2.Xnaive(),v2.Ynaive(),h2,
-                                      sampleResultVerts[iSample][iDualVert], // dimension 2-- last coord is simply ignored
-                                      false, // wrapAroundSphereFlagValue
-                                      false, // centerSphereFlag
-                                      0.); // wrapCurvatureValue
+                    GeomUtils.SolveForDualPoint(v0.Xnaive(),v0.Ynaive(),h0,
+                                                v1.Xnaive(),v1.Ynaive(),h1,
+                                                v2.Xnaive(),v2.Ynaive(),h2,
+                                                sampleResultVerts[iSample][iDualVert], // dimension 2-- last coord is simply ignored
+                                                false, // wrapAroundSphereFlagValue
+                                                false, // centerSphereFlag
+                                                0.); // wrapCurvatureValue
                 }
             }
             //PRINTMAT(sampleHeights);
@@ -1123,18 +1157,18 @@ public class Mesh
                 FORI (iDualVert, nDualVerts)
                 {
                     int tri[] = dualVert2verts[iDualVert];
-                    double wholeArea = twiceTriangleArea(((Vertex)verts.get(tri[0])).Xnaive(), ((Vertex)verts.get(tri[0])).Ynaive(),
-                                                         ((Vertex)verts.get(tri[1])).Xnaive(), ((Vertex)verts.get(tri[1])).Ynaive(),
-                                                         ((Vertex)verts.get(tri[2])).Xnaive(), ((Vertex)verts.get(tri[2])).Ynaive());
+                    double wholeArea = GeomUtils.twiceTriangleArea(((Vertex)verts.get(tri[0])).Xnaive(), ((Vertex)verts.get(tri[0])).Ynaive(),
+                                                                   ((Vertex)verts.get(tri[1])).Xnaive(), ((Vertex)verts.get(tri[1])).Ynaive(),
+                                                                   ((Vertex)verts.get(tri[2])).Xnaive(), ((Vertex)verts.get(tri[2])).Ynaive());
                     double dualVert[] = sampleResultVerts[iSample][iDualVert];
                     FORI (iVertOnTri, 3)
                     {
                         sampleBarycentrics[iSample][iDualVert][iVertOnTri] =
-                                twiceTriangleArea(dualVert[0], dualVert[1],
-                                                  ((Vertex)verts.get(tri[(iVertOnTri+1)%3])).Xnaive(),
-                                                  ((Vertex)verts.get(tri[(iVertOnTri+1)%3])).Ynaive(),
-                                                  ((Vertex)verts.get(tri[(iVertOnTri+2)%3])).Xnaive(),
-                                                  ((Vertex)verts.get(tri[(iVertOnTri+2)%3])).Ynaive())
+                            GeomUtils.twiceTriangleArea(dualVert[0], dualVert[1],
+                                                        ((Vertex)verts.get(tri[(iVertOnTri+1)%3])).Xnaive(),
+                                                        ((Vertex)verts.get(tri[(iVertOnTri+1)%3])).Ynaive(),
+                                                        ((Vertex)verts.get(tri[(iVertOnTri+2)%3])).Xnaive(),
+                                                        ((Vertex)verts.get(tri[(iVertOnTri+2)%3])).Ynaive())
                               / wholeArea;
                     }
                 }
@@ -1490,13 +1524,13 @@ public class Mesh
                     double h0 = optimalVertexHeights[iVert0];
                     double h1 = optimalVertexHeights[iVert1];
                     double h2 = optimalVertexHeights[iVert2];
-                    SolveForDualPoint(v0.Xnaive(),v0.Ynaive(),h0,
-                                      v1.Xnaive(),v1.Ynaive(),h1,
-                                      v2.Xnaive(),v2.Ynaive(),h2,
-                                      scratchDualVert,
-                                      false, // wrapAroundSphereFlag
-                                      false, // centerSphereFlag
-                                      0.); // wrapSphereCurvature
+                    GeomUtils.SolveForDualPoint(v0.Xnaive(),v0.Ynaive(),h0,
+                                                v1.Xnaive(),v1.Ynaive(),h1,
+                                                v2.Xnaive(),v2.Ynaive(),h2,
+                                                scratchDualVert,
+                                                false, // wrapAroundSphereFlag
+                                                false, // centerSphereFlag
+                                                0.); // wrapSphereCurvature
                     VecMath.vpv(2, avgDual, avgDual, scratchDualVert); // only 2 of 3
                 }
                 VecMath.vxs(avgDual, avgDual, 1./nDualVerts);
@@ -1668,9 +1702,8 @@ public class Mesh
         sanityCheck();
     } // flipLowerLeftUpperRight
 
-    private Mesh()
-    {
-    }
+    public Mesh()
+    {}
 
     private Mesh(double vertPositions[][],
                  int faceIndices[][])
