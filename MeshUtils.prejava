@@ -1365,6 +1365,77 @@ public class MeshUtils
         if (verboseLevel >= 1) System.out.println("    out getFacings");
     } // getFacings
 
+    // CBB: probably doesn't work unless faces are convex
+    // CBB: point can fall through cracks
+    public static Mesh.Edge findSomeEdgeOnFaceVertIsIn(Mesh mesh, double x, double y)
+    {
+
+        boolean kissed = false;
+        double twiceMostNegativeFaceArea = Double.POSITIVE_INFINITY;
+        Mesh.Edge edgeOnMostNegativeFace = null;
+        // XXX traverses each face of size n n times!  need to keep track of what we've done already
+        int nEdges = mesh.edges.size();
+        FORI (iEdge, nEdges)
+        {
+            boolean thisFaceIsGoodSoFar = true;
+            Mesh.Edge edgeI = mesh.getEdge(iEdge);
+            double twiceThisFaceArea = 0.;
+            for (Mesh.Edge edge = edgeI;;)
+            {
+                double twiceThisTriArea = GeomUtils.twiceTriangleArea(
+                    x, y,
+                    edge.initialVertex().x(),
+                    edge.initialVertex().y(),
+                    edge.finalVertex().x(),
+                    edge.finalVertex().y());
+                if (twiceThisTriArea < 0)
+                {
+                    thisFaceIsGoodSoFar = false;
+                    break; // out of this face
+                }
+
+                if ((edge = edge.next()) == edgeI)
+                    break;
+            }
+            if (thisFaceIsGoodSoFar)
+                return edgeI;
+        }
+        return null;
+    } // findSomeEdgeOnFaceVertIsIn
+
+    public static Mesh.Edge findSomeEdgeOnMostNegativeFace(Mesh mesh)
+    {
+        double twiceMostNegativeFaceArea = Double.POSITIVE_INFINITY;
+        Mesh.Edge answer = null;
+        int nEdges = mesh.edges.size();
+        FORI (iEdge, nEdges)
+        {
+            Mesh.Edge edgeI = mesh.getEdge(iEdge);
+            double x0 = edgeI.initialVertex().x();
+            double y0 = edgeI.initialVertex().y();
+            double twiceThisFaceArea = 0.;
+            for (Mesh.Edge edge = edgeI;;)
+            {
+                double twiceThisTriArea = GeomUtils.twiceTriangleArea(
+                    x0, y0,
+                    edge.initialVertex().x(),
+                    edge.initialVertex().y(),
+                    edge.finalVertex().x(),
+                    edge.finalVertex().y());
+                twiceThisFaceArea += twiceThisTriArea;
+
+                if ((edge = edge.next()) == edgeI)
+                    break;
+            }
+            if (twiceThisFaceArea < twiceMostNegativeFaceArea)
+            {
+                twiceMostNegativeFaceArea = twiceThisFaceArea;
+                answer = edgeI;
+            }
+        }
+        return answer;
+    } // findSomeEdgeOnMostNegativeFace
+
 
 
 }  // class MeshUtils
