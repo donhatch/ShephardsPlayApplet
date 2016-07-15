@@ -3116,26 +3116,53 @@ public class ShephardsPlayApplet
                             add(new JCheckBoxForBoolean("dual verts", applet.labelDualVertsFlag));
                             add(new JCheckBoxForBoolean("dual edges", applet.labelDualEdgesFlag));
                         }});
-                        add(new JCheckBox("Magnifying glass", applet.showMagFlag.get()) {{
-                                addItemListener(new java.awt.event.ItemListener() {
-                                    @Override public void itemStateChanged(java.awt.event.ItemEvent e)
+                        add(new JRow() {{
+                            add(new JCheckBox("Magnifying glass", applet.showMagFlag.get()) {{
+                                    addItemListener(new java.awt.event.ItemListener() {
+                                        @Override public void itemStateChanged(java.awt.event.ItemEvent e)
+                                        {
+                                            applet.showMagFlag.set(isSelected());
+                                            System.out.println("showMagFlag -> "+applet.showMagFlag.get());
+                                            // need to double buffer iff magnifying
+                                            applet.doubleBufferFlag = applet.showMagFlag.get();
+                                            System.out.println("    doubleBufferFlag -> "+applet.doubleBufferFlag);
+                                            applet.theCanvas.repaint();
+                                        }
+                                    });
+                                    applet.showMagFlag.addListener(applet.showMagFlagListener = new Listenable.Listener() {
+                                        @Override public void valueChanged()
+                                        {
+                                            setSelected(applet.showMagFlag.get()); // of the checkbox
+                                        }
+                                    });
+                                }
+                            });
+                            add(new JLabel("    "));
+                            add(new JButton("Random seed:") {{
+                                setMargin(nomargin);
+                                addActionListener(new java.awt.event.ActionListener() {
+                                    @Override public void actionPerformed(java.awt.event.ActionEvent e)
                                     {
-                                        applet.showMagFlag.set(isSelected());
-                                        System.out.println("showMagFlag -> "+applet.showMagFlag.get());
-                                        // need to double buffer iff magnifying
-                                        applet.doubleBufferFlag = applet.showMagFlag.get();
-                                        System.out.println("    doubleBufferFlag -> "+applet.doubleBufferFlag);
-                                        applet.theCanvas.repaint();
+                                        OUT("calling setSeed("+(long)applet.randomSeed.get()+")");
+                                        applet.randomNumberGenerator.setSeed((long)applet.randomSeed.get());
                                     }
                                 });
-                                applet.showMagFlag.addListener(applet.showMagFlagListener = new Listenable.Listener() {
-                                    @Override public void valueChanged()
-                                    {
-                                        setSelected(applet.showMagFlag.get()); // of the checkbox
-                                    }
-                                });
-                            }
-                        });
+                            }});
+                            add(new JTextFieldForNumber(applet.randomSeed) {
+                                @Override public java.awt.Dimension getPreferredSize()
+                                {
+                                    java.awt.Dimension answer = super.getPreferredSize();
+                                    answer.width += 100; // hack, probly won't look good everywhere
+                                    return answer;
+                                }
+                                @Override public java.awt.Dimension getMinimumSize()
+                                {
+                                    java.awt.Dimension answer = super.getMinimumSize();
+                                    answer.width += 100; // hack, probly won't look good everywhere
+                                    return answer;
+                                }
+                            });
+                        }});
                         add(new JRow() {{
                             add(new JButton("Dump window positions and sizes") {{
                                 setMargin(nomargin);
@@ -13807,7 +13834,6 @@ OFF
             }
         } // vertOffset
 
-        private java.util.Random randomNumberGenerator = new java.util.Random(System.currentTimeMillis()); // not good form to share this or have it be static!
         private static double[][] generateBlueNoiseOnUnitSphere(double stubbornness,
                                                                 double overlappingDiskRadius, // radius of disks that half-overlap.  this is twice the radius of disks that don't overlap.
                                                                 java.util.Random randomNumberGenerator)
@@ -14148,6 +14174,10 @@ OFF
             _primalMeshOfDualMesh = null; // no sense keeping a ref to it
             theNet = null;
         }
+
+        private Listenable.Int randomSeed = new Listenable.Int(0,Integer.MAX_VALUE, (int)System.currentTimeMillis() & Integer.MAX_VALUE); // there's no Listenable.Long and we don't really need one
+        private java.util.Random randomNumberGenerator = new java.util.Random(randomSeed.get());
+
         private int beingDraggedVertIndex = -1;
         private double[] beingDraggedVertUnsnappedXY = null;
         private int beingDraggedNetEdgeIndex = -1;
