@@ -10140,6 +10140,12 @@ public class ShephardsPlayApplet
 
             private void doConvexNoiseThing0(int n)
             {
+                if (true)
+                {
+                    OUT("RESETTING RNG");
+                    randomNumberGenerator = new java.util.Random(0);
+                }
+
                 int verboseLevel = 3;
                 if (verboseLevel >= 1) OUT("    in doConvexNoiseThing0");
                 double verts[][] = new double[n][3];
@@ -10198,6 +10204,8 @@ public class ShephardsPlayApplet
                                               + (bcdArea > 0. ? 1 : 0)
                                               + (cadArea > 0. ? 1 : 0);
                                 #define BARY(a, b, s, c, t) ((1.-(s)-(t))*(a) + (b)*(s) + (t)*(c))
+                                // Extrapolation in plane of a triangle can be done
+                                // by barycentric averaging (same as interpolation)
                                 double zIntercept = BARY(a[2],
                                                          b[2], cadArea/abcArea,
                                                          c[2], abdArea/abcArea);
@@ -10213,6 +10221,8 @@ public class ShephardsPlayApplet
                                 assert(false);
                                 continue; // bad; try again
                             }
+                            PRINT(zMin);
+                            PRINT(zMax);
                             double t = randomNumberGenerator.nextDouble();
                             verts[iVert][2] = LERP(zMin, zMax, t);
                             break;
@@ -10223,6 +10233,19 @@ public class ShephardsPlayApplet
                     if (verboseLevel == 2) System.out.println();
                 }
                 //PRINTMAT(verts);
+
+                // XXX totally not clear on what I just did.
+                // I think I did it in 3d space, but about to pass in the verts as heights, so need to translate.
+
+                if (true)
+                {
+                    FORI (i, n)
+                    {
+                        verts[i][2] += .5 * (SQR(verts[i][0]) + SQR(verts[i][1]));
+                    }
+                }
+
+                PRINTMAT(verts);
                 this.mesh = new Mesh(verts, new int[][]{});
                 this.nFixagesSinceLastNoise = 0;
                 if (verboseLevel >= 1) OUT("    out doConvexNoiseThing0");
@@ -10238,19 +10261,19 @@ public class ShephardsPlayApplet
 
                 int verboseLevel = 3;
                 if (verboseLevel >= 1) OUT("    in doConvexNoiseThing1");
-                double verts[][] = new double[n][3];
                 if (wrapAroundSphereFlag.get())
                 {
                     unimplemented(); // TODO: implement me!
                 }
                 else
                 {
+                    double verts3d[][] = new double[n][3];
                     double r = .25;
-                    if (verts.length > 0) VecMath.copyvec(verts[0], new double[]{-r,-r,0});
-                    if (verts.length > 1) VecMath.copyvec(verts[1], new double[]{r,-r,0});
-                    if (verts.length > 2) VecMath.copyvec(verts[2], new double[]{r,r,0});
-                    if (verts.length > 3) VecMath.copyvec(verts[3], new double[]{-r,r,0});
-                    if (verts.length >= 4)
+                    if (verts3d.length > 0) VecMath.copyvec(verts3d[0], new double[]{-r,-r,0});
+                    if (verts3d.length > 1) VecMath.copyvec(verts3d[1], new double[]{r,-r,0});
+                    if (verts3d.length > 2) VecMath.copyvec(verts3d[2], new double[]{r,r,0});
+                    if (verts3d.length > 3) VecMath.copyvec(verts3d[3], new double[]{-r,r,0});
+                    if (verts3d.length >= 4)
                     {
                         int initialFaces[][] = {
                             {0,1,2},
@@ -10258,16 +10281,16 @@ public class ShephardsPlayApplet
                             {0,3,1},
                             {3,2,1},
                         };
-                        Mesh scratchMesh = new Mesh((double[][])Arrays.subarray(verts, 0, 4), initialFaces);
-                        for (int iVert = 4; iVert < verts.length; ++iVert)
+                        Mesh scratchMesh = new Mesh((double[][])Arrays.subarray(verts3d, 0, 4), initialFaces);
+                        for (int iVert = 4; iVert < verts3d.length; ++iVert)
                         {
-                            if (verboseLevel >= 3) OUT("          choosing vert "+iVert+"/"+verts.length);
+                            if (verboseLevel >= 3) OUT("          choosing vert "+iVert+"/"+verts3d.length);
                             while (true)
                             {
                                 double x = (2*randomNumberGenerator.nextDouble()-1) * r;
                                 double y = (2*randomNumberGenerator.nextDouble()-1) * r;
-                                verts[iVert][0] = x;
-                                verts[iVert][1] = y;
+                                verts3d[iVert][0] = x;
+                                verts3d[iVert][1] = y;
 
                                 // Figure out what height to put it at
                                 double zMin = -1.;
@@ -10282,9 +10305,9 @@ public class ShephardsPlayApplet
                                     int j = edgeI.next().initialVertex().myIndex();
                                     int k = edgeI.prev().initialVertex().myIndex();
 
-                                    double a[] = verts[i];
-                                    double b[] = verts[j];
-                                    double c[] = verts[k];
+                                    double a[] = verts3d[i];
+                                    double b[] = verts3d[j];
+                                    double c[] = verts3d[k];
                                     double abcArea = GeomUtils.twiceTriangleArea(a,b,c);
                                     if (abcArea < 0.)
                                     {
@@ -10293,7 +10316,7 @@ public class ShephardsPlayApplet
                                     }
                                     if (verboseLevel >= 3) OUT("              not skipping tri v"+i+",v"+j+",v"+k+" because not inside out");
 
-                                    double d[] = verts[iVert]; // with z not set yet
+                                    double d[] = verts3d[iVert]; // with z not set yet
                                     double abdArea = GeomUtils.twiceTriangleArea(a,b,d);
                                     double bcdArea = GeomUtils.twiceTriangleArea(b,c,d);
                                     double cadArea = GeomUtils.twiceTriangleArea(c,a,d);
@@ -10316,6 +10339,8 @@ public class ShephardsPlayApplet
                                     if (dIsInMiddle || cIsInMiddle)
                                     {
                                         #define BARY(a, b, s, c, t) ((1.-(s)-(t))*(a) + (b)*(s) + (t)*(c))
+                                        // Extrapolation in plane of a triangle can be done
+                                        // by barycentric averaging (same as interpolation)
                                         double zIntercept = BARY(a[2],
                                                                  b[2], cadArea/abcArea,
                                                                  c[2], abdArea/abcArea);
@@ -10348,7 +10373,7 @@ public class ShephardsPlayApplet
                                 }
                                 double t = randomNumberGenerator.nextDouble();
                                 double z = LERP(zMin, zMax, t);
-                                verts[iVert][2] = z;
+                                verts3d[iVert][2] = z;
 
                                 if (false) // this doesn't work.  might be useful for more directed search, but I really think we have to recompute convex hull anyway so it's pointless.
                                 {
@@ -10361,16 +10386,17 @@ public class ShephardsPlayApplet
                                 }
                                 else
                                 {
-                                    // WTF: delaunayized is producing something that's inside out!?
-                                    //scratchMesh.addIsolatedVertex(x, y, z); // XXX hmm, gets it inside out!?
-                                    scratchMesh = new Mesh((double[][])Arrays.subarray(verts, 0, iVert+1), new int[][]{}); // XXX hmm, gets it inside out!?
+                                    double verts[][] = VecMath.copymat(iVert+1, 3, verts3d);
+                                    FORI (i, iVert+1) verts[i][2] += .5 * (SQR(verts[i][0]) + SQR(verts[i][1]));
+                                    PRINTMAT(verts);
+                                    scratchMesh = new Mesh(verts, new int[][]{});
                                     scratchMesh = delaunayized(scratchMesh,
                                                                false, // wrap around sphere flag
                                                                0., // wrap sphere curvature (irrelevant)
                                                                false, // center sphere flag (irrelevant)
                                                                true); // calcInsideOutDualVertsFlag
                                     assert(scratchMesh.verts.size() == iVert+1);
-                                    // TODO: assert no isolated verts.  can do that by counting edges and tris, and using euler's formula
+                                    // Assert no isolated verts.  can do that by counting edges and tris, and using euler's formula
                                     //     v+f = e+2
                                     //       -> f = e+2-v
                                     //     2e = 3f (for triangulated)
@@ -10380,6 +10406,8 @@ public class ShephardsPlayApplet
                                     //      e = 3v-6
                                     //     except this e is our edges.size()/2.
                                     assert(scratchMesh.edges.size() == 2*(3*scratchMesh.verts.size()-6));
+                                    // TODO: assert that there are exactly two inside out tris,
+                                    // same as when we started
 
                                     this.mesh = scratchMesh; // so I can see what was being worked with
                                 }
@@ -10391,7 +10419,7 @@ public class ShephardsPlayApplet
                         }
                     }
                 }
-                //this.mesh = new Mesh(verts, new int[][]{});
+                assert(this.mesh.verts.size() == n);
                 this.nFixagesSinceLastNoise = 0;
                 if (verboseLevel >= 1) OUT("    out doConvexNoiseThing1");
             } // doConvexNoiseThing1
@@ -14207,7 +14235,7 @@ OFF
         private boolean arrowsTowardsSharpestDihedralsFlag = false;
         private boolean arrowsTowardsShortestEdgesFlag = false;
 
-        private Listenable.Boolean labelPrimalVertsFlag = new Listenable.Boolean(false);
+        private Listenable.Boolean labelPrimalVertsFlag = new Listenable.Boolean(true);
         private Listenable.Boolean labelPrimalEdgesFlag = new Listenable.Boolean(false);
         private Listenable.Boolean labelDualVertsFlag = new Listenable.Boolean(false);
         private Listenable.Boolean labelDualEdgesFlag = new Listenable.Boolean(false);
