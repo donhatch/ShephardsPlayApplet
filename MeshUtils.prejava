@@ -17,24 +17,12 @@ public class MeshUtils
     {
         boolean seenEdge[] = new boolean[mesh.edges.size()]; // all false initially
         int[][] faces = new int[mesh.edges.size()][];
-        int[] scratchFace = new int[mesh.verts.size()];
+        int[] scratchFace = new int[mesh.edges.size()]; // probably safer than mesh.verts.size()
         int nFaces = 0;
         FORIDOWN(iEdge, mesh.edges.size())
         {
             if (seenEdge[iEdge]) continue;
             Mesh.Edge edge0 = mesh.getEdge(iEdge);
-            if (canonicalOrderFlag)
-            {
-                // Advance edge0 til its initial vertex is the one with smallest index on the face
-                int minVertIndex = edge0.initialVertex().myIndex();
-                for (Mesh.Edge edge = edge0.next(); edge != edge0; edge = edge.next())
-                {
-                    int iVert = edge.initialVertex().myIndex();
-                    minVertIndex = MIN(minVertIndex, iVert);
-                }
-                while (edge0.initialVertex().myIndex() != minVertIndex)
-                    edge0 = edge0.next();
-            }
             int faceSize = 0;
             Mesh.Edge edge = edge0;
             do {
@@ -44,19 +32,35 @@ public class MeshUtils
             faces[nFaces++] = (int[])Arrays.subarray(scratchFace, 0, faceSize);
         }
         faces = (int[][])Arrays.subarray(faces, 0, nFaces);
+
         if (canonicalOrderFlag)
         {
+            FORIDOWN(iFace, faces.length)
+            {
+                int face[] = faces[iFace];
+                int mini = VecMath.mini(face);
+                System.arraycopy(face, mini,
+                                 scratchFace, 0,
+                                 face.length - mini);
+                System.arraycopy(face, 0,
+                                 scratchFace, face.length - mini,
+                                 mini);
+                System.arraycopy(scratchFace, 0,
+                                 face, 0,
+                                 face.length);
+            }
             SortStuff.sort(faces, new SortStuff.Comparator() {
                 public int compare(Object a, Object b)
                 {
-                    int aTri[] = (int[])a;
-                    int bTri[] = (int[])b;
-                    if (aTri.length < bTri.length) return -1;
-                    if (aTri.length > bTri.length) return 1;
-                    for (int i = 0; i < aTri.length; ++i)
+                    // TODO: call it aFace, bFace
+                    int aFace[] = (int[])a;
+                    int bFace[] = (int[])b;
+                    if (aFace.length < bFace.length) return -1;
+                    if (aFace.length > bFace.length) return 1;
+                    for (int i = 0; i < aFace.length; ++i)
                     {
-                        if (aTri[i] < bTri[i]) return -1;
-                        if (aTri[i] > bTri[i]) return 1;
+                        if (aFace[i] < bFace[i]) return -1;
+                        if (aFace[i] > bFace[i]) return 1;
                     }
                     return 0;
                 }
