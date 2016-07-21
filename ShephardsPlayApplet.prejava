@@ -1123,6 +1123,21 @@ public class ShephardsPlayApplet
                             }
                         });
                     }},
+                    new JButton("Sweep Killer 1eps") {{
+                        addActionListener(new java.awt.event.ActionListener() {
+                            @Override public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem.State before = applet.newUndoItemState();
+
+                                applet.doCannedThingSweepKiller1eps();
+
+                                UndoItem.State after = applet.newUndoItemState();
+                                applet.undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                applet.theCanvas.repaint();
+                            }
+                        });
+                    }},
                     new JButton("Sweep Killer (not) 2") {{
                         addActionListener(new java.awt.event.ActionListener() {
                             @Override public void actionPerformed(java.awt.event.ActionEvent e)
@@ -6034,14 +6049,15 @@ public class ShephardsPlayApplet
 
                     case 'i': case '+': case '=': // zoom in
                     {
-                        //rescale(2., 2.);
                         rescale(Math.sqrt(2.), Math.sqrt(2.));
                         break;
                     }
                     case 'o': case '-':           // zoom out
                     {
-                        //rescale(.5, .5);
-                        rescale(Math.sqrt(.5), Math.sqrt(.5));
+                        // Note, this works better than sqrt(.5) or sqrt(2)/2,
+                        // since multiplying by sqrt(2) gives 1.
+                        // CBB: even better would be to keep track of even/odd.
+                        rescale(1./Math.sqrt(2), 1./Math.sqrt(2));
                         break;
                     }
                     case 'f': // frame, gang
@@ -11171,6 +11187,54 @@ OFF
                 rescale(Math.sqrt(.5), Math.sqrt(.5));
 
             } // doCannedThingSweepKiller1
+
+            // SweepKiller1 separated into finite, eps, eps^, ...
+            // This is where polynomials in infinitesimals would help.
+            private void doCannedThingSweepKiller1eps()
+            {
+                // I just did it with eps=1/4 and then tweaked heights til it worked.  not scientific.
+                //double eps = .5;
+                double eps = .25;
+                //double eps = .1;
+                double verts[][] = {
+                    {0.0, 0.0, 0.0},
+                    {0.5, -1.0, 0},
+                    {-0.5, -1.0, 0},
+                    { eps/2, eps, 0},
+                    {-eps/2, eps, 0},
+                    {-eps*eps, -eps*eps, -0.04011840820312497},
+                    { eps*eps, -eps*eps, -0.04011840820312497},
+
+                    // TODO: this one shouldn't be slope 4, that's just a coincidence. it should be slope 3.
+                    {-(eps*eps - eps*eps*eps*eps), -eps*eps, -0.038779580193949656},
+                    { (eps*eps - eps*eps*eps*eps), -eps*eps, -0.038779580193949656},
+
+                    {-(eps*eps + eps*eps*eps*eps), -(eps*eps + eps*eps*eps), -0.046358684798944526},
+                    { (eps*eps + eps*eps*eps*eps), -(eps*eps + eps*eps*eps), -0.046358684798944526},
+
+                };
+                int faces[][] = {
+                    {0, 3, 4},
+                    {3, 0, 6},
+                    {4, 3, 1, 2},
+                    {0, 4, 5},
+                    {1, 0, 2},
+                    {0, 1, 10},
+                    {2, 0, 9},
+                    {6, 1, 3},
+                    {1, 6, 10},
+                    {5, 4, 2},
+                    {5, 2, 9},
+                    {0, 5, 7},
+                    {5, 9, 7},
+                    {10, 6, 8},
+                    {6, 0, 8},
+                    {0, 10, 8},
+                    {7, 9, 0},
+                };
+                mesh = new Mesh(verts, faces);
+            } // doCannedThingSweepKiller1eps
+
 
             // Counterexample to entire class of sweep algorithms
             // that cut each vertex to a higher vertex.
