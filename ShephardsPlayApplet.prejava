@@ -1748,7 +1748,7 @@ public class ShephardsPlayApplet
                                         addActionListener(new java.awt.event.ActionListener() {
                                             @Override public void actionPerformed(java.awt.event.ActionEvent e)
                                             {
-                                                applet.rescalePrimalOnly(Math.sqrt(.5));
+                                                applet.rescalePrimalOnly(1./Math.sqrt(2.));
                                             }
                                         });
                                     }}, stretchxy);
@@ -1814,7 +1814,7 @@ public class ShephardsPlayApplet
                                         addActionListener(new java.awt.event.ActionListener() {
                                             @Override public void actionPerformed(java.awt.event.ActionEvent e)
                                             {
-                                                applet.rescale(Math.sqrt(.5), Math.sqrt(2.));
+                                                applet.rescale(1./Math.sqrt(2.), Math.sqrt(2.));
                                             }
                                         });
                                     }}, stretchxy);
@@ -1915,7 +1915,7 @@ public class ShephardsPlayApplet
                                         addActionListener(new java.awt.event.ActionListener() {
                                             @Override public void actionPerformed(java.awt.event.ActionEvent e)
                                             {
-                                                applet.rescale(Math.sqrt(.5), 1.);
+                                                applet.rescale(1./Math.sqrt(2.), 1.);
                                             }
                                         });
                                     }}, stretchxy);
@@ -2020,7 +2020,7 @@ public class ShephardsPlayApplet
                                         addActionListener(new java.awt.event.ActionListener() {
                                             @Override public void actionPerformed(java.awt.event.ActionEvent e)
                                             {
-                                                applet.rescale(Math.sqrt(.5), Math.sqrt(.5));
+                                                applet.rescale(1./Math.sqrt(2.), 1./Math.sqrt(2.));
                                             }
                                         });
                                     }}, stretchxy);
@@ -2054,7 +2054,7 @@ public class ShephardsPlayApplet
                                         addActionListener(new java.awt.event.ActionListener() {
                                             @Override public void actionPerformed(java.awt.event.ActionEvent e)
                                             {
-                                                applet.rescale(1., Math.sqrt(.5));
+                                                applet.rescale(1., 1./Math.sqrt(2.));
                                             }
                                         });
                                     }}, stretchxy);
@@ -2088,7 +2088,7 @@ public class ShephardsPlayApplet
                                         addActionListener(new java.awt.event.ActionListener() {
                                             @Override public void actionPerformed(java.awt.event.ActionEvent e)
                                             {
-                                                applet.rescale(Math.sqrt(2.), Math.sqrt(.5));
+                                                applet.rescale(Math.sqrt(2.), 1./Math.sqrt(2.));
                                             }
                                         });
                                     }}, stretchxy);
@@ -2227,7 +2227,7 @@ public class ShephardsPlayApplet
                                         addActionListener(new java.awt.event.ActionListener() {
                                             @Override public void actionPerformed(java.awt.event.ActionEvent e)
                                             {
-                                                applet.rescaleDualOnly(Math.sqrt(.5));
+                                                applet.rescaleDualOnly(1./Math.sqrt(2.));
                                             }
                                         });
                                     }}, stretchxy);
@@ -4155,7 +4155,6 @@ public class ShephardsPlayApplet
         {
             UndoItem.State before = undoRedoFlag ? newUndoItemState() : null;
             Mesh dualMesh = getDualMesh(); // before scaling mesh!
-            double scale = Math.sqrt(.5);
             FORIDOWN (iVert, mesh.verts.size())
             {
                 Mesh.Vertex vert = mesh.getVert(iVert);
@@ -5973,6 +5972,22 @@ public class ShephardsPlayApplet
                 }
                 if (eventVerbose >= 1) System.out.println("out keyReleased: "+e);
             } // keyReleased
+
+            // IDEA: go through verts and see which would be better?
+            //      Multiply each vert by prospective scale,
+            //      then see what denominator is.
+            //      if it's huge, that's bad.
+            //      if it's small, that's good.
+            //      Start with largest magnitude vertex, I think, towards smallest.
+            //      first time we reach one that has a preference
+            //      (i.e. was very irrational, goes to rational that's good one way
+            //      and bad the other) then that's the one.
+            private double chooseBestScale(double scale0, double scale1)
+            {
+                // TODO: do it
+                return scale0;
+            }
+
             @Override public void keyTyped(java.awt.event.KeyEvent e)
             {
                 if (eventVerbose >= 1) System.out.println("in keyTyped: "+e);
@@ -6049,15 +6064,18 @@ public class ShephardsPlayApplet
 
                     case 'i': case '+': case '=': // zoom in
                     {
-                        rescale(Math.sqrt(2.), Math.sqrt(2.));
+                        // Note that scaling by sqrt(2) twice doesn't give 2,
+                        // and repeated scaling by sqrt(2) accumulates roundoff error.
+                        // Better to alternate between sqrt(2) and 2/sqrt(2)
+                        // which is different.
+                        double bestScale = chooseBestScale(Math.sqrt(2.), 2/Math.sqrt(2.));
+                        rescale(bestScale, bestScale);
                         break;
                     }
                     case 'o': case '-':           // zoom out
                     {
-                        // Note, this works better than sqrt(.5) or sqrt(2)/2,
-                        // since multiplying by sqrt(2) gives 1.
-                        // CBB: even better would be to keep track of even/odd.
-                        rescale(1./Math.sqrt(2), 1./Math.sqrt(2));
+                        double bestScale = chooseBestScale(1./Math.sqrt(2.), Math.sqrt(2.)/2);
+                        rescale(bestScale, bestScale);
                         break;
                     }
                     case 'f': // frame, gang
@@ -11184,7 +11202,7 @@ OFF
                 mesh.findAndApplyOptimalVertexHeights(Mesh.OPTIMIZE_LENGTHS_INFINITY_NORM);
                 // XXX argh, still requires use to set Mesh.OPTIMIZE_LENGTHS_INFINITY_NORM and turn on and off Optimize, otherwise the dual picture is tiny... why??
 
-                rescale(Math.sqrt(.5), Math.sqrt(.5));
+                rescale(1./Math.sqrt(2.), 1./Math.sqrt(2.));
 
             } // doCannedThingSweepKiller1
 
