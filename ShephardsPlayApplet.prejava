@@ -5973,6 +5973,54 @@ public class ShephardsPlayApplet
                 if (eventVerbose >= 1) System.out.println("out keyReleased: "+e);
             } // keyReleased
 
+            private void turnOffOptimizeAndReSpherize()
+            {
+                UndoItem.State before = newUndoItemState();
+                if (optimizeFlag.get())
+                {
+                    optimizeFlag.set(false);
+                    System.out.println("optimizeFlag -> "+optimizeFlag.get()+" ('O' to turn back on)");
+                }
+                if (wrapAroundSphereFlag.get())
+                {
+                    double wrapSphereRadius = 1./wrapSphereCurvature.get();
+                    boolean centerSphereFlagValue = centerSphereFlag.get();
+                    double scratch[] = new double[3];
+                    FORIDOWN (iVert, mesh.verts.size())
+                    {
+                        Mesh.Vertex vert = mesh.getVert(iVert);
+                        scratch[0] = vert.x();
+                        scratch[1] = vert.y();
+                        scratch[2] = vert.z();
+                        if (!centerSphereFlagValue)
+                            scratch[2] += wrapSphereRadius;
+                        VecMath.normalize(scratch, scratch);
+                        VecMath.vxs(scratch, scratch, wrapSphereRadius);
+                        if (!centerSphereFlagValue)
+                            scratch[2] -= wrapSphereRadius;
+                        vert.setXYZW(scratch[0],
+                                     scratch[1],
+                                     scratch[2],
+                                     1.);
+                    }
+                }
+                else
+                {
+                    FORIDOWN (iVert, mesh.verts.size())
+                    {
+                        Mesh.Vertex vert = mesh.getVert(iVert);
+                        vert.setxyh(vert.x(),
+                                    vert.y(),
+                                    0.);
+                    }
+                }
+                dirtyDualMesh();
+                if (continuouslyDelaunayizeFlag.get()) delaunayize();
+                UndoItem.State after = newUndoItemState();
+                undoTreeSquirrel.Do(new UndoItem(before, after));
+                theCanvas.repaint();
+            } // turnOffOptimizeAndReSpherize
+
             // IDEA: go through verts and see which would be better?
             //      Multiply each vert by prospective scale,
             //      then see what denominator is.
@@ -6353,50 +6401,7 @@ public class ShephardsPlayApplet
                     }
                     case 'S': // turn off optimize, and re-sphereize
                     {
-                        UndoItem.State before = newUndoItemState();
-                        if (optimizeFlag.get())
-                        {
-                            optimizeFlag.set(false);
-                            System.out.println("optimizeFlag -> "+optimizeFlag.get()+" ('O' to turn back on)");
-                        }
-                        if (wrapAroundSphereFlag.get())
-                        {
-                            double wrapSphereRadius = 1./wrapSphereCurvature.get();
-                            boolean centerSphereFlagValue = centerSphereFlag.get();
-                            double scratch[] = new double[3];
-                            FORIDOWN (iVert, mesh.verts.size())
-                            {
-                                Mesh.Vertex vert = mesh.getVert(iVert);
-                                scratch[0] = vert.x();
-                                scratch[1] = vert.y();
-                                scratch[2] = vert.z();
-                                if (!centerSphereFlagValue)
-                                    scratch[2] += wrapSphereRadius;
-                                VecMath.normalize(scratch, scratch);
-                                VecMath.vxs(scratch, scratch, wrapSphereRadius);
-                                if (!centerSphereFlagValue)
-                                    scratch[2] -= wrapSphereRadius;
-                                vert.setXYZW(scratch[0],
-                                             scratch[1],
-                                             scratch[2],
-                                             1.);
-                            }
-                        }
-                        else
-                        {
-                            FORIDOWN (iVert, mesh.verts.size())
-                            {
-                                Mesh.Vertex vert = mesh.getVert(iVert);
-                                vert.setxyh(vert.x(),
-                                            vert.y(),
-                                            0.);
-                            }
-                        }
-                        dirtyDualMesh();
-                        if (continuouslyDelaunayizeFlag.get()) delaunayize();
-                        UndoItem.State after = newUndoItemState();
-                        undoTreeSquirrel.Do(new UndoItem(before, after));
-                        theCanvas.repaint();
+                        turnOffOptimizeAndReSpherize();
                         break;
                     }
 
@@ -11211,6 +11216,7 @@ OFF
             private void doCannedThingSweepKiller1eps()
             {
                 // I just did it with various eps and then tweaked heights til it worked.  not scientific.
+                // Note that the last two "cuts" can be "swapped".
                 //double eps = .25;
                 //double eps = .125;
                 double eps = 1./16;
