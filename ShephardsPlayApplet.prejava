@@ -1592,14 +1592,25 @@ public class ShephardsPlayApplet
                                     }
                                 });
                             }});
-                            add(new JLabel(""), stretchxy);
-                            add(new JCol() {{
+                            add(new JLabel("  "));
+                            add(new JButton("Apply radial height field:") {{
+                                setMargin(nomargin); // gets rid of space around button label
+                                addActionListener(new java.awt.event.ActionListener() {
+                                    @Override public void actionPerformed(java.awt.event.ActionEvent e)
+                                    {
+                                        applet.turnOffOptimizeAndReSpherize();
+                                    }
+                                });
                             }});
-                            add(new JLabel(""), stretchxy);
-                            add(new JLabel(""), stretchxy);
+                            add(new JTextFieldForString(applet.radialHeightFieldSpec) {
+                                @Override public boolean validate(String text)
+                                {
+                                    return parseRadialHeightFieldTriples(text) != null;
+                                }
+                            }, stretchx);
                         }}, stretchx);
-                    }});
-                }});
+                    }}, stretchx);
+                }}, stretchx);
                 contentPane.add(new JSeparator(), stretchx);
                 contentPane.add(new JLabel("Behavior"));
                 add(new JRow() {{
@@ -4413,6 +4424,186 @@ public class ShephardsPlayApplet
         } // uniformScaleAndTranslateNoUndoRedo
 
 
+        private void turnOffOptimizeAndReSpherize()
+        {
+            UndoItem.State before = newUndoItemState();
+            if (optimizeFlag.get())
+            {
+                optimizeFlag.set(false);
+                System.out.println("optimizeFlag -> "+optimizeFlag.get()+" ('O' to turn back on)");
+            }
+            if (wrapAroundSphereFlag.get())
+            {
+                double wrapSphereRadius = 1./wrapSphereCurvature.get();
+                boolean centerSphereFlagValue = centerSphereFlag.get();
+                double scratch[] = new double[3];
+                FORIDOWN (iVert, mesh.verts.size())
+                {
+                    Mesh.Vertex vert = mesh.getVert(iVert);
+                    scratch[0] = vert.x();
+                    scratch[1] = vert.y();
+                    scratch[2] = vert.z();
+                    if (!centerSphereFlagValue)
+                        scratch[2] += wrapSphereRadius;
+                    VecMath.normalize(scratch, scratch);
+                    VecMath.vxs(scratch, scratch, wrapSphereRadius);
+                    if (!centerSphereFlagValue)
+                        scratch[2] -= wrapSphereRadius;
+                    vert.setXYZW(scratch[0],
+                                 scratch[1],
+                                 scratch[2],
+                                 1.);
+                }
+            }
+            else
+            {
+                if (true)
+                {
+                    double triples[][/*3*/] = parseRadialHeightFieldTriples(radialHeightFieldSpec.get());
+                    assert(triples != null); // since it should have been validated already
+                    applyRadialHeightFieldToMesh(triples);
+                }
+                else
+                {
+                    // Simple version... equivalent to applying radial height field {{0,0,1}}
+                    FORIDOWN (iVert, mesh.verts.size())
+                    {
+                        Mesh.Vertex vert = mesh.getVert(iVert);
+                        vert.setxyh(vert.x(),
+                                    vert.y(),
+                                    0.);
+                    }
+                }
+            }
+            dirtyDualMesh();
+            if (continuouslyDelaunayizeFlag.get()) delaunayize();
+            UndoItem.State after = newUndoItemState();
+            undoTreeSquirrel.Do(new UndoItem(before, after));
+            theCanvas.repaint();
+        } // turnOffOptimizeAndReSpherize
+
+        private static double[][/*3*/] parseRadialHeightFieldTriples(String text)
+        {
+            String tokens[] = com.donhatchsw.compat.regex.split(text.trim(), "\\s+");
+            PRINTARRAY(tokens);
+            if (tokens.length == 0) return null;
+            if (tokens.length % 3 != 0) return null;
+            double triples[][] = new double[tokens.length/3][3];
+            FORI (i, tokens.length)
+            {
+                try
+                {
+                    triples[i/3][i%3] = Double.parseDouble(tokens[i]);
+                }
+                catch (NumberFormatException err)
+                {
+                    return null;
+                }
+                // All values must be nonnegative
+                if (!(triples[i/3][i%3] >= 0.)) return null;
+            }
+            if (triples[0][0] != 0.) return null;
+            for (int i = 1; i < triples.length; ++i)
+                if (!(triples[i][0] > triples[i-1][0])) return null; // radii must be increasing
+            return triples;
+        } // parseRadialHeightFieldTriples
+
+        // TODO: move to MeshUtils probably
+        // Apply a radial height field.
+        // The spec is an array of triples {radius, impulse, acceleration}.
+        //
+        // Hmm, trying to solve the following from outward net only makes it worse:
+        //      blue noise 4000, delaunayized
+        //      0 0 .1  .1 0 10  .2 0 .1 .3 0 10  .4 0 .1  .5 0 10
+        //
+        //      blue noise 1000, delaunayized
+        //      0 0 .1  .2 .25 .1  .4 1 .1 
+        // however, starting from upwards net usually solves it.  hmm.
+        private void applyRadialHeightFieldToMesh(double triples[][])
+        {
+            int verboseLevel = 2; // 1: in/out, 2: nice description, 3: gory
+            if (verboseLevel >= 1) OUT("    in applyRadialHeightieldToMesh(triples="+Arrays.toStringCompact(triples)+")");
+            assert(triples.length > 0);
+            assert(triples[0][0] == 0.);
+            // and all values are nonnegative, since generated by parseRadialHeightFieldTriples
+
+            double radii[] = new double[triples.length];
+            double positions[] = new double[triples.length];
+            double velocities[] = new double[triples.length];
+            double accelerations[] = new double[triples.length];
+            {
+                if (verboseLevel >= 2) OUT("      Description:");
+                double r = 0.; // accumulated radius
+                double p = 0.; // accumulated position (height)
+                double v = 0.; // accumulated velocity
+                double a = 0.; // accumulated acceleration
+                FORI (iTriple, triples.length)
+                {
+                    double radius = triples[iTriple][0];
+                    double impulse = triples[iTriple][1];
+                    double accelerationAfterwards = triples[iTriple][2];
+
+                    double radiusIncr = radius - r;
+
+                    p += v * radiusIncr + .5*a*SQR(radiusIncr);
+                    v += a * radiusIncr;
+
+                    if (verboseLevel >= 2) OUT("              v = "+v);
+                    r += radiusIncr;
+                    if (verboseLevel >= 2) OUT("          r = "+r);
+                    if (verboseLevel >= 2) OUT("          p = "+p);
+                    v += impulse;
+                    if (verboseLevel >= 2) OUT("              v = "+v);
+                    a = accelerationAfterwards;
+                    if (verboseLevel >= 2) OUT("                  a = "+a);
+
+                    radii[iTriple] = r;
+                    positions[iTriple] = p;
+                    velocities[iTriple] = v;
+                    accelerations[iTriple] = a;
+                }
+            }
+            if (verboseLevel >= 2) PRINTVEC(radii);
+            if (verboseLevel >= 2) PRINTVEC(positions);
+            if (verboseLevel >= 2) PRINTVEC(velocities);
+            if (verboseLevel >= 2) PRINTVEC(accelerations);
+
+            FORIDOWN (iVert, mesh.verts.size())
+            {
+                Mesh.Vertex vert = mesh.getVert(iVert);
+                double x = vert.x();
+                double y = vert.y();
+                double r = MyMath.hypot(x, y);
+                if (verboseLevel >= 3) OUT("==========");
+                if (verboseLevel >= 3) PRINT(iVert);
+                if (verboseLevel >= 3) PRINT(x);
+                if (verboseLevel >= 3) PRINT(y);
+                if (verboseLevel >= 3) PRINT(r);
+
+                int i = 0;
+                // could do binary search but whatever
+                while (i+1 < triples.length && r >= radii[i+1])
+                    i++;
+                if (verboseLevel >= 3) PRINT(i);
+
+                double t = r - radii[i];
+                if (verboseLevel >= 3) PRINT(t);
+                double h = positions[i] + velocities[i]*t + .5*accelerations[i]*(t*t);
+                if (verboseLevel >= 3) PRINT(h);
+
+                // we were doing positive, but really should be concave with mouth downwards
+                h *= -1;
+                if (verboseLevel >= 3) PRINT(h);
+                // change to offset from canonical paraboloid
+                h -= -.5*r*r;
+                if (verboseLevel >= 3) PRINT(h);
+                if (verboseLevel >= 3) OUT("==========");
+
+                vert.setxyh(x, y, h);
+            }
+            if (verboseLevel >= 1) OUT("    out applyRadialHeightieldToMesh(triples="+Arrays.toStringCompact(triples)+")");
+        } // applyRadialHeightFieldTriples
+
 
         // wrap from parabola to sphere
         private void wrapAroundSphere(double wrapSphereCurvature, boolean centerSphereFlag)
@@ -5973,54 +6164,6 @@ public class ShephardsPlayApplet
                 if (eventVerbose >= 1) System.out.println("out keyReleased: "+e);
             } // keyReleased
 
-            private void turnOffOptimizeAndReSpherize()
-            {
-                UndoItem.State before = newUndoItemState();
-                if (optimizeFlag.get())
-                {
-                    optimizeFlag.set(false);
-                    System.out.println("optimizeFlag -> "+optimizeFlag.get()+" ('O' to turn back on)");
-                }
-                if (wrapAroundSphereFlag.get())
-                {
-                    double wrapSphereRadius = 1./wrapSphereCurvature.get();
-                    boolean centerSphereFlagValue = centerSphereFlag.get();
-                    double scratch[] = new double[3];
-                    FORIDOWN (iVert, mesh.verts.size())
-                    {
-                        Mesh.Vertex vert = mesh.getVert(iVert);
-                        scratch[0] = vert.x();
-                        scratch[1] = vert.y();
-                        scratch[2] = vert.z();
-                        if (!centerSphereFlagValue)
-                            scratch[2] += wrapSphereRadius;
-                        VecMath.normalize(scratch, scratch);
-                        VecMath.vxs(scratch, scratch, wrapSphereRadius);
-                        if (!centerSphereFlagValue)
-                            scratch[2] -= wrapSphereRadius;
-                        vert.setXYZW(scratch[0],
-                                     scratch[1],
-                                     scratch[2],
-                                     1.);
-                    }
-                }
-                else
-                {
-                    FORIDOWN (iVert, mesh.verts.size())
-                    {
-                        Mesh.Vertex vert = mesh.getVert(iVert);
-                        vert.setxyh(vert.x(),
-                                    vert.y(),
-                                    0.);
-                    }
-                }
-                dirtyDualMesh();
-                if (continuouslyDelaunayizeFlag.get()) delaunayize();
-                UndoItem.State after = newUndoItemState();
-                undoTreeSquirrel.Do(new UndoItem(before, after));
-                theCanvas.repaint();
-            } // turnOffOptimizeAndReSpherize
-
             // IDEA: go through verts and see which would be better?
             //      Multiply each vert by prospective scale,
             //      then see what denominator is.
@@ -6035,6 +6178,7 @@ public class ShephardsPlayApplet
                 // TODO: do it
                 return scale0;
             }
+            //========================================================
 
             @Override public void keyTyped(java.awt.event.KeyEvent e)
             {
@@ -14432,6 +14576,7 @@ OFF
         private Listenable.Boolean optimizeFlag = new Listenable.Boolean(false);
         private Listenable.Int optimizationTypeIndex = new Listenable.Int(0, Mesh.availableOptimizationTypes.length-1, Mesh.OPTIMIZE_LENGTHS_MAX_MIN); // min, max, default
         int optimizationType = Mesh.availableOptimizationTypes[optimizationTypeIndex.get()];
+        private Listenable.String radialHeightFieldSpec = new Listenable.String("0 0 1");
 
 
             private static final int NETMETHOD_MANUAL = 0;
