@@ -1620,7 +1620,7 @@ public class ShephardsPlayApplet
                                     {setToolTipText(toolTipText);}
                                     @Override public boolean validate(String text)
                                     {
-                                        return parseRadialHeightFieldPairs(text) != null;
+                                        return MeshUtils.parseRadialHeightFieldPairs(text) != null;
                                     }
                                 }, stretchx);
                             }}, stretchx);
@@ -4445,8 +4445,9 @@ public class ShephardsPlayApplet
         {
             UndoItem.State before = newUndoItemState();
 
-            preWarpMeshForRadialHeightField(this.mesh,
-                                            parseRadialHeightFieldPairs(radialHeightFieldSpec.get()));
+            MeshUtils.preWarpMeshForRadialHeightField(
+                this.mesh,
+                MeshUtils.parseRadialHeightFieldPairs(radialHeightFieldSpec.get()));
 
             dirtyDualMesh();
             if (continuouslyDelaunayizeFlag.get()) delaunayize();
@@ -4490,13 +4491,13 @@ public class ShephardsPlayApplet
             {
                 if (true)
                 {
-                    double pairs[][/*3*/] = parseRadialHeightFieldPairs(radialHeightFieldSpec.get());
+                    double pairs[][/*3*/] = MeshUtils.parseRadialHeightFieldPairs(radialHeightFieldSpec.get());
                     assert(pairs != null); // since it should have been validated already
-                    applyRadialHeightFieldPairsToMesh(this.mesh, pairs);
+                    MeshUtils.applyRadialHeightFieldPairsToMesh(this.mesh, pairs);
                 }
                 else
                 {
-                    // Simple version... equivalent to applying radial height field {{0,0,1}}
+                    // Simple version... equivalent to applying radial height field {{0,0},{1,1}} or equivalently {}
                     FORIDOWN (iVert, mesh.verts.size())
                     {
                         Mesh.Vertex vert = mesh.getVert(iVert);
@@ -4512,195 +4513,6 @@ public class ShephardsPlayApplet
             undoTreeSquirrel.Do(new UndoItem(before, after));
             theCanvas.repaint();
         } // turnOffOptimizeAndReSpherize
-
-        private static double[][/*3*/] parseRadialHeightFieldPairs(String text)
-        {
-            String tokens[] = com.donhatchsw.compat.regex.split(text.trim(), "\\s+");
-            if (tokens.length == 1 && tokens[0].equals("")) tokens = new String[]{}; // fix tokenization
-            //PRINTARRAY(tokens);
-            if (tokens.length % 2 != 0) return null;
-            double pairs[][] = new double[tokens.length/2][2];
-            FORI (i, tokens.length)
-            {
-                try
-                {
-                    pairs[i/2][i%2] = Double.parseDouble(tokens[i]);
-                }
-                catch (NumberFormatException err)
-                {
-                    return null;
-                }
-            }
-            for (int i = 1; i < pairs.length; ++i)
-            {
-                if (!(pairs[i][0] >= (i==0?0.:pairs[i-1][0]))) return null; // radii must be nonnegative and nondecreasing
-                if (!(pairs[i][1] >= (i==0?0.:pairs[i-1][1]))) return null; // dual radii must be nonnegative and nondecreasing
-            }
-            return pairs;
-        } // parseRadialHeightFieldPairs
-
-        // Sample:
-        //   .06 .095 .14 .105    .16 .195 .24 .205    .26 .295  .34 .305  .36 .395  .44 .405  .46 .495
-        private static void preWarpMeshForRadialHeightField(Mesh mesh, double pairs[][/*2*/])
-        {
-            if (pairs.length > 0) // prevent index out of bounds
-            {
-                FORIDOWN (iVert, mesh.verts.size())
-                {
-                    Mesh.Vertex vert = mesh.getVert(iVert);
-                    // Treat initial x,y as target x,y in dual
-                    double xInDual = vert.x();
-                    double yInDual = vert.y();
-                    double rInDual = MyMath.hypot(xInDual, yInDual);
-
-                    // Find rInPrimal by mapping backwards.
-                    // Find interval [r0,r1) containing rInDual...
-                    // i is index of the upper end.
-                    int i = 0;
-                    while (i < pairs.length && rInDual >= pairs[i][1])
-                        i++;
-                    double r0InDual = (i==0 ? 0. : pairs[i-1][1]);
-                    double r1InDual = (i==pairs.length ? pairs[i-1][1]+1+rInDual : pairs[i][1]);
-                    assert(INRANGE(r0InDual <=, rInDual, < r1InDual));
-                    double frac = (rInDual-r0InDual) / (r1InDual-r0InDual);
-                    assert(INRANGE(0 <=, frac, < 1));
-                    double r0InPrimal = (i==0 ? 0. : pairs[i-1][0]);
-                    double r1InPrimal = (i==pairs.length ? pairs[i-1][0]+1+rInDual : pairs[i][0]);
-                    double rInPrimal = LERP(r0InPrimal, r1InPrimal, frac);
-                    double scale = rInPrimal==0. ? 42. : rInPrimal / rInDual; // avoid zero divide
-                    double xInPrimal = xInDual * scale;
-                    double yInPrimal = yInDual * scale;
-                    if (false)
-                    {
-                        OUT("===============");
-                        PRINT(xInDual);
-                        PRINT(yInDual);
-                        PRINT(rInDual);
-                        PRINT(r0InDual);
-                        PRINT(r1InDual);
-                        PRINT(frac);
-                        PRINT(r0InPrimal);
-                        PRINT(r1InPrimal);
-                        PRINT(xInPrimal);
-                        PRINT(yInPrimal);
-                        OUT("===============");
-                    }
-                    vert.setxyh(xInPrimal, yInPrimal, vert.h());
-                }
-            }
-        } // preWarpMeshForRadialHeightField
-
-
-        // TODO: move to MeshUtils probably
-        // Apply a radial height field.
-        // The spec is an array of pairs {primalRadius, dualRadius},
-        // (where each dualRadius manifests as a slope in the primal).
-
-        // Hmm, trying to solve the following from outward net only makes it worse:
-        // (this was when I expressed the radial height field as triples)
-        //      blue noise 4000, delaunayized
-        //      0 0 .1  .1 0 10  .2 0 .1 .3 0 10  .4 0 .1  .5 0 10
-        //
-        //      just noise 1000, delaunayized
-        //      0 0 .1  .2 .25 .1  .4 1 .1 
-        // however, starting from upwards net usually solves it.  hmm.
-        private static void applyRadialHeightFieldPairsToMesh(Mesh mesh, double pairs[][])
-        {
-            int verboseLevel = 2; // 1: in/out, 2: nice description, 3: gory
-            if (verboseLevel >= 1) OUT("    in applyRadialHeightFieldPairsToMesh(pairs="+Arrays.toStringCompact(pairs)+")");
-            // Assumes all values are nonnegative and nondecreasing, since generated by parseRadialHeightFieldPairs
-
-            double radii[] = new double[pairs.length + 1];
-            double positions[] = new double[pairs.length + 1];
-            double velocities[] = new double[pairs.length + 1];
-            double accelerations[] = new double[pairs.length + 1];
-            {
-                double r = 0.; // accumulated radius in primal
-                double p = 0.; // accumulated position (height)
-                double v = 0.; // accumulated velocity (radius in dual)
-                double a = 0.; // accumulated acceleration
-            }
-            if (true)
-            {
-                radii[0] = 0.;
-                positions[0] = 0.;
-                velocities[0] = 0.;
-                FORI (i, pairs.length)
-                {
-                    radii[i+1] = pairs[i][0];
-                    velocities[i+1] = pairs[i][1];
-                    double dt = radii[i+1] - radii[i];
-                    double dv = velocities[i+1] - velocities[i];
-                    accelerations[i] = dv / dt; // ok if infinite, that means this interval won't be used for calculations
-                    if (false)
-                    {
-                        // Correct but blows up if acceleration is infinite
-                        positions[i+1] = positions[i] + velocities[i]*dt + .5*accelerations[i]*(dt*dt);
-                    }
-                    else
-                    {
-                        // Note that accelerations[i]*(dt*dt) == dv*dt,
-                        // which avoids zero-divide.
-                        positions[i+1] = positions[i] + velocities[i]*dt + .5*dv*dt;
-                    }
-                }
-                accelerations[pairs.length] = 1.; // so primal matches dual out to infinity
-            }
-
-            if (true)
-            {
-                if (verboseLevel >= 2) OUT("      Description:");
-                FORI (i, pairs.length+1)
-                {
-                    if (verboseLevel >= 2) OUT("          r = "+radii[i]+" (radius in primal)");
-                    if (verboseLevel >= 2) OUT("              p = "+positions[i]);
-                    if (verboseLevel >= 2) OUT("              v = "+velocities[i]+" (radius in dual)");
-                    if (verboseLevel >= 2) OUT("              a = "+accelerations[i]);
-                }
-            }
-            if (verboseLevel >= 2) PRINTVEC(radii);
-            if (verboseLevel >= 2) PRINTVEC(positions);
-            if (verboseLevel >= 2) PRINTVEC(velocities);
-            if (verboseLevel >= 2) PRINTVEC(accelerations);
-
-            FORIDOWN (iVert, mesh.verts.size())
-            {
-                Mesh.Vertex vert = mesh.getVert(iVert);
-                double x = vert.x();
-                double y = vert.y();
-                double r = MyMath.hypot(x, y);
-                if (verboseLevel >= 3) OUT("==========");
-                if (verboseLevel >= 3) PRINT(iVert);
-                if (verboseLevel >= 3) PRINT(x);
-                if (verboseLevel >= 3) PRINT(y);
-                if (verboseLevel >= 3) PRINT(r);
-
-                int i = 0;
-                // could do binary search but whatever.
-                // find the interval [r0,r1) that contains r.
-                while (i+1 < radii.length && r >= radii[i+1])
-                    i++;
-                if (verboseLevel >= 3) PRINT(i);
-
-                double t = r - radii[i];
-                if (verboseLevel >= 3) PRINT(t);
-                assert(1./accelerations[i] != 0.); // not infinite
-                assert(accelerations[i] == accelerations[i]); // not NaN
-                double h = positions[i] + velocities[i]*t + .5*accelerations[i]*(t*t);
-                if (verboseLevel >= 3) PRINT(h);
-
-                // we were doing positive, but really should be concave with mouth downwards
-                h *= -1;
-                if (verboseLevel >= 3) PRINT(h);
-                // change to offset from canonical paraboloid
-                h -= -.5*r*r;
-                if (verboseLevel >= 3) PRINT(h);
-                if (verboseLevel >= 3) OUT("==========");
-
-                vert.setxyh(x, y, h);
-            }
-            if (verboseLevel >= 1) OUT("    out applyRadialHeightFieldPairsToMesh(pairs="+Arrays.toStringCompact(pairs)+")");
-        } // applyRadialHeightFieldPairsToMesh
 
         // wrap from parabola to sphere
         private void wrapAroundSphere(double wrapSphereCurvature, boolean centerSphereFlag)
