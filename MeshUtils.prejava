@@ -1783,6 +1783,7 @@ public class MeshUtils
         OUT("      maximalIndependentDualVertSet.length = "+maximalIndependentDualVertSet.length);
         Mesh.Edge dualVertToFirstDualEdgeOut[] = getVertToFirstEdgeOut(dualMesh);
 
+        double scratch[] = new double[3];
         FORI (i, maximalIndependentDualVertSet.length)
         {
             int iDualVert = maximalIndependentDualVertSet[i];
@@ -1791,19 +1792,41 @@ public class MeshUtils
             assert(dualEdge0.opposite().next()
                             .opposite().next()
                             .opposite().next() == dualEdge0);
-            Mesh.Vertex v0 = mesh.getEdge(dualEdge0.myIndex()).initialVertex();
-            Mesh.Vertex v1 = mesh.getEdge(dualEdge0.opposite().next().myIndex()).initialVertex();
-            Mesh.Vertex v2 = mesh.getEdge(dualEdge0.opposite().next().opposite().next().myIndex()).initialVertex();
+            Mesh.Vertex v0 = dualMesh.getVert(iDualVert);
+            Mesh.Vertex v1 = dualEdge0.finalVertex();
+            Mesh.Vertex v2 = dualEdge0.opposite().next().finalVertex();
+            Mesh.Vertex v3 = dualEdge0.opposite().next().opposite().next().finalVertex();
 
-            Mesh.Edge dualEdge = dualEdge0;
-            do {
-                Mesh.Vertex neighbor = dualEdge.finalVertex();
-                // desired new dual vert position = lerp(dualVert, neighbor, truncationFrac)
-            } while ((dualEdge = dualEdge.opposite().next()) != dualEdge0);
+            double x0 = v0.x(), y0 = v0.y(), h0 = v0.h();
+            double x1 = v1.x(), y1 = v1.y(), h1 = v1.h();
+            double x2 = v2.x(), y2 = v2.y(), h2 = v2.h();
+            double x3 = v3.x(), y3 = v3.y(), h3 = v3.h();
 
-            double x = (v0.x() + v1.x() + v2.x()) / 3.;
-            double y = (v0.y() + v1.y() + v2.y()) / 3.;
-            double h = (v0.h() + v1.h() + v2.h()) / 3.; // XXX wrong wrong wrong
+            // convert from height-above-paraboloid to euclidean ("actual")
+            h0 -= .5 * (SQR(x0) + SQR(y0));
+            h1 -= .5 * (SQR(x1) + SQR(y1));
+            h2 -= .5 * (SQR(x2) + SQR(y2));
+            h3 -= .5 * (SQR(x3) + SQR(y3));
+
+            // lerp in euclidean space
+            x1 = LERP(x0, x1, truncationFrac); y1 = LERP(y0, y1, truncationFrac); h1 = LERP(h0, h1, truncationFrac);
+            x2 = LERP(x0, x2, truncationFrac); y2 = LERP(y0, y2, truncationFrac); h2 = LERP(h0, h2, truncationFrac);
+            x3 = LERP(x0, x3, truncationFrac); y3 = LERP(y0, y3, truncationFrac); h3 = LERP(h0, h3, truncationFrac);
+
+            // convert from euclidean back to height-above-paraboloid
+            h0 += .5 * (SQR(x0) + SQR(y0));
+            h1 += .5 * (SQR(x1) + SQR(y1));
+            h2 += .5 * (SQR(x2) + SQR(y2));
+            h3 += .5 * (SQR(x3) + SQR(y3));
+
+            GeomUtils.SolveForDualPoint(x1, y1, h1,
+                                        x2, y2, h2,
+                                        x3, y3, h3,
+                                        scratch,
+                                        false,false,0.);
+            double x = scratch[0];
+            double y = scratch[1];
+            double h = scratch[2];
 
             mesh.addIsolatedVertex(x, y, h);
             mesh.kisIsolatedVertex(mesh.getVert(mesh.verts.size()-1),
