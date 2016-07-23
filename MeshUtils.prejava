@@ -1631,7 +1631,146 @@ public class MeshUtils
         if (verboseLevel >= 1) OUT("    out applyRadialHeightFieldPairsToMesh(pairs="+Arrays.toStringCompact(pairs)+")");
     } // applyRadialHeightFieldPairsToMesh
 
+    // Greedily find a maximal list of verts such that no vert in the list has any neighbor in the list.
+    public static int[] findMaximalIndependentVertexSet(Mesh mesh, java.util.Random rng)
+    {
+        int verboseLevel = 0;
+        int nVerts = mesh.verts.size();
+        int nEdges = mesh.edges.size();
+
+        int answer[] = new int[nVerts];
+        int answerSize = 0;
+
+        Mesh.Edge vertToAnyEdgeOut[] = new Mesh.Edge[nVerts]; // all null initially
+        FORI (iEdge, nEdges)
+        {
+            Mesh.Edge edge = mesh.getEdge(iEdge);
+            Mesh.Vertex vert = edge.initialVertex();
+            if (vert != null)
+            {
+                int iVert = vert.myIndex();
+                if (vertToAnyEdgeOut[iVert] == null)
+                    vertToAnyEdgeOut[iVert] = edge;
+            }
+        }
 
 
+        int vertIndexToCandidateIndex[] = VecMath.identityperm(nVerts);
+        int candidates[] = VecMath.identityperm(nVerts);
+        int nCandidates = nVerts;
+
+        // Make verts incident on infinite edges ineligible
+        FORI (iEdge, nEdges)
+        {
+            Mesh.Edge edge = mesh.getEdge(iEdge);
+            if (edge.initialVertex() != null && edge.finalVertex() == null)
+            {
+                int iVert = edge.initialVertex().myIndex();
+                int iCandidate = vertIndexToCandidateIndex[iVert];
+                if (iCandidate != -1)
+                {
+                    assert(candidates[iCandidate] == iVert);
+                    // dup code alert: same as below
+                    vertIndexToCandidateIndex[candidates[nCandidates-1]] = iCandidate;
+                    vertIndexToCandidateIndex[iVert] = -1;
+                    candidates[iCandidate] = candidates[nCandidates-1];
+                    candidates[nCandidates-1] = -1;
+                    --nCandidates;
+                }
+            }
+        }
+
+        while (nCandidates > 0)
+        {
+            if (verboseLevel >= 2) OUT("      top of loop");
+            if (verboseLevel >= 2) OUT("              answer = "+Arrays.toStringCompact(Arrays.subarray(answer, 0, answerSize)));
+            if (verboseLevel >= 2) OUT("              candidates = "+Arrays.toStringCompact(Arrays.subarray(candidates, 0, nCandidates)));
+            if (verboseLevel >= 2) OUT("              vertIndexToCandidateIndex = "+Arrays.toStringCompact(vertIndexToCandidateIndex));
+            int iCandidate = rng.nextInt(nCandidates);
+            if (verboseLevel >= 2) OUT("          iCandidate = "+iCandidate);
+            int iVert = candidates[iCandidate];
+            if (verboseLevel >= 2) OUT("          iVert = "+iVert);
+            assert(vertIndexToCandidateIndex[iVert] == iCandidate);
+
+            // Add it to the set
+            answer[answerSize++] = iVert;
+
+            // Remove it and all its neighbors from candidates list
+
+            // dup code alert: same as below
+            vertIndexToCandidateIndex[candidates[nCandidates-1]] = iCandidate;
+            vertIndexToCandidateIndex[iVert] = -1;
+            candidates[iCandidate] = candidates[nCandidates-1];
+            candidates[nCandidates-1] = -1;
+            --nCandidates;
+
+            if (verboseLevel >= 2) OUT("          after transferring to answer:");
+            if (verboseLevel >= 2) OUT("              answer = "+Arrays.toStringCompact(Arrays.subarray(answer, 0, answerSize)));
+            if (verboseLevel >= 2) OUT("              candidates = "+Arrays.toStringCompact(Arrays.subarray(candidates, 0, nCandidates)));
+            if (verboseLevel >= 2) OUT("              vertIndexToCandidateIndex = "+Arrays.toStringCompact(vertIndexToCandidateIndex));
+
+            if (false)
+            {
+                // sanity check
+                FORI (i, nCandidates)
+                    assert(vertIndexToCandidateIndex[candidates[i]] == i);
+                FORI (i, nVerts)
+                    if (vertIndexToCandidateIndex[i] != -1)
+                    {
+                        assert(vertIndexToCandidateIndex[i] < nCandidates);
+                        assert(candidates[vertIndexToCandidateIndex[i]] == i);
+                    }
+                for (int i = nCandidates; i < candidates.length; ++i)
+                    assert(candidates[i] == -1);
+            }
+
+            Mesh.Edge edge0 = vertToAnyEdgeOut[iVert];
+            assert(edge0 != null);
+            Mesh.Edge edge = edge0;
+            do {
+                Mesh.Vertex finalVertex = edge.finalVertex();
+                if (finalVertex != null)
+                {
+                    iVert = finalVertex.myIndex();
+                    iCandidate = vertIndexToCandidateIndex[iVert];
+                    if (iCandidate != -1)
+                    {
+                        if (verboseLevel >= 2) OUT("              neighbor v"+iVert+" is now ineligible");
+                        assert(candidates[iCandidate] == iVert);
+
+                        // dup code alert: same as above
+                        vertIndexToCandidateIndex[candidates[nCandidates-1]] = iCandidate;
+                        vertIndexToCandidateIndex[iVert] = -1;
+                        candidates[iCandidate] = candidates[nCandidates-1];
+                        candidates[nCandidates-1] = -1;
+                        --nCandidates;
+                    }
+                    else
+                    {
+                        if (verboseLevel >= 2) OUT("              (neighbor v"+iVert+" already ineligible)");
+                    }
+                }
+            } while ((edge = edge.opposite().next()) != edge0);
+        }
+        answer = (int[])Arrays.subarray(answer, 0, answerSize);
+        return answer;
+    } // findMaximalIndependentVertexSet
+
+    // Observation: sometimes truncating a dual vertex
+    // makes unfolding more difficult, in the sense that
+    // something that was previously an unfolding is no longer.
+    // See if we can exploit this.
+    public static void maybeMakeMoreDifficultByTruncatingDual(Mesh mesh, Mesh dualMesh, java.util.Random rng)
+    {
+        System.out.println("    in maybeMakeMoreDifficultByTruncatingDual");
+        int nEdges = mesh.edges.size();
+        assert(nEdges == dualMesh.edges.size());
+        int nDualVerts = dualMesh.verts.size();
+
+        // First find a maximal independent set of dual vertices (i.e. no pair of neighbors), greedily...
+        int maximalIndependentDualVertSet[] = findMaximalIndependentVertexSet(dualMesh, rng);
+        PRINTARRAY(maximalIndependentDualVertSet);
+        System.out.println("    out maybeMakeMoreDifficultByTruncatingDual");
+    } // maybeMakeMoreDifficultByTruncating
 
 }  // class MeshUtils
