@@ -1596,7 +1596,17 @@ public class ShephardsPlayApplet
                             add(new JRow() {
                                 String toolTipText = "<html>Apply tiepoints, which should be an even-length list of numbers, interpreted as {primal radius, dual radius} pairs.</html>";
                             {
-                                add(new JButton("Apply radial height field:") {{
+                                add(new JButton("Prewarp") {{
+                                    setToolTipText("<html>Pre-warp x,y positions so that, if original distribution was uniform, distribution after radial match will again be uniform</html>");
+                                    setMargin(nomargin); // gets rid of space around button label
+                                    addActionListener(new java.awt.event.ActionListener() {
+                                        @Override public void actionPerformed(java.awt.event.ActionEvent e)
+                                        {
+                                            applet.preWarpForRadialHeightField();
+                                        }
+                                    });
+                                }});
+                                add(new JButton("Apply radial match:") {{
                                     setToolTipText(toolTipText);
                                     setMargin(nomargin); // gets rid of space around button label
                                     addActionListener(new java.awt.event.ActionListener() {
@@ -4430,6 +4440,20 @@ public class ShephardsPlayApplet
         } // uniformScaleAndTranslateNoUndoRedo
 
 
+        private void preWarpForRadialHeightField()
+        {
+            UndoItem.State before = newUndoItemState();
+
+            preWarpMeshForRadialHeightField(this.mesh,
+                                            parseRadialHeightFieldPairs(radialHeightFieldSpec.get()));
+
+            dirtyDualMesh();
+            if (continuouslyDelaunayizeFlag.get()) delaunayize();
+            UndoItem.State after = newUndoItemState();
+            undoTreeSquirrel.Do(new UndoItem(before, after));
+            theCanvas.repaint();
+        } // preWarpForRadialHeightField
+
         private void turnOffOptimizeAndReSpherize()
         {
             UndoItem.State before = newUndoItemState();
@@ -4467,7 +4491,7 @@ public class ShephardsPlayApplet
                 {
                     double pairs[][/*3*/] = parseRadialHeightFieldPairs(radialHeightFieldSpec.get());
                     assert(pairs != null); // since it should have been validated already
-                    applyRadialHeightFieldPairsToMesh(pairs, this.mesh);
+                    applyRadialHeightFieldPairsToMesh(this.mesh, pairs);
                 }
                 else
                 {
@@ -4514,6 +4538,43 @@ public class ShephardsPlayApplet
             return pairs;
         } // parseRadialHeightFieldPairs
 
+        // Sample:
+        //   .06 .095 .14 .105    .16 .195 .24 .205    .26 .295  .34 .305  .36 .395  .44 .405  .46 .495
+        private static void preWarpMeshForRadialHeightField(Mesh mesh, double pairs[][/*2*/])
+        {
+            if (pairs.length > 0) // prevent index out of bounds
+            {
+                FORIDOWN (iVert, mesh.verts.size())
+                {
+                    Mesh.Vertex vert = mesh.getVert(iVert);
+                    // Treat initial x,y as target x,y in dual
+                    double xInDual = vert.x();
+                    double yInDual = vert.y();
+                    double rInDual = MyMath.hypot(xInDual, yInDual);
+
+                    // Find rInPrimal by mapping backwards.
+                    // Find interval [r0,r1) containing rInDual...
+                    // i is index of the upper end.
+                    int i = 0;
+                    while (i < pairs.length && rInDual >= pairs[i][1])
+                        i++;
+                    double r0InDual = (i==0 ? 0. : pairs[i-1][1]);
+                    double r1InDual = (i==pairs.length ? pairs[i-1][1]+1 : pairs[i][1]);
+                    assert(INRANGE(r0InDual <=, rInDual, < r1InDual)); // XXX not right for rDual past end
+                    double frac = (rInDual-r0InDual) / (r1InDual-r0InDual);
+                    assert(INRANGE(0 <=, frac, < 1)); // XXX not right for rDual past end
+                    double r0InPrimal = (i==0 ? 0. : pairs[i-1][0]);
+                    double r1InPrimal = (i==pairs.length ? pairs[i-1][0]+1 : pairs[i][0]);
+                    double rInPrimal = LERP(r0InPrimal, r1InPrimal, frac);
+                    double scale = rInPrimal / rInDual;
+                    double xInPrimal = xInDual * scale;
+                    double yInPrimal = yInDual * scale;
+                    vert.setxyh(xInPrimal, yInPrimal, vert.h());
+                }
+            }
+        } // preWarpMeshForRadialHeightField
+
+
         // TODO: move to MeshUtils probably
         // Apply a radial height field.
         // The spec is an array of pairs {primalRadius, dualRadius},
@@ -4527,7 +4588,7 @@ public class ShephardsPlayApplet
         //      just noise 1000, delaunayized
         //      0 0 .1  .2 .25 .1  .4 1 .1 
         // however, starting from upwards net usually solves it.  hmm.
-        private static void applyRadialHeightFieldPairsToMesh(double pairs[][], Mesh mesh)
+        private static void applyRadialHeightFieldPairsToMesh(Mesh mesh, double pairs[][])
         {
             int verboseLevel = 2; // 1: in/out, 2: nice description, 3: gory
             if (verboseLevel >= 1) OUT("    in applyRadialHeightFieldPairsToMesh(pairs="+Arrays.toStringCompact(pairs)+")");
