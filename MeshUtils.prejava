@@ -1631,6 +1631,25 @@ public class MeshUtils
         if (verboseLevel >= 1) OUT("    out applyRadialHeightFieldPairsToMesh(pairs="+Arrays.toStringCompact(pairs)+")");
     } // applyRadialHeightFieldPairsToMesh
 
+    public static Mesh.Edge[] getVertToFirstEdgeOut(Mesh mesh)
+    {
+        int nVerts = mesh.verts.size();
+        int nEdges = mesh.edges.size();
+        Mesh.Edge answer[] = new Mesh.Edge[nVerts]; // all null initially
+        FORI (iEdge, nEdges)
+        {
+            Mesh.Edge edge = mesh.getEdge(iEdge);
+            Mesh.Vertex initialVertex = edge.initialVertex();
+            if (initialVertex != null)
+            {
+                int iVert = initialVertex.myIndex();
+                if (answer[iVert] == null)
+                    answer[iVert] = edge;
+            }
+        }
+        return answer;
+    } // getVertToFirstEdgeOut
+
     // Greedily find a maximal list of verts such that no vert in the list has any neighbor in the list.
     public static int[] findMaximalIndependentVertexSet(Mesh mesh, java.util.Random rng)
     {
@@ -1638,22 +1657,10 @@ public class MeshUtils
         int nVerts = mesh.verts.size();
         int nEdges = mesh.edges.size();
 
-        int answer[] = new int[nVerts];
+        int answer[] = new int[nVerts]; // will shrink at end
         int answerSize = 0;
 
-        Mesh.Edge vertToAnyEdgeOut[] = new Mesh.Edge[nVerts]; // all null initially
-        FORI (iEdge, nEdges)
-        {
-            Mesh.Edge edge = mesh.getEdge(iEdge);
-            Mesh.Vertex vert = edge.initialVertex();
-            if (vert != null)
-            {
-                int iVert = vert.myIndex();
-                if (vertToAnyEdgeOut[iVert] == null)
-                    vertToAnyEdgeOut[iVert] = edge;
-            }
-        }
-
+        Mesh.Edge vertToAnyEdgeOut[] = getVertToFirstEdgeOut(mesh);
 
         int vertIndexToCandidateIndex[] = VecMath.identityperm(nVerts);
         int candidates[] = VecMath.identityperm(nVerts);
@@ -1760,17 +1767,49 @@ public class MeshUtils
     // makes unfolding more difficult, in the sense that
     // something that was previously an unfolding is no longer.
     // See if we can exploit this.
-    public static void maybeMakeMoreDifficultByTruncatingDual(Mesh mesh, Mesh dualMesh, java.util.Random rng)
+    public static void maybeMakeMoreDifficultByTruncatingDual(Mesh mesh,
+                                                              Mesh dualMesh,
+                                                              double truncationFrac,
+                                                              java.util.Random rng)
     {
-        System.out.println("    in maybeMakeMoreDifficultByTruncatingDual");
+        OUT("    in maybeMakeMoreDifficultByTruncatingDual");
         int nEdges = mesh.edges.size();
         assert(nEdges == dualMesh.edges.size());
         int nDualVerts = dualMesh.verts.size();
 
         // First find a maximal independent set of dual vertices (i.e. no pair of neighbors), greedily...
         int maximalIndependentDualVertSet[] = findMaximalIndependentVertexSet(dualMesh, rng);
-        PRINTARRAY(maximalIndependentDualVertSet);
-        System.out.println("    out maybeMakeMoreDifficultByTruncatingDual");
+        OUT("      maximalIndependentDualVertSet = "+Arrays.toStringCompact(maximalIndependentDualVertSet));
+        OUT("      maximalIndependentDualVertSet.length = "+maximalIndependentDualVertSet.length);
+        Mesh.Edge dualVertToFirstDualEdgeOut[] = getVertToFirstEdgeOut(dualMesh);
+
+        FORI (i, maximalIndependentDualVertSet.length)
+        {
+            int iDualVert = maximalIndependentDualVertSet[i];
+            Mesh.Edge dualEdge0 = dualVertToFirstDualEdgeOut[iDualVert];
+            // dual mesh is trivalent, so...
+            assert(dualEdge0.opposite().next()
+                            .opposite().next()
+                            .opposite().next() == dualEdge0);
+            Mesh.Vertex v0 = mesh.getEdge(dualEdge0.myIndex()).initialVertex();
+            Mesh.Vertex v1 = mesh.getEdge(dualEdge0.opposite().next().myIndex()).initialVertex();
+            Mesh.Vertex v2 = mesh.getEdge(dualEdge0.opposite().next().opposite().next().myIndex()).initialVertex();
+
+            Mesh.Edge dualEdge = dualEdge0;
+            do {
+                Mesh.Vertex neighbor = dualEdge.finalVertex();
+                // desired new dual vert position = lerp(dualVert, neighbor, truncationFrac)
+            } while ((dualEdge = dualEdge.opposite().next()) != dualEdge0);
+
+            double x = (v0.x() + v1.x() + v2.x()) / 3.;
+            double y = (v0.y() + v1.y() + v2.y()) / 3.;
+            double h = (v0.h() + v1.h() + v2.h()) / 3.; // XXX wrong wrong wrong
+
+            mesh.addIsolatedVertex(x, y, h);
+            mesh.kisIsolatedVertex(mesh.getVert(mesh.verts.size()-1),
+                                   mesh.getEdge(dualEdge0.opposite().myIndex())); // I had 50% chance of getting this right
+        }
+        OUT("    out maybeMakeMoreDifficultByTruncatingDual");
     } // maybeMakeMoreDifficultByTruncating
 
 }  // class MeshUtils
