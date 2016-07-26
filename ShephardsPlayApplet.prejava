@@ -11387,6 +11387,7 @@ OFF
                     {0, 10, 8},
                     {7, 9, 0},
                 };
+                wrapAroundSphereFlagIntent.set(false);
                 mesh = new Mesh(verts, faces);
             } // doCannedThingSweepKiller1eps
 
@@ -11466,6 +11467,7 @@ OFF
                     {0,3,4}, {3,0,6}, {4,3,1,2}, {0,4,5}, {1,0,2}, {0,1,10}, {2,0,9}, {6,1,3}, {1,6,10},
                     {5,4,2}, {5,2,9}, {0,5,7}, {5,9,7}, {10,6,8}, {6,0,8}, {0,10,8}, {7,9,0},
                 };
+                wrapAroundSphereFlagIntent.set(false);
                 mesh = new Mesh(verts, faces);
             } // doCannedThingSweepKiller1epsMorePrincipled
 
@@ -11481,28 +11483,58 @@ OFF
                 double verticalPeriod = verts0[3][1] - verts0[1][1]; // on average
                 double horizontalPeriod = verts0[1][0] + verts0[3][0];  // on average
 
+                boolean staggerVertically = false;
+
                 verticalPeriod *= 1.5;
-                horizontalPeriod *= 3;
+
+                if (staggerVertically)
+                    horizontalPeriod *= 4;
+                else
+                    horizontalPeriod *= 3;
 
                 int nRows = 5;
                 int nCols = 5;
-                double verts[][] = new double[nRows*nCols*nVerts0][];
+                double verts[][] = new double[nRows*nCols*(nVerts0+2)][]; // upper bound
                 int nVerts = 0; // and counting
                 FORI (iRow, nRows)
+                FORI (iCol, nCols)
                 {
-                    FORI (iCol, nCols)
+                    FORI (iVert0, nVerts0)
                     {
-                        FORI (iVert0, nVerts0)
-                        {
-                            verts[nVerts++] = new double[] {
-                                verts0[iVert0][0] + (-nCols*.5 + (iCol+.5)) * horizontalPeriod,
-                                verts0[iVert0][1] + (-nRows*.5 + (iRow+.5)) * verticalPeriod,
-                                verts0[iVert0][2],
-                            };
-                        }
+                        verts[nVerts++] = new double[] {
+                            verts0[iVert0][0] + (-nCols*.5 + (iCol+.5)) * horizontalPeriod,
+                            verts0[iVert0][1] + (-nRows*.5 + (iRow+.5)) * verticalPeriod   + (staggerVertically ? ((iCol%2) * (verticalPeriod/2.)) : 0),
+                            verts0[iVert0][2],
+                        };
                     }
                 }
+                if (true) // use this even if staggering horizontally
+                {
+                    FORI (iRow, nRows-1)
+                    FORI (iCol, nCols)
+                        verts[nVerts++] = new double[] {
+                            0. + (-nCols*.5 + (iCol+.5)) * horizontalPeriod,
+
+                            //2*verts0[3][1] + (-nRows*.5 + (iRow+.5)) * verticalPeriod + (staggerVertically ? ((iCol%2) * (verticalPeriod/2.)) : 0),
+                            3.5*verts0[3][1] + (-nRows*.5 + (iRow+.5)) * verticalPeriod + (staggerVertically ? ((iCol%2) * (verticalPeriod/2.)) : 0),
+                            // note the 3.5 is fudge, to somewhat equalize lengths of vertical segments. might only work for current settings: alpha=beta=15 degrees, eps=1/16
+
+                            0.,
+                        };
+                }
+                if (!staggerVertically)
+                {
+                    FORI (iRow, nRows-1)
+                    FORI (iCol, nCols-1)
+                        verts[nVerts++] = new double[] {
+                            horizontalPeriod/2. + (-nCols*.5 + (iCol+.5)) * horizontalPeriod,
+                            verts0[1][1]+verticalPeriod + (-nRows*.5 + (iRow+.5)) * verticalPeriod,
+                            0.,
+                        };
+                }
+
                 verts = (double[][])Arrays.subarray(verts, 0, nVerts);
+                wrapAroundSphereFlagIntent.set(false);
                 mesh = new Mesh(verts, faces0);
                 delaunayize();
             } // doCannedThingSweepKiller1epsMorePrincipledMultiple()
