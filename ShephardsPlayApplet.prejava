@@ -1138,6 +1138,36 @@ public class ShephardsPlayApplet
                             }
                         });
                     }},
+                    new JButton("Sweep Killer 1eps mp") {{
+                        addActionListener(new java.awt.event.ActionListener() {
+                            @Override public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem.State before = applet.newUndoItemState();
+
+                                applet.doCannedThingSweepKiller1epsMorePrincipled();
+
+                                UndoItem.State after = applet.newUndoItemState();
+                                applet.undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                applet.theCanvas.repaint();
+                            }
+                        });
+                    }},
+                    new JButton("Sweep Killer 1eps mp mult") {{
+                        addActionListener(new java.awt.event.ActionListener() {
+                            @Override public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem.State before = applet.newUndoItemState();
+
+                                applet.doCannedThingSweepKiller1epsMorePrincipledMultiple();
+
+                                UndoItem.State after = applet.newUndoItemState();
+                                applet.undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                applet.theCanvas.repaint();
+                            }
+                        });
+                    }},
                     new JButton("Sweep Killer (not) 2") {{
                         addActionListener(new java.awt.event.ActionListener() {
                             @Override public void actionPerformed(java.awt.event.ActionEvent e)
@@ -4719,8 +4749,9 @@ public class ShephardsPlayApplet
             //doCannedThingFarthestLagoonExitKillerAltB();
             //doCannedThingFarthestLagoonExitKillerOptimized();
             //doBlueNoiseThing(blueNoiseN.get());
+            doCannedThingSweepKiller1epsMorePrincipledMultiple();
 
-            load("DUMP.off");
+            //load("DUMP.off");
 
             if (false)
                 doCannedThingSingleExitLagoonPolygon(
@@ -11358,6 +11389,141 @@ OFF
                 };
                 mesh = new Mesh(verts, faces);
             } // doCannedThingSweepKiller1eps
+
+            // Sweep killer 1 eps with target angles.
+            //     alpha = smallest incident angle
+            //     beta = "safety" past perpendicular for the bad cut
+            //     spread = 3*alpha + beta
+            // assuming eps is negligible,
+            // on the RHS of the figure:
+            //     the downward angle:
+            //         -45 + alpha*3/2 + beta/2
+            //     the upward angles:
+            //          45 - alpha*3/2 + beta/2    (shallowest)
+            //          45 - alpha/2   - beta/2    (medium)
+            //          45 + alpha/2   - beta/2    (steepest)
+            //
+            // Dual verts:
+            //     4         3
+            //
+            //          0
+            //        57 86
+            //       9     10
+            //
+            //    2           1
+            private void doCannedThingSweepKiller1epsMorePrincipled()
+            {
+                double eps = 1./16; // making very small doesn't hurt dual pic but makes primal pic more and more difficult to deal with
+                // I did it with alpha,beta = 20 and 10.  20 makes pic nicer; can theoretically make it very small and slopes will approach 45 degrees.
+                double alpha = DTOR(15.);
+                double beta = DTOR(15.);
+                double verts[][] = {
+                    /* 0 */ {0, 0, 0},
+
+                    // medium of 3 upward slopes
+                    /* 1 */ { Math.tan(DTOR(45.)-alpha*3/2+beta/2), -1, 0},
+                    /* 2 */ {-Math.tan(DTOR(45.)-alpha*3/2+beta/2), -1, 0},
+
+                    // the downward slope
+                    /* 3 */ { eps*Math.tan(DTOR(45.)-alpha/2-beta/2), eps, 0},
+                    /* 4 */ {-eps*Math.tan(DTOR(45.)-alpha/2-beta/2), eps, 0},
+
+                    // steepest of 3 upward slopes
+                    /* 5 */ {-eps*eps*Math.tan(DTOR(45.)+alpha/2-beta/2) - eps*eps*eps, -eps*eps, Double.NaN},
+                    /* 6 */ { eps*eps*Math.tan(DTOR(45.)+alpha/2-beta/2) + eps*eps*eps, -eps*eps, Double.NaN},
+
+                    /* 7 */ {-eps*eps*Math.tan(DTOR(45.)+alpha/2-beta/2), -eps*eps, Double.NaN},
+                    /* 8 */ { eps*eps*Math.tan(DTOR(45.)+alpha/2-beta/2), -eps*eps, Double.NaN},
+
+                    // 7,8 + shallowest of 3 upward slopes
+                    /* 9 */ {-eps*eps*Math.tan(DTOR(45.)+alpha/2-beta/2) - eps*eps*Math.tan(DTOR(45.)-alpha*3/2+beta/2) + eps*eps*eps, -eps*eps*2, Double.NaN},
+                    /* 10 */ { eps*eps*Math.tan(DTOR(45.)+alpha/2-beta/2) + eps*eps*Math.tan(DTOR(45.)-alpha*3/2+beta/2) - eps*eps*eps, -eps*eps*2, Double.NaN},
+                };
+                // I just did it with various eps,alpha,beta and then tweaked heights til it worked.  not scientific.
+                if (eps == 1./16 && alpha == DTOR(10.) && beta == DTOR(10.))
+                {
+                    verts[5][2] = verts[6][2] = -0.0031936645507812324;
+                    verts[7][2] = verts[8][2] = -0.003109522123682717;
+                    verts[9][2] = verts[10][2] = -0.005822657649931442;
+                }
+                else if (eps == 1./16 && alpha == DTOR(15.) && beta == DTOR(15.))
+                {
+                    verts[5][2] = verts[6][2] = -0.002963195800781224;
+                    verts[7][2] = verts[8][2] = -0.0028790533736827166;
+                    verts[9][2] = verts[10][2] = -0.005275782649931436;
+                }
+                else if (eps == 1./16 && alpha == DTOR(20.) && beta == DTOR(20.))
+                {
+                    verts[5][2] = verts[6][2] = -0.002822570800781228;
+                    verts[7][2] = verts[8][2] = -0.002734522123682715;
+                    verts[9][2] = verts[10][2] = -0.004916407649931435;
+                }
+                else
+                {
+                    assert(false);
+                }
+                int faces[][] = {
+                    {0,3,4}, {3,0,6}, {4,3,1,2}, {0,4,5}, {1,0,2}, {0,1,10}, {2,0,9}, {6,1,3}, {1,6,10},
+                    {5,4,2}, {5,2,9}, {0,5,7}, {5,9,7}, {10,6,8}, {6,0,8}, {0,10,8}, {7,9,0},
+                };
+                mesh = new Mesh(verts, faces);
+            } // doCannedThingSweepKiller1epsMorePrincipled
+
+
+
+            // attempt to put lots of sweep killer 1's in a single picture.
+            // TODO: doesn't work well yet
+            private void doCannedThingSweepKiller1epsMorePrincipledMultiple()
+            {
+                doCannedThingSweepKiller1epsMorePrincipled();
+                double verts0[][] = MeshUtils.getMeshVertsXYH(mesh);
+                int nVerts0 = verts0.length;
+                int faces0[][] = MeshUtils.getMeshFaces(mesh, true);
+                double verticalPeriod = verts0[3][1] - verts0[1][1]; // on average
+                double horizontalPeriod = verts0[1][0] + verts0[3][0];  // on average
+                int nRows = 3;
+                int nCols = 3;
+                double verts[][] = new double[nRows*nCols*nVerts0 - (nRows-1)*(nCols-1)][];
+                int nVerts = 0; // and counting
+                FORI (iRow, nRows)
+                {
+                    FORI (iCol, nCols)
+                    {
+                        if (iRow%2 == iCol%2)
+                        {
+                            FORI (iVert0, nVerts0)
+                            {
+                                if (iRow!=0 && (iVert0==1 || iVert0==2)) continue;
+                                if (iCol!=0 && (iVert0==2 || iVert0==4)) continue;
+                                verts[nVerts++] = new double[] {
+                                    verts0[iVert0][0] + iCol * horizontalPeriod,
+                                    verts0[iVert0][1] + iRow * verticalPeriod,
+                                    verts0[iVert0][2],
+                                };
+                            }
+                        }
+                        else
+                        {
+                            double xZero = 0;
+                            double yZero = 2*verts0[3][1] - verticalPeriod;
+                            FORI (iVert0, nVerts0)
+                            {
+                                if (iRow!=0 && (iVert0==3 || iVert0==4)) continue;
+                                if (iCol!=0 && (iVert0==1 || iVert0==3)) continue;
+                                verts[nVerts++] = new double[] {
+                                    xZero - verts0[iVert0][0] + iCol * horizontalPeriod,
+                                    yZero - verts0[iVert0][1] + iRow * verticalPeriod,
+                                    verts0[iVert0][2],
+                                };
+                            }
+                        }
+                    }
+                }
+                verts = (double[][])Arrays.subarray(verts, 0, nVerts);
+                //assert(nVerts == verts.length);
+                mesh = new Mesh(verts, faces0);
+                delaunayize();
+            } // doCannedThingSweepKiller1epsMorePrincipledMultiple()
 
 
             // Counterexample to entire class of sweep algorithms
