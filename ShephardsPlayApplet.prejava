@@ -1154,6 +1154,7 @@ public class ShephardsPlayApplet
                         });
                     }},
                     new JRow() {{
+                        add(new JLabel("  "));
                         add(new JButton("Sweep Killer 1eps mp mult") {{
                             setMargin(nomargin); // TODO: just traverse and set this on all children?  already doing it on top level I think
                             addActionListener(new java.awt.event.ActionListener() {
@@ -1162,7 +1163,8 @@ public class ShephardsPlayApplet
                                     UndoItem.State before = applet.newUndoItemState();
 
                                     applet.doCannedThingSweepKiller1epsMorePrincipledMultiple(applet.sweepKiller1Multiplicity.get(),
-                                                                                              applet.sweepKiller1Multiplicity.get());
+                                                                                              applet.sweepKiller1Multiplicity.get(),
+                                                                                              false);
 
                                     UndoItem.State after = applet.newUndoItemState();
                                     applet.undoTreeSquirrel.Do(new UndoItem(before, after));
@@ -1172,6 +1174,24 @@ public class ShephardsPlayApplet
                             });
                         }});
                         add(new JTextFieldForNumber(applet.sweepKiller1Multiplicity)); // XXX why aren't they all this simple?  oh, it's because I like to make the button start by flushing the textfield into the listenable if it's green. hmm, should do that here.  or, maybe disable button when textfield is red or green?  hmm.
+                        add(new JButton("polar") {{
+                            setMargin(nomargin); // TODO: just traverse and set this on all children?  already doing it on top level I think
+                            addActionListener(new java.awt.event.ActionListener() {
+                                @Override public void actionPerformed(java.awt.event.ActionEvent e)
+                                {
+                                    UndoItem.State before = applet.newUndoItemState();
+
+                                    applet.doCannedThingSweepKiller1epsMorePrincipledMultiplePolar(applet.sweepKiller1Multiplicity.get(),
+                                                                                                   applet.sweepKiller1Multiplicity.get());
+
+                                    UndoItem.State after = applet.newUndoItemState();
+                                    applet.undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                    applet.theCanvas.repaint();
+                                }
+                            });
+                        }});
+                        add(new JLabel("  "));
                     }},
                     new JButton("Sweep Killer (not) 2") {{
                         addActionListener(new java.awt.event.ActionListener() {
@@ -4765,7 +4785,8 @@ public class ShephardsPlayApplet
             //doCannedThingFarthestLagoonExitKillerOptimized();
             //doBlueNoiseThing(blueNoiseN.get());
             doCannedThingSweepKiller1epsMorePrincipledMultiple(sweepKiller1Multiplicity.get(),
-                                                               sweepKiller1Multiplicity.get());
+                                                               sweepKiller1Multiplicity.get(),
+                                                               false);
 
             //load("DUMP.off");
 
@@ -11481,6 +11502,12 @@ OFF
                     verts[7][2] = verts[8][2] = -0.002734522123682715;
                     verts[9][2] = verts[10][2] = -0.004916407649931435;
                 }
+                else if (eps == 1./17 && alpha == DTOR(15.) && beta == DTOR(15.)) // same heights as for 1/16, not as pretty but just wanted to test something
+                {
+                    verts[5][2] = verts[6][2] = -0.002822570800781228;
+                    verts[7][2] = verts[8][2] = -0.002734522123682715;
+                    verts[9][2] = verts[10][2] = -0.004916407649931435;
+                }
                 else
                 {
                     assert(false);
@@ -11496,7 +11523,7 @@ OFF
 
 
             // attempt to put lots of sweep killer 1's in a single picture.
-            private void doCannedThingSweepKiller1epsMorePrincipledMultiple(int nRows, int nCols)
+            private void doCannedThingSweepKiller1epsMorePrincipledMultiple(int nRows, int nCols, boolean willBeUsedForWrapLeftRight)
             {
                 doCannedThingSweepKiller1epsMorePrincipled();
                 double verts0[][] = MeshUtils.getMeshVertsXYH(mesh);
@@ -11545,7 +11572,7 @@ OFF
                 if (!staggerVertically)
                 {
                     FORI (iRow, nRows-1)
-                    FORI (iCol, nCols-1)
+                    FORI (iCol, willBeUsedForWrapLeftRight ? nCols : nCols-1)
                         verts[nVerts++] = new double[] {
                             horizontalPeriod/2. + (-nCols*.5 + (iCol+.5)) * horizontalPeriod,
                             verts0[1][1]+verticalPeriod + (-nRows*.5 + (iRow+.5)) * verticalPeriod,
@@ -11555,9 +11582,72 @@ OFF
 
                 verts = (double[][])Arrays.subarray(verts, 0, nVerts);
                 wrapAroundSphereFlagIntent.set(false);
-                mesh = new Mesh(verts, faces0);
+                mesh = new Mesh(verts, faces0); // actually faces0 not necessary
                 delaunayize();
             } // doCannedThingSweepKiller1epsMorePrincipledMultiple()
+
+            private void doCannedThingSweepKiller1epsMorePrincipledMultiplePolar(int nRings, int ringSize)
+            {
+                // CBB: it delaunayizes, don't need to do that
+                doCannedThingSweepKiller1epsMorePrincipledMultiple(nRings,   // nRows
+                                                                   ringSize, // nCols
+                                                                   true);    // willBeUsedForWrapLeftRight
+
+                int nVerts = mesh.verts.size();
+
+                // hack to figure out x period... we know verts[11] is the origin offset by horizontalPeriod
+                assert(ringSize >= 2);
+                assert(mesh.getVert(11).y() == mesh.getVert(0).y());
+                double xFullPeriod = (mesh.getVert(11).x() - mesh.getVert(0).x()) * ringSize;
+
+                Complex translateAtEnd = new Complex(0., -1.); // could make this a parameter
+                //Complex translateAtEnd = new Complex(0., 0.); // could make this a parameter
+
+                FORI (iVert, nVerts)
+                {
+                    Mesh.Vertex vert = mesh.getVert(iVert);
+                    double x = vert.x();
+                    double y = vert.y();
+                    double h = vert.h();
+                    // The transformation is, in complex plane:
+                    //     multiply by 2pi/xFullPeriod
+                    //     multiply by -i
+                    //     exponentiate
+                    //     multiply by i
+                    //     if ringSize is even, rotate by (pi/ringSize)
+                    //     translate by -i
+                    double fudgeAngle = Math.PI / ringSize;
+                    Complex z = new Complex(x, y);
+                    z
+                     .timesEquals(2*Math.PI/xFullPeriod)
+                     .timesEquals(Complex.MINUS_I)
+                     .expEquals()
+                     .timesEquals(Complex.I);
+                    if (ringSize % 2 == 0)
+                        z.timesEquals(Math.cos(fudgeAngle), Math.sin(fudgeAngle));
+                    double magnitudeAfterExponentiating = z.abs();
+                    z.plusEquals(translateAtEnd);
+                    x = z.x;
+                    y = z.y;
+
+                    // Gotta do something to h to make it sort of equivalent.
+                    // Just futzed around til it worked.
+
+                    h *= SQR(2*Math.PI/xFullPeriod);
+                    h *= SQR(magnitudeAfterExponentiating); // acts like consistently < 1 afterwards (all magenta)
+
+                    // wtf? why am I needing this fudge?? found it by binary search.
+                    // oh, I think maybe it's because of the difference between the primal and dual. hmm.
+
+                    h /= 1.066666667; // = 16/15. not sure whether that has any significance.  note that eps is 1/16 ? hmm.
+
+                    //h /= 1.075; // sorta good. different shape. hmm. that's 43/40 or so. bleah, magic.  note that eps is 1/17 in this case. hmm.
+
+                    vert.setxyh(x, y, h);
+                }
+                mesh.addIsolatedVertex(translateAtEnd.x, translateAtEnd.y, 0.);
+                delaunayize();
+            } // doCannedThingSweepKiller1epsMorePrincipledMultiplePolar
 
 
             // Counterexample to entire class of sweep algorithms
@@ -14830,7 +14920,7 @@ OFF
         private Listenable.Double singleExitLagoonQuillSlopeDenominatorDenominator = new Listenable.Double(1.,1000.,1.);
         private Listenable.Boolean singleExitLagoonPointApexUpFlag = new Listenable.Boolean(false);
         private Listenable.Boolean singleExitLagoonSynthesizeExactDualFlag = new Listenable.Boolean(false);
-        private Listenable.Int sweepKiller1Multiplicity = new Listenable.Int(1, 100, 3);
+        private Listenable.Int sweepKiller1Multiplicity = new Listenable.Int(1, 100, 19);
 
         private Surface.Sphere theSphereSurface = new Surface.Sphere(new double[]{0,0,centerSphereFlag.get() ? 0. : -1./wrapSphereCurvature.get()}, 1./wrapSphereCurvature.get());
         private Surface.Paraboloid theParaboloidSurface = new Surface.Paraboloid(-.5);
