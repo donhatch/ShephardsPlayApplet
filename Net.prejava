@@ -157,7 +157,7 @@ public class Net
         edge = originalMesh.getEdge(edge.myIndex());
 
         return edge;
-    }
+    } // nextInTreeOrExit
 
     // next in either cut tree or fold tree.
     // tree need not be complete.
@@ -169,7 +169,7 @@ public class Net
             edge = nextInTreeOrExit(treeType, edge);
         } while (_edgeStatuses[edge.myIndex()] != treeType);
         return edge;
-    }
+    } // nextInTree
 
     // If iEdge is a cut, return a list of all the folds
     // that are alternate exits out of the same lagoon (in same direction),
@@ -241,7 +241,7 @@ public class Net
 
     // TODO: need incremental version of this too
     // TODO: who varnishes?  make that more clear and perhaps principled.  oh, that's chooseDirections().
-    public double[][] computeMomentAndWeightStrictlyBelowEachVertexInitially()
+    public double[/*nVerts*/][/*3*/] computeMomentAndWeightStrictlyBelowEachVertexInitially()
     {
         assert(_topSortedVertInds != null); // only call this when net is complete and varnished
         assert(_vertToParentEdgeInd != null); // only call this when net is complete and varnished
@@ -273,6 +273,7 @@ public class Net
     } // computeMomentAndWeightStrictlyBelowEachVertexInitially
 
     // TODO: need incremental version of this too
+    // Returns edges pointing from leaf towards root.
     public int figureOutWhatsOffBalanceInitially(double momentAndWeightStrictlyBelowEachVertex[][], // in
                                                  boolean edgeIsOffBalanceCut[], // out
                                                  int offBalanceCuts[]) // out
@@ -300,7 +301,7 @@ public class Net
                 double centerX = momentAndWeightStrictlyBelowVertex[0] / weightStrictlyBelowVertex;
                 double centerY = momentAndWeightStrictlyBelowVertex[1] / weightStrictlyBelowVertex;
                 if (GT(edge.direction[0] * (centerX - vert.x())
-                     + edge.direction[1] * (centerY - vert.y()), 0., 1e-6)) // XXX is this a reasonable tolerance?
+                     + edge.direction[1] * (centerY - vert.y()), 0., 1e-6)) // CBB: is this a reasonable tolerance?
                 {
                     edgeIsOffBalanceCut[edge.myIndex()] = true;
                     edgeIsOffBalanceCut[edge.opposite().myIndex()] = true;
@@ -317,7 +318,8 @@ public class Net
     } // figureOutWhatsOffBalanceInitially
 
     // Net must be complete (i.e. _nUndecideds==0) and chooseDirections() must have been called.
-    public boolean makeGood(int maxSwaps, java.util.Random generator, Listenable.Boolean keepGoing)
+    // If strictFlag, make sure each bad cut is swapped with good (not another bad).
+    public boolean makeGood(boolean strictFlag, int maxSwaps, java.util.Random generator, Listenable.Boolean keepGoing)
     {
         int verboseLevel = 1;
         if (verboseLevel >= 1) OUT("    in makeGood");
@@ -376,16 +378,81 @@ public class Net
             if (verboseLevel >= 2) OUT("              picked cutToSwap e"+cutToSwap);
             int cutAlternatives[] = findAlternatives(cutToSwap);
             if (verboseLevel >= 2) OUT("              cutAlternatives = "+VecMath.toString(cutAlternatives));
-            int foldToSwap = cutAlternatives[generator.nextInt(cutAlternatives.length)];
+
+            int goodCutAlternatives[] = null;
+            if (strictFlag)
+            {
+                // Compute goodCutAlternatives.
+                double lagoonCenter[];
+                {
+                    Mesh.Edge edgeCutToSwap = _mesh.getEdge(cutToSwap);
+                    Mesh.Vertex initialVertex = edgeCutToSwap.initialVertex();
+
+                    double lagoonMomentAndWeight[] = new double[4]; // zeros
+                    GeomUtils.accumulateMomentAndArea(lagoonMomentAndWeight, momentAndWeightStrictlyBelowEachVertex[initialVertex.myIndex()]);
+                    GeomUtils.accumulateMomentAndArea(lagoonMomentAndWeight, initialVertex.momentAndArea);
+                    lagoonCenter = new double[] {
+                        lagoonMomentAndWeight[0] / lagoonMomentAndWeight[3],
+                        lagoonMomentAndWeight[1] / lagoonMomentAndWeight[3],
+                        lagoonMomentAndWeight[2] / SQR(lagoonMomentAndWeight[3]), // not sure whether this part makes sense or not
+                    };
+                }
+                boolean alternativeIsGood[] = new boolean[cutAlternatives.length];
+                FORI (iAlternative, cutAlternatives.length+1) // +1 for cutToSwap itself, as sanity check
+                {
+                    Mesh.Edge alternativeExit = _mesh.getEdge(iAlternative==cutAlternatives.length ? cutToSwap : cutAlternatives[iAlternative]);
+                    Mesh.Vertex alternativeExitVertex = alternativeExit.initialVertex();
+                    boolean isGood =
+                        LEQ(alternativeExit.direction[0] * (lagoonCenter[0] - alternativeExitVertex.x())
+                          + alternativeExit.direction[1] * (lagoonCenter[1] - alternativeExitVertex.y()),
+                            0., SQR(1e-6)); // CBB: is this too coarse?
+                    //PRINT(VecMath.norm(2, alternativeExit.direction)); // XXX how is its length decided?
+                    if (iAlternative == cutAlternatives.length)
+                        assert(!isGood); // hmm, not guaranteed due to roundoff error.  how to fix? maybe store goodnesses instead? that is, normalize direction and then take dot product.  oh wait, isn't direction already normalized?? in which case we shouldn't be comparing with SQR(1e-6, we should be comparing with something else... I think? bleah.  hmm, empirically, it's NOT normalized... but its length seems to be around .99 usually, why is that? hmm.)
+                    else
+                        alternativeIsGood[iAlternative] = isGood;
+                }
+                if (verboseLevel >= 1) PRINTARRAY(alternativeIsGood);
+                goodCutAlternatives = (int[])Arrays.subarray(cutAlternatives, alternativeIsGood);
+                if (verboseLevel >= 1) PRINTARRAY(goodCutAlternatives);
+                assert(goodCutAlternatives.length >= 2);
+                //assert(goodCutAlternatives.length >= 3); // fails once in a while, as expected
+            }
+
+            int foldToSwap = strictFlag ? goodCutAlternatives[generator.nextInt(goodCutAlternatives.length)]
+                                        : cutAlternatives[generator.nextInt(cutAlternatives.length)];
             if (verboseLevel >= 2) OUT("              picked foldToSwap e"+foldToSwap);
 
             int nCuts = nVerts; // I think this is right.
-            if (verboseLevel == 1) OUT("          nSwapsDone="+nSwapsDone+"/"+maxSwaps+" "+nOffBalanceCuts+"/"+nCuts+" bad cuts: "+VecMath.toString((int[])Arrays.subarray(offBalanceCuts,0,nOffBalanceCuts))+" -> e"+cutToSwap+"; "+cutAlternatives.length+" alternative folds: "+VecMath.toString(cutAlternatives)+" -> e"+foldToSwap);
+            if (strictFlag)
+            {
+                if (verboseLevel == 1) OUT("          nSwapsDone="+nSwapsDone+"/"+maxSwaps+" "+nOffBalanceCuts+"/"+nCuts+" bad cuts: "+VecMath.toString((int[])Arrays.subarray(offBalanceCuts,0,nOffBalanceCuts))+" -> e"+cutToSwap+"; "+cutAlternatives.length+" alternative folds: "+VecMath.toString(cutAlternatives)+"; "+goodCutAlternatives.length+" good alternative folds: "+VecMath.toString(goodCutAlternatives)+" -> e"+foldToSwap);
+            }
+            else
+            {
+                if (verboseLevel == 1) OUT("          nSwapsDone="+nSwapsDone+"/"+maxSwaps+" "+nOffBalanceCuts+"/"+nCuts+" bad cuts: "+VecMath.toString((int[])Arrays.subarray(offBalanceCuts,0,nOffBalanceCuts))+" -> e"+cutToSwap+"; "+cutAlternatives.length+" alternative folds: "+VecMath.toString(cutAlternatives)+" -> e"+foldToSwap);
+            }
 
             // CBB: O(n), can't be doing that here!
             if (verboseLevel >= 2) OUT("              calling swapCutAndFold");
             swapCutAndFold(cutToSwap, foldToSwap);
             if (verboseLevel >= 2) OUT("              returned from swapCutAndFold");
+
+            if (true)
+            {
+                if (strictFlag)
+                {
+                    // expensive sanity check
+                    OUT("Expensive sanity check!");
+                    double momentAndWeightStrictlyBelowEachVertexAfterwards[][] = computeMomentAndWeightStrictlyBelowEachVertexInitially();
+                    boolean edgeIsOffBalanceCutAfterwards[] = new boolean[nEdges];
+                    int offBalanceCutsAfterwards[] = new int[nEdges];
+                    int nOffBalanceCutsAfterwards = figureOutWhatsOffBalanceInitially(momentAndWeightStrictlyBelowEachVertexAfterwards,
+                                                                                      edgeIsOffBalanceCutAfterwards,
+                                                                                      offBalanceCutsAfterwards);
+                    assert(!edgeIsOffBalanceCutAfterwards[foldToSwap]);
+                }
+            }
 
             nSwapsDone++;
         }
@@ -683,8 +750,8 @@ public class Net
 
 
 
-    private Mesh _mesh;
-    private Mesh _dualMesh;
+    private Mesh _mesh;     // generally caller's dualMesh
+    private Mesh _dualMesh; // generally caller's mesh
 
     public static final int UNDECIDED = -1;
     public static final int FOLD = 0;
