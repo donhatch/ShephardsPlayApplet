@@ -14546,15 +14546,97 @@ OFF
             }
         } // vertOffset
 
+        // TODO: move this somewhere else, could be generally useful
+        private static class PointOctTree
+        {
+            private double point[] = null;
+            private PointOctTree children[] = null;
+            private double min[], max[];
+            public PointOctTree(double min[], double max[]) // assumes min/max do not change during lifetime of tree
+            {
+                assert(min.length == max.length);
+                this.min = min;
+                this.max = max;
+            }
+            public void hang(double newPoint[]) // assumes newPoint does not change during lifetime of tree
+            {
+                if (this.point == null)
+                {
+                    this.point = newPoint;
+                }
+                else if (VecMath.equalsExactly(this.point, newPoint))
+                {
+                    // nothing
+                }
+                else
+                {
+                    int nDims = min.length;
+                    int whichChild = 0;
+                    FORI (iDim, nDims)
+                    {
+                        double midPoint = (this.min[iDim]+this.max[iDim])*.5;
+                        if (newPoint[iDim] >= midPoint)
+                            whichChild |= (1<<iDim);
+                    }
+                    if (children == null)
+                        children = new PointOctTree[1<<nDims];
+                    if (children[whichChild] == null)
+                    {
+                        double childMin[] = new double[nDims];
+                        double childMax[] = new double[nDims];
+                        FORI (iDim, nDims)
+                        {
+                            if (((whichChild>>iDim)&1) == 0)
+                            {
+                                childMin[iDim] = this.min[iDim];
+                                childMax[iDim] = (this.min[iDim]+this.max[iDim])*.5;
+                            }
+                            else
+                            {
+                                childMin[iDim] = (this.min[iDim]+this.max[iDim])*.5;
+                                childMax[iDim] = this.max[iDim];
+                            }
+                        }
+                        children[whichChild] = new PointOctTree(childMin, childMax);
+                    }
+                    children[whichChild].hang(newPoint);
+                }
+            }
+            public boolean isQueryPointStrictlyWithinDist2OfExistingPoint(double queryPoint[],
+                                                                          double dist2)
+            {
+                assert(queryPoint.length == this.min.length);
+                if (this.point != null && VecMath.distsqrd(queryPoint, this.point) < dist2)
+                    return true;
+                if (children == null)
+                    return false;
+                double dist2FromQueryPointToBBox = 0.;
+                FORI (iDim, queryPoint.length)
+                {
+                    double bboxPoint = CLAMP(queryPoint[iDim], min[iDim], max[iDim]);
+                    dist2FromQueryPointToBBox += SQR(queryPoint[iDim] - bboxPoint);
+                }
+                if (dist2FromQueryPointToBBox >= dist2)
+                    return false;
+                FORI (iChild, children.length)
+                    if (children[iChild] != null)
+                        if (children[iChild].isQueryPointStrictlyWithinDist2OfExistingPoint(queryPoint, dist2))
+                            return true;
+                return false;
+            }
+        } // class PointOctTree
+
         private static double[][] generateBlueNoiseOnUnitSphere(double stubbornness,
                                                                 double overlappingDiskRadius, // radius of disks that half-overlap.  this is twice the radius of disks that don't overlap.
                                                                 java.util.Random randomNumberGenerator)
         {
+            OUT("in generateBlueNoiseOnUnitSphere");
             // disk radius is in radians, on surface of unit sphere.
             // convert to linear separation.
             double minSeparation = 2*Math.sin(.5*overlappingDiskRadius);
             double minSeparationSqrd = SQR(minSeparation);
 
+            PointOctTree tree = new PointOctTree(new double[]{-2,-2,-2}, new double[]{2,2,2});
             double samples[][] = new double[10][];
             double sample[] = new double[3];
             int nSuccesses = 0;
@@ -14570,15 +14652,26 @@ OFF
                 VecMath.normalize(sample, sample);
 
                 // is it within minSeparation of any previous sample?
-                // TODO: use an octree instead of linear search!
-                int iSample;
-                FOR (iSample, nSuccesses)
+                boolean isBad = false; // until proven otherwise
+                if (false)
                 {
-                    if (VecMath.distsqrd(sample, samples[iSample]) < minSeparationSqrd)
-                        break; // no good
+                    // Slow simple way
+                    int iSample;
+                    FOR (iSample, nSuccesses)
+                    {
+                        if (VecMath.distsqrd(sample, samples[iSample]) < minSeparationSqrd)
+                        {
+                            isBad = true;
+                            break; // no good
+                        }
+                    }
+                }
+                else
+                {
+                    isBad = tree.isQueryPointStrictlyWithinDist2OfExistingPoint(sample, minSeparationSqrd);
                 }
 
-                if (iSample == nSuccesses)
+                if (!isBad)
                 {
                     // it's good!
                     if (samples.length == nSuccesses)
@@ -14589,9 +14682,12 @@ OFF
                         samples = newSamples;
                     }
                     samples[nSuccesses++] = VecMath.copyvec(sample);
+                    tree.hang(samples[nSuccesses-1]);
                 }
             }
-            return (double[][])Arrays.subarray(samples, 0, nSuccesses);
+            double answer[][] = (double[][])Arrays.subarray(samples, 0, nSuccesses);
+            OUT("out generateBlueNoiseOnUnitSphere");
+            return answer;
         } // generateBlueNoiseOnUnitSphere
 
         // "unit square" = [-1,1]x[-1,1]
