@@ -50,7 +50,6 @@ endif
 
 JARFILE = ShephardsPlayApplet.jar
 CLASSES = \
-        MyAlgorithmMaybe.class \
         GraphicsAntiAliasingSetter.class \
         MyGraphics.class \
         MyGraphics3D.class \
@@ -63,6 +62,7 @@ CLASSES = \
         Mesh.class \
         MeshUtils.class \
         Net.class \
+        MyAlgorithmMaybe.class \
         Surface.class \
         ShephardsPlayApplet.class \
         PoincareDiskIsometry.class \
