@@ -11,16 +11,30 @@ public class MyAlgorithmMaybe
 
     public static Net doIt(
         Mesh mesh, Mesh dualMesh, // generally reversed from the app's notion
+        double sweepOriginHomo[/*3*/],
         int maxIters)
     {
         int verboseLevel = 1;
         if (verboseLevel >= 1) OUT("        in MyAlgorithmMaybe.doIt");
+        assert(sweepOriginHomo.length == 3);
         int nVerts = mesh.verts.size();
         int nEdges = mesh.edges.size();
         double verts[][] = MeshUtils.getMeshVertsXYH(mesh);
         assert(verts.length == nVerts);
-        double v2r[] = new double[nVerts]; // vertex to radius, i.e. distance from origin
-        FORI (iVert, nVerts) v2r[iVert] = VecMath.norm(2, verts[iVert]);
+        double v2orderKey[] = new double[nVerts]; // vertex to radius squared, i.e. distance squared from center
+
+        // TODO: do this homo math right
+        if (sweepOriginHomo[2] == 0.)
+        {
+          FORI (iVert, nVerts)
+              v2orderKey[iVert] = -VecMath.dot(2, verts[iVert], sweepOriginHomo);
+        }
+        else
+        {
+          double center[] = VecMath.vxs(2, sweepOriginHomo, 1./sweepOriginHomo[2]);
+          FORI (iVert, nVerts)
+              v2orderKey[iVert] = VecMath.distsqrd(2, verts[iVert], center);
+        }
 
         MeshUtils.SimplerMeshDataStructure simplerMeshDataStructure = new MeshUtils.SimplerMeshDataStructure(mesh, true);
         int e2v[][] = simplerMeshDataStructure.e2v;
@@ -36,10 +50,10 @@ public class MyAlgorithmMaybe
         IndexBinaryHeap todo = new IndexBinaryHeap(nVerts);
         FORI (iVert, nVerts)
             if (v2e[iVert].length != 0) // if not isolated, i.e. not one of the original inside out verts
-                todo.add(iVert, v2r[iVert]);
+                todo.add(iVert, v2orderKey[iVert]);
 
         double centroid[] = new double[2]; // scratch for loop
-        double centroidMinusVert[] = new double[2]; // scratch for loop
+        double centroidMinusVertDirection[] = new double[2]; // scratch for loop
         double normalizedEdgeDirection[] = new double[2]; // scratch for loop
 
         IntArrayList invalidationPathForDebugging = new IntArrayList(); // scratch for loop
@@ -83,11 +97,31 @@ public class MyAlgorithmMaybe
                 int bestNeighborVert;
                 double bestGoodness;
                 {
+                    // TODO: I suspect this logic could be cleaner
                     if (v2momentAndWeightStrictlyUpstream[iVert][2] == 0.)
-                        VecMath.zerovec(centroid); // outward from origin if no weight otherwise
+                    {
+                        // no weight, so go outward from sweep origin
+                        if (sweepOriginHomo[2] == 0.)
+                        {
+                            VecMath.copyvec(2, centroidMinusVertDirection, sweepOriginHomo); // infinite center
+                        }
+                        else
+                        {
+                            VecMath.vxs(2, centroid, sweepOriginHomo, 1./sweepOriginHomo[2]);
+                            VecMath.vmv(2, centroidMinusVertDirection, centroid, verts[iVert]);
+                        }
+                    }
                     else
+                    {
+                        // There's a weight at the centroid.  Use it, ignoring sweep center.
                         VecMath.vxs(2, centroid, v2momentAndWeightStrictlyUpstream[iVert], 1./v2momentAndWeightStrictlyUpstream[iVert][2]);
-                    VecMath.vmv(2, centroidMinusVert, centroid, verts[iVert]);
+                        VecMath.vmv(2, centroidMinusVertDirection, centroid, verts[iVert]);
+                    }
+
+
+                    VecMath.normalize(2, centroidMinusVertDirection,
+                                      centroidMinusVertDirection); // might be indeterminate, in which case it doesn't matter which neighbor we pick
+
                     bestNeighborEdge = -1;
                     bestNeighborVert = -1;
                     bestGoodness = Double.NEGATIVE_INFINITY;
@@ -97,9 +131,9 @@ public class MyAlgorithmMaybe
                         assert(e2v[iNeighborEdge][0] == iVert);
                         int iNeighborVert = e2v[iNeighborEdge][1];
                         VecMath.normalize(normalizedEdgeDirection, mesh.getEdge(iNeighborEdge).direction);
-                        double goodness = -VecMath.dot(2, normalizedEdgeDirection, centroidMinusVert);
+                        double goodness = -VecMath.dot(2, normalizedEdgeDirection, centroidMinusVertDirection);
                         //PRINTVEC(normalizedEdgeDirection);
-                        //PRINTVEC(centroidMinusVert);
+                        //PRINTVEC(centroidMinusVertDirection);
                         if (verboseLevel >= 2) OUT("                          neighbor vert "+iNeighborVert+" goodness = "+goodness);
                         if (goodness > bestGoodness)
                         {
@@ -152,7 +186,7 @@ public class MyAlgorithmMaybe
                                 invalidationPathCycleHistory[i+1] = invalidationPathCycleHistory[i];
                             invalidationPathCycleHistory[0] = thisInvalidationPathCycle;
                         }
-                        todo.add(v, v2r[v]);
+                        todo.add(v, v2orderKey[v]);
                         int parentVert = v2parentVert[v];
                         v2parentEdge[v] = -1;
                         v2parentVert[v] = -1;
