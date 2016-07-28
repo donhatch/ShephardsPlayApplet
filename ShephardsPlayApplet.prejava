@@ -8027,7 +8027,14 @@ public class ShephardsPlayApplet
 
                                 Mesh.Edge dualVertIndexToParentEdge[] = new Mesh.Edge[dualMesh.verts.size()]; // all null initially
                                 int netMethodValue = netMethod.get();
-                                if (netMethodValue == NETMETHOD_RANDOM)
+                                if (netMethodValue == NETMETHOD_MY_ALGORITHM_MAYBE)
+                                {
+                                    //int maxIters = showNetMakeGoodQuantum.get(); // XXX this isn't the right thing to use
+                                    int maxIters = 10000; // XXX this isn't the right thing to use
+                                    theNet = MyAlgorithmMaybe.doIt(dualMesh, mesh, maxIters); // reversed since we want net of dual mesh
+                                    // don't choose directions; that's done below (although maybe MyAlgorithm should have done it? not sure)
+                                }
+                                else if (netMethodValue == NETMETHOD_RANDOM)
                                 {
                                     int netVerboseLevel = !(showNetFlagValue && showNetFlowFlag.get()) ? 1 : 0;
                                     if (netVerboseLevel >= 1) System.out.println("   computing random net");
@@ -8341,19 +8348,23 @@ public class ShephardsPlayApplet
                                 }
 
                                 {
-                                    theNet = new Net(dualMesh, mesh);
-                                    if (dualEdgeIsCut != null)
-                                        FORI(iEdge, nEdges)
-                                            if (dualEdgeIsCut[iEdge])
-                                                theNet.cut(iEdge, true);
-                                    if (dualEdgeIsFold != null)
-                                        FORI(iEdge, nEdges)
-                                            if (dualEdgeIsFold[iEdge])
-                                                theNet.fold(iEdge, true);
+                                    if (theNet == null) // i.e. if the method above didn't actually make the net
+                                    {
+                                        theNet = new Net(dualMesh, mesh);
+                                        if (dualEdgeIsCut != null)
+                                            FORI(iEdge, nEdges)
+                                                if (dualEdgeIsCut[iEdge])
+                                                    theNet.cut(iEdge, true);
+                                        if (dualEdgeIsFold != null)
+                                            FORI(iEdge, nEdges)
+                                                if (dualEdgeIsFold[iEdge])
+                                                    theNet.fold(iEdge, true);
+                                    }
                                     int root = nDualVerts;
                                     if (theNet.nUndecideds() == 0)
                                         theNet.chooseDirections(root);
                                 }
+
                             } // theNet was null
 
                             //
@@ -14940,6 +14951,7 @@ OFF
             private static final int NETMETHOD_FOLD_DULLEST = 9;
             private static final int NETMETHOD_FOLD_LONGEST = 10;
             private static final int NETMETHOD_FOLD_SHORTEST = 11;
+            private static final int NETMETHOD_MY_ALGORITHM_MAYBE = 12;
             private static final String netMethodNames[] = {
                 "Manual",
                 "Random",
@@ -14953,8 +14965,10 @@ OFF
                 "Fold Dullest at each face",
                 "Fold Longest at each face",
                 "Fold Shortest at each face",
+                "My algorithm maybe",
             };
-        private Listenable.Int netMethod = new Listenable.Int(0, netMethodNames.length-1, NETMETHOD_UPWARD);
+        //private Listenable.Int netMethod = new Listenable.Int(0, netMethodNames.length-1, NETMETHOD_UPWARD);
+        private Listenable.Int netMethod = new Listenable.Int(0, netMethodNames.length-1, NETMETHOD_MY_ALGORITHM_MAYBE);
 
         private java.awt.Component theCanvas = null;
         //private java.awt.Component theHelpWindow = null;
@@ -15045,7 +15059,8 @@ OFF
         private Listenable.Boolean singleExitLagoonPointApexUpFlag = new Listenable.Boolean(false);
         private Listenable.Boolean singleExitLagoonSynthesizeExactDualFlag = new Listenable.Boolean(false);
         private Listenable.Int sweepKiller1Multiplicity = new Listenable.Int(1, 100, 19);
-        private Listenable.Int outStressorNLevels = new Listenable.Int(1, 50, 20);
+        //private Listenable.Int outStressorNLevels = new Listenable.Int(1, 50, 20);
+        private Listenable.Int outStressorNLevels = new Listenable.Int(1, 50, 5);
 
         private Surface.Sphere theSphereSurface = new Surface.Sphere(new double[]{0,0,centerSphereFlag.get() ? 0. : -1./wrapSphereCurvature.get()}, 1./wrapSphereCurvature.get());
         private Surface.Paraboloid theParaboloidSurface = new Surface.Paraboloid(-.5);
@@ -15760,8 +15775,10 @@ OFF
 
         frame.setLocation(10, 10);
         frame.setSize(720, 745);
-        //frame.setSize(300,300);
-        frame.setSize(1024,1024);
+        frame.setSize(300,300);
+        frame.setSize(512,512);
+        frame.setSize(768,768);
+        //frame.setSize(1024,1024);
 
         frame.setVisible(true);
 

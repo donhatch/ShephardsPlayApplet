@@ -50,6 +50,7 @@ endif
 
 JARFILE = ShephardsPlayApplet.jar
 CLASSES = \
+        MyAlgorithmMaybe.class \
         GraphicsAntiAliasingSetter.class \
         MyGraphics.class \
         MyGraphics3D.class \
