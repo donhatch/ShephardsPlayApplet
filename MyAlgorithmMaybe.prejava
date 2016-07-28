@@ -1,5 +1,7 @@
 #include "macros.h"
 
+import com.donhatchsw.compat.IntArrayList;
+import com.donhatchsw.util.Arrays;
 import com.donhatchsw.util.IndexBinaryHeap;
 import com.donhatchsw.util.VecMath;
 
@@ -11,7 +13,7 @@ public class MyAlgorithmMaybe
         Mesh mesh, Mesh dualMesh, // generally reversed from the app's notion
         int maxIters)
     {
-        int verboseLevel = 2;
+        int verboseLevel = 1;
         if (verboseLevel >= 1) OUT("        in MyAlgorithmMaybe.doIt");
         int nVerts = mesh.verts.size();
         int nEdges = mesh.edges.size();
@@ -39,95 +41,130 @@ public class MyAlgorithmMaybe
         double centroid[] = new double[2]; // scratch for loop
         double centroidMinusVert[] = new double[2]; // scratch for loop
         double normalizedEdgeDirection[] = new double[2]; // scratch for loop
-        for (int iIter = 0; !todo.isEmpty() && iIter < maxIters; ++iIter)
+
+        IntArrayList invalidationPathForDebugging = new IntArrayList(); // scratch for loop
+        int invalidationPathCycleHistory[][] = new int[10][];
+
+        int iIter;
+        boolean infiniteLoopDetected = false;
+        for (iIter = 0;
+             !todo.isEmpty() && (maxIters==-1 || iIter < maxIters) && !infiniteLoopDetected;
+             ++iIter)
         {
-            int iVert = todo.extractMin();
+            int iVert = todo.min();
             if (verboseLevel >= 2) OUT("              iIter="+iIter+": top of loop");
             if (verboseLevel >= 2) OUT("                  iVert = "+iVert);
             assert(iVert < nVerts);
             assert(v2parentEdge[iVert] == -1);
             assert(v2parentVert[iVert] == -1);
 
-            VecMath.zerovec(v2momentAndWeightStrictlyUpstream[iVert]);
-            FORI (iEdgeThisVert, v2e[iVert].length)
+            while (v2parentVert[iVert] == -1 // this is sort of a hack: keep going as long as I got put back on the todo list, even if I'm not otherwise the first on the todo list.  I have no reason to think this will result in a good algorithm, it's just a heuristic to get out of the endless-loop of the moment.
+                && !infiniteLoopDetected)
             {
-                int iNeighborVert = e2v[v2e[iVert][iEdgeThisVert]][1];
-                if (iNeighborVert < nVerts
-                 && v2parentVert[iNeighborVert] == iVert)
-                {
-                    if (verboseLevel >= 2) OUT("                          accumulating from upstream vert "+iNeighborVert);
-                    GeomUtils.accumulateMomentAndArea(v2momentAndWeightStrictlyUpstream[iVert],
-                                                      v2momentAndWeightStrictlyUpstream[iNeighborVert]);
-                    GeomUtils.accumulateMomentAndArea(v2momentAndWeightStrictlyUpstream[iVert],
-                                                      mesh.getVert(iNeighborVert).momentAndArea);
-                }
-            }
+                todo.remove(iVert);
 
-            // Find best neighbor, i.e. neighbor that's most opposite the upstream centroid.
-            int bestNeighborEdge;
-            int bestNeighborVert;
-            double bestGoodness;
-            {
-                if (v2momentAndWeightStrictlyUpstream[iVert][2] == 0.)
-                    VecMath.zerovec(centroid); // outward from origin if no weight otherwise
-                else
-                    VecMath.vxs(2, centroid, v2momentAndWeightStrictlyUpstream[iVert], 1./v2momentAndWeightStrictlyUpstream[iVert][2]);
-                VecMath.vmv(2, centroidMinusVert, centroid, verts[iVert]);
-                bestNeighborEdge = -1;
-                bestNeighborVert = -1;
-                bestGoodness = Double.NEGATIVE_INFINITY;
+                VecMath.zerovec(v2momentAndWeightStrictlyUpstream[iVert]);
                 FORI (iEdgeThisVert, v2e[iVert].length)
                 {
-                    int iNeighborEdge = v2e[iVert][iEdgeThisVert];
-                    assert(e2v[iNeighborEdge][0] == iVert);
-                    int iNeighborVert = e2v[iNeighborEdge][1];
-                    VecMath.normalize(normalizedEdgeDirection, mesh.getEdge(iNeighborEdge).direction);
-                    double goodness = -VecMath.dot(2, normalizedEdgeDirection, centroidMinusVert);
-                    //PRINTVEC(normalizedEdgeDirection);
-                    //PRINTVEC(centroidMinusVert);
-                    if (verboseLevel >= 2) OUT("                          neighbor vert "+iNeighborVert+" goodness = "+goodness);
-                    if (goodness > bestGoodness)
+                    int iNeighborVert = e2v[v2e[iVert][iEdgeThisVert]][1];
+                    if (iNeighborVert < nVerts
+                     && v2parentVert[iNeighborVert] == iVert)
                     {
-                        bestGoodness = goodness;
-                        bestNeighborEdge = iNeighborEdge;
-                        bestNeighborVert = iNeighborVert;
+                        if (verboseLevel >= 2) OUT("                          accumulating from upstream vert "+iNeighborVert);
+                        GeomUtils.accumulateMomentAndArea(v2momentAndWeightStrictlyUpstream[iVert],
+                                                          v2momentAndWeightStrictlyUpstream[iNeighborVert]);
+                        GeomUtils.accumulateMomentAndArea(v2momentAndWeightStrictlyUpstream[iVert],
+                                                          mesh.getVert(iNeighborVert).momentAndArea);
                     }
                 }
-            }
-            if (verboseLevel >= 2) OUT("                      bestNeighborVert = "+bestNeighborVert+" bestGoodness = "+bestGoodness);
-            assert(bestGoodness >= 0.);
-            assert(bestNeighborEdge != -1);
-            assert(bestNeighborVert != -1);
-            assert(v2parentEdge[iVert] == -1);
-            assert(v2parentVert[iVert] == -1);
-            v2parentEdge[iVert] = bestNeighborEdge; // note it might get unset again in a moment if we backwash though
-            v2parentVert[iVert] = bestNeighborVert; // note it might get unset again in a moment if we backwash though
-            {
-                // invalidate bestNeighbor and downstream, and put in todo list:
-                // bestNeighbor, its parent, grandparent, ...
-                // stopping when we either hit something that's already invalid-and-in-todo,
-                // or at the infinite vertex (which is always invalid but not in todo).
-                int v = bestNeighborVert;
-                while (v < nVerts && v2parentVert[v] != -1)
+
+                // Find best neighbor, i.e. neighbor that's most opposite the upstream centroid.
+                int bestNeighborEdge;
+                int bestNeighborVert;
+                double bestGoodness;
                 {
-                    if (verboseLevel >= 2) OUT("                      invalidating: "+v);
-                    if (v == iVert)
+                    if (v2momentAndWeightStrictlyUpstream[iVert][2] == 0.)
+                        VecMath.zerovec(centroid); // outward from origin if no weight otherwise
+                    else
+                        VecMath.vxs(2, centroid, v2momentAndWeightStrictlyUpstream[iVert], 1./v2momentAndWeightStrictlyUpstream[iVert][2]);
+                    VecMath.vmv(2, centroidMinusVert, centroid, verts[iVert]);
+                    bestNeighborEdge = -1;
+                    bestNeighborVert = -1;
+                    bestGoodness = Double.NEGATIVE_INFINITY;
+                    FORI (iEdgeThisVert, v2e[iVert].length)
                     {
-                        // This is the interesting event!
-                        if (verboseLevel >= 1) OUT("                          ooh interesting! started at v"+iVert+" but invalidated it! "+VecMath.toString(verts[iVert]));
+                        int iNeighborEdge = v2e[iVert][iEdgeThisVert];
+                        assert(e2v[iNeighborEdge][0] == iVert);
+                        int iNeighborVert = e2v[iNeighborEdge][1];
+                        VecMath.normalize(normalizedEdgeDirection, mesh.getEdge(iNeighborEdge).direction);
+                        double goodness = -VecMath.dot(2, normalizedEdgeDirection, centroidMinusVert);
+                        //PRINTVEC(normalizedEdgeDirection);
+                        //PRINTVEC(centroidMinusVert);
+                        if (verboseLevel >= 2) OUT("                          neighbor vert "+iNeighborVert+" goodness = "+goodness);
+                        if (goodness > bestGoodness)
+                        {
+                            bestGoodness = goodness;
+                            bestNeighborEdge = iNeighborEdge;
+                            bestNeighborVert = iNeighborVert;
+                        }
                     }
-                    todo.add(v, v2r[v]);
-                    int parentVert = v2parentVert[v];
-                    v2parentEdge[v] = -1;
-                    v2parentVert[v] = -1;
-                    v = parentVert;
+                }
+                if (verboseLevel >= 2) OUT("                      bestNeighborVert = "+bestNeighborVert+" bestGoodness = "+bestGoodness);
+                assert(bestGoodness >= 0.);
+                assert(bestNeighborEdge != -1);
+                assert(bestNeighborVert != -1);
+                assert(v2parentEdge[iVert] == -1);
+                assert(v2parentVert[iVert] == -1);
+                v2parentEdge[iVert] = bestNeighborEdge; // note it might get unset again in a moment if we backwash though
+                v2parentVert[iVert] = bestNeighborVert; // note it might get unset again in a moment if we backwash though
+                {
+                    invalidationPathForDebugging.clear();
+                    invalidationPathForDebugging.add(iVert);
+
+                    // invalidate bestNeighbor and downstream, and put in todo list:
+                    // bestNeighbor, its parent, grandparent, ...
+                    // stopping when we either hit something that's already invalid-and-in-todo,
+                    // or at the infinite vertex (which is always invalid but not in todo).
+                    int v = bestNeighborVert;
+                    while (v < nVerts && v2parentVert[v] != -1)
+                    {
+                        invalidationPathForDebugging.add(v);
+                        if (verboseLevel >= 2) OUT("                      invalidating: "+v);
+                        if (v == iVert)
+                        {
+                            // This is the interesting event!
+                            int thisInvalidationPathCycle[] = invalidationPathForDebugging.toArray();
+                            if (verboseLevel >= 1) OUT("                          ooh interesting! started at v"+iVert+" but invalidated it! "+VecMath.toString(verts[iVert])+" invalidation path = "+Arrays.toStringCompact(thisInvalidationPathCycle));
+
+                            //PRINTARRAY(invalidationPathCycleHistory);
+                            FORI (i, invalidationPathCycleHistory.length)
+                            {
+                                if (VecMath.equals(thisInvalidationPathCycle, invalidationPathCycleHistory[i])
+                                 && i+1 < invalidationPathCycleHistory.length
+                                 && VecMath.equals(invalidationPathCycleHistory[0], invalidationPathCycleHistory[i+1]))
+                                {
+                                    if (verboseLevel >= 0) OUT("                              oh no! infinite loop detected maybe!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+                                    infiniteLoopDetected = true;
+                                }
+                            }
+
+                            FORIDOWN(i, invalidationPathCycleHistory.length-1)
+                                invalidationPathCycleHistory[i+1] = invalidationPathCycleHistory[i];
+                            invalidationPathCycleHistory[0] = thisInvalidationPathCycle;
+                        }
+                        todo.add(v, v2r[v]);
+                        int parentVert = v2parentVert[v];
+                        v2parentEdge[v] = -1;
+                        v2parentVert[v] = -1;
+                        v = parentVert;
+                    }
                 }
             }
         } // while !todo.isEmpty()
         if (todo.isEmpty())
-            if (verboseLevel >= 1) OUT("          finished!");
+            if (verboseLevel >= 1) OUT("          finished in "+iIter+" iterations!");
         else
-            if (verboseLevel >= 1) OUT("          didn't finish!");
+            if (verboseLevel >= 1) OUT("          didn't finish in "+iIter+" iterations!");
 
         if (verboseLevel >= 2) PRINTVEC(v2parentEdge);
         if (verboseLevel >= 2) PRINTVEC(v2parentVert);
