@@ -61,7 +61,8 @@ CONJECTURES ABOUT STRONGER UNFOLDINGS INVOLVING SWEEPS:
 * For every trivalent convex polyhedron,
   for every sweep direction, there is an unfolding
   in which the cut tree follows the sweep direction
-  [false, counterexample: sweepKiller, or sweepKiller1]
+  [false, counterexample: sweepKiller, or sweepKiller1, can force flow to
+  arbitrarily close to 45 degrees away from the sweep direction]
 
 * For every trivalent convex polyhedron,
   there is a sweep direction and an unfolding
@@ -70,6 +71,11 @@ CONJECTURES ABOUT STRONGER UNFOLDINGS INVOLVING SWEEPS:
   at different angles, to thwart every possible sweep direction.
   angle delta just needs to be small enough so that turning that much
   doesn't move any edge past horizontal.)
+
+* For every trivalent convex polyhedron,
+  for every sweep direction, there is an unfolding
+  in which the cut tree's flow is always within 45 degrees
+  (maybe exclusive, maybe inclusive) of the sweep direction
 
 * For every trivalent convex polyhedron,
   for every sweep direction, there is an unfolding
@@ -149,6 +155,16 @@ CONJECTURES ABOUT ALGORITHMS:
   or "there exists an algorithm", however this one is backwards...
   maybe this conjecture should be replaced with its negation]
 
+* There is a planar algorithm that sweeps a circle outward from a center point,
+  such that, at any given time, the structure inside the circle is a good unfolding
+  (although it might change)
+  and the edges crossing the circle are either dry
+  or flow from a vertex inside the circle to a vertex outside the circle.
+
+* There is a planar algorithm that sweeps a circle *inward* towards a center point,
+  such that, at any given time, the edges crossing the circle are either dry
+  or flow from a vertex inside the circle to a vertex outside the circle,
+  and stats are kept that keep track of how paths can proceed inward.
 
 CONJECTURES ABOUT SINGLE CRACKS:
 
