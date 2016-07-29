@@ -6538,29 +6538,7 @@ public class ShephardsPlayApplet
                             {
                                 PRINT(closestIndex);
                                 // figure out the 3 primal verts
-                                int closestTri[] = null;
-                                {
-                                    int nEdges = dualMesh.edges.size();
-                                    assert_eq(nEdges, mesh.edges.size());
-                                    FORI (iEdge, nEdges)
-                                    {
-                                        Mesh.Edge dualEdge = dualMesh.getEdge(iEdge);
-                                        Mesh.Vertex initialVertex = dualEdge.initialVertex();
-                                        if (initialVertex != null
-                                         && initialVertex.myIndex() == closestIndex)
-                                        {
-                                            Mesh.Edge primalEdge = (mesh.getEdge(iEdge)).opposite();
-                                            // advance around triangle til initial vertex is smallest
-                                            while (primalEdge.initialVertex().myIndex() > primalEdge.finalVertex().myIndex()
-                                                || primalEdge.initialVertex().myIndex() > primalEdge.prev().initialVertex().myIndex())
-                                                primalEdge = primalEdge.next();
-                                            int i0 = primalEdge.initialVertex().myIndex();
-                                            int i1 = primalEdge.finalVertex().myIndex();
-                                            int i2 = primalEdge.prev().initialVertex().myIndex();
-                                            closestTri = new int[] {i0,i1,i2};
-                                        }
-                                    }
-                                }
+                                int closestTri[] = MeshUtils.findPrimalFaceFromDualVert(mesh, dualMesh, closestIndex);
                                 assert(closestTri != null);
                                 PRINTARRAY(closestTri);
 
@@ -8043,7 +8021,19 @@ public class ShephardsPlayApplet
                                     double sweepOriginHomo[] = (netMethodValue==NETMETHOD_MY_ALGORITHM_MAYBE_UPWARD
                                         ? new double[]{0,-1,0} // upward from -y axis
                                         : new double[]{0,0,1}); // outward from origin
-                                    theNet = MyAlgorithmMaybe.doIt(dualMesh, mesh, sweepOriginHomo, maxIters); // reversed since we want net of dual mesh
+                                    int putProblematicVertsHereForDebugging[/*1*/][] = {null};
+                                    theNet = MyAlgorithmMaybe.doIt(dualMesh, mesh, sweepOriginHomo, maxIters, putProblematicVertsHereForDebugging); // reversed since we want net of dual mesh
+                                    if (putProblematicVertsHereForDebugging[0] != null)
+                                    {
+                                        selectedDualVertIndices = putProblematicVertsHereForDebugging[0];
+                                        selectedTris = new int[selectedDualVertIndices.length][];
+                                        FORI (i, selectedTris.length)
+                                        {
+                                            selectedTris[i] = MeshUtils.findPrimalFaceFromDualVert(mesh, dualMesh, selectedDualVertIndices[i]);
+                                        }
+                                        PRINTVEC(selectedDualVertIndices);
+                                        PRINTARRAY(selectedTris);
+                                    }
                                     // don't choose directions; that's done below (although maybe MyAlgorithm should have done it? not sure)
                                 }
                                 else if (netMethodValue == NETMETHOD_RANDOM)
