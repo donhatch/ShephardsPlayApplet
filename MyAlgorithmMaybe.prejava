@@ -1,6 +1,7 @@
 #include "macros.h"
 
 import com.donhatchsw.compat.IntArrayList;
+import com.donhatchsw.util.SortStuff;
 import com.donhatchsw.util.Arrays;
 import com.donhatchsw.util.IndexBinaryHeap;
 import com.donhatchsw.util.VecMath;
@@ -19,6 +20,8 @@ public class MyAlgorithmMaybe
         assert(sweepOriginHomo.length == 3);
         int nVerts = mesh.verts.size();
         int nEdges = mesh.edges.size();
+        if (verboseLevel >= 1) OUT("          nVerts = "+nVerts);
+        if (verboseLevel >= 1) OUT("          nEdges = "+nEdges);
         double verts[][] = MeshUtils.getMeshVertsXYH(mesh);
         assert(verts.length == nVerts);
         double v2orderKey[] = new double[nVerts]; // vertex to radius squared, i.e. distance squared from center
@@ -36,6 +39,21 @@ public class MyAlgorithmMaybe
               v2orderKey[iVert] = VecMath.distsqrd(2, verts[iVert], center);
         }
 
+        // Could just make an IndexBinaryHeap based on v2orderKey,
+        // but it's nicer to use indices that reflect how much progress has been made
+        int priority2v[] = VecMath.identityperm(nVerts);
+        SortStuff.sort(priority2v, new SortStuff.IntComparator() {
+            @Override public int compare(int a, int b)
+            {
+                if (v2orderKey[a] < v2orderKey[b]) return -1;
+                if (v2orderKey[a] > v2orderKey[b]) return 1;
+                if (a < b) return -1;
+                if (a > b) return 1;
+                return 0;
+            }
+        });
+        int v2priority[] = VecMath.invertperm(priority2v);
+
         MeshUtils.SimplerMeshDataStructure simplerMeshDataStructure = new MeshUtils.SimplerMeshDataStructure(mesh, true);
         int e2v[][] = simplerMeshDataStructure.e2v;
         int v2e[][] = simplerMeshDataStructure.v2e;
@@ -48,9 +66,12 @@ public class MyAlgorithmMaybe
         int v2parentVert[] = VecMath.fillvec(nVerts, -1);
 
         IndexBinaryHeap todo = new IndexBinaryHeap(nVerts);
-        FORI (iVert, nVerts)
+        FORI (priority, nVerts)
+        {
+            int iVert = priority2v[priority];
             if (v2e[iVert].length != 0) // if not isolated, i.e. not one of the original inside out verts
-                todo.add(iVert, v2orderKey[iVert]);
+                todo.add(priority, (double)priority);
+        }
 
         double centroid[] = new double[2]; // scratch for loop
         double centroidMinusVertDirection[] = new double[2]; // scratch for loop
@@ -65,9 +86,10 @@ public class MyAlgorithmMaybe
              !todo.isEmpty() && (maxIters==-1 || iIter < maxIters) && !infiniteLoopDetected;
              ++iIter)
         {
-            int iVert = todo.min();
+            int priority = todo.min();
+            int iVert = priority2v[priority];
             if (verboseLevel >= 2) OUT("              iIter="+iIter+": top of loop");
-            if (verboseLevel >= 2) OUT("                  iVert = "+iVert);
+            if (verboseLevel >= 2) OUT("                  priority="+priority+" iVert="+iVert);
             assert(iVert < nVerts);
             assert(v2parentEdge[iVert] == -1);
             assert(v2parentVert[iVert] == -1);
@@ -75,7 +97,7 @@ public class MyAlgorithmMaybe
             while (v2parentVert[iVert] == -1 // this is sort of a hack: keep going as long as I got put back on the todo list, even if I'm not otherwise the first on the todo list.  I have no reason to think this will result in a good algorithm, it's just a heuristic to get out of the endless-loop of the moment.
                 && !infiniteLoopDetected)
             {
-                todo.remove(iVert);
+                todo.remove(v2priority[iVert]);
 
                 VecMath.zerovec(v2momentAndWeightStrictlyUpstream[iVert]);
                 FORI (iEdgeThisVert, v2e[iVert].length)
@@ -168,7 +190,7 @@ public class MyAlgorithmMaybe
                         {
                             // This is the interesting event!
                             int thisInvalidationPathCycle[] = invalidationPathForDebugging.toArray();
-                            if (verboseLevel >= 1) OUT("                          ooh interesting! started at v"+iVert+" but invalidated it! "+VecMath.toString(verts[iVert])+" invalidation path = "+Arrays.toStringCompact(thisInvalidationPathCycle));
+                            if (verboseLevel >= 1) OUT("                          ooh interesting! started at v"+iVert+" but invalidated it! "+VecMath.toString(verts[iVert])+" invalidation path = "+Arrays.toStringCompact(thisInvalidationPathCycle)+": "+Arrays.toStringCompact(VecMath.composeluts(v2priority, thisInvalidationPathCycle)));
 
                             //PRINTARRAY(invalidationPathCycleHistory);
                             FORI (i, invalidationPathCycleHistory.length)
@@ -186,7 +208,7 @@ public class MyAlgorithmMaybe
                                 invalidationPathCycleHistory[i+1] = invalidationPathCycleHistory[i];
                             invalidationPathCycleHistory[0] = thisInvalidationPathCycle;
                         }
-                        todo.add(v, v2orderKey[v]);
+                        todo.add(v2priority[v], (double)v2priority[v]);
                         int parentVert = v2parentVert[v];
                         v2parentEdge[v] = -1;
                         v2parentVert[v] = -1;
