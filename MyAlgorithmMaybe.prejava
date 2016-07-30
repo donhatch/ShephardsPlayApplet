@@ -87,11 +87,9 @@ public class MyAlgorithmMaybe
 
         java.util.HashMap fingerprints = new java.util.HashMap();
         IntArrayList invalidationPathForDebugging = new IntArrayList(); // scratch for loop
-        int invalidationPathCycleHistory[][] = new int[20][];
 
         int nFineIters = 0;
         int iIter;
-        int numberOfTimesIThinkImInAnInfiniteLoop = 0;
         boolean infiniteLoopDetected = false;
         for (iIter = 0;
              !todo.isEmpty() && (maxIters==-1 || iIter < maxIters) && !infiniteLoopDetected;
@@ -315,9 +313,9 @@ public class MyAlgorithmMaybe
                         if (verboseLevel >= 2) OUT("                      invalidating: "+v);
                         if (v == iVert)
                         {
-                            // This is the interesting event!
+                            // This is the interesting event!  Biting own tail.
                             int thisInvalidationPathCycle[] = invalidationPathForDebugging.toArray();
-                            if (verboseLevel >= 1) OUT("                          ooh interesting! started at v"+iVert+" but invalidated it! "+VecMath.toString(verts[iVert])+" invalidation path = "+Arrays.toStringCompact(VecMath.composeluts(v2priority, thisInvalidationPathCycle))+": "+Arrays.toStringCompact(thisInvalidationPathCycle));
+                            if (verboseLevel >= 1) OUT("                          iFineIter="+nFineIters+" ooh interesting! started at v"+iVert+" but invalidated it! "+VecMath.toString(verts[iVert])+" invalidation path = "+Arrays.toStringCompact(VecMath.composeluts(v2priority, thisInvalidationPathCycle))+": "+Arrays.toStringCompact(thisInvalidationPathCycle));
 
                             {
                                 // Take fingerprint of the whole thing.
@@ -326,64 +324,23 @@ public class MyAlgorithmMaybe
                                 try { messageDigest = java.security.MessageDigest.getInstance("SHA-1"); }
                                 catch (java.security.NoSuchAlgorithmException e) { assert(false); }
 
-                                String message = Arrays.toStringCompact(v2parentEdge); // XXX could do something faster
+                                String message = Arrays.toStringCompact(v2parentEdge); // CBB: could do something faster
                                 messageDigest.update(message.getBytes());
                                 java.math.BigInteger fingerprint = new java.math.BigInteger(1,messageDigest.digest());
                                 Integer previous = (Integer)fingerprints.get(fingerprint);
                                 if (previous != null)
                                 {
-                                    OUT("                                  (I think I'm in an infinite loop!!!!!!!!!!!!)");
-                                    // just allow it to play out a little to see whether other detection detects it
-                                    numberOfTimesIThinkImInAnInfiniteLoop++;
+                                    if (verboseLevel >= 0) OUT("                              oh no! infinite loop detected!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! previous iFineIter="+previous);
+                                    infiniteLoopDetected = true;
+                                    putProblematicVertsHereForDebugging[0] = thisInvalidationPathCycle;
                                 }
                                 else
                                 {
-                                    assert(numberOfTimesIThinkImInAnInfiniteLoop == 0);
-                                    OUT("                                  (I think I'm not in an infinite loop)");
-                                    OUT("                                  (inserting "+fingerprint+" -> "+nFineIters+")");
+                                    if (verboseLevel >= 2) OUT("                                  (I think I'm not in an infinite loop)");
+                                    if (verboseLevel >= 2) OUT("                                  (inserting "+fingerprint+" -> "+nFineIters+")");
                                     fingerprints.put(fingerprint, nFineIters);
                                 }
                             }
-
-                            //PRINTARRAY(invalidationPathCycleHistory);
-                            FORI (i, invalidationPathCycleHistory.length)
-                            {
-                                if (VecMath.equals(thisInvalidationPathCycle, invalidationPathCycleHistory[i])
-                                 && i+1 < invalidationPathCycleHistory.length
-                                 && VecMath.equals(invalidationPathCycleHistory[0], invalidationPathCycleHistory[i+1]))
-                                {
-                                    if (verboseLevel >= 0) OUT("                              oh no! infinite loop detected maybe?");
-                                    if (i+2 < invalidationPathCycleHistory.length
-                                     && VecMath.equals(invalidationPathCycleHistory[1], invalidationPathCycleHistory[i+2]))
-                                    {
-                                        if (verboseLevel >= 0) OUT("                              oh no! infinite loop detected probably?");
-                                        if (i+3 < invalidationPathCycleHistory.length
-                                         && VecMath.equals(invalidationPathCycleHistory[1], invalidationPathCycleHistory[i+3]))
-                                        {
-                                            if (verboseLevel >= 0) OUT("                              oh no! infinite loop detected almost definitely!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
-                                            if (numberOfTimesIThinkImInAnInfiniteLoop >= 1)
-                                            {
-                                                infiniteLoopDetected = true;
-                                                putProblematicVertsHereForDebugging[0] = thisInvalidationPathCycle;
-                                            }
-                                            else
-                                            {
-                                                if (verboseLevel >= 0) OUT("                              (and yet the definitive cycle thing says no)");
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            if (numberOfTimesIThinkImInAnInfiniteLoop == 10)
-                            {
-                                if (verboseLevel >= 0) OUT("                              all right, this is getting ridiculous.");
-                                infiniteLoopDetected = true;
-                                putProblematicVertsHereForDebugging[0] = thisInvalidationPathCycle;
-                            }
-
-                            FORIDOWN(i, invalidationPathCycleHistory.length-1)
-                                invalidationPathCycleHistory[i+1] = invalidationPathCycleHistory[i];
-                            invalidationPathCycleHistory[0] = thisInvalidationPathCycle;
                         }
                         todo.add(v2priority[v], (double)v2priority[v]);
                         int parentVert = v2parentVert[v];
