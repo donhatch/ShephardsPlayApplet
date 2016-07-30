@@ -75,8 +75,15 @@ public class MyAlgorithmMaybe
         }
 
         double centroid[] = new double[2]; // scratch for loop
-        double centroidMinusVertDirection[] = new double[2]; // scratch for loop
+        double vertMinusCentroidDirection[] = new double[2]; // scratch for loop
+        double sweepDirection[] = new double[2]; // scratch for loop
         double normalizedEdgeDirection[] = new double[2]; // scratch for loop
+
+        int maxValence = 0; FORI (iVert, nVerts) maxValence = MAX(maxValence, v2e[iVert].length);
+        assert(maxValence == 3); // XXX unless no edges... need to get something more solid here
+        double goodnesses[] = new double[maxValence]; // scratch for loop
+        double sweepGoodnesses[] = new double[maxValence]; // scratch for loop
+        boolean isBackwashes[] = new boolean[maxValence]; // scratch for loop
 
         IntArrayList invalidationPathForDebugging = new IntArrayList(); // scratch for loop
         int invalidationPathCycleHistory[][] = new int[10][];
@@ -115,59 +122,174 @@ public class MyAlgorithmMaybe
                     }
                 }
 
-                // Find best neighbor, i.e. neighbor that's most opposite the upstream centroid.
+                // get vertMinusCentroidDirection: unit or zero.
+                if (v2momentAndWeightStrictlyUpstream[iVert][2] > 0.)
+                {
+                    VecMath.vxs(2, centroid, v2momentAndWeightStrictlyUpstream[iVert], 1./v2momentAndWeightStrictlyUpstream[iVert][2]);
+                    VecMath.vmv(2, vertMinusCentroidDirection, verts[iVert], centroid);
+                    if (VecMath.normsqrd(vertMinusCentroidDirection) != 0.) // if it didn't happen to land right on vertex
+                        VecMath.normalize(2, vertMinusCentroidDirection,
+                                             vertMinusCentroidDirection);
+                }
+                else
+                    VecMath.zerovec(2, vertMinusCentroidDirection);
+
+                // get sweepDirection: unit or zero.
+                if (sweepOriginHomo[2] == 0.)
+                {
+                    // sweep origin is at infinity
+                    VecMath.sxv(2, sweepDirection, -1., sweepOriginHomo);
+                }
+                else
+                {
+                    VecMath.vmv(2, sweepDirection, verts[iVert], sweepOriginHomo);
+                    if (VecMath.normsqrd(sweepDirection) != 0.) // if vertex is not right on sweep origin
+                        VecMath.normalize(2, sweepDirection,
+                                             sweepDirection);
+                }
+
+                // Gather information about each neighbor,
+                // into goodnesses, sweepGoodnesses, isBackwashes.
+                FORI (iEdgeThisVert, v2e[iVert].length)
+                {
+                    int iNeighborEdge = v2e[iVert][iEdgeThisVert];
+                    assert(e2v[iNeighborEdge][0] == iVert);
+                    int iNeighborVert = e2v[iNeighborEdge][1];
+                    VecMath.normalize(normalizedEdgeDirection, mesh.getEdge(iNeighborEdge).direction);
+                    double goodness = VecMath.dot(2, normalizedEdgeDirection, vertMinusCentroidDirection);
+                    double sweepGoodness = VecMath.dot(2, normalizedEdgeDirection, sweepDirection);
+                    boolean isBackwash = (iNeighborVert < nVerts && v2parentVert[iNeighborVert] == iVert);
+                    goodnesses[iEdgeThisVert] = goodness;
+                    sweepGoodnesses[iEdgeThisVert] = sweepGoodness;
+                    isBackwashes[iEdgeThisVert] = isBackwash;
+                }
+
+                // Figure out which we think is the best.
+                // There are actually a lot of possible choices here.
+
                 int bestNeighborEdge;
                 int bestNeighborVert;
-                double bestGoodness;
                 {
-                    // TODO: I suspect this logic could be cleaner
-                    if (v2momentAndWeightStrictlyUpstream[iVert][2] == 0.)
+                    final int STRATEGY_BEST_GOODNESS = 1; // original implementation
+                    final int STRATEGY_BEST_COMPOSITE = 2; // second implementation
+                    int strategy = STRATEGY_BEST_GOODNESS;
+
+                    int bestNeighborIndex = -1;
+                    FORI (iEdgeThisVert, v2e[iVert].length)
                     {
-                        // no weight, so go outward from sweep origin
-                        if (sweepOriginHomo[2] == 0.)
+                        if (bestNeighborIndex == -1)
                         {
-                            VecMath.copyvec(2, centroidMinusVertDirection, sweepOriginHomo); // infinite center
+                            //assert(false); // coverage
+                            bestNeighborIndex = iEdgeThisVert;
                         }
                         else
                         {
-                            VecMath.vxs(2, centroid, sweepOriginHomo, 1./sweepOriginHomo[2]);
-                            VecMath.vmv(2, centroidMinusVertDirection, centroid, verts[iVert]);
+                            if (strategy == STRATEGY_BEST_GOODNESS) // original implementation
+                            {
+                                if (goodnesses[iEdgeThisVert] > goodnesses[bestNeighborIndex])
+                                {
+                                    //assert(false); // coverage
+                                    bestNeighborIndex = iEdgeThisVert;
+                                }
+                                else if (goodnesses[iEdgeThisVert] < goodnesses[bestNeighborIndex])
+                                {
+                                    //assert(false); // coverage
+                                    ; // nothing
+                                }
+                                else if (sweepGoodnesses[iEdgeThisVert] > sweepGoodnesses[bestNeighborIndex])
+                                {
+                                    //assert(false); // coverage
+                                    bestNeighborIndex = iEdgeThisVert;
+                                }
+                                else if (sweepGoodnesses[iEdgeThisVert] < sweepGoodnesses[bestNeighborIndex])
+                                {
+                                    //assert(false); // coverage
+                                    ; // nothing
+                                }
+                                else
+                                {
+                                    //assert(false); // coverage
+                                    ; // nothing
+                                }
+                            } 
+                            else if (strategy == STRATEGY_BEST_COMPOSITE)
+                            {
+                                // invariant: have to pick one with goodness >= 0.  so if one is >=0 and other is negative, must pick it.
+                                if (goodnesses[iEdgeThisVert] >= 0. && goodnesses[bestNeighborIndex] < 0.)
+                                {
+                                    assert(false); // coverage
+                                    bestNeighborIndex = iEdgeThisVert;
+                                }
+                                else if (goodnesses[bestNeighborIndex] >= 0. && goodnesses[iEdgeThisVert] < 0.)
+                                {
+                                    assert(false); // coverage
+                                    ; // nothing
+                                }
+                                else
+                                {
+                                    assert(false); // coverage
+                                    // Favor non-backwash.
+                                    if (!isBackwashes[iEdgeThisVert] && isBackwashes[bestNeighborIndex])
+                                    {
+                                        assert(false); // coverage
+                                        bestNeighborIndex = iEdgeThisVert;
+                                    }
+                                    else if (isBackwashes[iEdgeThisVert] && !isBackwashes[bestNeighborIndex])
+                                    {
+                                        assert(false); // coverage
+                                        ; // nothing
+                                    }
+                                    else
+                                    {
+                                        assert(false); // coverage
+                                        // Favor best sweep direction.
+                                        // Doesn't need to be strictly positive.
+                                        if (sweepGoodnesses[iEdgeThisVert] > sweepGoodnesses[bestNeighborIndex])
+                                        {
+                                            assert(false); // coverage
+                                            bestNeighborIndex = iEdgeThisVert;
+                                        }
+                                        else if (sweepGoodnesses[iEdgeThisVert] < sweepGoodnesses[bestNeighborIndex])
+                                        {
+                                            assert(false); // coverage
+                                            ; // nothing
+                                        }
+                                        else
+                                        {
+                                            assert(false); // coverage
+                                            // No other differentiators...
+                                            // Favor best goodness.
+                                            if (goodnesses[iEdgeThisVert] > goodnesses[bestNeighborIndex])
+                                            {
+                                                assert(false); // coverage
+                                                bestNeighborIndex = iEdgeThisVert;
+                                            }
+                                            else if (goodnesses[iEdgeThisVert] < goodnesses[bestNeighborIndex])
+                                            {
+                                                assert(false); // coverage
+                                                ; // nothing
+                                            }
+                                            else
+                                            {
+                                                // No differentiators at all!  Wow!
+                                                assert(false); // coverage
+                                                ; // nothing
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                assert(false);
+                            }
                         }
                     }
-                    else
-                    {
-                        // There's a weight at the centroid.  Use it, ignoring sweep center.
-                        VecMath.vxs(2, centroid, v2momentAndWeightStrictlyUpstream[iVert], 1./v2momentAndWeightStrictlyUpstream[iVert][2]);
-                        VecMath.vmv(2, centroidMinusVertDirection, centroid, verts[iVert]);
-                    }
-
-
-                    VecMath.normalize(2, centroidMinusVertDirection,
-                                      centroidMinusVertDirection); // might be indeterminate, in which case it doesn't matter which neighbor we pick
-
-                    bestNeighborEdge = -1;
-                    bestNeighborVert = -1;
-                    bestGoodness = Double.NEGATIVE_INFINITY;
-                    FORI (iEdgeThisVert, v2e[iVert].length)
-                    {
-                        int iNeighborEdge = v2e[iVert][iEdgeThisVert];
-                        assert(e2v[iNeighborEdge][0] == iVert);
-                        int iNeighborVert = e2v[iNeighborEdge][1];
-                        VecMath.normalize(normalizedEdgeDirection, mesh.getEdge(iNeighborEdge).direction);
-                        double goodness = -VecMath.dot(2, normalizedEdgeDirection, centroidMinusVertDirection);
-                        //PRINTVEC(normalizedEdgeDirection);
-                        //PRINTVEC(centroidMinusVertDirection);
-                        if (verboseLevel >= 2) OUT("                          neighbor vert "+iNeighborVert+" goodness = "+goodness);
-                        if (goodness > bestGoodness)
-                        {
-                            bestGoodness = goodness;
-                            bestNeighborEdge = iNeighborEdge;
-                            bestNeighborVert = iNeighborVert;
-                        }
-                    }
+                    assert(bestNeighborIndex != -1);
+                    bestNeighborEdge = v2e[iVert][bestNeighborIndex];
+                    bestNeighborVert = e2v[bestNeighborEdge][1];
                 }
-                if (verboseLevel >= 2) OUT("                      bestNeighborVert = "+bestNeighborVert+" bestGoodness = "+bestGoodness);
-                assert(bestGoodness >= 0.);
+
                 assert(bestNeighborEdge != -1);
                 assert(bestNeighborVert != -1);
                 assert(v2parentEdge[iVert] == -1);
