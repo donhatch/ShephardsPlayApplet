@@ -175,7 +175,7 @@ CONJECTURES ABOUT SINGLE CRACKS:
   for every vertex v and edge e incident on v,
   there is an infinite crack whose head is v
   and whose first edge is e.
-  [false, counterexample: crackkiller]
+  [false, counterexample: crackkiller] [XXX what did I mean by this?]
 
 * In any trivalent "infinite planar" polyhedron,
   For every pair of vertices v0,v1,
