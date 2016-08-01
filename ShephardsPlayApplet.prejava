@@ -8067,29 +8067,43 @@ public class ShephardsPlayApplet
                                 Mesh.Edge dualVertIndexToParentEdge[] = new Mesh.Edge[dualMesh.verts.size()]; // all null initially
                                 int netMethodValue = netMethod.get();
                                 if (netMethodValue == NETMETHOD_MY_ALGORITHM_MAYBE_UPWARD
-                                 || netMethodValue == NETMETHOD_MY_ALGORITHM_MAYBE_OUTWARD)
+                                 || netMethodValue == NETMETHOD_MY_ALGORITHM_MAYBE_OUTWARD
+                                 || netMethodValue == NETMETHOD_MY_ALGORITHM_MAYBE2_UPWARD
+                                 || netMethodValue == NETMETHOD_MY_ALGORITHM_MAYBE2_OUTWARD)
                                 {
                                     //int maxIters = showNetMakeGoodQuantum.get(); // XXX this isn't the right thing to use
                                     //int maxIters = 10000; // XXX this isn't the right thing to use
                                     int maxIters = -1; // infinite
 
-                                    double sweepOriginHomo[] = (netMethodValue==NETMETHOD_MY_ALGORITHM_MAYBE_UPWARD
+                                    double sweepOriginHomo[] = (netMethodValue==NETMETHOD_MY_ALGORITHM_MAYBE_UPWARD||netMethodValue==NETMETHOD_MY_ALGORITHM_MAYBE2_UPWARD
+                                        // BUG: if syntax error on this line, it's reported as wrong line number
                                         ? new double[]{0,-1,0} // upward from -y axis
                                         : new double[]{0,0,1}); // outward from origin
                                     int putProblematicVertsHereForDebugging[/*1*/][] = {null};
-                                    theNet = MyAlgorithmMaybe.doIt(dualMesh, mesh, sweepOriginHomo, maxIters, putProblematicVertsHereForDebugging); // reversed since we want net of dual mesh
-                                    if (putProblematicVertsHereForDebugging[0] != null)
-                                    {
-                                        selectedDualVertIndices = putProblematicVertsHereForDebugging[0];
-                                        selectedTris = new int[selectedDualVertIndices.length][];
-                                        FORI (i, selectedTris.length)
+                                    try {
+                                        if (netMethodValue==NETMETHOD_MY_ALGORITHM_MAYBE_UPWARD||netMethodValue==NETMETHOD_MY_ALGORITHM_MAYBE_OUTWARD)
                                         {
-                                            selectedTris[i] = MeshUtils.findPrimalFaceFromDualVert(mesh, dualMesh, selectedDualVertIndices[i]);
+                                            theNet = MyAlgorithmMaybe.doIt(dualMesh, mesh, sweepOriginHomo, maxIters, putProblematicVertsHereForDebugging); // reversed since we want net of dual mesh
                                         }
-                                        PRINTVEC(selectedDualVertIndices);
-                                        PRINTARRAY(selectedTris);
+                                        else
+                                        {
+                                            theNet = MyAlgorithmMaybe.doIt2(dualMesh, mesh, sweepOriginHomo, maxIters, putProblematicVertsHereForDebugging);
+                                        }
+                                        // don't choose directions; that's done below (although maybe MyAlgorithm should have done it? not sure)
                                     }
-                                    // don't choose directions; that's done below (although maybe MyAlgorithm should have done it? not sure)
+                                    finally { // whether or not throwing
+                                        if (putProblematicVertsHereForDebugging[0] != null)
+                                        {
+                                            selectedDualVertIndices = putProblematicVertsHereForDebugging[0];
+                                            selectedTris = new int[selectedDualVertIndices.length][];
+                                            FORI (i, selectedTris.length)
+                                            {
+                                                selectedTris[i] = MeshUtils.findPrimalFaceFromDualVert(mesh, dualMesh, selectedDualVertIndices[i]);
+                                            }
+                                            PRINTVEC(selectedDualVertIndices);
+                                            PRINTARRAY(selectedTris);
+                                        }
+                                    }
                                 }
                                 else if (netMethodValue == NETMETHOD_RANDOM)
                                 {
@@ -15106,14 +15120,16 @@ OFF
             private static final int NETMETHOD_OUTWARD = 3;
             private static final int NETMETHOD_MY_ALGORITHM_MAYBE_UPWARD = 4;
             private static final int NETMETHOD_MY_ALGORITHM_MAYBE_OUTWARD = 5;
-            private static final int NETMETHOD_CUT_SHARPEST = 6;
-            private static final int NETMETHOD_CUT_DULLEST = 7;
-            private static final int NETMETHOD_CUT_LONGEST = 8;
-            private static final int NETMETHOD_CUT_SHORTEST = 9;
-            private static final int NETMETHOD_FOLD_SHARPEST = 10;
-            private static final int NETMETHOD_FOLD_DULLEST = 11;
-            private static final int NETMETHOD_FOLD_LONGEST = 12;
-            private static final int NETMETHOD_FOLD_SHORTEST = 13;
+            private static final int NETMETHOD_MY_ALGORITHM_MAYBE2_UPWARD = 6;
+            private static final int NETMETHOD_MY_ALGORITHM_MAYBE2_OUTWARD = 7;
+            private static final int NETMETHOD_CUT_SHARPEST = 8;
+            private static final int NETMETHOD_CUT_DULLEST = 9;
+            private static final int NETMETHOD_CUT_LONGEST = 10;
+            private static final int NETMETHOD_CUT_SHORTEST = 11;
+            private static final int NETMETHOD_FOLD_SHARPEST = 12;
+            private static final int NETMETHOD_FOLD_DULLEST = 13;
+            private static final int NETMETHOD_FOLD_LONGEST = 14;
+            private static final int NETMETHOD_FOLD_SHORTEST = 15;
             private static final String netMethodNames[] = {
                 "Manual",
                 "Random",
@@ -15121,6 +15137,8 @@ OFF
                 "Outward",
                 "My algorithm maybe (upward)",
                 "My algorithm maybe (outward)",
+                "My algorithm maybe2 (upward)",
+                "My algorithm maybe2 (outward)",
                 "Cut Sharpest at each vert",
                 "Cut Dullest at each vert",
                 "Cut Longest at each vert",
@@ -15131,7 +15149,7 @@ OFF
                 "Fold Shortest at each face",
             };
         //private Listenable.Int netMethod = new Listenable.Int(0, netMethodNames.length-1, NETMETHOD_UPWARD);
-        private Listenable.Int netMethod = new Listenable.Int(0, netMethodNames.length-1, NETMETHOD_MY_ALGORITHM_MAYBE_UPWARD);
+        private Listenable.Int netMethod = new Listenable.Int(0, netMethodNames.length-1, NETMETHOD_MY_ALGORITHM_MAYBE2_UPWARD);
 
         private java.awt.Component theCanvas = null;
         //private java.awt.Component theHelpWindow = null;
