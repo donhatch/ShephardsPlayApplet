@@ -14,6 +14,8 @@ public class MyAlgorithmMaybe
 
     private MyAlgorithmMaybe(){ throw new AssertionError(); } // non-instantiatable util class
 
+    // So I can see more clearly,
+    // isolate exactly the data we will use during the algorithm(s).
     private static class HelperDataStructure
     {
         //
@@ -88,9 +90,81 @@ public class MyAlgorithmMaybe
         }
     }; // HelperDataStructure
 
+
+
+    public static Net doit2(
+        Mesh originalMesh, Mesh originalDualMesh, // generally reversed from the calling app's notion
+        double sweepOriginHomo[/*3*/], // if [2] is 0, the vertex is infinitely far from origin
+        int maxIters,
+        int putProblematicVertsHereForDebugging[/*1*/][])
+    {
+        int verboseLevel = 1;
+        if (verboseLevel >= 1) OUT("        in MyAlgorithmMaybe.doIt");
+        assert(sweepOriginHomo.length == 3);
+
+        int nVerts = originalMesh.verts.size();
+        int nEdges = originalMesh.edges.size();
+        if (verboseLevel >= 1) OUT("          nVerts = "+nVerts);
+        if (verboseLevel >= 1) OUT("          nEdges = "+nEdges);
+
+        HelperDataStructure helperDataStructure = new HelperDataStructure(originalMesh, sweepOriginHomo);
+        double verts[][] = helperDataStructure.vertsXY;
+        double v2momentAndArea[][] = helperDataStructure.v2momentAndArea;
+        double e2direction[][] = helperDataStructure.e2direction;
+        int e2v[][] = helperDataStructure.e2v;
+        int v2e[][] = helperDataStructure.v2e;
+        int v2priority[] = helperDataStructure.v2priority;
+        int priority2v[] = helperDataStructure.priority2v;
+
+        double v2momentAndWeightStrictlyUpstream[][] = new double[nVerts][3];
+        // CBB: could just have v2parentEdge, I suppose
+        int v2parentEdge[] = VecMath.fillvec(nVerts, -1);
+        int v2parentVert[] = VecMath.fillvec(nVerts, -1);
+
+        IndexBinaryHeap todo = new IndexBinaryHeap(nVerts);
+        FORI (priority, nVerts)
+        {
+            int iVert = priority2v[priority];
+            if (v2e[iVert].length != 0) // if not isolated, i.e. not one of the original inside out verts
+                todo.add(priority, (double)priority);
+        }
+
+        double centroid[] = new double[2]; // scratch for loop
+        double vertMinusCentroidDirection[] = new double[2]; // scratch for loop
+        double sweepDirection[] = new double[2]; // scratch for loop
+        double normalizedEdgeDirection[] = new double[2]; // scratch for loop
+
+        int iIter;
+        for (iIter = 0;
+             !todo.isEmpty() && (maxIters==-1 || iIter < maxIters);
+             ++iIter)
+        {
+            int priority = todo.min();
+            int iVert = priority2v[priority];
+            todo.remove(v2priority[iVert]);
+            // ...
+        }
+        if (todo.isEmpty())
+            if (verboseLevel >= 1) OUT("          finished in "+iIter+" iterations!");
+        else
+            if (verboseLevel >= 1) OUT("          didn't finish in "+iIter+" iterations!");
+
+        // The result is now in v2parent.
+        if (verboseLevel >= 2) PRINTVEC(v2parentEdge);
+        if (verboseLevel >= 2) PRINTVEC(v2parentVert);
+        Net net = new Net(originalMesh, originalDualMesh);
+        FORI (iVert, nVerts)
+        {
+            if (v2parentEdge[iVert] != -1)
+                net.cut(v2parentEdge[iVert], true);
+        }
+        if (verboseLevel >= 1) OUT("        out MyAlgorithmMaybe.doIt");
+        return net;
+    } // doIt2
+
     public static Net doIt(
         Mesh originalMesh, Mesh originalDualMesh, // generally reversed from the calling app's notion
-        double sweepOriginHomo[/*3*/],
+        double sweepOriginHomo[/*3*/], // if [2] is 0, the vertex is infinitely far from origin
         int maxIters,
         int putProblematicVertsHereForDebugging[/*1*/][])
     {
@@ -175,7 +249,7 @@ public class MyAlgorithmMaybe
                     }
                 }
 
-                // get vertMinusCentroidDirection: unit or zero.
+                // get vertMinusCentroidDirection: unit, or zero (if weight is zero or centroid is exactly at vert)
                 if (v2momentAndWeightStrictlyUpstream[iVert][2] > 0.)
                 {
                     VecMath.vxs(2, centroid, v2momentAndWeightStrictlyUpstream[iVert], 1./v2momentAndWeightStrictlyUpstream[iVert][2]);
@@ -187,7 +261,7 @@ public class MyAlgorithmMaybe
                 else
                     VecMath.zerovec(2, vertMinusCentroidDirection);
 
-                // get sweepDirection: unit or zero.
+                // get sweepDirection: unit, or zero (if sweep origin is exactly at vert)
                 if (sweepOriginHomo[2] == 0.)
                 {
                     // sweep origin is at infinity
