@@ -8,10 +8,88 @@ import com.donhatchsw.util.VecMath;
 
 public class MyAlgorithmMaybe
 {
+    public final static int STRATEGY_BEST_GOODNESS = 1; // original implementation.  prone to infinite looping, in ways the code doesn't detect yet.
+    public final static int STRATEGY_BEST_COMPOSITE = 2; // second implementation.  seen it bite own tail (Just Noise 10000, prewarp, apply radial match. more tailbiting with upward than outward).  hard to make it infinite loop (radial heightfields don't do it) but I got it to, see DUMP.off.ConvexNoise1_144_makes_my_algorithm_infinite_loop
+    public static int strategy = STRATEGY_BEST_COMPOSITE; // TODO: make this a parameter to doIt, maybe
+
     private MyAlgorithmMaybe(){ throw new AssertionError(); } // non-instantiatable util class
 
+    private static class HelperDataStructure
+    {
+        //
+        // Representation of the original mesh with vertex weights.
+        // Immutable after initial construction.
+        //
+        public double vertsXY[/*nVerts*/][/*2*/];
+        public double v2momentAndArea[][/*4*/]; // from original verts... although I suspect [2] isn't meaningful for us
+        public double e2direction[/*nEdges*/][/*3*/];
+        public int e2v[/*nEdges*/][/*2*/]; // values are in [0..nVerts] (not 0..nVerts-1 !) since nVerts represents "the infinite vertex"
+        public int v2e[/*nVerts*/][];
+
+        public int v2priority[/*nVerts*/];
+        public int priority2v[/*nVerts*/];
+
+
+        public HelperDataStructure(Mesh mesh, double sweepOriginHomo[/*3*/])
+        {
+            int nVerts = mesh.verts.size();
+            int nEdges = mesh.edges.size();
+            this.vertsXY = MeshUtils.getMeshVertsXY(mesh);
+            assert(vertsXY.length == nVerts);
+            this.v2momentAndArea = new double[nVerts][];
+            FORI (iVert, nVerts)
+                this.v2momentAndArea[iVert] = mesh.getVert(iVert).momentAndArea;
+            this.e2direction = new double[nEdges][];
+            FORI (iEdge, nEdges)
+                this.e2direction[iEdge] = mesh.getEdge(iEdge).direction;
+
+            {
+                MeshUtils.SimplerMeshDataStructure simplerMeshDataStructure = new MeshUtils.SimplerMeshDataStructure(mesh, true);
+                this.e2v = simplerMeshDataStructure.e2v;
+                this.v2e = simplerMeshDataStructure.v2e;
+            }
+            assert(this.e2v.length == nEdges);
+            assert(this.v2e.length == nVerts+1); // the "infinite vertex" got added at the end
+
+            double v2orderKey[] = new double[nVerts]; // vertex to radius squared, i.e. distance squared from center
+            {
+                double center[] = new double[2]; // scratch for loop
+                // TODO: do this homo math right
+                assert(sweepOriginHomo.length == 3);
+                if (sweepOriginHomo[2] == 0.)
+                {
+                  FORI (iVert, nVerts)
+                      v2orderKey[iVert] = -VecMath.dot(2, vertsXY[iVert], sweepOriginHomo);
+                }
+                else
+                {
+                  VecMath.vxs(2, center, sweepOriginHomo, 1./sweepOriginHomo[2]);
+                  FORI (iVert, nVerts)
+                      v2orderKey[iVert] = VecMath.distsqrd(2, vertsXY[iVert], center);
+                }
+            }
+
+            // Could just make an IndexBinaryHeap based on v2orderKey,
+            // but it's nicer to use indices that reflect how much progress has been made.
+            this.priority2v = VecMath.identityperm(nVerts);
+            SortStuff.sort(this.priority2v, new SortStuff.IntComparator() {
+                @Override public int compare(int a, int b)
+                {
+                    if (v2orderKey[a] < v2orderKey[b]) return -1;
+                    if (v2orderKey[a] > v2orderKey[b]) return 1;
+                    // Arbitrarily use original index as tiebreaker
+                    // CBB: use some geometric consideration instead?
+                    if (a < b) return -1;
+                    if (a > b) return 1;
+                    return 0;
+                }
+            });
+            this.v2priority = VecMath.invertperm(this.priority2v);
+        }
+    }; // HelperDataStructure
+
     public static Net doIt(
-        Mesh mesh, Mesh dualMesh, // generally reversed from the app's notion
+        Mesh originalMesh, Mesh originalDualMesh, // generally reversed from the calling app's notion
         double sweepOriginHomo[/*3*/],
         int maxIters,
         int putProblematicVertsHereForDebugging[/*1*/][])
@@ -19,50 +97,23 @@ public class MyAlgorithmMaybe
         int verboseLevel = 1;
         if (verboseLevel >= 1) OUT("        in MyAlgorithmMaybe.doIt");
         assert(sweepOriginHomo.length == 3);
-        int nVerts = mesh.verts.size();
-        int nEdges = mesh.edges.size();
+
+        int nVerts = originalMesh.verts.size();
+        int nEdges = originalMesh.edges.size();
         if (verboseLevel >= 1) OUT("          nVerts = "+nVerts);
         if (verboseLevel >= 1) OUT("          nEdges = "+nEdges);
-        double verts[][] = MeshUtils.getMeshVertsXYH(mesh);
-        assert(verts.length == nVerts);
-        double v2orderKey[] = new double[nVerts]; // vertex to radius squared, i.e. distance squared from center
 
-        // TODO: do this homo math right
-        if (sweepOriginHomo[2] == 0.)
-        {
-          FORI (iVert, nVerts)
-              v2orderKey[iVert] = -VecMath.dot(2, verts[iVert], sweepOriginHomo);
-        }
-        else
-        {
-          double center[] = VecMath.vxs(2, sweepOriginHomo, 1./sweepOriginHomo[2]);
-          FORI (iVert, nVerts)
-              v2orderKey[iVert] = VecMath.distsqrd(2, verts[iVert], center);
-        }
-
-        // Could just make an IndexBinaryHeap based on v2orderKey,
-        // but it's nicer to use indices that reflect how much progress has been made
-        int priority2v[] = VecMath.identityperm(nVerts);
-        SortStuff.sort(priority2v, new SortStuff.IntComparator() {
-            @Override public int compare(int a, int b)
-            {
-                if (v2orderKey[a] < v2orderKey[b]) return -1;
-                if (v2orderKey[a] > v2orderKey[b]) return 1;
-                if (a < b) return -1;
-                if (a > b) return 1;
-                return 0;
-            }
-        });
-        int v2priority[] = VecMath.invertperm(priority2v);
-
-        MeshUtils.SimplerMeshDataStructure simplerMeshDataStructure = new MeshUtils.SimplerMeshDataStructure(mesh, true);
-        int e2v[][] = simplerMeshDataStructure.e2v;
-        int v2e[][] = simplerMeshDataStructure.v2e;
-        assert(e2v.length == nEdges);
-        assert(v2e.length == nVerts+1); // the "infinite vertex" got added at the end
+        HelperDataStructure helperDataStructure = new HelperDataStructure(originalMesh, sweepOriginHomo);
+        double verts[][] = helperDataStructure.vertsXY;
+        double v2momentAndArea[][] = helperDataStructure.v2momentAndArea;
+        double e2direction[][] = helperDataStructure.e2direction;
+        int e2v[][] = helperDataStructure.e2v;
+        int v2e[][] = helperDataStructure.v2e;
+        int v2priority[] = helperDataStructure.v2priority;
+        int priority2v[] = helperDataStructure.priority2v;
 
         double v2momentAndWeightStrictlyUpstream[][] = new double[nVerts][3];
-        // CBB: could just have v2parentEdge
+        // CBB: could just have v2parentEdge, I suppose
         int v2parentEdge[] = VecMath.fillvec(nVerts, -1);
         int v2parentVert[] = VecMath.fillvec(nVerts, -1);
 
@@ -120,7 +171,7 @@ public class MyAlgorithmMaybe
                         GeomUtils.accumulateMomentAndArea(v2momentAndWeightStrictlyUpstream[iVert],
                                                           v2momentAndWeightStrictlyUpstream[iNeighborVert]);
                         GeomUtils.accumulateMomentAndArea(v2momentAndWeightStrictlyUpstream[iVert],
-                                                          mesh.getVert(iNeighborVert).momentAndArea);
+                                                          v2momentAndArea[iNeighborVert]);
                     }
                 }
 
@@ -157,7 +208,7 @@ public class MyAlgorithmMaybe
                     int iNeighborEdge = v2e[iVert][iEdgeThisVert];
                     assert(e2v[iNeighborEdge][0] == iVert);
                     int iNeighborVert = e2v[iNeighborEdge][1];
-                    VecMath.normalize(normalizedEdgeDirection, mesh.getEdge(iNeighborEdge).direction);
+                    VecMath.normalize(normalizedEdgeDirection, e2direction[iNeighborEdge]);
                     double goodness = VecMath.dot(2, normalizedEdgeDirection, vertMinusCentroidDirection);
                     double sweepGoodness = VecMath.dot(2, normalizedEdgeDirection, sweepDirection);
                     boolean isBackwash = (iNeighborVert < nVerts && v2parentVert[iNeighborVert] == iVert);
@@ -172,10 +223,6 @@ public class MyAlgorithmMaybe
                 int bestNeighborEdge;
                 int bestNeighborVert;
                 {
-                    final int STRATEGY_BEST_GOODNESS = 1; // original implementation.  prone to infinite looping, in ways the code doesn't detect yet.
-                    final int STRATEGY_BEST_COMPOSITE = 2; // second implementation.  seen it bite own tail (Just Noise 10000, prewarp, apply radial match. more tailbiting with upward than outward).  hard to make it infinite loop (radial heightfields don't do it) but I got it to, see DUMP.off.ConvexNoise1_144_makes_my_algorithm_infinite_loop
-                    int strategy = STRATEGY_BEST_COMPOSITE;
-
                     int bestNeighborIndex = -1;
                     FORI (iEdgeThisVert, v2e[iVert].length)
                     {
@@ -304,6 +351,7 @@ public class MyAlgorithmMaybe
                     invalidationPathForDebugging.clear();
                     invalidationPathForDebugging.add(iVert);
 
+
                     // invalidate bestNeighbor and downstream, and put in todo list:
                     // bestNeighbor, its parent, grandparent, ...
                     // stopping when we either hit something that's already invalid-and-in-todo,
@@ -375,7 +423,7 @@ public class MyAlgorithmMaybe
         // The result is now in v2parent.
         if (verboseLevel >= 2) PRINTVEC(v2parentEdge);
         if (verboseLevel >= 2) PRINTVEC(v2parentVert);
-        Net net = new Net(mesh, dualMesh);
+        Net net = new Net(originalMesh, originalDualMesh);
         FORI (iVert, nVerts)
         {
             if (v2parentEdge[iVert] != -1)
