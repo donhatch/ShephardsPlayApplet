@@ -207,6 +207,69 @@ public class MyAlgorithmMaybe
                 sweepGoodnesses[iEdgeThisVert] = sweepGoodness;
                 isBackwashes[iEdgeThisVert] = isBackwash;
             }
+
+            {
+                // Easy case: if there's a good edge to a not-yet-swept vert, take it. If more than one, prefer most sweepward.
+                int bestNeighborIndex = -1;
+                FORI (iEdgeThisVert, v2e[iVert].length)
+                {
+                    int jVert = e2v[v2e[iVert][iEdgeThisVert]][1];
+                    if ((jVert==nVerts || v2priority[jVert] > v2priority[iVert])
+                     && goodnesses[iEdgeThisVert] >= 0.
+                     && (bestNeighborIndex==-1
+                      || sweepGoodnesses[iEdgeThisVert] > sweepGoodnesses[bestNeighborIndex]))
+                        bestNeighborIndex = iEdgeThisVert;
+                }
+                if (bestNeighborIndex != -1)
+                {
+                    int bestNeighborEdge = v2e[iVert][bestNeighborIndex];
+                    int bestNeighborVert = e2v[bestNeighborEdge][1];
+                    if (verboseLevel >= 2) OUT("                      bestNeighborVert = "+bestNeighborVert);
+                    assert(bestNeighborEdge != -1);
+                    assert(bestNeighborVert != -1);
+                    assert(v2parentEdge[iVert] == -1);
+                    assert(v2parentVert[iVert] == -1);
+                    v2parentEdge[iVert] = bestNeighborEdge;
+                    v2parentVert[iVert] = bestNeighborVert;
+                    continue;
+                }
+            }
+
+            {
+                // All edges to not-yet-swept verts are bad.
+                // Assert there's exactly one of them,
+                // and furthermore assert valence is 3.
+                assert(v2e[iVert].length == 3);
+                int theNotYetSweptNeighborIndex = -1;
+                FORI (iEdgeThisVert, v2e[iVert].length)
+                {
+                    int jVert = e2v[v2e[iVert][iEdgeThisVert]][1];
+                    if (jVert==nVerts || v2priority[jVert] > v2priority[iVert])
+                    {
+                        assert(theNotYetSweptNeighborIndex == -1);
+                        theNotYetSweptNeighborIndex = iEdgeThisVert;
+                    }
+                }
+                assert(theNotYetSweptNeighborIndex != -1);
+
+                // Is the downstream turn too far left or too far right? Must be one or the other.
+                boolean isLeftTurn;
+                {
+                    // I.e. does the quill point CCW or CW?
+                    assert(VecMath.normsqrd(sweepDirection) != 0.); // we can't get here if vert is exactly at sweep origin
+                    double leftTurnness = VecMath.vxv2(sweepDirection, e2direction[v2e[iVert][theNotYetSweptNeighborIndex]]);
+                    assert(leftTurnness != 0.);
+                    isLeftTurn = leftTurnness > 0.;
+                }
+
+                // TODO: fix it!
+                int chosenEdge = v2e[iVert][theNotYetSweptNeighborIndex];
+                int chosenVert = e2v[chosenEdge][1];
+                OUT("    XXX outputting bad edge from v"+iVert+" to v"+chosenVert);
+                v2parentEdge[iVert] = chosenEdge;
+                v2parentVert[iVert] = chosenVert;
+                continue;
+            }
         }
         if (todo.isEmpty())
             if (verboseLevel >= 1) OUT("          finished in "+iIter+" iterations!");
