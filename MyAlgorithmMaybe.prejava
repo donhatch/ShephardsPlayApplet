@@ -122,27 +122,91 @@ public class MyAlgorithmMaybe
         int v2parentVert[] = VecMath.fillvec(nVerts, -1);
 
         IndexBinaryHeap todo = new IndexBinaryHeap(nVerts);
-        FORI (priority, nVerts)
+        FORI (iVert, nVerts)
         {
-            int iVert = priority2v[priority];
             if (v2e[iVert].length != 0) // if not isolated, i.e. not one of the original inside out verts
-                todo.add(priority, (double)priority);
+                todo.add(iVert, (double)v2priority[iVert]);
         }
 
-        double centroid[] = new double[2]; // scratch for loop
         double vertMinusCentroidDirection[] = new double[2]; // scratch for loop
         double sweepDirection[] = new double[2]; // scratch for loop
-        double normalizedEdgeDirection[] = new double[2]; // scratch for loop
+        int maxValence = 0; FORI (iVert, nVerts) maxValence = MAX(maxValence, v2e[iVert].length);
+        assert(maxValence == 3); // XXX unless no edges... need to get something more solid here
+        double goodnesses[] = new double[maxValence]; // scratch for loop
+        double sweepGoodnesses[] = new double[maxValence]; // scratch for loop
+        boolean isBackwashes[] = new boolean[maxValence]; // scratch for loop
+
+        double centroid[] = new double[2]; // very scratch for loop
+        double normalizedEdgeDirection[] = new double[2]; // very scratch for loop
 
         int iIter;
         for (iIter = 0;
              !todo.isEmpty() && (maxIters==-1 || iIter < maxIters);
              ++iIter)
         {
-            int priority = todo.min();
-            int iVert = priority2v[priority];
-            todo.remove(v2priority[iVert]);
-            // ...
+            int iVert = todo.extractMin();
+            if (verboseLevel >= 2) OUT("              iIter="+iIter+": top of loop");
+            if (verboseLevel >= 2) OUT("                  priority="+v2priority[iVert]+" iVert="+iVert);
+            assert(iVert < nVerts);
+            assert(v2parentEdge[iVert] == -1);
+            assert(v2parentVert[iVert] == -1);
+
+            VecMath.zerovec(v2momentAndWeightStrictlyUpstream[iVert]);
+            FORI (iEdgeThisVert, v2e[iVert].length)
+            {
+                int iNeighborVert = e2v[v2e[iVert][iEdgeThisVert]][1];
+                if (iNeighborVert < nVerts
+                 && v2parentVert[iNeighborVert] == iVert)
+                {
+                    if (verboseLevel >= 2) OUT("                          accumulating from upstream vert "+iNeighborVert);
+                    GeomUtils.accumulateMomentAndArea(v2momentAndWeightStrictlyUpstream[iVert],
+                                                      v2momentAndWeightStrictlyUpstream[iNeighborVert]);
+                    GeomUtils.accumulateMomentAndArea(v2momentAndWeightStrictlyUpstream[iVert],
+                                                      v2momentAndArea[iNeighborVert]);
+                }
+            }
+
+            // get vertMinusCentroidDirection: unit, or zero (if weight is zero or centroid is exactly at vert)
+            if (v2momentAndWeightStrictlyUpstream[iVert][2] > 0.)
+            {
+                VecMath.vxs(2, centroid, v2momentAndWeightStrictlyUpstream[iVert], 1./v2momentAndWeightStrictlyUpstream[iVert][2]);
+                VecMath.vmv(2, vertMinusCentroidDirection, verts[iVert], centroid);
+                if (VecMath.normsqrd(vertMinusCentroidDirection) != 0.) // if it didn't happen to land right on vertex
+                    VecMath.normalize(2, vertMinusCentroidDirection,
+                                         vertMinusCentroidDirection);
+            }
+            else
+                VecMath.zerovec(2, vertMinusCentroidDirection);
+
+            // get sweepDirection: unit, or zero (if sweep origin is exactly at vert)
+            if (sweepOriginHomo[2] == 0.)
+            {
+                // sweep origin is at infinity
+                VecMath.sxv(2, sweepDirection, -1., sweepOriginHomo);
+            }
+            else
+            {
+                VecMath.vmv(2, sweepDirection, verts[iVert], sweepOriginHomo);
+                if (VecMath.normsqrd(sweepDirection) != 0.) // if vertex is not right on sweep origin
+                    VecMath.normalize(2, sweepDirection,
+                                         sweepDirection);
+            }
+
+            // Gather information about each neighbor,
+            // into goodnesses, sweepGoodnesses, isBackwashes.
+            FORI (iEdgeThisVert, v2e[iVert].length)
+            {
+                int iNeighborEdge = v2e[iVert][iEdgeThisVert];
+                assert(e2v[iNeighborEdge][0] == iVert);
+                int iNeighborVert = e2v[iNeighborEdge][1];
+                VecMath.normalize(normalizedEdgeDirection, e2direction[iNeighborEdge]);
+                double goodness = VecMath.dot(2, normalizedEdgeDirection, vertMinusCentroidDirection);
+                double sweepGoodness = VecMath.dot(2, normalizedEdgeDirection, sweepDirection);
+                boolean isBackwash = (iNeighborVert < nVerts && v2parentVert[iNeighborVert] == iVert);
+                goodnesses[iEdgeThisVert] = goodness;
+                sweepGoodnesses[iEdgeThisVert] = sweepGoodness;
+                isBackwashes[iEdgeThisVert] = isBackwash;
+            }
         }
         if (todo.isEmpty())
             if (verboseLevel >= 1) OUT("          finished in "+iIter+" iterations!");
@@ -192,23 +256,22 @@ public class MyAlgorithmMaybe
         int v2parentVert[] = VecMath.fillvec(nVerts, -1);
 
         IndexBinaryHeap todo = new IndexBinaryHeap(nVerts);
-        FORI (priority, nVerts)
+        FORI (iVert, nVerts)
         {
-            int iVert = priority2v[priority];
             if (v2e[iVert].length != 0) // if not isolated, i.e. not one of the original inside out verts
-                todo.add(priority, (double)priority);
+                todo.add(iVert, (double)v2priority[iVert]);
         }
 
-        double centroid[] = new double[2]; // scratch for loop
         double vertMinusCentroidDirection[] = new double[2]; // scratch for loop
         double sweepDirection[] = new double[2]; // scratch for loop
-        double normalizedEdgeDirection[] = new double[2]; // scratch for loop
-
         int maxValence = 0; FORI (iVert, nVerts) maxValence = MAX(maxValence, v2e[iVert].length);
         assert(maxValence == 3); // XXX unless no edges... need to get something more solid here
         double goodnesses[] = new double[maxValence]; // scratch for loop
         double sweepGoodnesses[] = new double[maxValence]; // scratch for loop
         boolean isBackwashes[] = new boolean[maxValence]; // scratch for loop
+
+        double centroid[] = new double[2]; // very scratch for loop
+        double normalizedEdgeDirection[] = new double[2]; // very scratch for loop
 
         java.util.HashMap fingerprints = new java.util.HashMap();
         IntArrayList invalidationPathForDebugging = new IntArrayList(); // scratch for loop
@@ -220,10 +283,9 @@ public class MyAlgorithmMaybe
              !todo.isEmpty() && (maxIters==-1 || iIter < maxIters) && !infiniteLoopDetected;
              ++iIter)
         {
-            int priority = todo.min();
-            int iVert = priority2v[priority];
+            int iVert = todo.min();
             if (verboseLevel >= 2) OUT("              iIter="+iIter+": top of loop");
-            if (verboseLevel >= 2) OUT("                  priority="+priority+" iVert="+iVert);
+            if (verboseLevel >= 2) OUT("                  priority="+v2priority[iVert]+" iVert="+iVert);
             assert(iVert < nVerts);
             assert(v2parentEdge[iVert] == -1);
             assert(v2parentVert[iVert] == -1);
@@ -232,7 +294,7 @@ public class MyAlgorithmMaybe
                 && !infiniteLoopDetected)
             {
                 nFineIters++;
-                todo.remove(v2priority[iVert]);
+                todo.remove(iVert);
 
                 VecMath.zerovec(v2momentAndWeightStrictlyUpstream[iVert]);
                 FORI (iEdgeThisVert, v2e[iVert].length)
@@ -480,7 +542,7 @@ public class MyAlgorithmMaybe
                                 }
                             }
                         }
-                        todo.add(v2priority[v], (double)v2priority[v]);
+                        todo.add(v, (double)v2priority[v]);
                         int parentVert = v2parentVert[v];
                         v2parentEdge[v] = -1;
                         v2parentVert[v] = -1;
