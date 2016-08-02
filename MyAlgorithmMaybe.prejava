@@ -98,7 +98,7 @@ public class MyAlgorithmMaybe
         int maxIters,
         int putProblematicVertsHereForDebugging[/*1*/][])
     {
-        int verboseLevel = 1;
+        int verboseLevel = 2; // 1: constant, 2: linear
         if (verboseLevel >= 1) OUT("        in MyAlgorithmMaybe.doIt");
         assert(sweepOriginHomo.length == 3);
 
@@ -159,7 +159,7 @@ public class MyAlgorithmMaybe
                 if (iNeighborVert < nVerts
                  && v2parentVert[iNeighborVert] == iVert)
                 {
-                    if (verboseLevel >= 2) OUT("                          accumulating from upstream vert "+iNeighborVert);
+                    if (verboseLevel >= 2) OUT("                          accumulating centroid from upstream vert "+iNeighborVert);
                     GeomUtils.accumulateMomentAndArea(v2momentAndWeightStrictlyUpstream[iVert],
                                                       v2momentAndWeightStrictlyUpstream[iNeighborVert]);
                     GeomUtils.accumulateMomentAndArea(v2momentAndWeightStrictlyUpstream[iVert],
@@ -171,11 +171,11 @@ public class MyAlgorithmMaybe
             if (v2momentAndWeightStrictlyUpstream[iVert][2] > 0.)
             {
                 VecMath.vxs(2, centroid, v2momentAndWeightStrictlyUpstream[iVert], 1./v2momentAndWeightStrictlyUpstream[iVert][2]);
-                if (verboseLevel >= 2) PRINTVEC(vertsXY[iVert]);
-                if (verboseLevel >= 2) PRINTVEC(centroid);
+                //if (verboseLevel >= 2) PRINTVEC(vertsXY[iVert]);
+                //if (verboseLevel >= 2) PRINTVEC(centroid);
                 VecMath.vmv(2, vertMinusCentroidDirection, vertsXY[iVert], centroid);
-                if (verboseLevel >= 2) PRINTVEC(vertMinusCentroidDirection);
-                if (VecMath.normsqrd(vertMinusCentroidDirection) != 0.) // if it didn't happen to land right on vertex
+                //if (verboseLevel >= 2) PRINTVEC(vertMinusCentroidDirection);
+                if (VecMath.normsqrd(2, vertMinusCentroidDirection) != 0.) // if it didn't happen to land right on vertex
                     VecMath.normalize(2, vertMinusCentroidDirection,
                                          vertMinusCentroidDirection);
             }
@@ -183,20 +183,34 @@ public class MyAlgorithmMaybe
                 VecMath.zerovec(2, vertMinusCentroidDirection);
 
             // get sweepDirection: unit, or zero (if sweep origin is exactly at vert)
-            if (sweepOriginHomo[2] == 0.)
+            if (false)
             {
-                // sweep origin is at infinity
-                VecMath.sxv(2, sweepDirection, -1., sweepOriginHomo);
+                if (sweepOriginHomo[2] == 0.)
+                {
+                    // sweep origin is at infinity
+                    VecMath.sxv(2, sweepDirection, -1., sweepOriginHomo);
+                }
+                else
+                {
+                    VecMath.vmv(2, sweepDirection, vertsXY[iVert], sweepOriginHomo);
+                    if (VecMath.normsqrd(2, sweepDirection) != 0.) // if vertex is not right on sweep origin
+                        VecMath.normalize(2, sweepDirection,
+                                             sweepDirection);
+                }
             }
             else
             {
-                VecMath.vmv(2, sweepDirection, vertsXY[iVert], sweepOriginHomo);
-                if (VecMath.normsqrd(sweepDirection) != 0.) // if vertex is not right on sweep origin
+                // sweepDirection = vertsXY[iVert] - sweepOrigin, homogeneous
+                VecMath.sxvpsxv(2, sweepDirection,
+                                sweepOriginHomo[2], vertsXY[iVert],
+                                -1., sweepOriginHomo);
+                if (VecMath.normsqrd(2, sweepDirection) != 0.) // if vertex is not right on sweep origin
                     VecMath.normalize(2, sweepDirection,
                                          sweepDirection);
             }
-            if (verboseLevel >= 2) PRINTVEC(vertMinusCentroidDirection);
-            if (verboseLevel >= 2) PRINTVEC(sweepDirection);
+
+            if (verboseLevel >= 2) OUT("                      vertMinusCentroidDirection = "+VecMath.toString(vertMinusCentroidDirection));
+            if (verboseLevel >= 2) OUT("                      sweepDirection = "+VecMath.toString(sweepDirection));
 
             // Gather information about each neighbor,
             // into goodnesses, sweepGoodnesses, isBackwashes.
@@ -221,6 +235,12 @@ public class MyAlgorithmMaybe
 
             {
                 // Easy case: if there's a good edge to a not-yet-swept vert, take it. If more than one, prefer most sweepward.
+                // NOTE: this isn't entirely principled, since a good edge to not-yet-swept vert might actually
+                // start out against the sweep dir (if the edge goes tangent to the sweep circle).
+                // However, it seems to end up doing something reasonable (at least in OutStressor),
+                // so we let it slide for now.
+                // Might need to adjust this at some point by adding synthetic events/verts at tangent points,
+                // so that "to unswept vert" always means same thing as "in sweep direction".
                 int bestNeighborIndex = -1;
                 FORI (iEdgeThisVert, v2e[iVert].length)
                 {
@@ -233,6 +253,7 @@ public class MyAlgorithmMaybe
                 }
                 if (bestNeighborIndex != -1)
                 {
+                    if (verboseLevel >= 2) OUT("                      easy case: there's a good edge to a not-yet-swept vert");
                     int bestNeighborEdge = v2e[iVert][bestNeighborIndex];
                     int bestNeighborVert = e2v[bestNeighborEdge][1];
                     if (verboseLevel >= 2) OUT("                      bestNeighborVert = "+bestNeighborVert);
@@ -279,8 +300,8 @@ public class MyAlgorithmMaybe
                 boolean isLeftTurn;
                 {
                     // I.e. does the quill point CCW or CW?
-                    assert(VecMath.normsqrd(sweepDirection) != 0.); // we can't get here if vert is exactly at sweep origin
-                    assert(VecMath.normsqrd(vertMinusCentroidDirection) != 0.); // would have to be extremely degenerate for this to fail
+                    assert(VecMath.normsqrd(2, sweepDirection) != 0.); // we can't get here if vert is exactly at sweep origin
+                    assert(VecMath.normsqrd(2, vertMinusCentroidDirection) != 0.); // would have to be extremely degenerate for this to fail
                     double leftTurnness = VecMath.vxv2(vertMinusCentroidDirection, sweepDirection);
                     assert(leftTurnness != 0.);
                     isLeftTurn = leftTurnness > 0.;
@@ -333,7 +354,7 @@ public class MyAlgorithmMaybe
         if (verboseLevel >= 1) OUT("          nEdges = "+nEdges);
 
         HelperDataStructure helperDataStructure = new HelperDataStructure(originalMesh, sweepOriginHomo);
-        double verts[][] = helperDataStructure.vertsXY;
+        double vertsXY[][] = helperDataStructure.vertsXY;
         double v2momentAndArea[][] = helperDataStructure.v2momentAndArea;
         double e2direction[][] = helperDataStructure.e2direction;
         int e2v[][] = helperDataStructure.e2v;
@@ -406,8 +427,8 @@ public class MyAlgorithmMaybe
                 if (v2momentAndWeightStrictlyUpstream[iVert][2] > 0.)
                 {
                     VecMath.vxs(2, centroid, v2momentAndWeightStrictlyUpstream[iVert], 1./v2momentAndWeightStrictlyUpstream[iVert][2]);
-                    VecMath.vmv(2, vertMinusCentroidDirection, verts[iVert], centroid);
-                    if (VecMath.normsqrd(vertMinusCentroidDirection) != 0.) // if it didn't happen to land right on vertex
+                    VecMath.vmv(2, vertMinusCentroidDirection, vertsXY[iVert], centroid);
+                    if (VecMath.normsqrd(2, vertMinusCentroidDirection) != 0.) // if it didn't happen to land right on vertex
                         VecMath.normalize(2, vertMinusCentroidDirection,
                                              vertMinusCentroidDirection);
                 }
@@ -415,15 +436,28 @@ public class MyAlgorithmMaybe
                     VecMath.zerovec(2, vertMinusCentroidDirection);
 
                 // get sweepDirection: unit, or zero (if sweep origin is exactly at vert)
-                if (sweepOriginHomo[2] == 0.)
+                if (false)
                 {
-                    // sweep origin is at infinity
-                    VecMath.sxv(2, sweepDirection, -1., sweepOriginHomo);
+                    if (sweepOriginHomo[2] == 0.)
+                    {
+                        // sweep origin is at infinity
+                        VecMath.sxv(2, sweepDirection, -1., sweepOriginHomo);
+                    }
+                    else
+                    {
+                        VecMath.vmv(2, sweepDirection, vertsXY[iVert], sweepOriginHomo);
+                        if (VecMath.normsqrd(2, sweepDirection) != 0.) // if vertex is not right on sweep origin
+                            VecMath.normalize(2, sweepDirection,
+                                                 sweepDirection);
+                    }
                 }
                 else
                 {
-                    VecMath.vmv(2, sweepDirection, verts[iVert], sweepOriginHomo);
-                    if (VecMath.normsqrd(sweepDirection) != 0.) // if vertex is not right on sweep origin
+                    // sweepDirection = vertsXY[iVert] - sweepOrigin, homogeneous
+                    VecMath.sxvpsxv(2, sweepDirection,
+                                    sweepOriginHomo[2], vertsXY[iVert],
+                                    -1., sweepOriginHomo);
+                    if (VecMath.normsqrd(2, sweepDirection) != 0.) // if vertex is not right on sweep origin
                         VecMath.normalize(2, sweepDirection,
                                              sweepDirection);
                 }
@@ -592,7 +626,7 @@ public class MyAlgorithmMaybe
                         {
                             // This is the interesting event!  Biting own tail.
                             int thisInvalidationPathCycle[] = invalidationPathForDebugging.toArray();
-                            if (verboseLevel >= 1) OUT("                              iFineIter="+nFineIters+" ooh interesting! started at v"+iVert+" but invalidated it! "+VecMath.toString(verts[iVert])+" invalidation path = "+Arrays.toStringCompact(VecMath.composeluts(v2priority, thisInvalidationPathCycle))+": "+Arrays.toStringCompact(thisInvalidationPathCycle));
+                            if (verboseLevel >= 1) OUT("                              iFineIter="+nFineIters+" ooh interesting! started at v"+iVert+" but invalidated it! "+VecMath.toString(vertsXY[iVert])+" invalidation path = "+Arrays.toStringCompact(VecMath.composeluts(v2priority, thisInvalidationPathCycle))+": "+Arrays.toStringCompact(thisInvalidationPathCycle));
 
                             {
                                 // Take fingerprint of the whole thing.
