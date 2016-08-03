@@ -90,6 +90,8 @@ CPPFLAGS += -Wall -Werror
 # The following is too strict for me (requires #'s to be non-indented)
 #CPPFLAGS += -Wtraditional
 
+CPPFLAGS+=-DOVERRIDE=@Override
+
 .SUFFIXES: .prejava .java .class
 .prejava.class:
 	./javacpp ${CPPFLAGS} ${JAVAC} -deprecation -classpath ".$(CLASSPATHSEP)./donhatchsw.jar" $*.prejava

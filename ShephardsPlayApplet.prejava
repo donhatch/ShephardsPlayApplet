@@ -168,6 +168,11 @@ BUGS:
 
 TO DO:
   MyAlgorithmMaybe:
+    - Visualization:
+      - ++/-- buttons pixmaps are screwy!?  oh, didn't allocate colors I don't think
+      - up/down arrow should inc/dec my algorithm max iters when showNetFlag
+      - maxIters should be at half-increments: before and after sweeping a vertex
+      - circle/line should weave in and out of verts done, in case multiple appear to be on sweep circle/line
     - when backtracking, there's a definite direction, CW or CCW. the goal is to make it curve back out to the disk perimeter,
       so maybe don't allow contributions from the perimeter side? i.e. blow away the subtrees on that side.
     - think about going from outside in!  this seems promising! why? because, although flow can be forced to go the "wrong"
@@ -3273,42 +3278,50 @@ public class ShephardsPlayApplet
                                     }
                                 });
                             }});
-                            add(new JComboBox(netMethodNames) {{
-                                setSelectedIndex(applet.netMethod.get());
-                                addItemListener(new java.awt.event.ItemListener() {
-                                    @Override public void itemStateChanged(java.awt.event.ItemEvent e)
-                                    {
-                                        // evidently this gets called twice??
-                                        // no idea why (java.awt.Choice doesn't behave like that)
-                                        // (well it had a different bug,
-                                        // namely it called the callback on mouse up
-                                        // even if the user selected what was already selected).
-                                        // so check whether the new value is really new,
-                                        // and if not, don't do anything.
-                                        // (not that the extra stuff was expensive...
-                                        // but I was noticing the "netMethod -> whatever"
-                                        // was coming out 4 times)
-                                        int newValue = getSelectedIndex();
-                                        if (getSelectedIndex() != applet.netMethod.get())
+                            add(new JCol() {{
+                                add(new JComboBox(netMethodNames) {{
+                                    setSelectedIndex(applet.netMethod.get());
+                                    addItemListener(new java.awt.event.ItemListener() {
+                                        @Override public void itemStateChanged(java.awt.event.ItemEvent e)
                                         {
-                                            applet.netMethod.set(newValue);
-                                            System.out.println("netMethod -> "+applet.netMethodNames[applet.netMethod.get()]);
-                                            applet.theNet = null;
-                                            applet.theCanvas.repaint();
+                                            // evidently this gets called twice??
+                                            // no idea why (java.awt.Choice doesn't behave like that)
+                                            // (well it had a different bug,
+                                            // namely it called the callback on mouse up
+                                            // even if the user selected what was already selected).
+                                            // so check whether the new value is really new,
+                                            // and if not, don't do anything.
+                                            // (not that the extra stuff was expensive...
+                                            // but I was noticing the "netMethod -> whatever"
+                                            // was coming out 4 times)
+                                            int newValue = getSelectedIndex();
+                                            if (getSelectedIndex() != applet.netMethod.get())
+                                            {
+                                                applet.netMethod.set(newValue);
+                                                System.out.println("netMethod -> "+applet.netMethodNames[applet.netMethod.get()]);
+                                                applet.theNet = null;
+                                                applet.theCanvas.repaint();
+                                            }
                                         }
-                                    }
-                                });
-                                applet.netMethod.addListener(applet.netMethodListener = new Listenable.Listener() {
-                                    @Override public void valueChanged()
-                                    {
-                                        int newValue = applet.netMethod.get();
-                                        // setSelectedIndex does callbacks
-                                        // even if the value isn't new,
-                                        // so don't call it unless the value is new
-                                        if (newValue != getSelectedIndex())
-                                            setSelectedIndex(newValue);
-                                    }
-                                });
+                                    });
+                                    applet.netMethod.addListener(applet.netMethodListener = new Listenable.Listener() {
+                                        @Override public void valueChanged()
+                                        {
+                                            int newValue = applet.netMethod.get();
+                                            // setSelectedIndex does callbacks
+                                            // even if the value isn't new,
+                                            // so don't call it unless the value is new
+                                            if (newValue != getSelectedIndex())
+                                                setSelectedIndex(newValue);
+                                        }
+                                    });
+                                }});
+                                add(new JRow() {{
+                                    add(new JLabel("my algorithm max iters:"));
+                                    add(makeIncrementableTextFieldForNumber(applet.myAlgorithmMaxIters,
+                                                                            "my algorithm max iters",
+                                                                            1.));
+                                }});
                             }});
                             add(new JLabel("    "));
                             add(new JCol() {{
@@ -3886,6 +3899,14 @@ public class ShephardsPlayApplet
                     System.out.println("Changing main window title to "+windowTitle.get());
                     theMainAppletWindow.setTitle(windowTitle.get());
                     theControlPanelWindow.setTitle(windowTitle.get()+" Control Panel");
+                }
+            });
+            myAlgorithmMaxIters.addListener(myAlgorithmMaxItersListener = new Listenable.Listener() {
+                @Override public void valueChanged()
+                {
+                    // dirty the net
+                    theNet = null;
+                    theCanvas.repaint();
                 }
             });
         } // ShephardsPlayApplet ctor
@@ -4491,6 +4512,23 @@ public class ShephardsPlayApplet
 
                 // dual directions are now totally messed up... fix them
                 Mesh.fixDualDirections(mesh, dualMesh, wrapAroundSphereFlag.get(), centerSphereFlag.get(), wrapSphereCurvature.get());
+
+                // Scale the ad-hoc algorithm visualizations
+                // CBB: make this generic "annotations"
+                if (sweepCircleToDrawThroughPoint != null)
+                {
+                    if (scaleX == scaleY)
+                        sweepCircleToDrawThroughPoint = VecMath.sxv(2, scaleX, sweepCircleToDrawThroughPoint);
+                    else
+                        sweepCircleToDrawThroughPoint = null;
+                }
+                if (sweepCircleToDrawCenterHomo != null)
+                {
+                    if (scaleX == scaleY)
+                        VecMath.sxv(2, scaleX, sweepCircleToDrawCenterHomo);
+                    else
+                        sweepCircleToDrawCenterHomo = null;
+                }
             }
             if (undoRedoFlag)
             {
@@ -8117,6 +8155,10 @@ public class ShephardsPlayApplet
                         {
                             if (theNet == null)
                             {
+                                // Clear visualizations before running new algorithm
+                                sweepCircleToDrawThroughPoint = null;
+                                sweepCircleToDrawCenterHomo = null;
+
                                 // Really better names for these would be "dualEdgeIsKnownToBeCut" etc.
                                 boolean dualEdgeIsCut[] = new boolean[mesh.edges.size()]; // all false initially
                                 boolean dualEdgeIsFold[] = null; // only needed in some cases
@@ -8128,15 +8170,13 @@ public class ShephardsPlayApplet
                                  || netMethodValue == NETMETHOD_MY_ALGORITHM_MAYBE2_UPWARD
                                  || netMethodValue == NETMETHOD_MY_ALGORITHM_MAYBE2_OUTWARD)
                                 {
-                                    //int maxIters = showNetMakeGoodQuantum.get(); // XXX this isn't the right thing to use
-                                    //int maxIters = 10000; // XXX this isn't the right thing to use
-                                    int maxIters = -1; // infinite
-
+                                    int maxIters = myAlgorithmMaxIters.get();
                                     double sweepOriginHomo[] = (netMethodValue==NETMETHOD_MY_ALGORITHM_MAYBE_UPWARD||netMethodValue==NETMETHOD_MY_ALGORITHM_MAYBE2_UPWARD
                                         // BUG: if syntax error on this line, it's reported as wrong line number
                                         ? new double[]{0,-1,0} // upward from -y axis
                                         : new double[]{0,0,1}); // outward from origin
                                     int putProblematicVertsHereForDebugging[/*1*/][] = {null};
+                                    double putLastPointSweptHere[/*1*/][/*2*/] = {null};
                                     try {
                                         if (netMethodValue==NETMETHOD_MY_ALGORITHM_MAYBE_UPWARD||netMethodValue==NETMETHOD_MY_ALGORITHM_MAYBE_OUTWARD)
                                         {
@@ -8144,7 +8184,7 @@ public class ShephardsPlayApplet
                                         }
                                         else
                                         {
-                                            theNet = MyAlgorithmMaybe.doIt2(dualMesh, mesh, sweepOriginHomo, maxIters, putProblematicVertsHereForDebugging);
+                                            theNet = MyAlgorithmMaybe.doIt2(dualMesh, mesh, sweepOriginHomo, maxIters, putProblematicVertsHereForDebugging, putLastPointSweptHere);
                                         }
                                         // don't choose directions; that's done below (although maybe MyAlgorithm should have done it? not sure)
                                     }
@@ -8168,6 +8208,11 @@ public class ShephardsPlayApplet
                                             }
                                             PRINTVEC(selectedDualVertIndices);
                                             PRINTARRAY(selectedTris);
+                                        }
+                                        if (putLastPointSweptHere[0] != null)
+                                        {
+                                            sweepCircleToDrawThroughPoint = VecMath.copyvec(putLastPointSweptHere[0]);
+                                            sweepCircleToDrawCenterHomo = VecMath.copyvec(sweepOriginHomo);
                                         }
                                     }
                                 }
@@ -8640,8 +8685,59 @@ public class ShephardsPlayApplet
 
                             }
                         }
-                    } // if (!showNetFlag)
+                    } // if (!showNetFlagValue)
                 } // if (drawDualDiagramFlag)
+
+                if (drawDualDiagramFlag && showNetFlagValue)
+                {
+                    // Draw stuff to help algorithm visualization.
+                    if (sweepCircleToDrawThroughPoint != null
+                     && sweepCircleToDrawCenterHomo != null)
+                    {
+                        assert(sweepCircleToDrawThroughPoint.length == 2);
+                        assert(sweepCircleToDrawCenterHomo.length == 3);
+                        double focusX = sweepCircleToDrawThroughPoint[0];
+                        double focusY = sweepCircleToDrawThroughPoint[1];
+                        assert(sweepCircleToDrawCenterHomo[2]==0.
+                            || sweepCircleToDrawCenterHomo[2]==1.); // CBB: could do computation more robustly
+                        double curvature = (sweepCircleToDrawCenterHomo[2]==0. ? 0. : 1./VecMath.dist(2, sweepCircleToDrawCenterHomo, sweepCircleToDrawThroughPoint));
+                        double sweepDirectionAtPoint[] = new double[2];
+                        VecMath.sxvpsxv(2, sweepDirectionAtPoint,
+                                        sweepCircleToDrawCenterHomo[2], sweepCircleToDrawThroughPoint,
+                                        -1., sweepCircleToDrawCenterHomo);
+                        double focusAngleRadians = Math.atan2(sweepDirectionAtPoint[1], sweepDirectionAtPoint[0]);
+
+                        double start, end;
+                        if (curvature != 0.)
+                        {
+                            start = -Math.PI / curvature;
+                            end = Math.PI / curvature;
+                        }
+                        else
+                        {
+                            // HACK-- not sure what makes sense
+                            start = -10.;
+                            end = 10.;
+                        }
+
+                        mg3d.setColor(java.awt.Color.red.darker());
+                        mg3d.smartDrawThickArc(
+                            1., // thicknessInPixels
+                            focusX, focusY,   // a point on the arc
+                            focusAngleRadians, // from center to focus
+                            curvature,         // 1/radius
+                            start, end, // arc goes from focusAngle+start to focusAngle+end in arc length
+                            false); // antiAlias-- supposed to be always false according to function doc
+
+                        mg3d.setColor(java.awt.Color.red);
+                        double littleRadius = .025;
+                        mg3d.drawThickArc(sweepCircleToDrawThroughPoint[0]-littleRadius, sweepCircleToDrawThroughPoint[1]-littleRadius,
+                                        2*littleRadius, 2*littleRadius,
+                                        0., Math.PI*2,
+                                        1., // thicknessInPixels,
+                                        false);
+                   }
+                }
 
                 boolean whichPrimalEdgesGotDrawn[] = showPrimalEdgesFlag.get() ? new boolean[nEdges] : null; // all false initially
                 boolean showInsideOutDualVertsFlagValue = showInsideOutDualVertsFlag.get();
@@ -15183,6 +15279,10 @@ OFF
         private int[][] selectedTris = {};
         private int[] selectedDualVertIndices = {};
         private boolean allDualVertsAreSelected = false; // misnomer-- it really means "all dual verts are selected intentionally" or something
+        // for visualizing some kinds of net algorithms
+        private double[/*2*/] sweepCircleToDrawThroughPoint = null;
+        private double[/*3*/] sweepCircleToDrawCenterHomo = null;
+
         private Mesh meshOfSelectedTris = mesh; // possibly ill-advised attempt to invalidate selectedTris and selectedDualVertIndices automatically so people can just reset mesh without having to remember
 
         // XXX is there an easier way to associate that stuff with a certain object? maybe be able to just pass this object to addListener, and make it automatically remove the listener when I go away?  OH, just add it as a member variable in the object, I think?
@@ -15217,6 +15317,7 @@ OFF
         private Listenable.Listener primalDualVisFlagListener = null;
         private Listenable.Listener naiveDualEdgesFlagListener = null;
         private Listenable.Listener windowTitleListener = null;
+        private Listenable.Listener myAlgorithmMaxItersListener = null;
 
         private Listenable.Boolean continuouslyDelaunayizeFlag = new Listenable.Boolean(false); // has to be false, or it may alter stuff on load
         private Listenable.Boolean optimizeFlag = new Listenable.Boolean(false);
@@ -15260,6 +15361,7 @@ OFF
             };
         //private Listenable.Int netMethod = new Listenable.Int(0, netMethodNames.length-1, NETMETHOD_UPWARD);
         private Listenable.Int netMethod = new Listenable.Int(0, netMethodNames.length-1, NETMETHOD_MY_ALGORITHM_MAYBE2_UPWARD);
+        private Listenable.Int myAlgorithmMaxIters = new Listenable.Int(-1, 1000*1000*1000, -1);
 
         private java.awt.Component theCanvas = null;
         //private java.awt.Component theHelpWindow = null;
@@ -15788,7 +15890,8 @@ OFF
     } // JSliderForFloat
 
 
-    // Stolen from MC4DControlPanel.java  TODO: replace with JSliderForFloat
+#ifdef DEFUNCT
+    // Stolen from MC4DControlPanel.java  TODO: get rid of this!
     public static class OldSliderForFloat extends java.awt.Scrollbar
     {
         private Listenable.Listener listener; // need to keep a strong ref to it for as long as I'm alive
@@ -15861,6 +15964,7 @@ OFF
             return preferredSize;
         }
     } // OldSliderForFloat
+#endif
 
     //public static class SliderForFloat extends OldSliderForFloat
     public static class SliderForFloat extends JSliderForFloat
@@ -15870,6 +15974,90 @@ OFF
             super(f);
         }
     }
+
+
+    // stolen from SpiralApplet
+    static JRow makeIncrementableTextFieldForMultipleOf(final Listenable.Number f,
+                                                        final String name,
+                                                        final double increment,
+                                                        final double mustBeMultipleOf, // 0 if no constraint
+                                                        final boolean mustBePositive)
+    {
+        if (mustBeMultipleOf != 0.) {
+            assert(increment % mustBeMultipleOf == 0.); // otherwise incrementing wouldn't be very useful
+        }
+        final java.awt.Color asciiToColor[] = new java.awt.Color[128];
+        asciiToColor[' '] = null;
+        asciiToColor['b'] = java.awt.Color.black;
+        return new JRow() {{
+            add(new JRepeatingButton("") {
+                OVERRIDE public java.awt.Dimension getPreferredSize() { return new java.awt.Dimension(11*hidpimag,11*hidpimag); }
+                OVERRIDE public java.awt.Dimension getMinimumSize()   { return new java.awt.Dimension(11*hidpimag,11*hidpimag); }
+                OVERRIDE public void paint(java.awt.Graphics g)
+                {
+                    super.paint(g);
+                    drawPixmapCentered(g, getSize(), asciiToColor,
+                                       new String[] {
+                                          "bbb bbb",
+                                       });
+                }
+            {
+                addActionListener(new java.awt.event.ActionListener() {
+                    OVERRIDE public void actionPerformed(java.awt.event.ActionEvent e)
+                    {
+                        f.setDouble(f.getDouble()-increment);
+                    }
+                });
+                setToolTipText("<html>decrement "+name+"</html>");
+            }});
+            add(new JTextFieldForNumber(f) {
+                OVERRIDE public boolean validate(String text)
+                {
+                    if (!super.validate(text)) return false;
+                    try {
+                        double d = Double.parseDouble(text);
+                        if (mustBePositive && !(d > 0.)) return false;
+                        if (mustBeMultipleOf != 0. && d % mustBeMultipleOf != 0.) return false;
+                        return true;
+                    } catch (Exception e) {
+                        return false;
+                    }
+                }
+                {
+                    setToolTipText("<html>"+name+"</html>");
+                }
+            } );
+            add(new JRepeatingButton("") {
+                OVERRIDE public java.awt.Dimension getPreferredSize() { return new java.awt.Dimension(11*hidpimag,11*hidpimag); }
+                OVERRIDE public java.awt.Dimension getMinimumSize()   { return new java.awt.Dimension(11*hidpimag,11*hidpimag); }
+                OVERRIDE public void paint(java.awt.Graphics g)
+                {
+                    super.paint(g);
+                    drawPixmapCentered(g, getSize(), asciiToColor,
+                                       new String[] {
+                                          " b   b ",
+                                          "bbb bbb",
+                                          " b   b ",
+                                       });
+                }
+            {
+                addActionListener(new java.awt.event.ActionListener() {
+                    OVERRIDE public void actionPerformed(java.awt.event.ActionEvent e)
+                    {
+                        f.setDouble(f.getDouble()+increment);
+                    }
+                });
+                setToolTipText("<html>increment "+name+"</html>");
+            }});
+        }};
+    } // makeIncrementableTextFieldForMultipleOf
+    static JRow makeIncrementableTextFieldForNumber(final Listenable.Number f,
+                                                    final String name,
+                                                    final double increment)
+    {
+        return makeIncrementableTextFieldForMultipleOf(f, name, increment, 0., false);
+    } // makeIncrementableTextFieldForNumber
+
 
     // Note, caller must store the returned strong reference to this for as long as it wants the listener to live.
     // It might make sense to make alternate versions of this, e.g. tie to negation or other function of listenable(s).
