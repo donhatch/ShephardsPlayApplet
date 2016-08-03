@@ -973,6 +973,8 @@ public class ShephardsPlayApplet
                     });
                 }};
 
+#ifdef TOO_HELPFUL
+                // Actually not sure this was a good idea
                 final JButton smartSaveButton = new JButton("Save DUMP.off I AM SO SMART") {Listenable.Listener listener;{
                     setMargin(nomargin);
                     setText(applet.wrapAroundSphereFlag.get() ? "Save DUMP.off (XYZW)"
@@ -993,6 +995,8 @@ public class ShephardsPlayApplet
                         }
                     });
                 }};
+#endif // TOO_HELPFUL
+
                 final JButton saveDualButton = new JButton("Save DUALVERTS.txt") {{
                     setMargin(nomargin);
                     addActionListener(new java.awt.event.ActionListener() {
@@ -1246,7 +1250,8 @@ public class ShephardsPlayApplet
                     new JRow() {{
                         add(new JLabel(" "));
                         add(new JButton("Out Stressor") {{
-                            setToolTipText("Thing for which naive outward gives a lot of bad cuts.");
+                            setToolTipText("<html>Thing for which naive outward gives a lot of bad cuts. Number is number of levels (i.e. num verts / 4, approximately.)</html>");
+                            setMargin(nomargin); // TODO: just traverse and set this on all children?  already doing it on top level I think
                             addActionListener(new java.awt.event.ActionListener() {
                                 @Override public void actionPerformed(java.awt.event.ActionEvent e)
                                 {
@@ -1262,6 +1267,28 @@ public class ShephardsPlayApplet
                             });
                         }});
                         add(new JTextFieldForNumber(applet.outStressorNLevels));
+                        add(new JLabel(" "));
+                    }},
+                    new JRow() {{
+                        add(new JLabel(" "));
+                        add(new JButton("Out Stressor Spiral") {{
+                            setToolTipText("<html>Thing for which naive outward gives a lot of bad cuts, arranged in spiral. Number is number of verts.</html>");
+                            setMargin(nomargin); // TODO: just traverse and set this on all children?  already doing it on top level I think
+                            addActionListener(new java.awt.event.ActionListener() {
+                                @Override public void actionPerformed(java.awt.event.ActionEvent e)
+                                {
+                                    UndoItem.State before = applet.newUndoItemState();
+
+                                    applet.doCannedThingOutStressorSpiral(applet.outStressorSpiralN.get());
+
+                                    UndoItem.State after = applet.newUndoItemState();
+                                    applet.undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                    applet.theCanvas.repaint();
+                                }
+                            });
+                        }});
+                        add(new JTextFieldForNumber(applet.outStressorSpiralN));
                         add(new JLabel(" "));
                     }},
                     new JButton("Sweep Killer (not) 2") {{
@@ -1625,7 +1652,29 @@ public class ShephardsPlayApplet
                             add(redoButton);
                         }});
                         add(loadButton);
+#ifdef TOO_HELPFUL
                         add(smartSaveButton);
+#endif // TOO_HELPFUL
+                        add(new JButton("Save DUMP.off (xyh)") {Listenable.Listener listener;{
+                            setMargin(nomargin);
+                            addActionListener(new java.awt.event.ActionListener() {
+                                @Override public void actionPerformed(java.awt.event.ActionEvent e)
+                                {
+                                    boolean saveHomo = false;
+                                    applet.save("DUMP.off", saveHomo);
+                                }
+                            });
+                        }});
+                        add(new JButton("Save DUMP.off (XYZW)") {Listenable.Listener listener;{
+                            setMargin(nomargin);
+                            addActionListener(new java.awt.event.ActionListener() {
+                                @Override public void actionPerformed(java.awt.event.ActionEvent e)
+                                {
+                                    boolean saveHomo = true;
+                                    applet.save("DUMP.off", saveHomo);
+                                }
+                            });
+                        }});
                         add(saveDualButton);
                         // scale?
                     }});
@@ -4283,6 +4332,12 @@ public class ShephardsPlayApplet
                 {
                     // Guess what wrapAroundSphere should be based on first vertex (although theoretically they can be mixed).
                     boolean desiredWrapAroundSphereFlag = verts.length==0 ? false : verts[0].length==4;
+
+                    if (true)
+                    {
+                        desiredWrapAroundSphereFlag = false; // XXX HACK
+                    }
+
                     // Have to suppress transforming when setting wrap flag.
                     boolean savedTransformFlag = transformWhenChangingWrapOrCenterFlag.get();
                     transformWhenChangingWrapOrCenterFlag.set(false);
@@ -4907,6 +4962,7 @@ public class ShephardsPlayApplet
             //doBlueNoiseThing(blueNoiseN.get());
             //doCannedThingSweepKiller1epsMultiple(sweepKiller1Multiplicity.get(), sweepKiller1Multiplicity.get(), false);
             //doCannedThingOutStressor(outStressorNLevels.get());
+            //doCannedThingOutStressorSpiral(outStressorSpiralN.get());
 
             load("DUMP.off");
 
@@ -11739,6 +11795,44 @@ OFF
             } // doCannedThingSweepKiller1epsMultiplePolar
 
 
+            // Stress outward sweep, in slightly spiral way.
+            private void doCannedThingOutStressorSpiral(int nVertsWanted)
+            {
+                //double heightScaleFactor4 = 3; // too big, changes topology
+                //double heightScaleFactor4 = 2.25; // pretty good
+                //double heightScaleFactor4 = 2.2;
+                double heightScaleFactor4 = 2.15;
+                //double heightScaleFactor4 = 2.1;
+                //double heightScaleFactor4 = 2.01; // anything above 2 works
+
+                double verts[][] = new double[nVertsWanted][];
+                int nVerts = 0;
+
+                if (nVerts < verts.length) verts[nVerts++] = new double[]{0,0,-0.1534374,1.}; // nice for heightScaleFactor4=2.15 because all 8 inner edges are tangent to sphere at some time, and inner 8 verts are clearly closest to origin
+
+                if (nVerts < verts.length) verts[nVerts++] = new double[]{1,0,-1.,1.};
+                if (nVerts < verts.length) verts[nVerts++] = new double[]{-1,-1,-Math.pow(heightScaleFactor4, .5),1.};
+                while (nVerts < verts.length)
+                {
+                    verts[nVerts] = new double[] {
+                        verts[nVerts-2][1] * -2,
+                        verts[nVerts-2][0] * 2,
+                        verts[nVerts-2][2] * heightScaleFactor4,
+                        1.,
+                    };
+                    nVerts++;
+                }
+                assert(nVerts == verts.length);
+                mesh = new Mesh(verts, new int[][]{});
+                delaunayize();
+
+                if (true)
+                {
+                    rescalePrimalOnly(4./Math.pow(2., nVertsWanted*.5));
+                    rescaleDualOnly(1./8);
+                }
+            }
+
             // Stress outward sweep.
             // Heights were figured out empirically.
             private void doCannedThingOutStressor(int nLevels)
@@ -15232,8 +15326,8 @@ OFF
         private Listenable.Boolean remapFundamentalRegionWhenChangingRotationalSymmetry = new Listenable.Boolean(false);
         private Listenable.Boolean deleteUnmatchedVertsWhenChangingRotationalSymmetry = new Listenable.Boolean(false);
 
-        private Listenable.Boolean wrapAroundSphereFlagIntent = new Listenable.Boolean(true);
-        private Listenable.Boolean wrapAroundSphereFlag = new Listenable.Boolean(true);
+        private Listenable.Boolean wrapAroundSphereFlagIntent = new Listenable.Boolean(false);
+        private Listenable.Boolean wrapAroundSphereFlag = new Listenable.Boolean(wrapAroundSphereFlagIntent.get());
         private Listenable.Boolean centerSphereFlag = new Listenable.Boolean(true);
         private Listenable.Double wrapSphereCurvature = new Listenable.Double(.001,2., 1.);
         private Listenable.Double wrapSphereSymbolicRadius = new Listenable.Double(.001,1.999, 1.);
@@ -15257,6 +15351,7 @@ OFF
         private Listenable.Boolean singleExitLagoonSynthesizeExactDualFlag = new Listenable.Boolean(false);
         private Listenable.Int sweepKiller1Multiplicity = new Listenable.Int(1, 100, 19);
         private Listenable.Int outStressorNLevels = new Listenable.Int(1, 50, 20);
+        private Listenable.Int outStressorSpiralN = new Listenable.Int(1, 256, 64);
 
         private Surface.Sphere theSphereSurface = new Surface.Sphere(new double[]{0,0,centerSphereFlag.get() ? 0. : -1./wrapSphereCurvature.get()}, 1./wrapSphereCurvature.get());
         private Surface.Paraboloid theParaboloidSurface = new Surface.Paraboloid(-.5);
