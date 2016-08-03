@@ -172,6 +172,7 @@ TO DO:
       - up/down arrow should inc/dec my algorithm max iters when showNetFlag
       - maxIters should be at half-increments: before and after sweeping a vertex
       - circle/line should weave in and out of verts done, in case multiple appear to be on sweep circle/line
+      - really need to know good/bad on partial net!  argh
     - when backtracking, there's a definite direction, CW or CCW. the goal is to make it curve back out to the disk perimeter,
       so maybe don't allow contributions from the perimeter side? i.e. blow away the subtrees on that side.
     - think about going from outside in!  this seems promising! why? because, although flow can be forced to go the "wrong"
@@ -3961,8 +3962,8 @@ public class ShephardsPlayApplet
             "    ctrl-'b' - uniform grid",
             "    'b' - blue noise",
             "    'j' - just noise",
-            "    Up arrow: pull face plane of closest vertex out",
-            "    Down arrow: push face plane of closest vertex in",
+            "    Up/Down arrow (non-net mode): push/pull face plane of closest vertex in/out",
+            "    Up/Down arrow (net mode): incr/decr my algorithm max iters",
             "    'c' - clear",
             "    'u' / ctrl-'z' - undo",
             "    'r' / 'U' / ctrl-'r' / ctrl-'y' - redo",
@@ -6044,115 +6045,129 @@ public class ShephardsPlayApplet
                 {
                     case java.awt.event.KeyEvent.VK_UP:
                     {
-                        UndoItem.State before = newUndoItemState();
-                        if (optimizeFlag.get())
+                        if (showNetFlag.get())
                         {
-                            optimizeFlag.set(false);
-                            System.out.println("optimizeFlag -> "+optimizeFlag.get()+" ('O' to turn back on)");
+                            myAlgorithmMaxIters.set(myAlgorithmMaxIters.get() + 1);
                         }
-                        System.out.print("Up");
-                        System.out.flush();
-                        int iVert = mesh.indexOfClosestVert(prevP[0], prevP[1],mostRecentGraphics);
-                        if (iVert != -1)
+                        else
                         {
-                            Mesh.Vertex vertI = mesh.getVert(iVert);
-                            double v[] = {vertI.x(), vertI.y(), vertI.z()};
-                            double group[][][] = getTheSymmetryGroup();
-                            Mesh.Vertex vertsToMove[] = MeshUtils.findAllVertsThatAreImages(mesh, v, group, 1e-6);
-
-                            // only used in wrapAroundSphere case
-                            boolean wrapAroundSphereFlagValue = wrapAroundSphereFlag.get();
-
-                            if (wrapAroundSphereFlag.get())
+                            UndoItem.State before = newUndoItemState();
+                            if (optimizeFlag.get())
                             {
-                                double sphereCenterZ = (centerSphereFlag.get() ? 0. : -1./wrapSphereCurvature.get());
-                                FORI (iVertToMove, vertsToMove.length)
-                                {
-                                    Mesh.Vertex vert = vertsToMove[iVertToMove];
-                                    v[0] = vert.x();
-                                    v[1] = vert.y();
-                                    v[2] = vert.z() - sphereCenterZ;
-                                    double oldR = Math.sqrt(SQR(v[0])+SQR(v[1])+SQR(v[2]));
-                                    double newR = oldR - incr;
-                                    double scale = newR / oldR;
-                                    vert.setXYZW(v[0]*scale, v[1]*scale, v[2]*scale + sphereCenterZ, 1.);
-                                }
+                                optimizeFlag.set(false);
+                                System.out.println("optimizeFlag -> "+optimizeFlag.get()+" ('O' to turn back on)");
                             }
-                            else
+                            System.out.print("Up");
+                            System.out.flush();
+                            int iVert = mesh.indexOfClosestVert(prevP[0], prevP[1],mostRecentGraphics);
+                            if (iVert != -1)
                             {
-                                FORI (iVertToMove, vertsToMove.length)
+                                Mesh.Vertex vertI = mesh.getVert(iVert);
+                                double v[] = {vertI.x(), vertI.y(), vertI.z()};
+                                double group[][][] = getTheSymmetryGroup();
+                                Mesh.Vertex vertsToMove[] = MeshUtils.findAllVertsThatAreImages(mesh, v, group, 1e-6);
+
+                                // only used in wrapAroundSphere case
+                                boolean wrapAroundSphereFlagValue = wrapAroundSphereFlag.get();
+
+                                if (wrapAroundSphereFlag.get())
                                 {
-                                    Mesh.Vertex vert = vertsToMove[iVertToMove];
-                                    // pull the dual face *out* of the screen,
-                                    // i.e. increase its height,
-                                    // i.e. decrease height of primal vert.
-                                    vert.setxyh(vert.x(),
-                                                vert.y(),
-                                                vert.h() - incr);
-                                    System.out.println("    verts["+vert.myIndex()+"].Hnaive() -> "+vert.Hnaive());
+                                    double sphereCenterZ = (centerSphereFlag.get() ? 0. : -1./wrapSphereCurvature.get());
+                                    FORI (iVertToMove, vertsToMove.length)
+                                    {
+                                        Mesh.Vertex vert = vertsToMove[iVertToMove];
+                                        v[0] = vert.x();
+                                        v[1] = vert.y();
+                                        v[2] = vert.z() - sphereCenterZ;
+                                        double oldR = Math.sqrt(SQR(v[0])+SQR(v[1])+SQR(v[2]));
+                                        double newR = oldR - incr;
+                                        double scale = newR / oldR;
+                                        vert.setXYZW(v[0]*scale, v[1]*scale, v[2]*scale + sphereCenterZ, 1.);
+                                    }
                                 }
+                                else
+                                {
+                                    FORI (iVertToMove, vertsToMove.length)
+                                    {
+                                        Mesh.Vertex vert = vertsToMove[iVertToMove];
+                                        // pull the dual face *out* of the screen,
+                                        // i.e. increase its height,
+                                        // i.e. decrease height of primal vert.
+                                        vert.setxyh(vert.x(),
+                                                    vert.y(),
+                                                    vert.h() - incr);
+                                        System.out.println("    verts["+vert.myIndex()+"].Hnaive() -> "+vert.Hnaive());
+                                    }
+                                }
+                                if (continuouslyDelaunayizeFlag.get()) delaunayize();
                             }
-                            if (continuouslyDelaunayizeFlag.get()) delaunayize();
+                            UndoItem.State after = newUndoItemState();
+                            undoTreeSquirrel.Do(new UndoItem(before, after));
+                            dirtyDualMesh();
+                            theCanvas.repaint();
                         }
-                        UndoItem.State after = newUndoItemState();
-                        undoTreeSquirrel.Do(new UndoItem(before, after));
-                        dirtyDualMesh();
-                        theCanvas.repaint();
                         break;
                     }
                     case java.awt.event.KeyEvent.VK_DOWN:
                     {
-                        UndoItem.State before = newUndoItemState();
-                        if (optimizeFlag.get())
+                        if (showNetFlag.get())
                         {
-                            optimizeFlag.set(false);
-                            System.out.println("optimizeFlag -> "+optimizeFlag.get()+" ('O' to turn back on)");
+                            myAlgorithmMaxIters.set(myAlgorithmMaxIters.get() - 1);
                         }
-                        System.out.print("Down");
-                        System.out.flush();
-                        int iVert = mesh.indexOfClosestVert(prevP[0], prevP[1],mostRecentGraphics);
-                        if (iVert != -1)
+                        else
                         {
-                            Mesh.Vertex vertI = mesh.getVert(iVert);
-                            double v[] = {vertI.x(), vertI.y(), vertI.z()};
-                            double group[][][] = getTheSymmetryGroup();
-                            Mesh.Vertex vertsToMove[] = MeshUtils.findAllVertsThatAreImages(mesh, v, group, 1e-6);
+                            UndoItem.State before = newUndoItemState();
+                            if (optimizeFlag.get())
+                            {
+                                optimizeFlag.set(false);
+                                System.out.println("optimizeFlag -> "+optimizeFlag.get()+" ('O' to turn back on)");
+                            }
+                            System.out.print("Down");
+                            System.out.flush();
+                            int iVert = mesh.indexOfClosestVert(prevP[0], prevP[1],mostRecentGraphics);
+                            if (iVert != -1)
+                            {
+                                Mesh.Vertex vertI = mesh.getVert(iVert);
+                                double v[] = {vertI.x(), vertI.y(), vertI.z()};
+                                double group[][][] = getTheSymmetryGroup();
+                                Mesh.Vertex vertsToMove[] = MeshUtils.findAllVertsThatAreImages(mesh, v, group, 1e-6);
 
-                            if (wrapAroundSphereFlag.get())
-                            {
-                                double sphereCenterZ = (centerSphereFlag.get() ? 0. : -1./wrapSphereCurvature.get());
-                                FORI (iVertToMove, vertsToMove.length)
+                                if (wrapAroundSphereFlag.get())
                                 {
-                                    Mesh.Vertex vert = vertsToMove[iVertToMove];
-                                    v[0] = vert.x();
-                                    v[1] = vert.y();
-                                    v[2] = vert.z() - sphereCenterZ;
-                                    double oldR = Math.sqrt(SQR(v[0])+SQR(v[1])+SQR(v[2]));
-                                    double newR = oldR + incr;
-                                    double scale = newR / oldR;
-                                    vert.setXYZW(v[0]*scale, v[1]*scale, v[2]*scale + sphereCenterZ, 1.);
+                                    double sphereCenterZ = (centerSphereFlag.get() ? 0. : -1./wrapSphereCurvature.get());
+                                    FORI (iVertToMove, vertsToMove.length)
+                                    {
+                                        Mesh.Vertex vert = vertsToMove[iVertToMove];
+                                        v[0] = vert.x();
+                                        v[1] = vert.y();
+                                        v[2] = vert.z() - sphereCenterZ;
+                                        double oldR = Math.sqrt(SQR(v[0])+SQR(v[1])+SQR(v[2]));
+                                        double newR = oldR + incr;
+                                        double scale = newR / oldR;
+                                        vert.setXYZW(v[0]*scale, v[1]*scale, v[2]*scale + sphereCenterZ, 1.);
+                                    }
                                 }
-                            }
-                            else
-                            {
-                                FORI (iVertToMove, vertsToMove.length)
+                                else
                                 {
-                                    Mesh.Vertex vert = vertsToMove[iVertToMove];
-                                    // push the dual face *into* the screen,
-                                    // i.e. decrease its height,
-                                    // i.e. increase height of primal vert.
-                                    vert.setxyh(vert.x(),
-                                                vert.y(),
-                                                vert.h() + incr);
-                                    System.out.println("    verts["+vert.myIndex()+"].Hnaive() -> "+vert.Hnaive());
+                                    FORI (iVertToMove, vertsToMove.length)
+                                    {
+                                        Mesh.Vertex vert = vertsToMove[iVertToMove];
+                                        // push the dual face *into* the screen,
+                                        // i.e. decrease its height,
+                                        // i.e. increase height of primal vert.
+                                        vert.setxyh(vert.x(),
+                                                    vert.y(),
+                                                    vert.h() + incr);
+                                        System.out.println("    verts["+vert.myIndex()+"].Hnaive() -> "+vert.Hnaive());
+                                    }
                                 }
+                                if (continuouslyDelaunayizeFlag.get()) delaunayize();
                             }
-                            if (continuouslyDelaunayizeFlag.get()) delaunayize();
+                            UndoItem.State after = newUndoItemState();
+                            undoTreeSquirrel.Do(new UndoItem(before, after));
+                            dirtyDualMesh();
+                            theCanvas.repaint();
                         }
-                        UndoItem.State after = newUndoItemState();
-                        undoTreeSquirrel.Do(new UndoItem(before, after));
-                        dirtyDualMesh();
-                        theCanvas.repaint();
                         break;
                     }
                     case java.awt.event.KeyEvent.VK_LEFT:
@@ -8728,7 +8743,16 @@ public class ShephardsPlayApplet
                             start, end, // arc goes from focusAngle+start to focusAngle+end in arc length
                             false); // antiAlias-- supposed to be always false according to function doc
 
-                        mg3d.setColor(java.awt.Color.red);
+                        if (myAlgorithmMaxIters.get() % 2 == 1)
+                        {
+                            // swept to but not past the vertex
+                            mg3d.setColor(java.awt.Color.red);
+                        }
+                        else
+                        {
+                            // swept past the vertex
+                            mg3d.setColor(java.awt.Color.green);
+                        }
                         double littleRadius = .025;
                         mg3d.drawThickArc(sweepCircleToDrawThroughPoint[0]-littleRadius, sweepCircleToDrawThroughPoint[1]-littleRadius,
                                         2*littleRadius, 2*littleRadius,
