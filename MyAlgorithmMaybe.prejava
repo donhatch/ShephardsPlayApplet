@@ -53,6 +53,32 @@ public class MyAlgorithmMaybe
             assert(this.e2v.length == nEdges);
             assert(this.v2e.length == nVerts+1); // the "infinite vertex" got added at the end
 
+
+            // CBB: SimplerMeshDataStructure should emit in ccw order.
+            if (true)
+            {
+                // Fix so neighbors of each vert are listed in ccw order
+                FORI (iVert, nVerts)
+                {
+                    if (VecMath.vxv2(e2direction[v2e[iVert][0]],
+                                     e2direction[v2e[iVert][1]]) < 0.)
+                    {
+                        int temp;
+                        SWAP(v2e[iVert][0], v2e[iVert][1], temp);
+                    }
+                    assert(v2e[iVert].length == 3);
+                    assert(VecMath.vxv2(e2direction[v2e[iVert][0]],
+                                    e2direction[v2e[iVert][1]]) > 0.);
+                    assert(VecMath.vxv2(e2direction[v2e[iVert][1]],
+                                        e2direction[v2e[iVert][2]]) > 0.);
+                    assert(VecMath.vxv2(e2direction[v2e[iVert][2]],
+                                        e2direction[v2e[iVert][0]]) > 0.);
+
+                }
+            }
+
+
+
             double v2orderKey[] = new double[nVerts]; // vertex to radius squared, i.e. distance squared from center
             {
                 double center[] = new double[2]; // scratch for loop
@@ -146,7 +172,7 @@ public class MyAlgorithmMaybe
         int iIter;
         boolean fatalProblemDetected = false;
         for (iIter = 0;
-             !todo.isEmpty() && (maxIters==-1 || iIter < maxIters) && !fatalProblemDetected;
+             !todo.isEmpty() && (maxIters<0 || iIter < maxIters) && !fatalProblemDetected;
              ++iIter)
         {
             // On even iterations, we just sweep to the next vertex but don't do anything with it.
@@ -246,6 +272,7 @@ public class MyAlgorithmMaybe
                 isBackwashes[iEdgeThisVert] = isBackwash;
             }
 
+
             {
                 // Easy case: if there's a good edge to a not-yet-swept vert, take it. If more than one, prefer most sweepward.
                 // NOTE: this isn't entirely principled, since a good edge to not-yet-swept vert might actually
@@ -258,7 +285,7 @@ public class MyAlgorithmMaybe
                 FORI (iEdgeThisVert, v2e[iVert].length)
                 {
                     int jVert = e2v[v2e[iVert][iEdgeThisVert]][1];
-                    if ((jVert==nVerts || v2priority[jVert] > v2priority[iVert])
+                    if ((jVert==nVerts || v2parentVert[jVert]==-1)
                      && goodnesses[iEdgeThisVert] >= 0.
                      && (bestNeighborIndex==-1
                       || sweepGoodnesses[iEdgeThisVert] > sweepGoodnesses[bestNeighborIndex]))
@@ -269,13 +296,14 @@ public class MyAlgorithmMaybe
                     if (verboseLevel >= 2) OUT("                      easy case: there's a good edge to a not-yet-swept vert");
                     int bestNeighborEdge = v2e[iVert][bestNeighborIndex];
                     int bestNeighborVert = e2v[bestNeighborEdge][1];
-                    if (verboseLevel >= 2) OUT("                      bestNeighborVert = "+bestNeighborVert);
+                    if (verboseLevel >= 2) OUT("                          bestNeighborVert = "+bestNeighborVert);
                     assert(bestNeighborEdge != -1);
                     assert(bestNeighborVert != -1);
                     assert(v2parentEdge[iVert] == -1);
                     assert(v2parentVert[iVert] == -1);
                     v2parentEdge[iVert] = bestNeighborEdge;
                     v2parentVert[iVert] = bestNeighborVert;
+                    if (verboseLevel >= 2) OUT("                          adding edge e"+v2parentEdge[iVert]+" (v"+iVert+"->v"+v2parentVert[iVert]+")");
                     continue;
                 }
             }
@@ -291,7 +319,7 @@ public class MyAlgorithmMaybe
                 FORI (iEdgeThisVert, v2e[iVert].length)
                 {
                     int jVert = e2v[v2e[iVert][iEdgeThisVert]][1];
-                    if (jVert==nVerts || v2priority[jVert] > v2priority[iVert])
+                    if (jVert==nVerts || v2parentVert[jVert]==-1)
                     {
                         if (firstNotYetSweptNeighborIndex == -1)
                             firstNotYetSweptNeighborIndex = iEdgeThisVert;
@@ -302,10 +330,12 @@ public class MyAlgorithmMaybe
                 assert(lastNotYetSweptNeighborIndex != -1);
                 if (firstNotYetSweptNeighborIndex == 0 && lastNotYetSweptNeighborIndex == 2)
                 {
-                    // hack-- make it so first and last are when traversing around the vert (typically CW)
+                    // hack-- make it so first and last are when traversing around the vert (assume CCW)
                     firstNotYetSweptNeighborIndex = 2;
                     lastNotYetSweptNeighborIndex = 0;
                 }
+                if (verboseLevel >= 2) OUT("                      first not-yet-swept neighbor = v"+e2v[v2e[iVert][firstNotYetSweptNeighborIndex]][1]);
+                if (verboseLevel >= 2) OUT("                      last not-yet-swept neighbor = v"+e2v[v2e[iVert][lastNotYetSweptNeighborIndex]][1]);
 
                 // Is the downstream turn too far left or too far right? Must be one or the other.
                 // I.e. does the bad quill(s) point CCW or CW?
@@ -318,11 +348,41 @@ public class MyAlgorithmMaybe
                     assert(leftTurnness != 0.);
                     isLeftTurn = leftTurnness > 0.;
                 }
+                if (verboseLevel >= 2) OUT("                      isLeftTurn = "+isLeftTurn);
+
+
+
+                int walkTheBoundaryIndex =
+                    isLeftTurn ? MOD(firstNotYetSweptNeighborIndex-1,3) // walk around boundary CW
+                               : MOD(lastNotYetSweptNeighborIndex+1,3); // walk around boundary CCW
+                {
+                    // Next most easy case:
+                    // the walk-the-boundary edge is to an already-swept vert
+                    // whose parent is unswept (possibly iVert itself)
+                    // so that we can erase that edge and put it back on the todo list.
+                    int jEdge = v2e[iVert][walkTheBoundaryIndex];
+                    int jVert = e2v[jEdge][1];
+                    int kVert = v2parentVert[jVert];
+                    if (verboseLevel >= 2) OUT("                      walk-the-boundary: e"+jEdge+"(v"+iVert+"->v"+jVert+") parent v"+kVert);
+                    assert(kVert != -1);
+                    if (v2parentVert[kVert] == -1)
+                    {
+                        if (verboseLevel >= 2) OUT("                      second-most-easy case: erasing e"+v2parentEdge[jVert]+" (v"+jVert+"->v"+kVert+") and putting v"+jVert+" back on todo list");
+                        v2parentEdge[jVert] = -1;
+                        v2parentVert[jVert] = -1;
+                        todo.add(jVert, (double)v2priority[jVert]);
+
+                        v2parentEdge[iVert] = jEdge;
+                        v2parentVert[iVert] = jVert;
+                        if (verboseLevel >= 2) if (verboseLevel >= 2) OUT("                          adding edge e"+v2parentEdge[iVert]+" (v"+iVert+"->v"+v2parentVert[iVert]+")");
+                        continue;
+                    }
+                }
 
                 // TODO: fix it!
                 int chosenEdge = v2e[iVert][firstNotYetSweptNeighborIndex];
                 int chosenVert = e2v[chosenEdge][1];
-                OUT("              XXX outputting bad edge from v"+iVert+" to v"+chosenVert);
+                OUT("              XXX outputting bad edge from v"+iVert+" to v"+chosenVert+" on iteration "+iIter);
                 v2parentEdge[iVert] = chosenEdge;
                 v2parentVert[iVert] = chosenVert;
                 continue;
@@ -410,7 +470,7 @@ public class MyAlgorithmMaybe
         int iIter;
         boolean infiniteLoopDetected = false;
         for (iIter = 0;
-             !todo.isEmpty() && (maxIters==-1 || iIter < maxIters) && !infiniteLoopDetected;
+             !todo.isEmpty() && (maxIters<0 || iIter < maxIters) && !infiniteLoopDetected;
              ++iIter)
         {
             int iVert = todo.min();
