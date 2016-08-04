@@ -117,6 +117,31 @@ public class MyAlgorithmMaybe
         }
     }; // HelperDataStructure
 
+    // helper function
+    private static void computeMomentAndAreaStrictlyUpstreamFromUpstream(int iVert,
+                                                                         int e2v[][], // in
+                                                                         int v2e[][], // in
+                                                                         double v2momentAndArea[][], // in
+                                                                         int v2parentVert[], // in
+                                                                         double v2momentAndWeightStrictlyUpstream[][], // in/out
+                                                                         int verboseLevel)
+    {
+        int nVerts = v2e.length;
+        VecMath.zerovec(v2momentAndWeightStrictlyUpstream[iVert]);
+        FORI (iEdgeThisVert, v2e[iVert].length)
+        {
+            int iNeighborVert = e2v[v2e[iVert][iEdgeThisVert]][1];
+            if (iNeighborVert < nVerts
+             && v2parentVert[iNeighborVert] == iVert)
+            {
+                if (verboseLevel >= 2) OUT("                          accumulating centroid from upstream v"+iNeighborVert+" into v"+iVert);
+                GeomUtils.accumulateMomentAndArea(v2momentAndWeightStrictlyUpstream[iVert],
+                                                  v2momentAndWeightStrictlyUpstream[iNeighborVert]);
+                GeomUtils.accumulateMomentAndArea(v2momentAndWeightStrictlyUpstream[iVert],
+                                                  v2momentAndArea[iNeighborVert]);
+            }
+        }
+    } // computeMomentAndAreaStrictlyUpstreamFromUpstream
 
 
     public static Net doIt2(
@@ -191,20 +216,9 @@ public class MyAlgorithmMaybe
             assert(v2parentEdge[iVert] == -1);
             assert(v2parentVert[iVert] == -1);
 
-            VecMath.zerovec(v2momentAndWeightStrictlyUpstream[iVert]);
-            FORI (iEdgeThisVert, v2e[iVert].length)
-            {
-                int iNeighborVert = e2v[v2e[iVert][iEdgeThisVert]][1];
-                if (iNeighborVert < nVerts
-                 && v2parentVert[iNeighborVert] == iVert)
-                {
-                    if (verboseLevel >= 2) OUT("                          accumulating centroid from upstream vert "+iNeighborVert);
-                    GeomUtils.accumulateMomentAndArea(v2momentAndWeightStrictlyUpstream[iVert],
-                                                      v2momentAndWeightStrictlyUpstream[iNeighborVert]);
-                    GeomUtils.accumulateMomentAndArea(v2momentAndWeightStrictlyUpstream[iVert],
-                                                      v2momentAndArea[iNeighborVert]);
-                }
-            }
+            computeMomentAndAreaStrictlyUpstreamFromUpstream(iVert, e2v, v2e, v2momentAndArea, v2parentVert,
+                                                             v2momentAndWeightStrictlyUpstream,
+                                                             verboseLevel);
 
             // get vertMinusCentroidDirection: unit, or zero (if weight is zero or centroid is exactly at vert)
             if (v2momentAndWeightStrictlyUpstream[iVert][2] > 0.)
@@ -472,20 +486,9 @@ public class MyAlgorithmMaybe
                 nFineIters++;
                 todo.remove(iVert);
 
-                VecMath.zerovec(v2momentAndWeightStrictlyUpstream[iVert]);
-                FORI (iEdgeThisVert, v2e[iVert].length)
-                {
-                    int iNeighborVert = e2v[v2e[iVert][iEdgeThisVert]][1];
-                    if (iNeighborVert < nVerts
-                     && v2parentVert[iNeighborVert] == iVert)
-                    {
-                        if (verboseLevel >= 2) OUT("                          accumulating from upstream vert "+iNeighborVert);
-                        GeomUtils.accumulateMomentAndArea(v2momentAndWeightStrictlyUpstream[iVert],
-                                                          v2momentAndWeightStrictlyUpstream[iNeighborVert]);
-                        GeomUtils.accumulateMomentAndArea(v2momentAndWeightStrictlyUpstream[iVert],
-                                                          v2momentAndArea[iNeighborVert]);
-                    }
-                }
+                computeMomentAndAreaStrictlyUpstreamFromUpstream(iVert, e2v, v2e, v2momentAndArea, v2parentVert,
+                                                                 v2momentAndWeightStrictlyUpstream,
+                                                                 verboseLevel);
 
                 // get vertMinusCentroidDirection: unit, or zero (if weight is zero or centroid is exactly at vert)
                 if (v2momentAndWeightStrictlyUpstream[iVert][2] > 0.)
