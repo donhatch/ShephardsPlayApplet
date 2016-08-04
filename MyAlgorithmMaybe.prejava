@@ -126,7 +126,7 @@ public class MyAlgorithmMaybe
                                                                          double v2momentAndWeightStrictlyUpstream[][], // in/out
                                                                          int verboseLevel)
     {
-        int nVerts = v2e.length;
+        int nVerts = v2momentAndWeightStrictlyUpstream.length;
         VecMath.zerovec(v2momentAndWeightStrictlyUpstream[iVert]);
         FORI (iEdgeThisVert, v2e[iVert].length)
         {
@@ -192,6 +192,13 @@ public class MyAlgorithmMaybe
         double centroid[] = new double[2]; // very scratch for loop
         double normalizedEdgeDirection[] = new double[2]; // very scratch for loop
 
+
+        int edgeListSize; // scratch for loop
+        int edgeList[] = new int[nEdges]; // scratch for loop
+        int v2parentEdgeScratch[] = new int[nVerts]; // scratch for loop
+        int v2parentVertScratch[] = new int[nVerts]; // scratch for loop
+        double v2momentAndWeightStrictlyUpstreamScratch[][] = new double[nVerts][3]; // scratch for loop
+
         int lastVertexConsidered = -1;
 
         int iIter;
@@ -224,10 +231,7 @@ public class MyAlgorithmMaybe
             if (v2momentAndWeightStrictlyUpstream[iVert][2] > 0.)
             {
                 VecMath.vxs(2, centroid, v2momentAndWeightStrictlyUpstream[iVert], 1./v2momentAndWeightStrictlyUpstream[iVert][2]);
-                //if (verboseLevel >= 2) PRINTVEC(vertsXY[iVert]);
-                //if (verboseLevel >= 2) PRINTVEC(centroid);
                 VecMath.vmv(2, vertMinusCentroidDirection, vertsXY[iVert], centroid);
-                //if (verboseLevel >= 2) PRINTVEC(vertMinusCentroidDirection);
                 if (VecMath.normsqrd(2, vertMinusCentroidDirection) != 0.) // if it didn't happen to land exactly on vertex
                     VecMath.normalize(2, vertMinusCentroidDirection,
                                          vertMinusCentroidDirection);
@@ -351,33 +355,173 @@ public class MyAlgorithmMaybe
                 int walkTheBoundaryIndex =
                     isLeftTurn ? MOD(firstNotYetSweptNeighborIndex-1,3) // walk around boundary CW
                                : MOD(lastNotYetSweptNeighborIndex+1,3); // walk around boundary CCW
-                {
-                    // Next most easy case:
-                    // the walk-the-boundary edge is to an already-swept vert
-                    // whose parent is unswept (not iVert itself)
-                    // so that we can erase that edge and put the vertex back on the todo list.
-                    int jEdge = v2e[iVert][walkTheBoundaryIndex];
-                    int jVert = e2v[jEdge][1];
-                    int kVert = v2parentVert[jVert];
-                    if (verboseLevel >= 2) OUT("                      walk-the-boundary: e"+jEdge+"(v"+iVert+"->v"+jVert+") parent v"+kVert);
-                    assert(kVert != -1);
-                    if (kVert == iVert)
-                    {
-                        if (verboseLevel >= 2) OUT("                          (damn! it's my child)");
-                    }
-                    if (kVert != iVert && v2parentVert[kVert] == -1)
-                    {
-                        if (verboseLevel >= 2) OUT("                      second-most-easy case: erasing e"+v2parentEdge[jVert]+" (v"+jVert+"->v"+kVert+") and putting v"+jVert+" back on todo list");
-                        v2parentEdge[jVert] = -1;
-                        v2parentVert[jVert] = -1;
-                        todo.add(jVert, (double)v2priority[jVert]);
 
-                        v2parentEdge[iVert] = jEdge;
-                        v2parentVert[iVert] = jVert;
-                        if (verboseLevel >= 2) if (verboseLevel >= 2) OUT("                          adding edge e"+v2parentEdge[iVert]+" (v"+iVert+"->v"+v2parentVert[iVert]+")");
-                        continue;
+                // Gather up list of edges, starting at iVert
+                // and walking around the face opposite the quill until
+                // the final edge leaves the sweep circle.
+                if (true)
+                {
+                    edgeListSize = 0;
+                    {
+                        int iEdge = v2e[iVert][walkTheBoundaryIndex];
+                        edgeList[edgeListSize++] = iEdge;
+                        while (e2v[iEdge][1] != nVerts
+                            && v2parentVert[e2v[iEdge][1]] != -1)
+                        {
+                            int toVert = e2v[iEdge][1];
+                            int backIndex = Arrays.indexOf(v2e[toVert], iEdge^1);
+                            assert(backIndex != -1);
+                            int forwardIndex = MOD(backIndex + (isLeftTurn ? -1 : 1), 3); // isLeftTurn: CCW around face so CW around vert
+                            iEdge = v2e[toVert][forwardIndex];
+                            edgeList[edgeListSize++] = iEdge;
+                        }
+                    }
+                    assert(edgeListSize >= 2); // we wouldn't be in this case if the first edge out of iVert left the sweep circle
+
+                    // All intermediate verts have parents.
+                    // Do any of them have parents that are swept but not prev-or-next along this edge list?
+                    // If so, flunk.
+                    boolean flunked = false;
+                    FORI (i, edgeListSize-1)
+                    {
+                        int jVert = e2v[edgeList[i]][1];
+                        int jVertParent = v2parentVert[jVert];
+                        assert(jVertParent != -1);
+                        if (jVertParent != nVerts
+                         && jVertParent != e2v[edgeList[i]][0]
+                         && jVertParent != e2v[edgeList[i+1]][1])
+                        {
+                            if (verboseLevel >= 1) OUT("oh no! flunked due to downstream edge (v"+jVert+"->v"+jVertParent+") into interior! edgeList = "+Arrays.toStringCompact(Arrays.subarray(edgeList, 0, edgeListSize)));
+                            flunked = true;
+                            break;
+                        }
+                    }
+
+                    if (!flunked)
+                    {
+                        // See whether we can blaze the trail around this face to the sweep boundary.
+                        // We need to make sure each edge along the way would be good.
+                        // To figure that out, we need to compute speculative centroids-upstream
+                        // at each of the vertices, as well as at iVert.
+
+                        // We do this by saving and restoring parent verts of each vert on the list.
+                        // Save...
+                        {
+                            double temp[];
+                            FORI (j, edgeListSize)
+                            {
+                                int jVert = e2v[edgeList[j]][0];
+                                v2parentEdgeScratch[jVert] = v2parentEdge[jVert];
+                                v2parentVertScratch[jVert] = v2parentVert[jVert];
+                                SWAP(v2momentAndWeightStrictlyUpstreamScratch[jVert], v2momentAndWeightStrictlyUpstream[jVert], temp);
+                            }
+                        }
+
+                        // Speculate...
+                        FORI (i, edgeListSize)
+                        {
+                            int jVert = e2v[edgeList[i]][0];
+                            v2parentEdge[jVert] = edgeList[i];
+                            v2parentVert[jVert] = e2v[edgeList[i]][1];
+                        }
+
+                        FORI (i, edgeListSize)
+                        {
+                            int jVert = e2v[edgeList[i]][0];
+                            computeMomentAndAreaStrictlyUpstreamFromUpstream(jVert, e2v, v2e, v2momentAndArea, v2parentVert,
+                                                                             v2momentAndWeightStrictlyUpstream,
+                                                                             verboseLevel);
+                            // get vertMinusCentroidDirection: unit, or zero (if weight is zero or centroid is exactly at vert)
+                            if (v2momentAndWeightStrictlyUpstream[iVert][2] > 0.)
+                            {
+                                VecMath.vxs(2, centroid, v2momentAndWeightStrictlyUpstream[iVert], 1./v2momentAndWeightStrictlyUpstream[iVert][2]);
+                                VecMath.vmv(2, vertMinusCentroidDirection, vertsXY[iVert], centroid);
+                                if (VecMath.normsqrd(2, vertMinusCentroidDirection) != 0.) // if it didn't happen to land exactly on vertex
+                                    VecMath.normalize(2, vertMinusCentroidDirection,
+                                                         vertMinusCentroidDirection);
+                            }
+                            else
+                                VecMath.zerovec(2, vertMinusCentroidDirection);
+
+                            double goodness = VecMath.dot(2, normalizedEdgeDirection, vertMinusCentroidDirection);
+                            if (goodness < 0.)
+                            {
+                                assert(i != 0); // we wouldn't be in this case if the first edge was bad
+                                if (i == edgeListSize-1)
+                                {
+                                    // In this case, we allow it!
+                                    // Erase the last edge and unsweep the last swept vertex.
+                                    if (verboseLevel >= 2) OUT("            erasing e"+v2parentEdge[jVert]+" (v"+jVert+"->v"+e2v[edgeList[i]][0]+") and putting v"+jVert+" back on todo list");
+                                    v2parentEdge[jVert] = -1;
+                                    v2parentVert[jVert] = -1;
+                                    todo.add(jVert, (double)v2priority[jVert]);
+                                }
+                                else
+                                {
+                                    if (verboseLevel >= 1) OUT("oh no! flunked due to one of the edges curving back so far that it's bad! e"+edgeList[i]+" (v"+jVert+"->v"+e2v[edgeList[i]][1]+") edgeList = "+Arrays.toStringCompact(Arrays.subarray(edgeList, 0, edgeListSize)));
+                                    flunked = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (!flunked)
+                        {
+                            // It worked!
+                            // And we already set parents and moments appropriately;
+                            // leave the moments entries swapped.
+                            if (verboseLevel >= 2)
+                            {
+                                StringBuffer sb = new StringBuffer();
+                                // "v0->e3->v1->e2[->v100->e3->v200]"
+                                boolean emittedOpenBracket = true;
+                                FORI (i, edgeListSize)
+                                {
+                                    sb.append("v");
+                                    int iEdge = edgeList[i];
+                                    int fromVert = e2v[iEdge][0];
+                                    int toVert = e2v[iEdge][1];
+                                    assert(toVert == e2v[edgeList[i+1]][0]);
+                                    sb.append(fromVert);
+                                    sb.append("->e");
+                                    sb.append(iEdge);
+                                    if (v2parentVert[fromVert] != -1
+                                     && v2parentVert[toVert] == -1)
+                                    {
+                                        assert(i == edgeListSize-2 || i == edgeListSize-1);
+                                        emittedOpenBracket = true;
+                                        sb.append("[");
+                                    }
+                                    assert(v2parentVert[fromVert]==-1
+                                        || v2parentVert[fromVert]==toVert);
+                                    sb.append("->");
+                                }
+                                sb.append(e2v[edgeList[edgeListSize-1]][1]);
+                                assert(emittedOpenBracket);
+                                sb.append("]");
+                                if (verboseLevel >= 1) OUT("                      second-most-easy case worked! "+sb.toString());
+                            }
+                            continue;
+                        }
+
+                        if (flunked)
+                        {
+                            // Restore...
+                            v2parentEdge[iVert] = v2parentEdgeScratch[iVert];
+                            v2parentVert[iVert] = v2parentVertScratch[iVert];
+                            double temp[];
+                            SWAP(v2momentAndWeightStrictlyUpstreamScratch[iVert], v2momentAndWeightStrictlyUpstream[iVert], temp);
+                            FORI (j, edgeListSize)
+                            {
+                                int jVert = e2v[edgeList[j]][0];
+                                v2parentEdge[jVert] = v2parentEdgeScratch[jVert];
+                                v2parentVert[jVert] = v2parentVertScratch[jVert];
+                                SWAP(v2momentAndWeightStrictlyUpstreamScratch[jVert], v2momentAndWeightStrictlyUpstream[jVert], temp);
+                            }
+                        }
                     }
                 }
+
 
                 // TODO: fix it!
                 int chosenEdge = v2e[iVert][firstNotYetSweptNeighborIndex];
