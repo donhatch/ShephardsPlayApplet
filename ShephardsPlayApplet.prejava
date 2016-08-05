@@ -1469,7 +1469,7 @@ public class ShephardsPlayApplet
                         add(theJustNoiseNTextField, stretchx);
                     }},
                     new JRow() {{
-                        add(new JRepeatingButton("Convex Noise 0") {{
+                        add(new JRepeatingButton("Convex Noise") {{
                             {setToolTipText("Convex noise on the plane, or, if \"Wrap around sphere\", on the sphere.");}
                             setMargin(nomargin);
                             addActionListener(new java.awt.event.ActionListener() {
@@ -1488,39 +1488,7 @@ public class ShephardsPlayApplet
 
                                     UndoItem.State before = applet.newUndoItemState();
 
-                                    applet.doConvexNoiseThing0(applet.convexNoiseN.get());
-
-                                    if (applet.continuouslyDelaunayizeFlag.get()) applet.delaunayize();
-                                    UndoItem.State after = applet.newUndoItemState();
-                                    applet.undoTreeSquirrel.Do(new UndoItem(before, after));
-
-                                    applet.theCanvas.repaint();
-                                }
-                            });
-                        }}, stretchx);
-                        add(theConvexNoiseNTextField, stretchx);
-                    }},
-                    new JRow() {{
-                        add(new JRepeatingButton("Convex Noise 1") {{
-                            {setToolTipText("Convex noise on the plane, or, if \"Wrap around sphere\", on the sphere.");}
-                            setMargin(nomargin);
-                            addActionListener(new java.awt.event.ActionListener() {
-                                @Override public void actionPerformed(java.awt.event.ActionEvent e)
-                                {
-                                    // Flush the textfield value into convexNoiseN
-                                    try
-                                    {
-                                        applet.convexNoiseN.setDouble(Double.valueOf(theConvexNoiseNTextField.getText()).doubleValue());
-                                    }
-                                    catch (java.lang.NumberFormatException nfe)
-                                    {
-                                        // maybe should print an error message or something
-                                        theConvexNoiseNTextField.updateText(applet.convexNoiseN);
-                                    }
-
-                                    UndoItem.State before = applet.newUndoItemState();
-
-                                    applet.doConvexNoiseThing1(applet.convexNoiseN.get());
+                                    applet.doConvexNoiseThing(applet.convexNoiseN.get());
 
                                     if (applet.continuouslyDelaunayizeFlag.get()) applet.delaunayize();
                                     UndoItem.State after = applet.newUndoItemState();
@@ -8971,7 +8939,7 @@ public class ShephardsPlayApplet
                                                 // since in that case we negated the whole homogeneous coords of one of them.
                                                 // TODO REGARDING NEGATIVE WEIGHTS: except I'm going to stop doing that I think?
 
-                                                //double flatThreshold = 1e-6; // was too coarse, e.g. "convex noise 1 with 225 points" tended to show isolated verts
+                                                //double flatThreshold = 1e-6; // was too coarse, e.g. "convex noise with 225 points" tended to show isolated verts
                                                 double flatThreshold = 1e-9;
 
                                                 if (VecMath.distsqrd(v0,v1) < SQR(flatThreshold))
@@ -10706,116 +10674,6 @@ public class ShephardsPlayApplet
                 nFixagesSinceLastNoise = 0;
             } // doJustNoiseThing
 
-            private void doConvexNoiseThing0(int n)
-            {
-                if (false)
-                {
-                    OUT("RESETTING RNG");
-                    randomNumberGenerator = new java.util.Random(0);
-                }
-
-                int verboseLevel = 1;
-                if (verboseLevel >= 1) OUT("    in doConvexNoiseThing0");
-                double verts[][] = new double[n][3];
-                if (wrapAroundSphereFlag.get())
-                {
-                    unimplemented(); // TODO: implement me!
-                }
-                else
-                {
-                    if (verboseLevel == 2) OUT("        ");
-                    if (verboseLevel == 2) System.out.flush();
-                    double r = .25;
-                    if (verts.length > 0) VecMath.copyvec(verts[0], new double[]{-r,-r,0});
-                    if (verts.length > 1) VecMath.copyvec(verts[1], new double[]{r,-r,0});
-                    if (verts.length > 2) VecMath.copyvec(verts[2], new double[]{r,r,0});
-                    if (verts.length > 3) VecMath.copyvec(verts[3], new double[]{-r,r,0});
-                    for (int iVert = 4; iVert < verts.length; ++iVert)
-                    {
-                        if (verboseLevel >= 3) OUT("          choosing vert "+iVert+"/"+verts.length);
-                        while (true)
-                        {
-                            verts[iVert][0] = (2*randomNumberGenerator.nextDouble()-1) * r;
-                            verts[iVert][1] = (2*randomNumberGenerator.nextDouble()-1) * r;
-                            double zMin = -1.;
-                            double zMax = r*r * .25;
-                            for (int i = 0; i < iVert && zMin < zMax; ++i)
-                            for (int j = 0; j < i && zMin < zMax; ++j)
-                            for (int k = 0; k < j && zMin < zMax; ++k)
-                            {
-                                double a[] = verts[i];
-                                double b[] = verts[j];
-                                double c[] = verts[k];
-                                double abcArea = GeomUtils.twiceTriangleArea(a,b,c);
-                                if (abcArea < 0.)
-                                {
-                                    double temp[];
-                                    SWAP(b,c,temp);
-                                    abcArea *= -1.;
-                                }
-                                double d[] = verts[iVert]; // with z not set yet
-                                double abdArea = GeomUtils.twiceTriangleArea(a,b,d);
-                                double bcdArea = GeomUtils.twiceTriangleArea(b,c,d);
-                                double cadArea = GeomUtils.twiceTriangleArea(c,a,d);
-                                double minArea = MIN3(abdArea, bcdArea, cadArea);
-                                if (EQ(abdArea, 0., 1e-9)
-                                 || EQ(bcdArea, 0., 1e-9)
-                                 || EQ(cadArea, 0., 1e-9))
-                                {
-                                    // set to impossible so we kill this x,y
-                                    zMin = 1.;
-                                    zMax = -1.;
-                                    break;
-                                }
-                                // so now all the areas are safely nonzero
-                                int nPositive = (abdArea > 0. ? 1 : 0)
-                                              + (bcdArea > 0. ? 1 : 0)
-                                              + (cadArea > 0. ? 1 : 0);
-                                #define BARY(a, b, s, c, t) ((1.-(s)-(t))*(a) + (b)*(s) + (t)*(c))
-                                // Extrapolation in plane of a triangle can be done
-                                // by barycentric averaging (same as interpolation)
-                                double zIntercept = BARY(a[2],
-                                                         b[2], cadArea/abcArea,
-                                                         c[2], abdArea/abcArea);
-                                if (nPositive == 3)
-                                    zMin = MAX(zMin, zIntercept);
-                                else if (nPositive == 1)
-                                    zMax = MIN(zMax, zIntercept);
-                            }
-                            if (zMin > zMax)
-                            {
-                                System.out.print("!");
-                                System.out.flush();
-                                //assert(false); // coverage
-                                continue; // bad; try again
-                            }
-                            if (verboseLevel >= 3) PRINT(zMin);
-                            if (verboseLevel >= 3) PRINT(zMax);
-                            double t = randomNumberGenerator.nextDouble();
-                            verts[iVert][2] = LERP(zMin, zMax, t);
-                            break;
-                        }
-                        if (verboseLevel == 2) System.out.print(".");
-                        if (verboseLevel == 2) System.out.flush();
-                    }
-                    if (verboseLevel == 2) System.out.println();
-                }
-
-                // Just did all that in 3d space,
-                // but about to pass in the verts as heights, so need to translate.
-                if (true)
-                {
-                    FORI (i, n)
-                    {
-                        verts[i][2] += .5 * (SQR(verts[i][0]) + SQR(verts[i][1]));
-                    }
-                }
-
-                this.mesh = new Mesh(verts, new int[][]{});
-                this.nFixagesSinceLastNoise = 0;
-                if (verboseLevel >= 1) OUT("    out doConvexNoiseThing0");
-            } // doConvexNoiseThing0
-
             // Polygon theoretically doesn't need to contain the origin,
             // but this will be inefficient if it doesn't (or if polygon is needle shaped).
             private static void random2insideConvexPolygon(double answer[], double verts[][], java.util.Random rng)
@@ -10845,7 +10703,7 @@ public class ShephardsPlayApplet
                 }
             } // random2insideConvexPolygon
 
-            private void doConvexNoiseThing1(int n)
+            private void doConvexNoiseThing(int n)
             {
                 if (false)
                 {
@@ -10854,7 +10712,7 @@ public class ShephardsPlayApplet
                 }
 
                 int verboseLevel = 1;
-                if (verboseLevel >= 1) OUT("    in doConvexNoiseThing1");
+                if (verboseLevel >= 1) OUT("    in doConvexNoiseThing");
                 if (wrapAroundSphereFlag.get())
                 {
                     unimplemented(); // TODO: implement me!
@@ -10921,7 +10779,8 @@ public class ShephardsPlayApplet
                                     random2insideConvexPolygon(verts3d[iVert], // put it here
                                                                initialVerts,
                                                                randomNumberGenerator);
-                                // Figure out what height to put it at
+                                // Figure out what height to put it at.
+                                // TODO: think about this more. do we really need to examine the whole convex hull? from thinking about what's happening in the dual: want truncating plane that's deep enough to meet the polyhedron, but not so deep that it obscures some other face completely.
                                 double zMin = -1.;
                                 double zMax = maxHeight;
 
@@ -11066,13 +10925,8 @@ public class ShephardsPlayApplet
                 }
                 assert(this.mesh.verts.size() == n);
                 this.nFixagesSinceLastNoise = 0;
-                if (verboseLevel >= 1) OUT("    out doConvexNoiseThing1");
-            } // doConvexNoiseThing1
-            private void doConvexNoiseThing(int n)
-            {
-                //doConvexNoiseThing0(n);
-                doConvexNoiseThing1(n);
-            }
+                if (verboseLevel >= 1) OUT("    out doConvexNoiseThing");
+            } // doConvexNoiseThing
 
             private void doUniformGridThing(int nX)
             {
