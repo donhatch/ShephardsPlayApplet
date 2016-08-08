@@ -4353,9 +4353,9 @@ public class ShephardsPlayApplet
             FORIDOWN(iVert, mesh.verts.size())
             {
                 Mesh.Vertex vert = mesh.getVert(iVert);
-                vert.setXYZnaive(vert.Xnaive(),
-                                 vert.Ynaive(),
-                                 vert.Znaive() - dx*vert.Xnaive() - dy*vert.Ynaive());
+                vert.setXYZnaive(vert.x(),
+                                 vert.y(),
+                                 vert.z() - dx*vert.x() - dy*vert.y());
                 assert_eq(vert.momentAndArea, null);
             }
             dirtyDualMesh(); // TODO: do it explicitly instead!
@@ -4371,15 +4371,53 @@ public class ShephardsPlayApplet
             panDualOnly(-dx, -dy);
         }
 
+        // This only sort of makes sense---
+        // the dual verts will be spread into roughly correct places,
+        // but with preserved angles, which means topology can change.
+        // Okay, so, rescaleDualOnly is accomplished by setXYZ(x,y,z*scale).
+        // And z = h-(x^2+y^2)/2
+        //     h = z+(x^2+y^2)/2
+        // I.e. setxyz(x,y,(h-(x^2+y^2)/2)*scale)
+        //      setxyz(x,y,h*scale - (x^2+y^2)/2*scale)
+        //      setxyh(x,y,h*scale - (x^2+y^2)/2*scale + (x^2+y^2)/2
+        //      setxyh(x,y,h*scale + (x^2+y^2)/2*(1-scale))
+        //      setxyh(x,y,lerp((x^2+y^2)/2, h, scale)
+        // Fuckin hell, this is complicated.
+        // Anyway, apparently if I only use one of x or y in the lerp, I can get scale in just that direction.
+        public void rescaleDualOnlySortOf(double scaleX, double scaleY)
+        {
+            UndoItem.State before = newUndoItemState();
+            FORIDOWN(iVert, mesh.verts.size())
+            {
+                Mesh.Vertex vert = mesh.getVert(iVert);
+                double x = vert.x();
+                double y = vert.y();
+                double h = vert.h();
+                // XXX This can't possibly be meaningful.  The two operations don't commute.
+                h = LERP(.5*SQR(x), h, scaleX);
+                h = LERP(.5*SQR(y), h, scaleY);
+                vert.setXYHnaive(x, y, h);
+                assert_eq(vert.momentAndArea, null);
+            }
+            if (scaleX != scaleY && continuouslyDelaunayizeFlag.get()) // no need to re-delaunayize if uniform scale   TODO: actually if everything's working right, shouldn't have to do this anyway!?
+            {
+                delaunayize();
+            }
+            dirtyDualMesh();
+            UndoItem.State after = newUndoItemState();
+            undoTreeSquirrel.Do(new UndoItem(before, after));
+            theCanvas.repaint();
+        }
+
         public void rescaleDualOnly(double scale)
         {
             UndoItem.State before = newUndoItemState();
             FORIDOWN(iVert, mesh.verts.size())
             {
                 Mesh.Vertex vert = mesh.getVert(iVert);
-                vert.setXYZnaive(vert.Xnaive(),
-                                 vert.Ynaive(),
-                                 vert.Znaive() * scale);
+                vert.setXYZnaive(vert.x(),
+                                 vert.y(),
+                                 vert.z() * scale);
                 assert_eq(vert.momentAndArea, null);
             }
             dirtyDualMesh();
@@ -4399,6 +4437,7 @@ public class ShephardsPlayApplet
         {
             rescale(scaleX, scaleY, true);
         }
+        // rescales dual too, in the dual way.
         public void rescale(double scaleX, double scaleY, boolean undoRedoFlag)
         {
             UndoItem.State before = undoRedoFlag ? newUndoItemState() : null;
@@ -6431,6 +6470,20 @@ public class ShephardsPlayApplet
                         System.out.println("pointOutRedNetEdges -> "+pointOutRedNetEdges);
                         theCanvas.repaint();
                         break;
+
+                    case 'x':
+                        rescaleDualOnlySortOf(2.,1.);
+                        break;
+                    case 'X':
+                        rescaleDualOnlySortOf(1./2.,1.);
+                        break;
+                    case 'y':
+                        rescaleDualOnlySortOf(1.,2.);
+                        break;
+                    case 'Y':
+                        rescaleDualOnlySortOf(1.,1./2.);
+                        break;
+
 
                     case 'i': case '+': case '=': // zoom in
                     {
