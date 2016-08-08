@@ -148,7 +148,6 @@ BUGS:
       and the horizon in between.  or else use zbuffer?
     - should ConvexHull use fuzzy equality testing in more places, to avoid twinkling on grid? (hmm, maybe twinkling on grid is actually useful in a way?)
     - picking net edges is wrong, need to do it in screen space
-    - ctrl-d to swap primal with dual never seems to produce anything good any more
     - dragging edges doesn't work yet when not ortho
     - 'd' to delete edge not working in non-ortho
     - clear and click with shift down-- creates a zero-length edge, I think it shouldn't.
@@ -3940,6 +3939,7 @@ public class ShephardsPlayApplet
             "    Left/Right arrow - rotate closest cut or fold CCW or CW around its lagoon in the net",
             "    'S' - turn off optimize, and set vertex heights above surface to 0 (actually radial height field spec)",
             "    'd' - delete closest edge",
+            "    ctrl-'d' - swap primal with dual",
             "    ctrl-'i' - toggle showInsideOutDualVertsFlag",
             "    ctrl-'o' - cycle optimizationType",
             "    ctrl-'v' - toggle nonEventVerbose",
@@ -6838,14 +6838,6 @@ public class ShephardsPlayApplet
                     {
                         UndoItem.State before = newUndoItemState();
 
-                        boolean heightsWereAllZero = true;
-                        FORI (iVert, mesh.verts.size())
-                            if (mesh.getVert(iVert).Hnaive() != 0.)
-                            {
-                                heightsWereAllZero = false;
-                                break;
-                            }
-
                         mesh = Mesh.makeDualMesh(mesh,
                                                  true, // includeNonArity3 (so we get full mesh)
                                                  true, // includeInsideOut
@@ -6853,11 +6845,18 @@ public class ShephardsPlayApplet
                                                  centerSphereFlag.get(),
                                                  wrapSphereCurvature.get());
 
-                        // this seems to make it a bit better, though I don't really understand.
-                        if (heightsWereAllZero)
+
+                        FORI (iVert, mesh.verts.size())
                         {
-                            FORI (iVert, mesh.verts.size())
-                                mesh.getVert(iVert).setHnaive(0.);
+                            Mesh.Vertex vert = mesh.getVert(iVert);
+                            // Some places assume primal W is 1 ...
+                            if (wrapAroundSphereFlag.get())
+                                vert.setXYZW(vert.x(), vert.h(), vert.z(), 1.);
+                            else
+                                vert.setXYHW(vert.x(), vert.y(), vert.h(), 1.);
+                            // Some other places assume primal doesn't have weights nor momentAndArea...
+                            vert.weight = 1.;
+                            vert.momentAndArea = null;
                         }
 
                         selectedTris = new int[][] {};
