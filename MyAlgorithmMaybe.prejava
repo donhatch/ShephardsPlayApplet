@@ -9,8 +9,9 @@ import com.donhatchsw.util.VecMath;
 public class MyAlgorithmMaybe
 {
     public final static int STRATEGY_BEST_GOODNESS = 1; // original implementation.  prone to infinite looping, in ways the code doesn't detect yet.
-    public final static int STRATEGY_BEST_COMPOSITE = 2; // second implementation.  seen it bite own tail (Just Noise 10000, prewarp, apply radial match. more tailbiting with upward than outward).  hard to make it infinite loop (radial heightfields don't do it) but I got it to, see DUMP.off.ConvexNoise1_144_makes_my_algorithm_infinite_loop
-    public static int strategy = STRATEGY_BEST_COMPOSITE; // TODO: make this a parameter to doIt, maybe? not sure
+    public final static int STRATEGY_RANDOM_GOOD = 2; // second implementation.  seen it bite own tail (Just Noise 10000, prewarp, apply radial match. more tailbiting with upward than outward).  hard to make it infinite loop (radial heightfields don't do it) but I got it to, see DUMP.off.ConvexNoise1_144_makes_my_algorithm_infinite_loop
+    public final static int STRATEGY_BEST_COMPOSITE = 3; // second implementation.  seen it bite own tail (Just Noise 10000, prewarp, apply radial match. more tailbiting with upward than outward).  hard to make it infinite loop (radial heightfields don't do it) but I got it to, see DUMP.off.ConvexNoise1_144_makes_my_algorithm_infinite_loop
+    public static int strategy = STRATEGY_RANDOM_GOOD; // TODO: make this a parameter to doIt, maybe? not sure
 
     private MyAlgorithmMaybe(){ throw new AssertionError(); } // non-instantiatable util class
 
@@ -621,6 +622,7 @@ public class MyAlgorithmMaybe
     public static Net doIt(
         Mesh originalMesh, Mesh originalDualMesh, // generally reversed from the calling app's notion
         double sweepOriginHomo[/*3*/], // if [2] is 0, the vertex is infinitely far from origin
+        java.util.Random rng,
         int maxIters,
         int putProblematicVertsHereForDebugging[/*1*/][])
     {
@@ -661,6 +663,7 @@ public class MyAlgorithmMaybe
         double goodnesses[] = new double[maxValence]; // scratch for loop
         double sweepGoodnesses[] = new double[maxValence]; // scratch for loop
         boolean isBackwashes[] = new boolean[maxValence]; // scratch for loop
+        int goods[] = new int[3]; // scratch for loop
 
         double centroid[] = new double[2]; // very scratch for loop
         double normalizedEdgeDirection[] = new double[2]; // very scratch for loop
@@ -736,66 +739,57 @@ public class MyAlgorithmMaybe
                 int bestNeighborVert;
                 {
                     int bestNeighborIndex = -1;
-                    FORI (iEdgeThisVert, v2e[iVert].length)
+                    if (strategy == STRATEGY_RANDOM_GOOD)
                     {
-                        if (bestNeighborIndex == -1)
+                        int nGoods = 0;
+                        if (goodnesses[0] == 0.
+                         && goodnesses[1] == 0.
+                         && goodnesses[2] == 0.)
                         {
-                            //assert(false); // coverage
-                            bestNeighborIndex = iEdgeThisVert;
+                            bestNeighborIndex = VecMath.maxi(sweepGoodnesses);
                         }
                         else
                         {
-                            if (strategy == STRATEGY_BEST_GOODNESS) // original implementation
+                            FORI (iEdgeThisVert, v2e[iVert].length)
                             {
-                                if (goodnesses[iEdgeThisVert] > goodnesses[bestNeighborIndex])
+                                if (goodnesses[iEdgeThisVert] >= 0.)
                                 {
-                                    //assert(false); // coverage
-                                    bestNeighborIndex = iEdgeThisVert;
+                                    goods[nGoods++] = iEdgeThisVert;
                                 }
-                                else if (goodnesses[iEdgeThisVert] < goodnesses[bestNeighborIndex])
-                                {
-                                    //assert(false); // coverage
-                                    ; // nothing
-                                }
-                                else if (sweepGoodnesses[iEdgeThisVert] > sweepGoodnesses[bestNeighborIndex])
-                                {
-                                    //assert(false); // coverage
-                                    bestNeighborIndex = iEdgeThisVert;
-                                }
-                                else if (sweepGoodnesses[iEdgeThisVert] < sweepGoodnesses[bestNeighborIndex])
-                                {
-                                    //assert(false); // coverage
-                                    ; // nothing
-                                }
-                                else
-                                {
-                                    //assert(false); // coverage
-                                    ; // nothing
-                                }
-                            } 
-                            else if (strategy == STRATEGY_BEST_COMPOSITE)
+                            }
+                            assert_le_le(1, nGoods, 3);
+                            bestNeighborIndex = goods[rng.nextInt(nGoods)];
+                        }
+                    }
+                    else
+                    {
+                        FORI (iEdgeThisVert, v2e[iVert].length)
+                        {
+                            if (bestNeighborIndex == -1)
                             {
-                                // invariant: have to pick one with goodness >= 0.  so if one is >=0 and other is negative, must pick it.
-                                if (goodnesses[iEdgeThisVert] >= 0. && goodnesses[bestNeighborIndex] < 0.)
+                                //assert(false); // coverage
+                                bestNeighborIndex = iEdgeThisVert;
+                            }
+                            else
+                            {
+                                if (strategy == STRATEGY_BEST_GOODNESS) // original implementation
                                 {
-                                    //assert(false); // coverage
-                                    bestNeighborIndex = iEdgeThisVert;
-                                }
-                                else if (goodnesses[bestNeighborIndex] >= 0. && goodnesses[iEdgeThisVert] < 0.)
-                                {
-                                    //assert(false); // coverage
-                                    ; // nothing
-                                }
-                                else
-                                {
-                                    //assert(false); // coverage
-                                    // Favor non-backwash.
-                                    if (!isBackwashes[iEdgeThisVert] && isBackwashes[bestNeighborIndex])
+                                    if (goodnesses[iEdgeThisVert] > goodnesses[bestNeighborIndex])
                                     {
                                         //assert(false); // coverage
                                         bestNeighborIndex = iEdgeThisVert;
                                     }
-                                    else if (isBackwashes[iEdgeThisVert] && !isBackwashes[bestNeighborIndex])
+                                    else if (goodnesses[iEdgeThisVert] < goodnesses[bestNeighborIndex])
+                                    {
+                                        //assert(false); // coverage
+                                        ; // nothing
+                                    }
+                                    else if (sweepGoodnesses[iEdgeThisVert] > sweepGoodnesses[bestNeighborIndex])
+                                    {
+                                        //assert(false); // coverage
+                                        bestNeighborIndex = iEdgeThisVert;
+                                    }
+                                    else if (sweepGoodnesses[iEdgeThisVert] < sweepGoodnesses[bestNeighborIndex])
                                     {
                                         //assert(false); // coverage
                                         ; // nothing
@@ -803,14 +797,32 @@ public class MyAlgorithmMaybe
                                     else
                                     {
                                         //assert(false); // coverage
-                                        // Favor best sweep direction.
-                                        // Doesn't need to be strictly positive.
-                                        if (sweepGoodnesses[iEdgeThisVert] > sweepGoodnesses[bestNeighborIndex])
+                                        ; // nothing
+                                    }
+                                } 
+                                else if (strategy == STRATEGY_BEST_COMPOSITE)
+                                {
+                                    // invariant: have to pick one with goodness >= 0.  so if one is >=0 and other is negative, must pick it.
+                                    if (goodnesses[iEdgeThisVert] >= 0. && goodnesses[bestNeighborIndex] < 0.)
+                                    {
+                                        //assert(false); // coverage
+                                        bestNeighborIndex = iEdgeThisVert;
+                                    }
+                                    else if (goodnesses[bestNeighborIndex] >= 0. && goodnesses[iEdgeThisVert] < 0.)
+                                    {
+                                        //assert(false); // coverage
+                                        ; // nothing
+                                    }
+                                    else
+                                    {
+                                        //assert(false); // coverage
+                                        // Favor non-backwash.
+                                        if (!isBackwashes[iEdgeThisVert] && isBackwashes[bestNeighborIndex])
                                         {
                                             //assert(false); // coverage
                                             bestNeighborIndex = iEdgeThisVert;
                                         }
-                                        else if (sweepGoodnesses[iEdgeThisVert] < sweepGoodnesses[bestNeighborIndex])
+                                        else if (isBackwashes[iEdgeThisVert] && !isBackwashes[bestNeighborIndex])
                                         {
                                             //assert(false); // coverage
                                             ; // nothing
@@ -818,34 +830,52 @@ public class MyAlgorithmMaybe
                                         else
                                         {
                                             //assert(false); // coverage
-                                            // No other differentiators...
-                                            // Favor best goodness.
-                                            if (goodnesses[iEdgeThisVert] > goodnesses[bestNeighborIndex])
+                                            // Favor best sweep direction.
+                                            // Doesn't need to be strictly positive.
+                                            if (sweepGoodnesses[iEdgeThisVert] > sweepGoodnesses[bestNeighborIndex])
                                             {
                                                 //assert(false); // coverage
                                                 bestNeighborIndex = iEdgeThisVert;
                                             }
-                                            else if (goodnesses[iEdgeThisVert] < goodnesses[bestNeighborIndex])
+                                            else if (sweepGoodnesses[iEdgeThisVert] < sweepGoodnesses[bestNeighborIndex])
                                             {
                                                 //assert(false); // coverage
                                                 ; // nothing
                                             }
                                             else
                                             {
-                                                // No differentiators at all!  Wow!
                                                 //assert(false); // coverage
-                                                ; // nothing
+                                                // No other differentiators...
+                                                // Favor best goodness.
+                                                if (goodnesses[iEdgeThisVert] > goodnesses[bestNeighborIndex])
+                                                {
+                                                    //assert(false); // coverage
+                                                    bestNeighborIndex = iEdgeThisVert;
+                                                }
+                                                else if (goodnesses[iEdgeThisVert] < goodnesses[bestNeighborIndex])
+                                                {
+                                                    //assert(false); // coverage
+                                                    ; // nothing
+                                                }
+                                                else
+                                                {
+                                                    // No differentiators at all!  Wow!
+                                                    //assert(false); // coverage
+                                                    ; // nothing
+                                                }
                                             }
                                         }
                                     }
                                 }
-                            }
-                            else
-                            {
-                                assert(false);
+                                else
+                                {
+                                    assert(false);
+                                }
                             }
                         }
                     }
+
+
                     assert(bestNeighborIndex != -1);
                     bestNeighborEdge = v2e[iVert][bestNeighborIndex];
                     bestNeighborVert = e2v[bestNeighborEdge][1];
@@ -879,6 +909,7 @@ public class MyAlgorithmMaybe
                             int thisInvalidationPathCycle[] = invalidationPathForDebugging.toArray();
                             if (verboseLevel >= 1) OUT("                              iFineIter="+nFineIters+" ooh interesting! started at v"+iVert+" but invalidated it! "+VecMath.toString(vertsXY[iVert])+" invalidation path = "+Arrays.toStringCompact(VecMath.composeluts(v2priority, thisInvalidationPathCycle))+": "+Arrays.toStringCompact(thisInvalidationPathCycle));
 
+                            if (strategy != STRATEGY_RANDOM_GOOD)
                             {
                                 // Take fingerprint of the whole thing.
 
