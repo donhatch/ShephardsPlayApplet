@@ -4383,7 +4383,13 @@ public class ShephardsPlayApplet
         //      setxyh(x,y,h*scale + (x^2+y^2)/2*(1-scale))
         //      setxyh(x,y,lerp((x^2+y^2)/2, h, scale)
         // Fuckin hell, this is complicated.
-        // Anyway, apparently if I only use one of x or y in the lerp, I can get scale in just that direction.
+        // Anyway, apparently if I only use one of x or y in the lerp, I can get scale in just that direction. Sort of.
+        // I.e. moving from h towards (x^2+y^2)/2 (i.e. planar) scales dual towards 0,
+        // and moving towards x^2/2 scales just x part towards 0 while leaving y part the way it is (?)
+
+        // Four coeffs of interest, maybe:
+        //      1-scaleX  scaleX
+        //      1-scaleY  scaleY
         public void rescaleDualOnlySortOf(double scaleX, double scaleY)
         {
             UndoItem.State before = newUndoItemState();
@@ -4393,16 +4399,31 @@ public class ShephardsPlayApplet
                 double x = vert.x();
                 double y = vert.y();
                 double h = vert.h();
-                // XXX This can't possibly be meaningful.  The two operations don't commute.
-                h = LERP(.5*SQR(x), h, scaleX);
-                h = LERP(.5*SQR(y), h, scaleY);
-                vert.setXYHnaive(x, y, h);
+                double z = vert.z();
+
+                if (false)
+                {
+                    // XXX This can't possibly be meaningful.  The two operations don't commute.
+                    // However, the following commute, almost:
+                    //      (1/16,1)*(1,1/2) = (1,1/16)*(1,1/2) = (1/4.something, 1/4.something)
+                    // but that's only almost... the result is stretched a bit more in x than in y.
+                    // 
+                    h = LERP(.5*SQR(x), h, scaleX);
+                    h = LERP(.5*SQR(y), h, scaleY);
+                }
+                else
+                {
+                    // Idea: to half in x, just uniformly flatten in x, i.e. add a paraboloid.
+                    // Do it in log space so things will return to original
+                    // when doubled then halved.  Kind of weird, and I don't think it's really right, but...
+                    h -= .5*SQR(x)*(Math.log(scaleX)/Math.log(2));
+                    h -= .5*SQR(y)*(Math.log(scaleY)/Math.log(2));
+                }
+
+                vert.setXYHW(x, y, h, 1.);
                 assert_eq(vert.momentAndArea, null);
             }
-            if (scaleX != scaleY && continuouslyDelaunayizeFlag.get()) // no need to re-delaunayize if uniform scale   TODO: actually if everything's working right, shouldn't have to do this anyway!?
-            {
-                delaunayize();
-            }
+            if (continuouslyDelaunayizeFlag.get()) delaunayize();
             dirtyDualMesh();
             UndoItem.State after = newUndoItemState();
             undoTreeSquirrel.Do(new UndoItem(before, after));
