@@ -1501,7 +1501,8 @@ public class ShephardsPlayApplet
                                             applet.singleExitLagoonQuillSlopeDenominatorDenominator.get(),
 
                                             applet.singleExitLagoonPointApexUpFlag.get(),
-                                            applet.singleExitLagoonSynthesizeExactDualFlag.get());
+                                            applet.singleExitLagoonSynthesizeExactDualFlag.get(),
+                                            applet.singleExitLagoonFudgeWeightsSoApexIsFarthestFromCurvatureCenterFlag.get());
 
                                         UndoItem.State after = applet.newUndoItemState();
                                         applet.undoTreeSquirrel.Do(new UndoItem(before, after));
@@ -1537,8 +1538,13 @@ public class ShephardsPlayApplet
                                 add(new JTextFieldForNumber(applet.singleExitLagoonQuillSlopeNumerator));
                                 add(new JLabel("/"));
                                 add(new JTextFieldForNumber(applet.singleExitLagoonQuillSlopeDenominator));
-                                add(new JCheckBoxForBoolean("synth exact dual", applet.singleExitLagoonSynthesizeExactDualFlag) {{
-                                    setToolTipText("<html>when checked, the dual (blur) is computed directly<br>(but with parts missing, so certain operations like scaling will be broken).<br>this is necessary when quill slope is 0 or close to it,<br>since in that case the primal is not well defined<br>and the dual can't be computed accurately from it.<br>NOTE: undo/redo will foil this.</html>");
+                                add(new JCol() {{
+                                    add(new JCheckBoxForBoolean("synth exact dual", applet.singleExitLagoonSynthesizeExactDualFlag) {{
+                                        setToolTipText("<html>when checked, the dual (blue) is computed directly<br>(but with parts missing, so certain operations like scaling will be broken).<br>this is necessary when quill slope is 0 or close to it,<br>since in that case the primal is not well defined<br>and the dual can't be computed accurately from it.<br>NOTE: undo/redo will foil this.</html>");
+                                    }});
+                                    add(new JCheckBoxForBoolean("fudge bottom heavy", applet.singleExitLagoonFudgeWeightsSoApexIsFarthestFromCurvatureCenterFlag) {{
+                                        setToolTipText("<html>When checked, the dual (blue) vertex weights are fudged to be bottom heavy.</html>");
+                                    }});
                                 }});
                                 advanceRow();
                                 add(new JLabel("<html>after<br>after:</html>") {{
@@ -5025,7 +5031,8 @@ public class ShephardsPlayApplet
                     singleExitLagoonQuillSlopeDenominatorDenominator.get(),
                     singleExitLagoonPointApexUpFlag.get(),
 
-                    singleExitLagoonSynthesizeExactDualFlag.get());
+                    singleExitLagoonSynthesizeExactDualFlag.get(),
+                    singleExitLagoonFudgeWeightsSoApexIsFarthestFromCurvatureCenterFlag.get());
 
             if (eventVerbose >= 1) System.out.println("out init");
         } // init
@@ -12744,7 +12751,8 @@ OFF
                                                               double quillSlopeDenominatorDenominator,
                                                               boolean pointApexUpFlag,
 
-                                                              boolean synthesizeExactDualFlag)
+                                                              boolean synthesizeExactDualFlag,
+                                                              boolean fudgeWeightsSoApexIsFarthestFromCurvatureCenterFlag)
             {
                 int n = nBeforeBeforeApex + nBeforeApex + 1 + nAfterApex + nAfterAfterApex;
                 // convert quill slope to angle in range [0,pi/2]
@@ -12955,6 +12963,30 @@ OFF
                     }
 
                     _primalMeshOfDualMesh = mesh; // counter-counter-espionage, prevents dual from thinking it's dirty
+                }
+                if (fudgeWeightsSoApexIsFarthestFromCurvatureCenterFlag)
+                {
+                    Mesh dualMesh = getDualMesh();
+                    int nDualVerts = dualMesh.verts.size();
+
+                    // Could do this in linear time, but don't bother
+                    int inds[] = VecMath.identityperm(nDualVerts);
+                    SortStuff.sort(inds, new SortStuff.IntComparator() {
+                        @Override public int compare(int a, int b)
+                        {
+                            double ay = dualMesh.getVert(a).y();
+                            double by = dualMesh.getVert(b).y();
+                            return ay < by ? -1 :
+                                   ay > by ? 1 : 0;
+                        }
+                    });
+                    for (int i = 0; i < 2; ++i)
+                    {
+                        Mesh.Vertex dualVert = dualMesh.getVert(inds[i]);
+                        double targetWeight = 1e2; // TODO: get more principled. this works for the default single-exit lagoon, currently.
+                        VecMath.vxs(dualVert.momentAndArea, dualVert.momentAndArea, targetWeight/ABS(dualVert.momentAndArea[3]));
+                        dualVert.weight = .5 * dualVert.momentAndArea[3];
+                    }
                 }
 
                 if (true)
@@ -15399,6 +15431,7 @@ OFF
         private Listenable.Double singleExitLagoonQuillSlopeDenominatorDenominator = new Listenable.Double(1.,1000.,1.);
         private Listenable.Boolean singleExitLagoonPointApexUpFlag = new Listenable.Boolean(false);
         private Listenable.Boolean singleExitLagoonSynthesizeExactDualFlag = new Listenable.Boolean(false);
+        private Listenable.Boolean singleExitLagoonFudgeWeightsSoApexIsFarthestFromCurvatureCenterFlag = new Listenable.Boolean(false);
         private Listenable.Int sweepKiller1Multiplicity = new Listenable.Int(1, 100, 19);
         private Listenable.Int outStressorNLevels = new Listenable.Int(1, 50, 20);
         private Listenable.Int outStressorSpiralN = new Listenable.Int(1, 256, 64);
