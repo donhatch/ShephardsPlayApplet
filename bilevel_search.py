@@ -111,12 +111,13 @@ def main(argv):
   verboseLevel = 1
   if verboseLevel >= 1: print "in main"
 
-  if len(argv) != 2:
-    exit("Usage: bilevel_search.py <maxVerts>")
+  if len(argv) not in [2,3]:
+    exit("Usage: bilevel_search.py [<minVerts>] <maxVerts>")
 
-  maxVerts = int(argv[1])
+  minVerts = 0 if len(argv)==2 else int(argv[1])
+  maxVerts = int(argv[len(argv)-1])
 
-  for nVerts in xrange(0, maxVerts+1):
+  for nVerts in xrange(minVerts, maxVerts+1):
     nSyndromes = 3**(nVerts*(nVerts-1)/2) * 2**nVerts
     if verboseLevel >= 1: print "      nVerts="+`nVerts`+" : "+`nSyndromes`+" syndromes"
     syndrome = [[None for i in xrange(nVerts)] for j in xrange(nVerts)] # scratch for loop. syndrome[<i][i] not used.
