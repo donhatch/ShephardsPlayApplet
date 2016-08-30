@@ -176,10 +176,10 @@ static void doItInefficient(int minVerts, int maxVerts)
     std::vector<std::vector<int>> syndrome(nVerts);
     for (int i = 0; i < nVerts; ++i) syndrome[i].resize(nVerts, -1);
 
-    int nPlausible = 0;
-    int nImplausible = 0;
-    int nPlausibleButImpossible = 0;
-    int nPossible = 0;
+    int64_t nPlausible = 0;
+    int64_t nImplausible = 0;
+    int64_t nPlausibleButImpossible = 0;
+    int64_t nPossible = 0;
     for (int64_t iSyndrome = 0; iSyndrome < nSyndromes; ++iSyndrome)
     {
         index_to_syndrome(nVerts, iSyndrome, syndrome);
@@ -223,10 +223,10 @@ static void doItInefficient(int minVerts, int maxVerts)
 
 
 static void explore(std::vector<std::vector<int>> &syndrome,
-                    int *nImplausible,
-                    int *nPlausible,
-                    int *nPlausibleButImpossible,
-                    int *nPossible,
+                    int64_t *nImplausible,
+                    int64_t *nPlausible,
+                    int64_t *nPlausibleButImpossible,
+                    int64_t *nPossible,
                     int i1minusi0, int i0)
 {
   int verboseLevel = 0;
@@ -307,10 +307,10 @@ static void doItEfficient(int minVerts, int maxVerts)
     std::vector<std::vector<int>> syndrome(nVerts);
     for (int i = 0; i < nVerts; ++i) syndrome[i].resize(nVerts, -1);
 
-    int nImplausible = 0;
-    int nPlausible = 0;
-    int nPlausibleButImpossible = 0;
-    int nPossible = 0;
+    int64_t nImplausible = 0;
+    int64_t nPlausible = 0;
+    int64_t nPlausibleButImpossible = 0;
+    int64_t nPossible = 0;
     explore(syndrome, &nImplausible, &nPlausible, &nPlausibleButImpossible, &nPossible, 0, 0);
     if (verboseLevel >= 1) std::cout << "          "<<nPlausibleButImpossible<<" plausible but impossible, "<<nPossible<<" possible" << std::endl;
     assert(nPlausible == nPlausibleButImpossible + nPossible);
