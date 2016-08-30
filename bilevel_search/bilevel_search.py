@@ -3,23 +3,14 @@
 import sys
 
 def index_to_syndrome(nVerts, iSyndrome, syndrome):
-  if False:
-    scratch = iSyndrome
-    for i1 in xrange(nVerts):
-      for i0 in xrange(i1+1):
-        nChoices = (2 if i0==i1 else 3)
-        syndrome[i0][i1] = scratch % nChoices
-        scratch /= nChoices
-    assert scratch == 0
-  else:
-    scratch = iSyndrome
-    for i1minusi0 in xrange(0, nVerts):
-      for i0 in xrange(0, nVerts-(i1minusi0)):
-        i1 = i0 + i1minusi0
-        nChoices = (2 if i0==i1 else 3)
-        syndrome[i0][i1] = scratch % nChoices
-        scratch /= nChoices
-    assert scratch == 0
+  scratch = iSyndrome
+  for i1minusi0 in xrange(0, nVerts):
+    for i0 in xrange(0, nVerts-(i1minusi0)):
+      i1 = i0 + i1minusi0
+      nChoices = (2 if i0==i1 else 3)
+      syndrome[i0][i1] = scratch % nChoices
+      scratch /= nChoices
+  assert scratch == 0
 
 def syndrome2string(syndrome):
   nVerts = len(syndrome)
@@ -150,8 +141,8 @@ def main(argv):
           nPossible += 1
         else:
           nPlausibleButImpossible += 1
-    assert nPlausible == nPlausibleButImpossible + nPossible
     if verboseLevel >= 1: print "          "+`nImplausible`+" implausible, "+`nPlausibleButImpossible`+" plausible but impossible, "+`nPossible`+" possible"
-  print "out main"
+    assert nPlausible == nPlausibleButImpossible + nPossible
+  if verboseLevel >= 1: print "out main"
 
 main(sys.argv)
