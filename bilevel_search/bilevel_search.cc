@@ -5,7 +5,6 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
-#include "PRINT.h"
 
 static int64_t intPow(int64_t a, int b)
 {
@@ -223,10 +222,12 @@ static void doItInefficient(int minVerts, int maxVerts)
 
 
 static void explore(std::vector<std::vector<int>> &syndrome,
-                    int64_t *nImplausible,
                     int64_t *nPlausible,
                     int64_t *nPlausibleButImpossible,
                     int64_t *nPossible,
+                    int *minSolutions,
+                    int *maxSolutions,
+                    int64_t *sumSolutions,
                     int i1minusi0, int i0)
 {
   int verboseLevel = 0;
@@ -238,13 +239,20 @@ static void explore(std::vector<std::vector<int>> &syndrome,
     if (verboseLevel >= 2) std::cout << "          nVerts="<<nVerts<<" syndrome "<<syndrome2string(syndrome)<<" -> plausible";
     bool hasGoodGap = false;
     char possibleSyndrome[nVerts+2];
+    int numOnes = 0;
     for (int gap = 0; gap < nVerts+1; ++gap)
     {
       bool isGoodGap = calcIsGood(syndrome, gap);
       possibleSyndrome[gap] = isGoodGap ? '1' : '0';
       if (isGoodGap)
+      {
         hasGoodGap = true;
+        numOnes++;
+      }
     }
+    *minSolutions = std::min(*minSolutions, numOnes);
+    *maxSolutions = std::max(*minSolutions, numOnes);
+    *sumSolutions += numOnes;
     possibleSyndrome[nVerts+1] = '\0';
     if (verboseLevel >= 2 || !hasGoodGap) std::cout << "-> "<<possibleSyndrome<<(!hasGoodGap ? "!!!!!" : "") << std::endl;
     if (hasGoodGap)
@@ -284,11 +292,11 @@ static void explore(std::vector<std::vector<int>> &syndrome,
         // seems ok. recurse.
         if (i0+1 < nVerts-i1minusi0)
         {
-          explore(syndrome, nImplausible, nPlausible, nPlausibleButImpossible, nPossible, i1minusi0, i0+1);
+          explore(syndrome, nPlausible, nPlausibleButImpossible, nPossible, minSolutions, maxSolutions, sumSolutions, i1minusi0, i0+1);
         }
         else
         {
-          explore(syndrome, nImplausible, nPlausible, nPlausibleButImpossible, nPossible, i1minusi0+1, 0);
+          explore(syndrome, nPlausible, nPlausibleButImpossible, nPossible, minSolutions, maxSolutions, sumSolutions, i1minusi0+1, 0);
         }
       }
     }
@@ -307,12 +315,15 @@ static void doItEfficient(int minVerts, int maxVerts)
     std::vector<std::vector<int>> syndrome(nVerts);
     for (int i = 0; i < nVerts; ++i) syndrome[i].resize(nVerts, -1);
 
-    int64_t nImplausible = 0;
     int64_t nPlausible = 0;
     int64_t nPlausibleButImpossible = 0;
     int64_t nPossible = 0;
-    explore(syndrome, &nImplausible, &nPlausible, &nPlausibleButImpossible, &nPossible, 0, 0);
-    if (verboseLevel >= 1) std::cout << "          "<<nPlausibleButImpossible<<" plausible but impossible, "<<nPossible<<" possible" << std::endl;
+    int minSolutions = infinity;
+    int maxSolutions = -infinity;
+    int64_t sumSolutions = 0;
+    explore(syndrome, &nPlausible, &nPlausibleButImpossible, &nPossible, &minSolutions, &maxSolutions, &sumSolutions, 0, 0);
+    double avgSolutions = (double)sumSolutions/(double)(nPossible+nPlausibleButImpossible);
+    if (verboseLevel >= 1) std::cout << "          "<<nPlausibleButImpossible<<" plausible but impossible, "<<nPossible<<" possible.  min="<<minSolutions<<" max="<<maxSolutions<<" avg="<<avgSolutions << std::endl;
     assert(nPlausible == nPlausibleButImpossible + nPossible);
   }
 } // doItEfficient
