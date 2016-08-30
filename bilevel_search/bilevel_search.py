@@ -1,5 +1,8 @@
 #!/usr/bin/python
 
+# This is the prototype.  Does a lot of work on implausible situations.
+# Faster version is over in bilevel_search.cc.
+
 import sys
 
 def index_to_syndrome(nVerts, iSyndrome, syndrome):

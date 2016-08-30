@@ -5,6 +5,7 @@
 #include <iostream>
 #include <sstream>
 #include <vector>
+#include "PRINT.h"
 
 static int64_t intPow(int64_t a, int b)
 {
@@ -83,7 +84,30 @@ static void syndrome2interval(const std::vector<std::vector<int>> &syndrome, int
   }
 } // syndrome2interval
                               
-
+static bool calcIsPlausibilityViolation(const std::vector<std::vector<int>> &syndrome, int i0, int i1, int i2, int i3)
+{
+  int interval01[2], interval23[2], interval03[2];
+  syndrome2interval(syndrome,i0,i1, interval01);
+  syndrome2interval(syndrome,i2,i3, interval23);
+  syndrome2interval(syndrome,i0,i3, interval03);
+  int intervalUnion[2] = {
+    std::min(interval01[0],interval23[0]),
+    std::max(interval01[1],interval23[1]),
+  };
+  int intervalIntersection[2] = {
+    std::max(interval03[0], intervalUnion[0]),
+    std::min(interval03[1], intervalUnion[1]),
+  };
+  // intervalIntersection must have nonempty interior
+  if (!(intervalIntersection[0] < intervalIntersection[1]))
+  {
+    return true;
+  }
+  else
+  {
+    return false;
+  }
+}
 static bool calcIsPlausible(const std::vector<std::vector<int>> &syndrome)
 {
   int verboseLevel = 0;
@@ -97,20 +121,7 @@ static bool calcIsPlausible(const std::vector<std::vector<int>> &syndrome)
     {
       // is [i0,i1],[i2,i3] a violation?
       if (verboseLevel >= 1) std::cout << "              checking ["<<i0<<","<<i1<<"]["<<i2<<","<<i3<<"]" << std::endl;
-      int interval01[2], interval23[2], interval03[2];
-      syndrome2interval(syndrome,i0,i1, interval01);
-      syndrome2interval(syndrome,i2,i3, interval23);
-      syndrome2interval(syndrome,i0,i3, interval03);
-      int intervalUnion[2] = {
-        std::min(interval01[0],interval23[0]),
-        std::max(interval01[1],interval23[1]),
-      };
-      int intervalIntersection[2] = {
-        std::max(interval03[0], intervalUnion[0]),
-        std::min(interval03[1], intervalUnion[1]),
-      };
-      // intervalIntersection must have nonempty interior
-      if (!(intervalIntersection[0] < intervalIntersection[1]))
+      if (calcIsPlausibilityViolation(syndrome, i0,i1, i2,i3))
       {
         if (verboseLevel >= 1) std::cout << "                      bad" << std::endl;
         answer = false;
@@ -125,6 +136,7 @@ static bool calcIsPlausible(const std::vector<std::vector<int>> &syndrome)
   }
   return answer;
 } // calcIsPlausible
+
 
 static bool calcIsGood(const std::vector<std::vector<int>> &syndrome, int gap)
 {
@@ -173,7 +185,7 @@ static void doItInefficient(int minVerts, int maxVerts)
         index_to_syndrome(nVerts, iSyndrome, syndrome);
         bool isPlausible = calcIsPlausible(syndrome);
 
-        if (false) isPlausible = true; // to exercise alarm
+        if (false) isPlausible = true; // set to true to exercise alarm
 
         if (!isPlausible)
         {
@@ -207,12 +219,81 @@ static void doItInefficient(int minVerts, int maxVerts)
   }
 } // doItInefficient
 
-static void explore(const std::vector<std::vector<int>> &syndrome,
+
+
+
+static void explore(std::vector<std::vector<int>> &syndrome,
                     int *nImplausible,
                     int *nPlausible,
                     int *nPlausibleButImpossible,
-                    int *nPossible)
+                    int *nPossible,
+                    int i1minusi0, int i0)
 {
+  int verboseLevel = 0;
+  if (verboseLevel >= 1) std::cout << "in explore(i1minusi0="<<i1minusi0<<", i0="<<i0<<")";
+  int nVerts = (int)syndrome.size();
+  if (i1minusi0 == nVerts)
+  {
+    ++*nPlausible;
+    if (verboseLevel >= 2) std::cout << "          nVerts="<<nVerts<<" syndrome "<<syndrome2string(syndrome)<<" -> plausible";
+    bool hasGoodGap = false;
+    char possibleSyndrome[nVerts+2];
+    for (int gap = 0; gap < nVerts+1; ++gap)
+    {
+      bool isGoodGap = calcIsGood(syndrome, gap);
+      possibleSyndrome[gap] = isGoodGap ? '1' : '0';
+      if (isGoodGap)
+        hasGoodGap = true;
+    }
+    possibleSyndrome[nVerts+1] = '\0';
+    if (verboseLevel >= 2 || !hasGoodGap) std::cout << "-> "<<possibleSyndrome<<(!hasGoodGap ? "!!!!!" : "") << std::endl;
+    if (hasGoodGap)
+      ++*nPossible;
+    else
+      ++*nPlausibleButImpossible;
+  }
+  else
+  {
+    // set the entry and recurse if it seems ok
+    int i1 = i0 + i1minusi0;
+    int nChoices = i0==i1 ? 2 : 3;
+    for (int iChoice = 0; iChoice < nChoices; ++iChoice)
+    {
+      assert(i0 >= 0 && i0 < (int)syndrome.size());
+      assert(i1 >= 0 && i1 < (int)syndrome[i0].size());
+      syndrome[i0][i1] = iChoice;
+
+      // Is the entry plausible? If not, just return.
+      bool isPlausible = true;
+      for (int i01 = i0; i01 <= i1-1; ++i01)
+      {
+        int i10 = i01+1;
+        // is [i0,i01],[i10,i1] a violation?
+        if (verboseLevel >= 1) std::cout << "              checking ["<<i0<<","<<i01<<"]["<<i10<<","<<i1<<"]" << std::endl;
+        if (calcIsPlausibilityViolation(syndrome, i0,i01, i10, i1))
+        {
+          isPlausible = false;
+          break;
+        }
+      }
+
+      if (false) isPlausible = true; // set to true to exercise alarm
+
+      if (isPlausible)
+      {
+        // seems ok. recurse.
+        if (i0+1 < nVerts-i1minusi0)
+        {
+          explore(syndrome, nImplausible, nPlausible, nPlausibleButImpossible, nPossible, i1minusi0, i0+1);
+        }
+        else
+        {
+          explore(syndrome, nImplausible, nPlausible, nPlausibleButImpossible, nPossible, i1minusi0+1, 0);
+        }
+      }
+    }
+  }
+  if (verboseLevel >= 1) std::cout << "out explore(i1minusi0="<<i1minusi0<<", i0="<<i0<<")";
 } // explore
 
 static void doItEfficient(int minVerts, int maxVerts)
@@ -220,6 +301,8 @@ static void doItEfficient(int minVerts, int maxVerts)
   int verboseLevel = 1;
   for (int nVerts = minVerts; nVerts <= maxVerts; ++nVerts)
   {
+    if (verboseLevel >= 1) std::cout << "      nVerts="<<nVerts<<" :" << std::endl;
+
     // scratch for loop. syndrome[<i][i] not used.
     std::vector<std::vector<int>> syndrome(nVerts);
     for (int i = 0; i < nVerts; ++i) syndrome[i].resize(nVerts, -1);
@@ -228,8 +311,8 @@ static void doItEfficient(int minVerts, int maxVerts)
     int nPlausible = 0;
     int nPlausibleButImpossible = 0;
     int nPossible = 0;
-    explore(
-    if (verboseLevel >= 1) std::cout << "          "<<nImplausible<<"/"<<nSyndromes<<" implausible ("<<(100.*nImplausible/nSyndromes)<<"%), "<<nPlausibleButImpossible<<" plausible but impossible, "<<nPossible<<" possible" << std::endl;
+    explore(syndrome, &nImplausible, &nPlausible, &nPlausibleButImpossible, &nPossible, 0, 0);
+    if (verboseLevel >= 1) std::cout << "          "<<nPlausibleButImpossible<<" plausible but impossible, "<<nPossible<<" possible" << std::endl;
     assert(nPlausible == nPlausibleButImpossible + nPossible);
   }
 } // doItEfficient
@@ -248,7 +331,11 @@ int main(int argc, char **argv)
   int minVerts = argc==2 ? 0 : atoi(argv[1]);
   int maxVerts = atoi(argv[argc-1]);
 
-  doItInefficient(minVerts, maxVerts);
+  // At this point, both of the following work.
+  if (false)
+    doItInefficient(minVerts, maxVerts);
+  else
+    doItEfficient(minVerts, maxVerts);
 
   if (verboseLevel >= 1) std::cout << "out main" << std::endl;
   return 0;
