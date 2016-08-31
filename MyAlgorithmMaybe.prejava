@@ -331,23 +331,16 @@ public class MyAlgorithmMaybe
                 int nLightSides = (iFirstDarkSide-iFirstLightSide+nSides-1) % nSides + 1;
                 assert_le_le(0, nLightSides, nSides);
 
-                // XXX TODO: should I maintain a list of light sides instead? probably cleaner than this
-
-                // Light verts are those verts that join two light sides.
-                // Make the list of them, for clarity.
-                int lightVerts[] = new int[nLightSides-1];
+                // Make linear list of light sides, for clarity
+                int lightSides[] = new int[nLightSides];
                 FORI (iLightSide, nLightSides)
                 {
                     int iSide = (iFirstLightSide+iLightSide) % nSides;
-                    int iEdge = face[iSide];
-                    int iVert = e2v[iEdge][1]; // final vert of this side
-                    if (iLightSide < nLightSides-1)
-                    {
-                        lightVerts[iLightSide] = e2v[iEdge][1];
-                    }
+                    lightSides[iLightSide] = face[iSide];
                     if (iLightSide > 0)
                     {
-                        assert_eq(lightVerts[iLightSide-1], e2v[iEdge][0]);
+                        assert_eq(e2v[lightSides[iLightSide-1]][1],
+                                  e2v[lightSides[iLightSide]][0]);
                     }
                 }
 
@@ -356,8 +349,7 @@ public class MyAlgorithmMaybe
                 double bestNeighborGoodness = Double.NEGATIVE_INFINITY;
                 FORI (iLightSide, nLightSides)
                 {
-                    int iSide = (iFirstLightSide+iLightSide) % nSides;
-                    int iEdge = face[iSide];
+                    int iEdge = lightSides[iLightSide];
                     int iNeighborFace = e2f[iEdge][1];
                     // If we glue to this parent,
                     // the glued side will become a fold
@@ -372,10 +364,8 @@ public class MyAlgorithmMaybe
                     VecMath.zerovec(scratchMomentAndArea);
                     FORIDOWN(jLightSide, iLightSide)
                     {
-                        int jSide = (iFirstLightSide+jLightSide) % nSides;
-                        int jEdge = face[jSide];
-                        int jVert = lightVerts[jLightSide];
-                        assert_eq(jVert, e2v[jEdge][1]);
+                        int jEdge = lightSides[jLightSide];
+                        int jVert = e2v[iEdge][1];
                         GeomUtils.accumulateMomentAndArea(scratchMomentAndArea,
                                                           v2momentAndWeightStrictlyUpstream[jVert]);
                         // check it
@@ -388,10 +378,8 @@ public class MyAlgorithmMaybe
                     VecMath.zerovec(scratchMomentAndArea);
                     for (int jLightSide = iLightSide+1; jLightSide < nLightSides; ++jLightSide)
                     {
-                        int jSide = (iFirstLightSide+jLightSide) % nSides;
-                        int jEdge = face[jSide];
-                        int jVert = lightVerts[jLightSide-1];
-                        assert_eq(jVert, e2v[jEdge][0]);
+                        int jEdge = lightSides[jLightSide];
+                        int jVert = e2v[jEdge][0];
                         GeomUtils.accumulateMomentAndArea(scratchMomentAndArea,
                                                           v2momentAndWeightStrictlyUpstream[jVert]);
                         // check it
@@ -412,9 +400,7 @@ public class MyAlgorithmMaybe
                 }
                 assert_gt(bestNeighborGoodness, Double.NEGATIVE_INFINITY);
                 assert_ne(iBestLightSide, -1);
-
-                int iBestSide = (iFirstLightSide+iBestLightSide) % nSides;
-                int iBestNeighborEdge = face[iBestSide];
+                int iBestNeighborEdge = lightSides[iBestLightSide];
                 int iBestNeighborFace = e2f[iBestNeighborEdge][1];
                 f2parentEdge[iFace] = iBestNeighborEdge;
                 f2parentFace[iFace] = iBestNeighborFace;
@@ -423,8 +409,7 @@ public class MyAlgorithmMaybe
                 // That nails down some more of the vertex tree as well...
                 FORIDOWN(iLightSide, iBestLightSide)
                 {
-                    int iSide = (iFirstLightSide+iLightSide) % nSides;
-                    int iEdge = face[iSide];
+                    int iEdge = lightSides[iLightSide];
                     // fiddled with order til got it right
                     int v0 = e2v[iEdge][1];
                     int v1 = e2v[iEdge][0];
