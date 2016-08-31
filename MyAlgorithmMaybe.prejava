@@ -266,6 +266,7 @@ public class MyAlgorithmMaybe
 
 
         boolean sideIsLight[] = new boolean[nVerts]; // scratch for loop
+        double scratchMomentsAndAreas[][] = new double[nVerts+1][]; // scratch for loop
 
         // for each face, in order, in the sweep direction
         FORI (iFacePriority, nFaces)
@@ -328,11 +329,19 @@ public class MyAlgorithmMaybe
                 }
                 assert(iFirstLightSide != -1);
                 assert(iFirstDarkSide != -1);
+                int nLightSides = (iFirstDarkSide-iFirstLightSide+nSides-1) % nSides + 1;
+                assert(INRANGE(0 <=, nLightSides, <= nSides));
+
+                // Populate scratchMomentsAndAreas.  One for each vertex incident on a light side.
+                FORI (iLightSide, nLightSides+1)
+                {
+                    //...
+                }
+
+
                 // Choose a parent face on the light side, to glue this face to.
                 int iBestLightSide = -1;
                 double bestNeighborGoodness = Double.NEGATIVE_INFINITY;
-                int nLightSides = (iFirstDarkSide-iFirstLightSide+nSides-1) % nSides + 1;
-                assert(INRANGE(0 <=, nLightSides, <= nSides));
                 FORI (iLightSide, nLightSides)
                 {
                     int iSide = (iFirstLightSide+iLightSide) % nSides;
@@ -347,6 +356,9 @@ public class MyAlgorithmMaybe
                     // I.e. this parent isn't good (i.e. goodness >=0)
                     // unless all these lagoon exits are good.
                     double worstLagoonExitGoodness = Double.POSITIVE_INFINITY;
+
+                    {
+                    }
 #ifdef NOTYET
                     for (...)
                     {
@@ -372,28 +384,32 @@ public class MyAlgorithmMaybe
                 // TODO: do we really need f2parent at all?  not sure whether we use it. Might be good for debugging though.
 
                 // That nails down some more of the vertex tree as well...
-                FORI (iLightSide, iBestLightSide)
+                FORIDOWN(iLightSide, iBestLightSide)
                 {
-                    if (iLightSide == iBestLightSide) continue;
-
                     int iSide = (iFirstLightSide+iLightSide) % nSides;
                     int iEdge = face[iSide];
+                    // fiddled with order til got it right
+                    int v0 = e2v[iEdge][1];
+                    int v1 = e2v[iEdge][0];
 
-                    // Interpret as edge in the dual.
-                    // Not sure which is which, I just fiddled until it was right.
-                    int v0 = e2v[iEdge][0];
-                    int v1 = e2v[iEdge][1];
-                    if (iLightSide > iBestLightSide)
-                    {
-                        int temp;
-                        SWAP(v0, v1, temp);
-                    }
                     v2parentEdge[v0] = iEdge;
                     v2parentVert[v0] = v1;
+                    // Not sure this is the right place for this... may be doing redundant work? Not sure.
+                    computeMomentAndAreaStrictlyUpstreamFromUpstream(v1, e2v, v2e, v2momentAndArea, v2parentVert,
+                                                                     v2momentAndWeightStrictlyUpstream,
+                                                                     verboseLevel);
+                }
+                for (int iLightSide = iBestLightSide+1; iLightSide < nLightSides; ++iLightSide)
+                {
+                    int iSide = (iFirstLightSide+iLightSide) % nSides;
+                    int iEdge = face[iSide];
+                    // fiddled with order til got it right
+                    int v0 = e2v[iEdge][0];
+                    int v1 = e2v[iEdge][1];
 
-                    // Is this the right place to compute moments and areas?  Not sure.
-                    // Doesn't hurt, but may be doing extra work.
-                    // TODO: get clear on this.
+                    v2parentEdge[v0] = iEdge;
+                    v2parentVert[v0] = v1;
+                    // Not sure this is the right place for this... may be doing redundant work? Not sure.
                     computeMomentAndAreaStrictlyUpstreamFromUpstream(v1, e2v, v2e, v2momentAndArea, v2parentVert,
                                                                      v2momentAndWeightStrictlyUpstream,
                                                                      verboseLevel);
