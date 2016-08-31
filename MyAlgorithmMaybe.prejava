@@ -265,7 +265,7 @@ public class MyAlgorithmMaybe
 
 
         boolean sideIsLight[] = new boolean[nVerts]; // scratch for loop
-        double scratchMomentsAndAreas[][] = new double[nVerts+1][]; // scratch for loop
+        double scratchMomentAndArea[] = new double[3]; // scratch for loop
 
         // for each face, in order, in the sweep direction
         FORI (iFacePriority, nFaces)
@@ -331,12 +331,25 @@ public class MyAlgorithmMaybe
                 int nLightSides = (iFirstDarkSide-iFirstLightSide+nSides-1) % nSides + 1;
                 assert(INRANGE(0 <=, nLightSides, <= nSides));
 
-                // Populate scratchMomentsAndAreas.  One for each vertex incident on a light side.
-                FORI (iLightSide, nLightSides+1)
-                {
-                    //...
-                }
+                // XXX TODO: should I maintain a list of light sides instead? probably cleaner than this
 
+                // Light verts are those verts that join two light sides.
+                // Make the list of them, for clarity.
+                int lightVerts[] = new int[nLightSides-1];
+                FORI (iLightSide, nLightSides)
+                {
+                    int iSide = (iFirstLightSide+iLightSide) % nSides;
+                    int iEdge = face[iSide];
+                    int iVert = e2v[iEdge][1]; // final vert of this side
+                    if (iLightSide < nLightSides-1)
+                    {
+                        lightVerts[iLightSide] = e2v[iEdge][1];
+                    }
+                    if (iLightSide > 0)
+                    {
+                        assert_eq(lightVerts[iLightSide-1], e2v[iEdge][0]);
+                    }
+                }
 
                 // Choose a parent face on the light side, to glue this face to.
                 int iBestLightSide = -1;
@@ -356,14 +369,39 @@ public class MyAlgorithmMaybe
                     // unless all these lagoon exits are good.
                     double worstLagoonExitGoodness = Double.POSITIVE_INFINITY;
 
+                    VecMath.zerovec(scratchMomentAndArea);
+                    FORIDOWN(jLightSide, iLightSide)
                     {
+                        int jSide = (iFirstLightSide+jLightSide) % nSides;
+                        int jEdge = face[jSide];
+                        int jVert = lightVerts[jLightSide];
+                        assert(jVert == e2v[jEdge][1]);
+                        GeomUtils.accumulateMomentAndArea(scratchMomentAndArea,
+                                                          v2momentAndWeightStrictlyUpstream[jVert]);
+                        // check it
+                        //...
+                        // and add the exit vertex itself
+                        // (on the last iter, this isn't used for anything)
+                        GeomUtils.accumulateMomentAndArea(scratchMomentAndArea,
+                                                          v2momentAndArea[jVert]);
                     }
-#ifdef NOTYET
-                    for (...)
+                    VecMath.zerovec(scratchMomentAndArea);
+                    for (int jLightSide = iLightSide+1; jLightSide < nLightSides; ++jLightSide)
                     {
-                        ...
+                        int jSide = (iFirstLightSide+jLightSide) % nSides;
+                        int jEdge = face[jSide];
+                        int jVert = lightVerts[jLightSide-1];
+                        assert(jVert == e2v[jEdge][0]);
+                        GeomUtils.accumulateMomentAndArea(scratchMomentAndArea,
+                                                          v2momentAndWeightStrictlyUpstream[jVert]);
+                        // check it
+                        //...
+                        // and add the exit vertex itself
+                        // (on the last iter, this isn't used for anything)
+                        GeomUtils.accumulateMomentAndArea(scratchMomentAndArea,
+                                                          v2momentAndArea[jVert]);
                     }
-#endif
+
                     assert(worstLagoonExitGoodness < Double.POSITIVE_INFINITY);
                     double thisNeighborGoodness = worstLagoonExitGoodness;
                     if (thisNeighborGoodness > bestNeighborGoodness)
