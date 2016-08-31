@@ -10,10 +10,53 @@ public class MyAlgorithmMaybe
 {
     public final static int STRATEGY_BEST_GOODNESS = 1; // original implementation.  prone to infinite looping, in ways the code doesn't detect yet.
     public final static int STRATEGY_RANDOM_GOOD = 2; // second implementation.  seen it bite own tail (Just Noise 10000, prewarp, apply radial match. more tailbiting with upward than outward).  hard to make it infinite loop (radial heightfields don't do it) but I got it to, see DUMP.off.ConvexNoise1_144_makes_my_algorithm_infinite_loop
-    public final static int STRATEGY_BEST_COMPOSITE = 3; // second implementation.  seen it bite own tail (Just Noise 10000, prewarp, apply radial match. more tailbiting with upward than outward).  hard to make it infinite loop (radial heightfields don't do it) but I got it to, see DUMP.off.ConvexNoise1_144_makes_my_algorithm_infinite_loop
+    public final static int STRATEGY_BEST_COMPOSITE = 3; // third implementation.
     public static int strategy = STRATEGY_RANDOM_GOOD; // TODO: make this a parameter to doIt, maybe? not sure
 
     private MyAlgorithmMaybe(){ throw new AssertionError(); } // non-instantiatable util class
+
+
+    // Compute sweep order, either on vertices or on faces (dual verts).
+    private static int[] compute_priority2v(double sweepOriginHomo[/*3*/], double vertsXY[][/*2*/])
+    {
+        int nVerts = vertsXY.length;
+        double v2orderKey[] = new double[nVerts]; // vertex to radius squared, i.e. distance squared from center
+        {
+            double center[] = new double[2]; // scratch for loop
+            // TODO: do this homo math right... if there is a "right"
+            assert(sweepOriginHomo.length == 3);
+            if (sweepOriginHomo[2] == 0.)
+            {
+                FORI (iVert, nVerts)
+                    v2orderKey[iVert] = -VecMath.dot(2, vertsXY[iVert], sweepOriginHomo);
+            }
+            else
+            {
+                VecMath.vxs(2, center, sweepOriginHomo, 1./sweepOriginHomo[2]);
+                FORI (iVert, nVerts)
+                    v2orderKey[iVert] = VecMath.distsqrd(2, vertsXY[iVert], center);
+            }
+        }
+
+        // Could just make an IndexBinaryHeap based on v2orderKey,
+        // but it's nicer to use indices that reflect how much progress has been made.
+        int priority2v[] = VecMath.identityperm(nVerts);
+        SortStuff.sort(priority2v, new SortStuff.IntComparator() {
+            @Override public int compare(int a, int b)
+            {
+                if (v2orderKey[a] < v2orderKey[b]) return -1;
+                if (v2orderKey[a] > v2orderKey[b]) return 1;
+                // Arbitrarily use original index as tiebreaker
+                // CBB: use some geometric consideration instead?
+                // Could also use a random permutation, but I would like to be deterministic, so no.
+                if (a < b) return -1;
+                if (a > b) return 1;
+                return 0;
+            }
+        });
+        return priority2v;
+    } // compute_v2priority
+
 
     // So I can see more clearly,
     // isolate exactly the data we will use during the algorithm(s).
@@ -29,11 +72,7 @@ public class MyAlgorithmMaybe
         public int e2v[/*nEdges*/][/*2*/]; // values are in [0..nVerts] (not 0..nVerts-1 !) since nVerts represents "the infinite vertex"
         public int v2e[/*nVerts*/][];
 
-        public int v2priority[/*nVerts*/];
-        public int priority2v[/*nVerts*/];
-
-
-        public HelperDataStructure(Mesh mesh, double sweepOriginHomo[/*3*/])
+        public HelperDataStructure(Mesh mesh)
         {
             int nVerts = mesh.verts.size();
             int nEdges = mesh.edges.size();
@@ -77,45 +116,8 @@ public class MyAlgorithmMaybe
 
                 }
             }
-
-
-
-            double v2orderKey[] = new double[nVerts]; // vertex to radius squared, i.e. distance squared from center
-            {
-                double center[] = new double[2]; // scratch for loop
-                // TODO: do this homo math right... if there is a "right"
-                assert(sweepOriginHomo.length == 3);
-                if (sweepOriginHomo[2] == 0.)
-                {
-                    FORI (iVert, nVerts)
-                        v2orderKey[iVert] = -VecMath.dot(2, vertsXY[iVert], sweepOriginHomo);
-                }
-                else
-                {
-                    VecMath.vxs(2, center, sweepOriginHomo, 1./sweepOriginHomo[2]);
-                    FORI (iVert, nVerts)
-                        v2orderKey[iVert] = VecMath.distsqrd(2, vertsXY[iVert], center);
-                }
-            }
-
-            // Could just make an IndexBinaryHeap based on v2orderKey,
-            // but it's nicer to use indices that reflect how much progress has been made.
-            this.priority2v = VecMath.identityperm(nVerts);
-            SortStuff.sort(this.priority2v, new SortStuff.IntComparator() {
-                @Override public int compare(int a, int b)
-                {
-                    if (v2orderKey[a] < v2orderKey[b]) return -1;
-                    if (v2orderKey[a] > v2orderKey[b]) return 1;
-                    // Arbitrarily use original index as tiebreaker
-                    // CBB: use some geometric consideration instead?
-                    // Could also use a random permutation, but I would like to be deterministic, so no.
-                    if (a < b) return -1;
-                    if (a > b) return 1;
-                    return 0;
-                }
-            });
-            this.v2priority = VecMath.invertperm(this.priority2v);
         }
+
     }; // HelperDataStructure
 
     // "v0->e3->v1->e2[->v100->e3->v200]"
@@ -189,7 +191,9 @@ public class MyAlgorithmMaybe
         return sb.toString();
     } // edgeListToDebugString
 
-    // helper function
+    // helper function.
+    // computes v2momentAndWeightStrictlyUpstream[iVert]
+    // from those of its children and moments and areas of its children.
     private static void computeMomentAndAreaStrictlyUpstreamFromUpstream(int iVert,
                                                                          int e2v[][], // in
                                                                          int v2e[][], // in
@@ -216,10 +220,213 @@ public class MyAlgorithmMaybe
     } // computeMomentAndAreaStrictlyUpstreamFromUpstream
 
 
+    private static Net doItUsingFaceSweep(
+        Mesh originalMesh, Mesh originalDualMesh, // generally reversed from the calling app's notion
+        double sweepOriginHomo[/*3*/], // if [2] is 0, the vertex is infinitely far from origin
+        int maxIters, // interpreted in funny way: on even iterations, sweep to next vertex but don't do anything with it.
+        int putProblematicVertsHereForDebugging[/*1*/][],
+        double putLastPointSweptHere[/*1*/][/*2*/])
+    {
+        int verboseLevel = 1; // 1: constant, 2: linear
+        if (verboseLevel >= 1) OUT("        in MyAlgorithmMaybe.doIt");
+        assert(sweepOriginHomo.length == 3);
+
+        int nVerts = originalMesh.verts.size();
+        int nEdges = originalMesh.edges.size();
+        int nFaces = originalDualMesh.verts.size();
+        if (verboseLevel >= 1) OUT("          nVerts = "+nVerts);
+        if (verboseLevel >= 1) OUT("          nEdges = "+nEdges);
+        if (verboseLevel >= 1) OUT("          nFaces = "+nFaces);
+
+        if (nEdges == 0)
+        {
+            if (verboseLevel >= 1) OUT("        out MyAlgorithmMaybe.doIt (no edges, nothing to do)");
+            return new Net(originalMesh, originalDualMesh);
+        }
+
+        HelperDataStructure helperDataStructure = new HelperDataStructure(originalMesh);
+        double vertsXY[][] = helperDataStructure.vertsXY;
+        double v2momentAndArea[][] = helperDataStructure.v2momentAndArea;
+        double e2direction[][] = helperDataStructure.e2direction;
+        int e2v[][] = helperDataStructure.e2v;
+        int v2e[][] = helperDataStructure.v2e;
+
+        HelperDataStructure dualHelperDataStructure = new HelperDataStructure(originalDualMesh);
+        double dualVertsXY[][] = dualHelperDataStructure.vertsXY;
+        int e2f[][] = dualHelperDataStructure.e2v;
+        int f2e[][] = dualHelperDataStructure.v2e;
+        int priority2f[] = compute_priority2v(sweepOriginHomo, dualVertsXY);
+        int f2priority[] = VecMath.invertperm(priority2f);
+
+        double v2momentAndWeightStrictlyUpstream[][] = new double[nVerts][3];
+        int v2parentEdge[] = VecMath.fillvec(nVerts, -1);
+        int v2parentVert[] = VecMath.fillvec(nVerts, -1); // redundant but convenient
+        int f2parentEdge[] = VecMath.fillvec(nFaces, -1);
+        int f2parentFace[] = VecMath.fillvec(nFaces, -1); // redundant but convenient
+
+
+        boolean sideIsLight[] = new boolean[nVerts]; // scratch for loop
+
+        // for each face, in order, in the sweep direction
+        FORI (iFacePriority, nFaces)
+        {
+            int iFace = priority2f[iFacePriority];
+
+            // Call the "light" ["dark"] sides of this face
+            // the sides that do [don't] border on previous faces.
+            int face[] = f2e[iFace];
+            int nSides = face.length;
+            FORI (iSide, nSides)
+            {
+                int iEdge = face[iSide];
+                assert(e2f[iEdge][0] == iFace);
+                int iNeighborFace = e2f[iEdge][1];
+                sideIsLight[iSide] = f2priority[iNeighborFace] < iFacePriority;
+            }
+            int iFirstLightSide = -1;
+            int iFirstDarkSide = -1;
+            {
+                boolean prevSideIsLight = sideIsLight[nSides-1];
+                FORI (iSide, nSides)
+                {
+                    boolean thisSideIsLight = sideIsLight[iSide];
+                    if (thisSideIsLight != prevSideIsLight)
+                    {
+                        if (thisSideIsLight)
+                        {
+                            assert(iFirstLightSide == -1);
+                            iFirstLightSide = iSide;
+                        }
+                        else
+                        {
+                            assert(iFirstDarkSide == -1);
+                            iFirstDarkSide = iSide;
+                        }
+                    }
+                }
+            }
+
+            if (iFacePriority == 0)
+            {
+                // should be all dark
+                assert(iFirstLightSide == -1);
+                assert(iFirstDarkSide == -1);
+                assert(!sideIsLight[0]);
+                f2parentEdge[iFace] = -1;
+                f2parentFace[iFace] = -1;
+            }
+            else
+            {
+                if (iFacePriority == nFaces-1)
+                {
+                    // should be all light
+                    assert(iFirstLightSide == -1);
+                    assert(iFirstDarkSide == -1);
+                    assert(sideIsLight[0]);
+                    iFirstLightSide = 0;
+                    iFirstDarkSide = 0;
+                }
+                assert(iFirstLightSide != -1);
+                assert(iFirstDarkSide != -1);
+                // Choose a parent face on the light side, to glue this face to.
+                int iBestLightSide = -1;
+                double bestNeighborGoodness = Double.NEGATIVE_INFINITY;
+                int nLightSides = (iFirstDarkSide-iFirstLightSide+nSides-1) % nSides + 1;
+                assert(INRANGE(0 <=, nLightSides, <= nSides));
+                FORI (iLightSide, nLightSides)
+                {
+                    int iSide = (iFirstLightSide+iLightSide) % nSides;
+                    int iEdge = face[iSide];
+                    int iNeighborFace = e2f[iEdge][1];
+                    // If we glue to this parent,
+                    // the glued side will become a fold
+                    // and all the other light sides will become cuts,
+                    // each one forming a lagoon exit.
+                    // Goodness of this potential parent
+                    // will be the least goodness of all these lagoon exits.
+                    // I.e. this parent isn't good (i.e. goodness >=0)
+                    // unless all these lagoon exits are good.
+                    double worstLagoonExitGoodness = Double.POSITIVE_INFINITY;
+#ifdef NOTYET
+                    for (...)
+                    {
+                        ...
+                    }
+#endif
+                    assert(worstLagoonExitGoodness < Double.POSITIVE_INFINITY);
+                    double thisNeighborGoodness = worstLagoonExitGoodness;
+                    if (thisNeighborGoodness > bestNeighborGoodness)
+                    {
+                        bestNeighborGoodness = thisNeighborGoodness;
+                        iBestLightSide = iLightSide;
+                    }
+                }
+                assert(bestNeighborGoodness > Double.NEGATIVE_INFINITY);
+                assert(iBestLightSide != -1);
+
+                int iBestSide = (iFirstLightSide+iBestLightSide) % nSides;
+                int iBestNeighborEdge = face[iBestSide];
+                int iBestNeighborFace = e2f[iBestNeighborEdge][1];
+                f2parentEdge[iFace] = iBestNeighborEdge;
+                f2parentFace[iFace] = iBestNeighborFace;
+                // TODO: do we really need f2parent at all?  not sure whether we use it. Might be good for debugging though.
+
+                // That nails down some more of the vertex tree as well...
+                FORI (iLightSide, iBestLightSide)
+                {
+                    if (iLightSide == iBestLightSide) continue;
+
+                    int iSide = (iFirstLightSide+iLightSide) % nSides;
+                    int iEdge = face[iSide];
+
+                    // Interpret as edge in the dual.
+                    // Not sure which is which, I just fiddled until it was right.
+                    int v0 = e2v[iEdge][0];
+                    int v1 = e2v[iEdge][1];
+                    if (iLightSide > iBestLightSide)
+                    {
+                        int temp;
+                        SWAP(v0, v1, temp);
+                    }
+                    v2parentEdge[v0] = iEdge;
+                    v2parentVert[v0] = v1;
+
+                    // Is this the right place to compute moments and areas?  Not sure.
+                    // Doesn't hurt, but may be doing extra work.
+                    // TODO: get clear on this.
+                    computeMomentAndAreaStrictlyUpstreamFromUpstream(v1, e2v, v2e, v2momentAndArea, v2parentVert,
+                                                                     v2momentAndWeightStrictlyUpstream,
+                                                                     verboseLevel);
+                }
+            }
+        } // for iFacePriority
+        // The result is now in v2parent.
+        if (verboseLevel >= 2) PRINTVEC(v2parentEdge);
+        if (verboseLevel >= 2) PRINTVEC(v2parentVert);
+        Net net = new Net(originalMesh, originalDualMesh);
+        FORI (iVert, nVerts)
+        {
+            if (v2parentEdge[iVert] != -1)
+                net.cut(v2parentEdge[iVert], true);
+        }
+
+#ifdef NOTYET
+        if (lastVertexConsidered != -1 && putLastPointSweptHere != null)
+        {
+            putLastPointSweptHere[0] = dualVertsXY[lastVertexConsidered];
+        }
+#endif
+
+        if (verboseLevel >= 1) OUT("        out MyAlgorithmMaybe.doIt");
+        return net;
+    } // doItUsingFaceSweep
+
+
+
     public static Net doIt2(
         Mesh originalMesh, Mesh originalDualMesh, // generally reversed from the calling app's notion
         double sweepOriginHomo[/*3*/], // if [2] is 0, the vertex is infinitely far from origin
-        int maxIters, // interpreted in funny way
+        int maxIters, // interpreted in funny way: on even iterations, sweep to next vertex but don't do anything with it.
         int putProblematicVertsHereForDebugging[/*1*/][],
         double putLastPointSweptHere[/*1*/][/*2*/])
     {
@@ -238,17 +445,17 @@ public class MyAlgorithmMaybe
             return new Net(originalMesh, originalDualMesh);
         }
 
-        HelperDataStructure helperDataStructure = new HelperDataStructure(originalMesh, sweepOriginHomo);
+        HelperDataStructure helperDataStructure = new HelperDataStructure(originalMesh);
         double vertsXY[][] = helperDataStructure.vertsXY;
         double v2momentAndArea[][] = helperDataStructure.v2momentAndArea;
         double e2direction[][] = helperDataStructure.e2direction;
         int e2v[][] = helperDataStructure.e2v;
         int v2e[][] = helperDataStructure.v2e;
-        int v2priority[] = helperDataStructure.v2priority;
-        int priority2v[] = helperDataStructure.priority2v;
+        int priority2v[] = compute_priority2v(sweepOriginHomo, vertsXY);
+        int v2priority[] = VecMath.invertperm(priority2v);
 
         double v2momentAndWeightStrictlyUpstream[][] = new double[nVerts][3];
-        // CBB: could just have v2parentEdge, I suppose
+        // could just have v2parentEdge, I suppose, since v2parentVert[v] is always e2v[v2parentEdge[v]][1], but I think this is easier
         int v2parentEdge[] = VecMath.fillvec(nVerts, -1);
         int v2parentVert[] = VecMath.fillvec(nVerts, -1);
 
@@ -635,17 +842,17 @@ public class MyAlgorithmMaybe
         if (verboseLevel >= 1) OUT("          nVerts = "+nVerts);
         if (verboseLevel >= 1) OUT("          nEdges = "+nEdges);
 
-        HelperDataStructure helperDataStructure = new HelperDataStructure(originalMesh, sweepOriginHomo);
+        HelperDataStructure helperDataStructure = new HelperDataStructure(originalMesh);
         double vertsXY[][] = helperDataStructure.vertsXY;
         double v2momentAndArea[][] = helperDataStructure.v2momentAndArea;
         double e2direction[][] = helperDataStructure.e2direction;
         int e2v[][] = helperDataStructure.e2v;
         int v2e[][] = helperDataStructure.v2e;
-        int v2priority[] = helperDataStructure.v2priority;
-        int priority2v[] = helperDataStructure.priority2v;
+        int priority2v[] = compute_priority2v(sweepOriginHomo, vertsXY);
+        int v2priority[] = VecMath.invertperm(priority2v);
 
         double v2momentAndWeightStrictlyUpstream[][] = new double[nVerts][3];
-        // CBB: could just have v2parentEdge, I suppose
+        // could just have v2parentEdge, I suppose, but I think this is easier
         int v2parentEdge[] = VecMath.fillvec(nVerts, -1);
         int v2parentVert[] = VecMath.fillvec(nVerts, -1);
 
@@ -978,6 +1185,6 @@ public class MyAlgorithmMaybe
         }
         if (verboseLevel >= 1) OUT("        out MyAlgorithmMaybe.doIt");
         return net;
-    }
+    } // doIt
 } // class MyAlgorithmMaybe
 
