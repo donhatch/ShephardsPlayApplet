@@ -1,3 +1,25 @@
+/*
+    Output so far:
+      nVerts=0 :
+          0 plausible but impossible, 1 possible.  min=1 max=1 avg=1
+      nVerts=1 :
+          0 plausible but impossible, 2 possible.  min=1 max=1 avg=1
+      nVerts=2 :
+          0 plausible but impossible, 10 possible.  min=1 max=2 avg=1.3
+      nVerts=3 :
+          0 plausible but impossible, 98 possible.  min=1 max=2 avg=1.40816
+      nVerts=4 :
+          0 plausible but impossible, 1604 possible.  min=1 max=3 avg=1.62406
+      nVerts=5 :
+          0 plausible but impossible, 40078 possible.  min=1 max=3 avg=1.7159
+      nVerts=6 :
+          0 plausible but impossible, 1443442 possible.  min=1 max=4 avg=1.87837
+      nVerts=7 :
+          0 plausible but impossible, 72002958 possible.  min=1 max=4 avg=1.95428
+      nVerts=8 :
+          0 plausible but impossible, 4831176062 possible.  min=1 max=5 avg=2.08753
+      nVerts=9 :
+*/
 #include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
