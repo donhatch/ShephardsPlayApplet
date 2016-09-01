@@ -72,7 +72,7 @@ public class MyAlgorithmMaybe
         public int e2v[/*nEdges*/][/*2*/]; // values are in [0..nVerts] (not 0..nVerts-1 !) since nVerts represents "the infinite vertex"
         public int v2e[/*nVerts*/][];
 
-        public HelperDataStructure(Mesh mesh)
+        public HelperDataStructure(Mesh mesh, boolean mergeInsideOutVertsIntoInfiniteVert)
         {
             int nVerts = mesh.verts.size();
             int nEdges = mesh.edges.size();
@@ -86,15 +86,13 @@ public class MyAlgorithmMaybe
                 this.e2direction[iEdge] = mesh.getEdge(iEdge).direction;
 
             {
-                MeshUtils.SimplerMeshDataStructure simplerMeshDataStructure = new MeshUtils.SimplerMeshDataStructure(mesh, true);
+                MeshUtils.SimplerMeshDataStructure simplerMeshDataStructure = new MeshUtils.SimplerMeshDataStructure(mesh, mergeInsideOutVertsIntoInfiniteVert);
                 this.e2v = simplerMeshDataStructure.e2v;
                 this.v2e = simplerMeshDataStructure.v2e;
             }
             assert_eq(this.e2v.length, nEdges);
-            assert_eq(this.v2e.length, nVerts+1); // the "infinite vertex" got added at the end
 
-
-            if (true)
+            if (e2direction[0] != null) // is this the right condition?  original primal doesn't have directions, original dual does
             {
                 // Make sure neighbors of each vert are listed in ccw order
                 FORI (iVert, nVerts)
@@ -219,15 +217,16 @@ public class MyAlgorithmMaybe
     } // computeMomentAndAreaStrictlyUpstreamFromUpstream
 
 
-    private static Net doItUsingFaceSweep(
+    public static Net doItUsingFaceSweep(
         Mesh originalMesh, Mesh originalDualMesh, // generally reversed from the calling app's notion
         double sweepOriginHomo[/*3*/], // if [2] is 0, the vertex is infinitely far from origin
         int maxIters, // interpreted in funny way: on even iterations, sweep to next vertex but don't do anything with it.
         int putProblematicVertsHereForDebugging[/*1*/][],
         double putLastPointSweptHere[/*1*/][/*2*/])
     {
-        int verboseLevel = 1; // 1: constant, 2: linear
+        int verboseLevel = 2; // 1: constant, 2: linear
         if (verboseLevel >= 1) OUT("        in MyAlgorithmMaybe.doIt");
+        if (verboseLevel >= 1) OUT("          sweepOriginHomo = "+VecMath.toString(sweepOriginHomo));
         assert_eq(sweepOriginHomo.length, 3);
 
         int nVerts = originalMesh.verts.size();
@@ -243,14 +242,14 @@ public class MyAlgorithmMaybe
             return new Net(originalMesh, originalDualMesh);
         }
 
-        HelperDataStructure helperDataStructure = new HelperDataStructure(originalMesh);
+        HelperDataStructure helperDataStructure = new HelperDataStructure(originalMesh, true);
         double vertsXY[][] = helperDataStructure.vertsXY;
         double v2momentAndArea[][] = helperDataStructure.v2momentAndArea;
         double e2direction[][] = helperDataStructure.e2direction;
         int e2v[][] = helperDataStructure.e2v;
         int v2e[][] = helperDataStructure.v2e;
 
-        HelperDataStructure dualHelperDataStructure = new HelperDataStructure(originalDualMesh);
+        HelperDataStructure dualHelperDataStructure = new HelperDataStructure(originalDualMesh, false); // all verts are finite, for this one
         double dualVertsXY[][] = dualHelperDataStructure.vertsXY;
         int e2f[][] = dualHelperDataStructure.e2v;
         int f2e[][] = dualHelperDataStructure.v2e;
@@ -264,13 +263,16 @@ public class MyAlgorithmMaybe
         int f2parentFace[] = VecMath.fillvec(nFaces, -1); // redundant but convenient
 
 
-        boolean sideIsLight[] = new boolean[nVerts]; // scratch for loop
+        boolean sideIsLight[] = new boolean[nEdges/2]; // scratch for loop
         double scratchMomentAndArea[] = new double[3]; // scratch for loop
 
         // for each face, in order, in the sweep direction
         FORI (iFacePriority, nFaces)
         {
             int iFace = priority2f[iFacePriority];
+
+            if (verboseLevel >= 2) OUT("              top of loop");
+            if (verboseLevel >= 2) OUT("                  priority="+iFacePriority+" iFace="+iFace);
 
             // Call the "light" ["dark"] sides of this face
             // the sides that do [don't] border on previous faces.
@@ -283,6 +285,7 @@ public class MyAlgorithmMaybe
                 int iNeighborFace = e2f[iEdge][1];
                 sideIsLight[iSide] = f2priority[iNeighborFace] < iFacePriority;
             }
+            if (verboseLevel >= 2) OUT("                      sideIsLight = "+VecMath.toString(sideIsLight));
             int iFirstLightSide = -1;
             int iFirstDarkSide = -1;
             {
@@ -303,6 +306,7 @@ public class MyAlgorithmMaybe
                             iFirstDarkSide = iSide;
                         }
                     }
+                    prevSideIsLight = thisSideIsLight;
                 }
             }
 
@@ -448,7 +452,7 @@ public class MyAlgorithmMaybe
                 net.cut(v2parentEdge[iVert], true);
         }
 
-#ifdef NOTYET
+#ifdef NOTYET  // TODO: think about what to display
         if (lastVertexConsidered != -1 && putLastPointSweptHere != null)
         {
             putLastPointSweptHere[0] = dualVertsXY[lastVertexConsidered];
@@ -483,7 +487,7 @@ public class MyAlgorithmMaybe
             return new Net(originalMesh, originalDualMesh);
         }
 
-        HelperDataStructure helperDataStructure = new HelperDataStructure(originalMesh);
+        HelperDataStructure helperDataStructure = new HelperDataStructure(originalMesh, true);
         double vertsXY[][] = helperDataStructure.vertsXY;
         double v2momentAndArea[][] = helperDataStructure.v2momentAndArea;
         double e2direction[][] = helperDataStructure.e2direction;
@@ -880,7 +884,7 @@ public class MyAlgorithmMaybe
         if (verboseLevel >= 1) OUT("          nVerts = "+nVerts);
         if (verboseLevel >= 1) OUT("          nEdges = "+nEdges);
 
-        HelperDataStructure helperDataStructure = new HelperDataStructure(originalMesh);
+        HelperDataStructure helperDataStructure = new HelperDataStructure(originalMesh, true);
         double vertsXY[][] = helperDataStructure.vertsXY;
         double v2momentAndArea[][] = helperDataStructure.v2momentAndArea;
         double e2direction[][] = helperDataStructure.e2direction;
