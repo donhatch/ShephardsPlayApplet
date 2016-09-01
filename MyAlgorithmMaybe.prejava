@@ -256,6 +256,16 @@ public class MyAlgorithmMaybe
         int priority2f[] = compute_priority2v(sweepOriginHomo, dualVertsXY);
         int f2priority[] = VecMath.invertperm(priority2f);
 
+        {
+            // a bit of fudge... e2f and f2e have edges backwards from how I'd like them
+            int temp[];
+            FORI (iEdgePair, nEdges/2)
+                SWAP(e2f[2*iEdgePair], e2f[2*iEdgePair+1], temp);
+            FORI (iFace, f2e.length)
+                FORI (iSide, f2e[iFace].length)
+                    f2e[iFace][iSide] ^= 1;
+        }
+
         double v2momentAndWeightStrictlyUpstream[][] = new double[nVerts][3];
         int v2parentEdge[] = VecMath.fillvec(nVerts, -1);
         int v2parentVert[] = VecMath.fillvec(nVerts, -1); // redundant but convenient
@@ -264,7 +274,11 @@ public class MyAlgorithmMaybe
 
 
         boolean sideIsLight[] = new boolean[nEdges/2]; // scratch for loop
+        int lightSides[] = new int[nEdges/2]; // scratch for loop
         double scratchMomentAndArea[] = new double[3]; // scratch for loop
+        double scratchCentroid[] = new double[2]; // scratch for loop
+        double vertMinusCentroid[] = new double[2]; // scratch for loop
+        double normalizedEdgeDirection[] = new double[2]; // scratch for loop
 
         // for each face, in order, in the sweep direction
         FORI (iFacePriority, nFaces)
@@ -285,7 +299,7 @@ public class MyAlgorithmMaybe
                 int iNeighborFace = e2f[iEdge][1];
                 sideIsLight[iSide] = f2priority[iNeighborFace] < iFacePriority;
             }
-            if (verboseLevel >= 2) OUT("                      sideIsLight = "+VecMath.toString(sideIsLight));
+            if (verboseLevel >= 2) OUT("                      sideIsLight = "+VecMath.toString((boolean[])Arrays.subarray(sideIsLight,0,nSides)));
             int iFirstLightSide = -1;
             int iFirstDarkSide = -1;
             {
@@ -309,6 +323,8 @@ public class MyAlgorithmMaybe
                     prevSideIsLight = thisSideIsLight;
                 }
             }
+            if (verboseLevel >= 2) OUT("                      iFirstLightSide = "+iFirstLightSide);
+            if (verboseLevel >= 2) OUT("                      iFirstDarkSide = "+iFirstDarkSide);
 
             if (iFacePriority == 0)
             {
@@ -321,22 +337,29 @@ public class MyAlgorithmMaybe
             }
             else
             {
-                if (iFacePriority == nFaces-1)
+                if (iFirstLightSide == -1)
                 {
-                    // should be all light
-                    assert_eq(iFirstLightSide, -1);
-                    assert_eq(iFirstDarkSide, -1);
-                    assert(sideIsLight[0]);
-                    iFirstLightSide = 0;
-                    iFirstDarkSide = 0;
+                    // Arrange so first light side is the one emanating from the infinite vertex
+                    FORI (iSide, nSides)
+                    {
+                        if (e2v[face[iSide]][0] == nVerts)
+                        {
+                            assert(iFirstLightSide == -1);
+                            iFirstLightSide = iSide;
+                            iFirstDarkSide = iSide;
+                            if (verboseLevel >= 2) OUT("                      iFirstLightSide = "+iFirstLightSide);
+                            if (verboseLevel >= 2) OUT("                      iFirstDarkSide = "+iFirstDarkSide);
+                        }
+                    }
+                    assert_ne(iFirstLightSide, -1);
                 }
                 assert_ne(iFirstLightSide, -1);
                 assert_ne(iFirstDarkSide, -1);
                 int nLightSides = (iFirstDarkSide-iFirstLightSide+nSides-1) % nSides + 1;
+                if (verboseLevel >= 2) OUT("                      nLightSides = "+nLightSides);
                 assert_le_le(0, nLightSides, nSides);
 
                 // Make linear list of light sides, for clarity
-                int lightSides[] = new int[nLightSides];
                 FORI (iLightSide, nLightSides)
                 {
                     int iSide = (iFirstLightSide+iLightSide) % nSides;
@@ -347,12 +370,14 @@ public class MyAlgorithmMaybe
                                   e2v[lightSides[iLightSide]][0]);
                     }
                 }
+                if (verboseLevel >= 2) OUT("                      lightSides = "+VecMath.toString((int[])Arrays.subarray(lightSides,0,nLightSides)));
 
                 // Choose a parent face on the light side, to glue this face to.
                 int iBestLightSide = -1;
                 double bestNeighborGoodness = Double.NEGATIVE_INFINITY;
                 FORI (iLightSide, nLightSides)
                 {
+                    if (verboseLevel >= 2) OUT("                          trying iLightSide="+iLightSide);
                     int iEdge = lightSides[iLightSide];
                     int iNeighborFace = e2f[iEdge][1];
                     // If we glue to this parent,
@@ -365,36 +390,79 @@ public class MyAlgorithmMaybe
                     // unless all these lagoon exits are good.
                     double worstLagoonExitGoodness = Double.POSITIVE_INFINITY;
 
+                    if (verboseLevel >= 2) OUT("                              first part, backwards");
                     VecMath.zerovec(scratchMomentAndArea);
                     FORIDOWN(jLightSide, iLightSide)
                     {
-                        int jEdge = lightSides[jLightSide];
-                        int jVert = e2v[iEdge][1];
+                        if (verboseLevel >= 2) OUT("                                  looking at jLightSide="+jLightSide);
+                        int jEdge = lightSides[jLightSide] ^ 1; // backwards from the way we've been looking at it
+                        // XXX rest of this block is dup code
+                        if (verboseLevel >= 2) OUT("                                      jEdge = "+jEdge);
+                        int jVert = e2v[jEdge][0];
                         GeomUtils.accumulateMomentAndArea(scratchMomentAndArea,
                                                           v2momentAndWeightStrictlyUpstream[jVert]);
                         // check it
-                        //...
+                        {
+                            double goodness;
+                            if (scratchMomentAndArea[2] > 0.)
+                            {
+                                VecMath.vxs(2, scratchCentroid, scratchMomentAndArea, 1./scratchMomentAndArea[2]);
+                                VecMath.vmv(2, vertMinusCentroid, vertsXY[jVert], scratchCentroid);
+                                // CBB: extra work normalizing things over and over... I think I should normalize everything once at beginning
+                                VecMath.normalize(2, normalizedEdgeDirection, e2direction[jEdge]);
+                                goodness = VecMath.dot(2, normalizedEdgeDirection, vertMinusCentroid);
+                            }
+                            else
+                            {
+                                goodness = 0.;
+                            }
+                            worstLagoonExitGoodness = MIN(worstLagoonExitGoodness, goodness);
+                        }
+
                         // and add the exit vertex itself
                         // (on the last iter, this isn't used for anything)
                         GeomUtils.accumulateMomentAndArea(scratchMomentAndArea,
                                                           v2momentAndArea[jVert]);
                     }
+                    if (verboseLevel >= 2) OUT("                              second part, forwards");
                     VecMath.zerovec(scratchMomentAndArea);
                     for (int jLightSide = iLightSide+1; jLightSide < nLightSides; ++jLightSide)
                     {
+                        if (verboseLevel >= 2) OUT("                                  looking at jLightSide="+jLightSide);
                         int jEdge = lightSides[jLightSide];
+
+                        // XXX rest of this block is dup code
+                        if (verboseLevel >= 2) OUT("                                      jEdge = "+jEdge);
                         int jVert = e2v[jEdge][0];
                         GeomUtils.accumulateMomentAndArea(scratchMomentAndArea,
                                                           v2momentAndWeightStrictlyUpstream[jVert]);
                         // check it
-                        //...
+                        {
+                            double goodness;
+                            if (scratchMomentAndArea[2] > 0.)
+                            {
+                                VecMath.vxs(2, scratchCentroid, scratchMomentAndArea, 1./scratchMomentAndArea[2]);
+                                VecMath.vmv(2, vertMinusCentroid, vertsXY[jVert], scratchCentroid);
+                                // CBB: extra work normalizing things over and over... I think I should normalize everything once at beginning
+                                VecMath.normalize(2, normalizedEdgeDirection, e2direction[jEdge]);
+                                goodness = VecMath.dot(2, normalizedEdgeDirection, vertMinusCentroid);
+                            }
+                            else
+                            {
+                                goodness = 0.;
+                            }
+                            worstLagoonExitGoodness = MIN(worstLagoonExitGoodness, goodness);
+                        }
+
                         // and add the exit vertex itself
                         // (on the last iter, this isn't used for anything)
                         GeomUtils.accumulateMomentAndArea(scratchMomentAndArea,
                                                           v2momentAndArea[jVert]);
                     }
 
-                    assert_lt(worstLagoonExitGoodness, Double.POSITIVE_INFINITY);
+                    assert((worstLagoonExitGoodness<Double.POSITIVE_INFINITY)
+                        == (nLightSides > 1));
+
                     double thisNeighborGoodness = worstLagoonExitGoodness;
                     if (thisNeighborGoodness > bestNeighborGoodness)
                     {
@@ -420,8 +488,9 @@ public class MyAlgorithmMaybe
 
                     v2parentEdge[v0] = iEdge;
                     v2parentVert[v0] = v1;
-                    // Not sure this is the right place for this... may be doing redundant work? Not sure.
-                    computeMomentAndAreaStrictlyUpstreamFromUpstream(v1, e2v, v2e, v2momentAndArea, v2parentVert,
+                    // as soon as something has a parent, we know its children are locked in
+                    // so we can compute its moment.
+                    computeMomentAndAreaStrictlyUpstreamFromUpstream(v0, e2v, v2e, v2momentAndArea, v2parentVert,
                                                                      v2momentAndWeightStrictlyUpstream,
                                                                      verboseLevel);
                 }
@@ -435,8 +504,9 @@ public class MyAlgorithmMaybe
 
                     v2parentEdge[v0] = iEdge;
                     v2parentVert[v0] = v1;
-                    // Not sure this is the right place for this... may be doing redundant work? Not sure.
-                    computeMomentAndAreaStrictlyUpstreamFromUpstream(v1, e2v, v2e, v2momentAndArea, v2parentVert,
+                    // as soon as something has a parent, we know its children are locked in
+                    // so we can compute its moment.
+                    computeMomentAndAreaStrictlyUpstreamFromUpstream(v0, e2v, v2e, v2momentAndArea, v2parentVert,
                                                                      v2momentAndWeightStrictlyUpstream,
                                                                      verboseLevel);
                 }
