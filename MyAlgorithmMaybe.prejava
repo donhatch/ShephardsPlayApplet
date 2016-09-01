@@ -1,7 +1,7 @@
 #include "macros.h"
 
 /*
-    BUG: JustNoise 100 sometimes gives a bad exit
+    BUG: JustNoise 100 sometimes gives a bad exit, even though it thinks it's fine
     BUG: SweepKiller assert-fails (no first light side?)
     BUG: Convex noise always or mostly assert-fails (no first light side?)
 */
@@ -231,7 +231,7 @@ public class MyAlgorithmMaybe
         double putLastPointSweptHere[/*1*/][/*2*/])
     {
         int verboseLevel = 2; // 1: constant, 2: linear
-        if (verboseLevel >= 1) OUT("        in MyAlgorithmMaybe.doIt");
+        if (verboseLevel >= 1) OUT("        in MyAlgorithmMaybe.doItUsingFaceSweep");
         if (verboseLevel >= 1) OUT("          sweepOriginHomo = "+VecMath.toString(sweepOriginHomo));
         assert_eq(sweepOriginHomo.length, 3);
 
@@ -278,6 +278,7 @@ public class MyAlgorithmMaybe
         int f2parentEdge[] = VecMath.fillvec(nFaces, -1);
         int f2parentFace[] = VecMath.fillvec(nFaces, -1); // redundant but convenient
 
+        double globalWorstGoodness = Double.POSITIVE_INFINITY;
 
         boolean sideIsLight[] = new boolean[nEdges/2]; // scratch for loop
         int lightSides[] = new int[nEdges/2]; // scratch for loop
@@ -505,6 +506,8 @@ public class MyAlgorithmMaybe
                 if (verboseLevel >= 2) OUT("                      bestNeighborGoodness = "+bestNeighborGoodness);
                 assert_gt(bestNeighborGoodness, Double.NEGATIVE_INFINITY);
                 assert_ne(iBestLightSide, -1);
+                globalWorstGoodness = MIN(globalWorstGoodness, bestNeighborGoodness);
+
                 int iBestNeighborEdge = lightSides[iBestLightSide];
                 int iBestNeighborFace = e2f[iBestNeighborEdge][1];
                 if (verboseLevel >= 2) OUT("                      bestLightSide = "+iBestLightSide+": "+iBestNeighborEdge+" to neighbor face "+iBestNeighborFace);
@@ -518,10 +521,10 @@ public class MyAlgorithmMaybe
                     int iEdge = lightSides[iLightSide] ^ 1; // backwards
                     int v0 = e2v[iEdge][0];
                     int v1 = e2v[iEdge][1];
-                    OUT("parenting "+v0+"->"+v1);
+                    OUT("                          parenting "+v0+"->"+v1);
                     v2parentEdge[v0] = iEdge;
                     v2parentVert[v0] = v1;
-                    // as soon as something has a parent, we know its children are locked in
+                    // since we're giving v0 a parent, we know its children are locked in
                     // so we can compute its moment.
                     computeMomentAndAreaStrictlyUpstreamFromUpstream(v0, e2v, v2e, v2momentAndArea, v2parentVert,
                                                                      v2momentAndWeightStrictlyUpstream,
@@ -532,10 +535,10 @@ public class MyAlgorithmMaybe
                     int iEdge = lightSides[iLightSide];
                     int v0 = e2v[iEdge][0];
                     int v1 = e2v[iEdge][1];
-                    OUT("parenting "+v0+"->"+v1);
+                    OUT("                          parenting "+v0+"->"+v1);
                     v2parentEdge[v0] = iEdge;
                     v2parentVert[v0] = v1;
-                    // as soon as something has a parent, we know its children are locked in
+                    // since we're giving v0 a parent, we know its children are locked in
                     // so we can compute its moment.
                     computeMomentAndAreaStrictlyUpstreamFromUpstream(v0, e2v, v2e, v2momentAndArea, v2parentVert,
                                                                      v2momentAndWeightStrictlyUpstream,
@@ -560,7 +563,9 @@ public class MyAlgorithmMaybe
         }
 #endif
 
-        if (verboseLevel >= 1) OUT("        out MyAlgorithmMaybe.doIt");
+        if (verboseLevel >= 1) OUT("          globalWorstGoodness = "+globalWorstGoodness);
+        if (globalWorstGoodness < 0.)
+        if (verboseLevel >= 1) OUT("        out MyAlgorithmMaybe.doItUsingFaceSweep");
         return net;
     } // doItUsingFaceSweep
 
