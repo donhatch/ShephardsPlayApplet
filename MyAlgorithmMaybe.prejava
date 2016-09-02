@@ -293,6 +293,8 @@ public class MyAlgorithmMaybe
 
         boolean sideIsLight[] = new boolean[nEdges/2]; // scratch for loop
         int lightSides[] = new int[nEdges/2]; // scratch for loop
+        int lightSideParts[][] = new int[2][nEdges/2]; // scratch for loop
+        int lightSidePartSizes[] = new int[2]; // scratch for loop
         double scratchMomentAndArea[] = new double[3]; // scratch for loop
         double scratchCentroid[] = new double[2]; // scratch for loop
         double vertMinusCentroid[] = new double[2]; // scratch for loop
@@ -412,91 +414,57 @@ public class MyAlgorithmMaybe
                     // unless all these lagoon exits are good.
                     double worstLagoonExitGoodness = Double.POSITIVE_INFINITY;
 
-                    if (verboseLevel >= 2) OUT("                              first part, backwards");
-                    VecMath.zerovec(scratchMomentAndArea);
+                    lightSidePartSizes[0] = 0;
                     FORIDOWN(jLightSide, iLightSide)
-                    {
-                        int jEdge = lightSides[jLightSide] ^ 1; // backwards from the way we've been considering it
-                        if (verboseLevel >= 2) OUT("                                  looking at jLightSide="+jLightSide+": "+jEdge);
-                        // XXX rest of this block is dup code
-
-                        int v0 = e2v[jEdge][0];
-                        int v1 = e2v[jEdge][1];
-
-                        // speculatively parent.
-                        if (verboseLevel >= 2) OUT("                                      speculatively "+v0+"->"+v1);
-                        assert_eq(v2parentEdge[v0], -1);
-                        assert_eq(v2parentVert[v0], -1);
-                        v2parentEdge[v0] = jEdge;
-                        v2parentVert[v0] = v1;
-                        computeMomentAndAreaStrictlyUpstreamFromUpstream(v0, e2v, v2e, v2momentAndArea, v2parentVert,
-                                                                         v2momentAndWeightStrictlyUpstream,
-                                                                         verboseLevel);
-                        // check it
-                        {
-                            double goodness;
-                            double momentAndWeight[] = v2momentAndWeightStrictlyUpstream[v0];
-                            if (momentAndWeight[2] > 0.)
-                            {
-                                VecMath.vxs(2, scratchCentroid, momentAndWeight, 1./momentAndWeight[2]);
-                                VecMath.vmv(2, vertMinusCentroid, vertsXY[v0], scratchCentroid);
-                                // CBB: extra work normalizing things over and over... I think I should normalize everything once at beginning
-                                VecMath.normalize(2, normalizedEdgeDirection, e2direction[jEdge]);
-                                goodness = VecMath.dot(2, normalizedEdgeDirection, vertMinusCentroid);
-                                if (verboseLevel >= 2) OUT("                                          goodness = "+goodness);
-                                worstLagoonExitGoodness = MIN(worstLagoonExitGoodness, goodness);
-                            }
-                            else
-                            {
-                                // There's no weight hanging from this vertex,
-                                // So goodness is 0; it's good, but it's not really in danger of being bad,
-                                // so we don't accumulate this into worstLagoonExitGoodness.
-                                goodness = 0.;
-                                if (verboseLevel >= 2) OUT("                                          goodness = "+goodness+" (but no danger)");
-                            }
-                        }
-                    }
-                    if (verboseLevel >= 2) OUT("                              second part, forwards");
-                    VecMath.zerovec(scratchMomentAndArea);
+                        lightSideParts[0][lightSidePartSizes[0]++] = lightSides[jLightSide] ^ 1; // backwards from the way we've been considering it
+                    lightSidePartSizes[1] = 0;
                     for (int jLightSide = iLightSide+1; jLightSide < nLightSides; ++jLightSide)
+                        lightSideParts[1][lightSidePartSizes[1]++] = lightSides[jLightSide];
+
+                    FORI (jPart, 2)
                     {
-                        int jEdge = lightSides[jLightSide];
-                        if (verboseLevel >= 2) OUT("                                  looking at jLightSide="+jLightSide+": "+jEdge);
-                        // XXX rest of this block is dup code
-
-                        int v0 = e2v[jEdge][0];
-                        int v1 = e2v[jEdge][1];
-
-                        // speculatively parent.
-                        if (verboseLevel >= 2) OUT("                                      speculatively "+v0+"->"+v1);
-                        assert_eq(v2parentEdge[v0], -1);
-                        assert_eq(v2parentVert[v0], -1);
-                        v2parentEdge[v0] = jEdge;
-                        v2parentVert[v0] = v1;
-                        computeMomentAndAreaStrictlyUpstreamFromUpstream(v0, e2v, v2e, v2momentAndArea, v2parentVert,
-                                                                         v2momentAndWeightStrictlyUpstream,
-                                                                         verboseLevel);
-                        // check it
+                        if (verboseLevel >= 2) OUT("                              "+(jPart==0 ? "first part, backwards" : "second part"));
+                        int lightSidePart[] = lightSideParts[jPart];
+                        int lightSidePartSize = lightSidePartSizes[jPart];
+                        VecMath.zerovec(scratchMomentAndArea);
+                        FORI (jLightSideInPart, lightSidePartSize)
                         {
-                            double goodness;
-                            double momentAndWeight[] = v2momentAndWeightStrictlyUpstream[v0];
-                            if (momentAndWeight[2] > 0.)
+                            int jEdge = lightSidePart[jLightSideInPart];
+                            if (verboseLevel >= 2) OUT("                                  looking at jLightSideInPart="+jLightSideInPart+": "+jEdge);
+                            int v0 = e2v[jEdge][0];
+                            int v1 = e2v[jEdge][1];
+
+                            // speculatively parent.
+                            if (verboseLevel >= 2) OUT("                                      speculatively "+v0+"->"+v1);
+                            assert_eq(v2parentEdge[v0], -1);
+                            assert_eq(v2parentVert[v0], -1);
+                            v2parentEdge[v0] = jEdge;
+                            v2parentVert[v0] = v1;
+                            computeMomentAndAreaStrictlyUpstreamFromUpstream(v0, e2v, v2e, v2momentAndArea, v2parentVert,
+                                                                             v2momentAndWeightStrictlyUpstream,
+                                                                             verboseLevel);
+                            // check it
                             {
-                                VecMath.vxs(2, scratchCentroid, momentAndWeight, 1./momentAndWeight[2]);
-                                VecMath.vmv(2, vertMinusCentroid, vertsXY[v0], scratchCentroid);
-                                // CBB: extra work normalizing things over and over... I think I should normalize everything once at beginning
-                                VecMath.normalize(2, normalizedEdgeDirection, e2direction[jEdge]);
-                                goodness = VecMath.dot(2, normalizedEdgeDirection, vertMinusCentroid);
-                                if (verboseLevel >= 2) OUT("                                          goodness = "+goodness);
-                                worstLagoonExitGoodness = MIN(worstLagoonExitGoodness, goodness);
-                            }
-                            else
-                            {
-                                // There's no weight hanging from this vertex,
-                                // So goodness is 0; it's good, but it's not really in danger of being bad,
-                                // so we don't accumulate this into worstLagoonExitGoodness.
-                                goodness = 0.;
-                                if (verboseLevel >= 2) OUT("                                          goodness = "+goodness+" (but no danger)");
+                                double goodness;
+                                double momentAndWeight[] = v2momentAndWeightStrictlyUpstream[v0];
+                                if (momentAndWeight[2] > 0.)
+                                {
+                                    VecMath.vxs(2, scratchCentroid, momentAndWeight, 1./momentAndWeight[2]);
+                                    VecMath.vmv(2, vertMinusCentroid, vertsXY[v0], scratchCentroid);
+                                    // CBB: extra work normalizing things over and over... I think I should normalize everything once at beginning
+                                    VecMath.normalize(2, normalizedEdgeDirection, e2direction[jEdge]);
+                                    goodness = VecMath.dot(2, normalizedEdgeDirection, vertMinusCentroid);
+                                    if (verboseLevel >= 2) OUT("                                          goodness = "+goodness);
+                                    worstLagoonExitGoodness = MIN(worstLagoonExitGoodness, goodness);
+                                }
+                                else
+                                {
+                                    // There's no weight hanging from this vertex,
+                                    // So goodness is 0; it's good, but it's not really in danger of being bad,
+                                    // so we don't accumulate this into worstLagoonExitGoodness.
+                                    goodness = 0.;
+                                    if (verboseLevel >= 2) OUT("                                          goodness = "+goodness+" (but no danger)");
+                                }
                             }
                         }
                     }
@@ -509,7 +477,9 @@ public class MyAlgorithmMaybe
                         iBestLightSide = iLightSide;
                     }
 
-                    // Clear speculative parenting.
+                    // Clear speculative parenting of inter-light-side verts.
+                    // Don't need to clear the speculative moments&weights,
+                    // since those will get clobbered by future values as appropriate.
                     FORI (jLightSide, nLightSides-1)
                     {
                         int jEdge = lightSides[jLightSide];
@@ -564,7 +534,7 @@ public class MyAlgorithmMaybe
                                                                      v2momentAndWeightStrictlyUpstream,
                                                                      verboseLevel);
                 }
-            }
+            } // iFacePriority > 0
         } // for iFacePriority
         // The result is now in v2parent.
         if (verboseLevel >= 2) PRINTVEC(v2parentEdge);
