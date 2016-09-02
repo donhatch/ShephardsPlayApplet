@@ -1,16 +1,7 @@
 #include "macros.h"
 
 /*
-    Face sweep:
-    Failure 1:
-      - SweepKiller assert-fails (no first light side?)
-      - Convex noise always or mostly assert-fails (no first light side?)
-        Oh hmm, I think the problem is I'm assuming when I consider faces in normal sweep order,
-        I'm assuming the part I've seen so far is connected... but it's not!
-        And, potentially even worse, I think this means it can grow an internal cavity... ?
-        need to think about it.
-        Hmm, no, maybe only happens with OUTWARDS, and UPWARDS is ok in this respect?
-    Failure 2:
+    Face sweep failure:
       DUMP.off.faceSweepProducesBadExit
         Seems to me this is a case where algorithm just doesn't work.
         (even though bilevel works).
@@ -21,6 +12,7 @@ import com.donhatchsw.compat.IntArrayList;
 import com.donhatchsw.util.SortStuff;
 import com.donhatchsw.util.Arrays;
 import com.donhatchsw.util.IndexBinaryHeap;
+import com.donhatchsw.util.TopSorter;
 import com.donhatchsw.util.VecMath;
 
 public class MyAlgorithmMaybe
@@ -33,13 +25,13 @@ public class MyAlgorithmMaybe
     private MyAlgorithmMaybe(){ throw new AssertionError(); } // non-instantiatable util class
 
 
-    // Compute sweep order, either on vertices or on faces (dual verts).
+    // Compute sweep order on vertices.
+    // This is just a directional sort.
     private static int[] compute_priority2v(double sweepOriginHomo[/*3*/], double vertsXY[][/*2*/])
     {
         int nVerts = vertsXY.length;
         double v2orderKey[] = new double[nVerts]; // vertex to radius squared, i.e. distance squared from center
         {
-            double center[] = new double[2]; // scratch for loop
             // TODO: do this homo math right... if there is a "right"
             assert_eq(sweepOriginHomo.length, 3);
             if (sweepOriginHomo[2] == 0.)
@@ -49,6 +41,7 @@ public class MyAlgorithmMaybe
             }
             else
             {
+                double center[] = new double[2]; // scratch for loop
                 VecMath.vxs(2, center, sweepOriginHomo, 1./sweepOriginHomo[2]);
                 FORI (iVert, nVerts)
                     v2orderKey[iVert] = VecMath.distsqrd(2, vertsXY[iVert], center);
@@ -72,7 +65,71 @@ public class MyAlgorithmMaybe
             }
         });
         return priority2v;
-    } // compute_v2priority
+    } // compute_priority2v
+
+    // Compute sweep order on faces.
+    // Note: if sweepOriginHomo is at infinity, this can be done by a simple
+    // directional sort on the dual verts;
+    // I suspect it's possible to use that same strategy in general via some projective
+    // transformation, but I don't know what it is, so topsorting instead.
+    private static int[] compute_priority2f(double sweepOriginHomo[/*3*/], Mesh mesh, Mesh dualMesh)
+    {
+        int verboseLevel = 0;
+        if (verboseLevel >= 1) OUT("            in compute_priority2f");
+        if (sweepOriginHomo[2] == 0.)
+        {
+            // cop-out
+            return compute_priority2v(sweepOriginHomo, MeshUtils.getMeshVertsXY(dualMesh));
+        }
+        double center[] = VecMath.vxs(2, sweepOriginHomo, 1./sweepOriginHomo[2]);
+        if (verboseLevel >= 1) OUT("              center = "+VecMath.toString(center));
+
+        int nEdges = mesh.edges.size();
+        int nFaces = dualMesh.verts.size();
+        int answer[] = new int[nFaces];
+        int partialOrder[][] = new int[nEdges/2][]; // at most
+        int partialOrderSize = 0;
+
+        FORI (iUndirectedEdge, nEdges/2)
+        {
+            int iEdge = 2*iUndirectedEdge;
+            Mesh.Edge edge = mesh.getEdge(iEdge);
+            Mesh.Edge dualEdge = dualMesh.getEdge(iEdge);
+            if (verboseLevel >= 1) OUT("                  edge="+edge);
+            if (verboseLevel >= 1) OUT("                  dualEdge="+dualEdge);
+            Mesh.Vertex v0 = edge.initialVertex();
+            Mesh.Vertex v1 = edge.finalVertex();
+            Mesh.Vertex f0 = dualEdge.initialVertex(); // which-is-which is dog science
+            Mesh.Vertex f1 = dualEdge.finalVertex(); // which-is-which is dog science
+            double area;
+            if (v1 == null || (v0!=null && v0.weight >= v1.weight)) // in particular, if v0 is rightside-out and v1 is inside-out
+            {
+                double v0x = v0.x();
+                double v0y = v0.y();
+                area = GeomUtils.twiceTriangleArea(center[0], center[1],
+                                                   v0x, v0y,
+                                                   v0x+edge.direction[0], v0y+edge.direction[1]);
+            }
+            else
+            {
+                double v1x = v1.x();
+                double v1y = v1.y();
+                area = GeomUtils.twiceTriangleArea(center[0], center[1],
+                                                   v1x, v1y,
+                                                   v1x-edge.direction[0], v1y-edge.direction[1]);
+            }
+            // CBB: could actually be a cycle due to roundoff error
+            if (area > 0.)
+                partialOrder[partialOrderSize++] = new int[]{f1.myIndex(),f0.myIndex()};
+            else if (area < 0.)
+                partialOrder[partialOrderSize++] = new int[]{f0.myIndex(),f1.myIndex()};
+        }
+
+        PRINTARRAY(partialOrder);
+        TopSorter.topsort(nFaces, answer, partialOrderSize, partialOrder);
+        if (verboseLevel >= 1) OUT("            out compute_priority2f");
+        return answer;
+    } // compute_priority2f
 
 
     // So I can see more clearly,
@@ -270,7 +327,8 @@ public class MyAlgorithmMaybe
         double dualVertsXY[][] = dualHelperDataStructure.vertsXY;
         int e2f[][] = dualHelperDataStructure.e2v;
         int f2e[][] = dualHelperDataStructure.v2e;
-        int priority2f[] = compute_priority2v(sweepOriginHomo, dualVertsXY);
+        int priority2f[] = compute_priority2f(sweepOriginHomo, originalMesh, originalDualMesh);
+        if (verboseLevel >= 2) OUT("          priority2f = "+VecMath.toString(priority2f));
         int f2priority[] = VecMath.invertperm(priority2f);
 
         {
