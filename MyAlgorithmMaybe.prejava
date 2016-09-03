@@ -1,11 +1,8 @@
 #include "macros.h"
 
 /*
-    Face sweep failure:
-      DUMP.off.faceSweepProducesBadExit
-        Seems to me this is a case where algorithm just doesn't work.
-        (even though bilevel works).
-        Is it salvagable?
+    failure: alg5killer1 outward: null pointer exception in compute_priority2f
+        (actually I think this is structural badness-- doesn't happen if re-delaunayize)
 */
 
 import com.donhatchsw.compat.IntArrayList;
@@ -67,6 +64,16 @@ public class MyAlgorithmMaybe
             }
         }
 
+        double v2orderKeySecondary[] = null;
+        if (sweepOriginHomo[2] == 0.)
+        {
+            // and another, as tiebreaker (needed for sweepKille1epsMult to keep from starting disconnected)
+            v2orderKeySecondary = new double[nVerts];
+            FORI (iVert, nVerts)
+                v2orderKeySecondary[iVert] = -VecMath.vxv2(vertsXY[iVert], sweepOriginHomo);
+        }
+        final double v2orderKeySecondaryFinal[] = v2orderKeySecondary;
+
         // Could just make an IndexBinaryHeap based on v2orderKey,
         // but it's nicer to use indices that reflect how much progress has been made.
         int priority2v[] = VecMath.identityperm(nVerts);
@@ -75,6 +82,11 @@ public class MyAlgorithmMaybe
             {
                 if (v2orderKey[a] < v2orderKey[b]) return -1;
                 if (v2orderKey[a] > v2orderKey[b]) return 1;
+                if (v2orderKeySecondaryFinal != null)
+                {
+                    if (v2orderKeySecondaryFinal[a] < v2orderKeySecondaryFinal[b]) return -1;
+                    if (v2orderKeySecondaryFinal[a] > v2orderKeySecondaryFinal[b]) return 1;
+                }
                 // Arbitrarily use original index as tiebreaker
                 // CBB: use some geometric consideration instead?
                 // Could also use a random permutation, but I would like to be deterministic, so no.
@@ -98,6 +110,9 @@ public class MyAlgorithmMaybe
         if (sweepOriginHomo[2] == 0.)
         {
             // cop-out
+            // (although if I do ever end up doing this,
+            // would have to do something tricky to make sure we don't start out disconnected,
+            // e.g. SweepKiller1epsMult >=2)
             return compute_priority2v(sweepOriginHomo, MeshUtils.getMeshVertsXY(dualMesh));
         }
         double center[] = VecMath.vxs(2, sweepOriginHomo, 1./sweepOriginHomo[2]);
