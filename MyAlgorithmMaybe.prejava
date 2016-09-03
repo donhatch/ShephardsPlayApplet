@@ -146,7 +146,7 @@ public class MyAlgorithmMaybe
                 partialOrder[partialOrderSize++] = new int[]{f0.myIndex(),f1.myIndex()};
         }
 
-        PRINTARRAY(partialOrder);
+        if (verboseLevel >= 1) OUT("              partialOrder = "+VecMath.toString(partialOrder));
         TopSorter.topsort(nFaces, answer, partialOrderSize, partialOrder);
         if (verboseLevel >= 1) OUT("            out compute_priority2f");
         return answer;
@@ -319,7 +319,7 @@ public class MyAlgorithmMaybe
         int putProblematicVertsHereForDebugging[/*1*/][],
         double putLastPointSweptHere[/*1*/][/*2*/])
     {
-        int verboseLevel = 2; // 1: constant, 2: linear
+        int verboseLevel = 1; // 1: constant, 2: linear
         if (verboseLevel >= 1) OUT("        in MyAlgorithmMaybe.doItFaceSweep");
         if (verboseLevel >= 1) OUT("          sweepOriginHomo = "+VecMath.toString(sweepOriginHomo));
         assert_eq(sweepOriginHomo.length, 3);
@@ -385,6 +385,7 @@ public class MyAlgorithmMaybe
         double scratchCentroid[] = new double[2]; // scratch for loop
         double vertMinusCentroid[] = new double[2]; // scratch for loop
         double normalizedEdgeDirection[] = new double[2]; // scratch for loop
+        double sweepDirection[] = new double[2]; // scratch for loop
 
         // for each face, in order, in the sweep direction
         for (int iFacePriority = 0;
@@ -531,6 +532,18 @@ public class MyAlgorithmMaybe
                                                                              verboseLevel);
                             // check it
                             {
+                                // CBB: extra work normalizing same thing over and over... I think I should normalize everything once at beginning
+                                VecMath.normalize(2, normalizedEdgeDirection, e2direction[jEdge]);
+
+                                // Get sweepDirection: unit, or zero (if sweep origin is exactly at vert).
+                                // sweepDirection = vertsXY[iVert] - sweepOrigin, homogeneous
+                                VecMath.sxvpsxv(2, sweepDirection,
+                                                sweepOriginHomo[2], vertsXY[v0],
+                                                -1., sweepOriginHomo);
+                                if (VecMath.normsqrd(2, sweepDirection) != 0.) // if vertex is not exactly on sweep origin
+                                    VecMath.normalize(2, sweepDirection,
+                                                         sweepDirection);
+
                                 double exitGoodness;
                                 {
                                     double momentAndWeight[] = v2momentAndWeightStrictlyUpstream[v0];
@@ -538,8 +551,6 @@ public class MyAlgorithmMaybe
                                     {
                                         VecMath.vxs(2, scratchCentroid, momentAndWeight, 1./momentAndWeight[2]);
                                         VecMath.vmv(2, vertMinusCentroid, vertsXY[v0], scratchCentroid);
-                                        // CBB: extra work normalizing same thing over and over... I think I should normalize everything once at beginning
-                                        VecMath.normalize(2, normalizedEdgeDirection, e2direction[jEdge]);
                                         exitGoodness = VecMath.dot(2, normalizedEdgeDirection, vertMinusCentroid);
                                         if (verboseLevel >= 2) OUT("                                          exitGoodness = "+exitGoodness);
                                     }
@@ -554,8 +565,8 @@ public class MyAlgorithmMaybe
                                 }
                                 double sweepGoodness;
                                 {
-                                    sweepGoodness = 0.;
-                                    // TODO: implement me!
+                                    // CBB: actually I think I should be measuring sweepGoodness at the end points?  since that's the interface with other stuff.
+                                    sweepGoodness = VecMath.dot(2, normalizedEdgeDirection, sweepDirection);
                                 }
 
                                 thisLagoonExitGoodness[0] = MIN(exitGoodness, 0.);
@@ -615,9 +626,11 @@ public class MyAlgorithmMaybe
                 FORIDOWN(iLightSide, iBestLightSide)
                 {
                     int iEdge = lightSides[iLightSide] ^ 1; // backwards
+
+                    // CBB: rest is dup code
                     int v0 = e2v[iEdge][0];
                     int v1 = e2v[iEdge][1];
-                    OUT("                          parenting "+v0+"->"+v1);
+                    if (verboseLevel >= 2) OUT("                          parenting "+v0+"->"+v1);
                     v2parentEdge[v0] = iEdge;
                     v2parentVert[v0] = v1;
                     // since we're giving v0 a parent, we know its children are locked in
@@ -629,9 +642,11 @@ public class MyAlgorithmMaybe
                 for (int iLightSide = iBestLightSide+1; iLightSide < nLightSides; ++iLightSide)
                 {
                     int iEdge = lightSides[iLightSide];
+
+                    // CBB: rest is dup code
                     int v0 = e2v[iEdge][0];
                     int v1 = e2v[iEdge][1];
-                    OUT("                          parenting "+v0+"->"+v1);
+                    if (verboseLevel >= 2) OUT("                          parenting "+v0+"->"+v1);
                     v2parentEdge[v0] = iEdge;
                     v2parentVert[v0] = v1;
                     // since we're giving v0 a parent, we know its children are locked in
