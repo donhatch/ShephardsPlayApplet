@@ -25,6 +25,25 @@ public class MyAlgorithmMaybe
     private MyAlgorithmMaybe(){ throw new AssertionError(); } // non-instantiatable util class
 
 
+    // TODO: move to VecMath?
+    // Return -1,0,1 according to whether a <,==,> b, lexicographically.
+    private static int cmp(int n, double a[], double b[])
+    {
+        FORI (i, n)
+        {
+            if (a[i] < b[i]) return -1;
+            if (a[i] > b[i]) return 1;
+        }
+        return 0;
+    }
+    // Return -1,0,1 according to whether a <,==,> b, lexicographically. a,b must have same length.
+    private static int cmp(double a[], double b[])
+    {
+        int n = a.length;
+        assert(n == b.length);
+        return cmp(n, a, b);
+    }
+
     // Compute sweep order on vertices.
     // This is just a directional sort.
     private static int[] compute_priority2v(double sweepOriginHomo[/*3*/], double vertsXY[][/*2*/])
@@ -349,7 +368,14 @@ public class MyAlgorithmMaybe
         int f2parentEdge[] = VecMath.fillvec(nFaces, -1);
         int f2parentFace[] = VecMath.fillvec(nFaces, -1); // redundant but convenient
 
-        double globalWorstGoodness = Double.POSITIVE_INFINITY;
+        // [1] = max(exitGoodness,0) // so first priority is to make exitGoodness >= 0
+        // [2] = sweepGoodness       // tiebreaker, usually when both have exitGoodness >= 0
+        // [3] = exitGoodness        // tiebreaker, seldom needed
+        double globalWorstGoodness[] = VecMath.fillvec(3, Double.POSITIVE_INFINITY);
+
+        double bestNeighborGoodness[] = new double[3]; // scratch for loop
+        double worstLagoonExitGoodness[] = new double[3]; // scratch for inner loop
+        double thisLagoonExitGoodness[] = new double[3]; // scratch for inner loop
 
         boolean sideIsLight[] = new boolean[nEdges/2]; // scratch for loop
         int lightSides[] = new int[nEdges/2]; // scratch for loop
@@ -458,7 +484,7 @@ public class MyAlgorithmMaybe
 
                 // Choose a parent face on the light side, to glue this face to.
                 int iBestLightSide = -1;
-                double bestNeighborGoodness = Double.NEGATIVE_INFINITY;
+                VecMath.fillvec(bestNeighborGoodness, Double.NEGATIVE_INFINITY);
                 FORI (iLightSide, nLightSides)
                 {
                     int iEdge = lightSides[iLightSide];
@@ -472,7 +498,7 @@ public class MyAlgorithmMaybe
                     // will be the least goodness of all these lagoon exits.
                     // I.e. this parent isn't good (i.e. goodness >=0)
                     // unless all these lagoon exits are good.
-                    double worstLagoonExitGoodness = Double.POSITIVE_INFINITY;
+                    VecMath.fillvec(worstLagoonExitGoodness, Double.POSITIVE_INFINITY);
 
                     lightSidePartSizes[0] = 0;
                     FORIDOWN(jLightSide, iLightSide)
@@ -505,35 +531,50 @@ public class MyAlgorithmMaybe
                                                                              verboseLevel);
                             // check it
                             {
-                                double goodness;
-                                double momentAndWeight[] = v2momentAndWeightStrictlyUpstream[v0];
-                                if (momentAndWeight[2] > 0.)
+                                double exitGoodness;
                                 {
-                                    VecMath.vxs(2, scratchCentroid, momentAndWeight, 1./momentAndWeight[2]);
-                                    VecMath.vmv(2, vertMinusCentroid, vertsXY[v0], scratchCentroid);
-                                    // CBB: extra work normalizing same thing over and over... I think I should normalize everything once at beginning
-                                    VecMath.normalize(2, normalizedEdgeDirection, e2direction[jEdge]);
-                                    goodness = VecMath.dot(2, normalizedEdgeDirection, vertMinusCentroid);
-                                    if (verboseLevel >= 2) OUT("                                          goodness = "+goodness);
-                                    worstLagoonExitGoodness = MIN(worstLagoonExitGoodness, goodness);
+                                    double momentAndWeight[] = v2momentAndWeightStrictlyUpstream[v0];
+                                    if (momentAndWeight[2] > 0.)
+                                    {
+                                        VecMath.vxs(2, scratchCentroid, momentAndWeight, 1./momentAndWeight[2]);
+                                        VecMath.vmv(2, vertMinusCentroid, vertsXY[v0], scratchCentroid);
+                                        // CBB: extra work normalizing same thing over and over... I think I should normalize everything once at beginning
+                                        VecMath.normalize(2, normalizedEdgeDirection, e2direction[jEdge]);
+                                        exitGoodness = VecMath.dot(2, normalizedEdgeDirection, vertMinusCentroid);
+                                        if (verboseLevel >= 2) OUT("                                          exitGoodness = "+exitGoodness);
+                                    }
+                                    else
+                                    {
+                                        // There's no weight hanging from this vertex,
+                                        // So goodness is 0; it's good, but it's not really in danger of being bad.
+                                        //exitGoodness = 0.;
+                                        exitGoodness = Double.POSITIVE_INFINITY;
+                                        if (verboseLevel >= 2) OUT("                                          exitGoodness = 0 (setting to "+exitGoodness+" because no danger)");
+                                    }
                                 }
-                                else
+                                double sweepGoodness;
                                 {
-                                    // There's no weight hanging from this vertex,
-                                    // So goodness is 0; it's good, but it's not really in danger of being bad,
-                                    // so we don't accumulate this into worstLagoonExitGoodness.
-                                    goodness = 0.;
-                                    if (verboseLevel >= 2) OUT("                                          goodness = "+goodness+" (but no danger)");
+                                    sweepGoodness = 0.;
+                                    // TODO: implement me!
                                 }
+
+                                thisLagoonExitGoodness[0] = MAX(exitGoodness, 0);
+                                thisLagoonExitGoodness[1] = sweepGoodness;
+                                thisLagoonExitGoodness[2] = exitGoodness;
+                                if (verboseLevel >= 2) OUT("                                          thisLagoonExitGoodness = "+VecMath.toString(thisLagoonExitGoodness));
+                                if (cmp(thisLagoonExitGoodness, worstLagoonExitGoodness) < 0)
+                                    VecMath.copyvec(worstLagoonExitGoodness, thisLagoonExitGoodness);
                             }
                         }
                     }
 
-                    if (verboseLevel >= 2) OUT("                                      worstLagoonExitGoodness = "+worstLagoonExitGoodness);
-                    double thisNeighborGoodness = worstLagoonExitGoodness;
-                    if (thisNeighborGoodness > bestNeighborGoodness)
+                    if (verboseLevel >= 2) OUT("                              thisNeighborGoodness = worstLagoonExitGoodness = "+VecMath.toString(worstLagoonExitGoodness));
+                    double thisNeighborGoodness[] = worstLagoonExitGoodness; // clearer name
+
+                    //assert((thisNeighborGoodness[0] < Double.POSITIVE_INFINITY) == (nLightSides > 1)); // can't assert this because I play subtle games with infinity
+                    if (cmp(thisNeighborGoodness, bestNeighborGoodness) > 0)
                     {
-                        bestNeighborGoodness = thisNeighborGoodness;
+                        VecMath.copyvec(bestNeighborGoodness, thisNeighborGoodness);
                         iBestLightSide = iLightSide;
                     }
 
@@ -550,13 +591,18 @@ public class MyAlgorithmMaybe
                         v2parentVert[v1] = -1;
                     }
                 }
-                if (bestNeighborGoodness < 0.)
-                    if (verboseLevel >= 2) OUT("                      OH NO!!! bestNeighborGoodness = "+bestNeighborGoodness);
+                if (bestNeighborGoodness[0] < 0.)
+                {
+                    if (verboseLevel >= 2) OUT("                      OH NO!!! bestNeighborGoodness = "+VecMath.toString(bestNeighborGoodness));
+                }
                 else
-                    if (verboseLevel >= 2) OUT("                      bestNeighborGoodness = "+bestNeighborGoodness);
-                assert_gt(bestNeighborGoodness, Double.NEGATIVE_INFINITY);
+                {
+                    if (verboseLevel >= 2) OUT("                      bestNeighborGoodness = "+VecMath.toString(bestNeighborGoodness));
+                }
+                assert_gt(bestNeighborGoodness[0], Double.NEGATIVE_INFINITY);
                 assert_ne(iBestLightSide, -1);
-                globalWorstGoodness = MIN(globalWorstGoodness, bestNeighborGoodness);
+                if (cmp(bestNeighborGoodness, globalWorstGoodness) < 0)
+                    VecMath.copyvec(globalWorstGoodness, bestNeighborGoodness);
 
                 int iBestNeighborEdge = lightSides[iBestLightSide];
                 int iBestNeighborFace = e2f[iBestNeighborEdge][1];
@@ -613,11 +659,14 @@ public class MyAlgorithmMaybe
         }
 #endif
 
-        if (globalWorstGoodness < 0.)
-            if (verboseLevel >= 1) OUT("          OH NO!!! globalWorstGoodness = "+globalWorstGoodness);
+        if (globalWorstGoodness[0] < 0.)
+        {
+            if (verboseLevel >= 1) OUT("          OH NO!!! globalWorstGoodness = "+VecMath.toString(globalWorstGoodness));
+        }
         else
-            if (verboseLevel >= 1) OUT("          globalWorstGoodness = "+globalWorstGoodness);
-        if (globalWorstGoodness < 0.)
+        {
+            if (verboseLevel >= 1) OUT("          globalWorstGoodness = "+VecMath.toString(globalWorstGoodness));
+        }
         if (verboseLevel >= 1) OUT("        out MyAlgorithmMaybe.doItFaceSweep");
         return net;
     } // doItFaceSweep
