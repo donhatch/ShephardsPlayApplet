@@ -80,26 +80,12 @@ CONJECTURES ABOUT STRONGER UNFOLDINGS INVOLVING SWEEPS:
 * For every trivalent convex polyhedron,
   for every sweep direction, there is an unfolding
   in which the faces and folds follow the sweep direction
-  [unknown, implies the following]
+  [false, counterexample: FaceSweepKiller]
 
 * For every trivalent convex polyhedron,
   there is a sweep direction and an unfolding
   in which the faces and folds follow the sweep direction
-  [unknown]
-
-* For every trivalent convex polyhedron,
-  for every face, there is an unfolding
-  in which the face normals and folds follow the outward sweep direction
-  starting from that face's normal, which can be found incrementally
-  without backtracking
-  [unknown, implies the following and also the "there exists a face" version]
-
-* For every trivalent convex polyhedron,
-  for every face, there is an unfolding
-  in which the face normals and folds follow the outward sweep direction
-  starting from that face's normal
-  [unknown, imples the "there exists a face" version]
-
+  [false, counterexample: sufficiently many copies of FaceSweepKiller in varying directions]
 
 CONJECTURES ABOUT REFINEMENTS:
 
