@@ -3,6 +3,8 @@
 /*
     failure: alg5killer1 outward: null pointer exception in compute_priority2f
         (actually I think this is structural badness-- doesn't happen if re-delaunayize)
+    assertion failure: if symmetrical and no vertex at origin
+    assertion failure: FaceSweepKiller, turn on delaunayize and calc underside (nothing really works in that case, but should maybe give better message)
 */
 
 import com.donhatchsw.compat.IntArrayList;
@@ -203,9 +205,15 @@ public class MyAlgorithmMaybe
 
             if (e2direction[0] != null) // is this the right condition?  original primal doesn't have directions, original dual does
             {
-                // Make sure neighbors of each vert are listed in ccw order
+                // Make sure neighbors of each vert are listed in ccw order.
                 FORI (iVert, nVerts)
                 {
+                    // Note that there can be an isolated vertex,
+                    // in the case that "calc underside when delaunayizing" was checked;
+                    // the original inside-out vert gets isolated since everything
+                    // got reconnected to the synthetic infinite vert.
+                    if (v2e[iVert].length == 0) continue;
+                    assert_eq(v2e[iVert].length, 3);
                     if (VecMath.vxv2(e2direction[v2e[iVert][0]],
                                      e2direction[v2e[iVert][1]]) < 0.)
                     {
@@ -213,7 +221,6 @@ public class MyAlgorithmMaybe
                         int temp;
                         SWAP(v2e[iVert][0], v2e[iVert][1], temp);
                     }
-                    assert_eq(v2e[iVert].length, 3);
                     assert(VecMath.vxv2(e2direction[v2e[iVert][0]],
                                         e2direction[v2e[iVert][1]]) > 0.);
                     assert(VecMath.vxv2(e2direction[v2e[iVert][1]],
@@ -475,6 +482,7 @@ public class MyAlgorithmMaybe
                 if (iFirstLightSide == -1)
                 {
                     // All sides are light.
+                    // TODO: this fails if symmetrical and no vertex at origin.  should try to fix that.
                     assert(sideIsLight[0]);
                     // This face must be incident on the infinite vertex.
                     // Arrange so first light side is the one emanating from the infinite vertex
@@ -713,7 +721,7 @@ public class MyAlgorithmMaybe
             // which doesn't impress me).
             // Oh wait!  it does fail, on grid 8,10,11,...
             // Argh, but it's by -5.5511e-17 :-(
-            assert(false);
+            //assert(false);
         }
         else
         {
