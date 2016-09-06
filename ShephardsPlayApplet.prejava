@@ -1297,6 +1297,21 @@ public class ShephardsPlayApplet
                             }
                         });
                     }},
+                    new JButton("Face Sweep Killer") {{
+                        addActionListener(new java.awt.event.ActionListener() {
+                            @Override public void actionPerformed(java.awt.event.ActionEvent e)
+                            {
+                                UndoItem.State before = applet.newUndoItemState();
+
+                                applet.doCannedThingFaceSweepKiller();
+
+                                UndoItem.State after = applet.newUndoItemState();
+                                applet.undoTreeSquirrel.Do(new UndoItem(before, after));
+
+                                applet.theCanvas.repaint();
+                            }
+                        });
+                    }},
                     new JButton("Algorithm5 Killer0") {{
                         addActionListener(new java.awt.event.ActionListener() {
                             @Override public void actionPerformed(java.awt.event.ActionEvent e)
@@ -2524,12 +2539,51 @@ public class ShephardsPlayApplet
                                                     {
                                                         UndoItem.State before = applet.newUndoItemState();
 
-                                                        // cop out
-                                                        applet.mesh.flipUpperLeftLowerRight();
-                                                        applet.mesh.flipLeftRight();
+                                                        if (false)
+                                                        {
+                                                            // cop out
+                                                            applet.mesh.flipUpperLeftLowerRight();
+                                                            applet.mesh.flipLeftRight();
+                                                            applet.dirtyDualMesh(); // flip doesn't work when verts missing
+                                                            // should be no need to re-delaunayize
+                                                        }
+                                                        else
+                                                        {
+                                                            double mat[][];
+                                                            if (applet.shiftIsDown)
+                                                            {
+                                                                mat = new double[][] {
+                                                                    {1,1,0,0},
+                                                                    {-1,1,0,0},
+                                                                    {0,0,1,0},
+                                                                    {0,0,0,1},
+                                                                };
+                                                            }
+                                                            else if (applet.controlIsDown)
+                                                            {
+                                                                double c = Math.cos(DTOR(1.));
+                                                                double s = Math.sin(DTOR(1.));
+                                                                mat = new double[][] {
+                                                                    {c,s,0,0},
+                                                                    {-s,c,0,0},
+                                                                    {0,0,1,0},
+                                                                    {0,0,0,1},
+                                                                };
+                                                            }
+                                                            else
+                                                            {
+                                                                mat = new double[][] {
+                                                                    {0,1,0,0},
+                                                                    {-1,0,0,0},
+                                                                    {0,0,1,0},
+                                                                    {0,0,0,1},
+                                                                };
+                                                            }
+                                                            applet.xformTheMesh(mat);
+                                                            // CBB: xformTheMesh dirties dual mesh-- could just xform the dual mesh too, instead
+                                                            // CBB: xformTheMesh re-delaunayizes; should be no need for that
+                                                        }
 
-                                                        applet.dirtyDualMesh(); // flip doesn't work when verts missing
-                                                        // should be no need to re-delaunayize
                                                         UndoItem.State after = applet.newUndoItemState();
                                                         applet.undoTreeSquirrel.Do(new UndoItem(before, after));
                                                         applet.theCanvas.repaint();
@@ -2562,9 +2616,48 @@ public class ShephardsPlayApplet
                                                     {
                                                         UndoItem.State before = applet.newUndoItemState();
 
-                                                        // cop out
-                                                        applet.mesh.flipLowerLeftUpperRight();
-                                                        applet.mesh.flipLeftRight();
+                                                        if (false)
+                                                        {
+                                                            // cop out
+                                                            applet.mesh.flipLowerLeftUpperRight();
+                                                            applet.mesh.flipLeftRight();
+                                                        }
+                                                        else
+                                                        {
+                                                            double mat[][];
+                                                            if (applet.shiftIsDown)
+                                                            {
+                                                                mat = new double[][] {
+                                                                    {1,-1,0,0},
+                                                                    {1,1,0,0},
+                                                                    {0,0,1,0},
+                                                                    {0,0,0,1},
+                                                                };
+                                                            }
+                                                            else if (applet.controlIsDown)
+                                                            {
+                                                                double c = Math.cos(DTOR(1.));
+                                                                double s = Math.sin(DTOR(1.));
+                                                                mat = new double[][] {
+                                                                    {c,-s,0,0},
+                                                                    {s,c,0,0},
+                                                                    {0,0,1,0},
+                                                                    {0,0,0,1},
+                                                                };
+                                                            }
+                                                            else
+                                                            {
+                                                                mat = new double[][] {
+                                                                    {0,-1,0,0},
+                                                                    {1,0,0,0},
+                                                                    {0,0,1,0},
+                                                                    {0,0,0,1},
+                                                                };
+                                                            }
+                                                            applet.xformTheMesh(mat);
+                                                            // CBB: xformTheMesh dirties dual mesh-- could just xform the dual mesh too, instead
+                                                            // CBB: xformTheMesh re-delaunayizes; should be no need for that
+                                                        }
 
                                                         applet.dirtyDualMesh(); // flip doesn't work when verts missing
                                                         // should be no need to re-delaunayize
@@ -4858,6 +4951,7 @@ public class ShephardsPlayApplet
             xformTheMesh(GeomUtils.getUnwrapAroundSphereMatrix(wrapSphereCurvature, centerSphereFlag));
         } // unwrapAroundSphere
 
+        // TODO: move the core of this to MeshUtils
         private void xformTheMesh(double mat[/*4*/][/*4*/])
         {
             double in[] = new double[4];
@@ -5027,6 +5121,7 @@ public class ShephardsPlayApplet
             //doCannedThingSweepKiller1epsMultiple(sweepKiller1Multiplicity.get(), sweepKiller1Multiplicity.get(), false);
             //doCannedThingOutStressor(outStressorNLevels.get());
             //doCannedThingOutStressorSpiral(outStressorSpiralN.get());
+            //doCannedThingFaceSweepKiller();
 
             load("DUMP.off");
 
@@ -6318,6 +6413,11 @@ public class ShephardsPlayApplet
                         }
                         break;
                     }
+                    case java.awt.event.KeyEvent.VK_SHIFT:
+                    {
+                        shiftIsDown = true;
+                        break;
+                    }
                     case java.awt.event.KeyEvent.VK_CONTROL:
                     {
                         if (!controlIsDown)
@@ -6376,6 +6476,11 @@ public class ShephardsPlayApplet
                 int keyCode = e.getKeyCode();
                 switch(keyCode)
                 {
+                    case java.awt.event.KeyEvent.VK_SHIFT:
+                    {
+                        shiftIsDown = false;
+                        break;
+                    }
                     case java.awt.event.KeyEvent.VK_CONTROL:
                     {
                         if (controlIsDown)
@@ -11844,6 +11949,26 @@ OFF
                 delaunayize();
             } // doCannedThingSweepKiller1epsMultiplePolar
 
+            // I think this is a counterexample to the class of face sweep algorithms
+            // in which each new face attaches to a previous one.
+            private void doCannedThingFaceSweepKiller()
+            {
+                double verts[][] = {
+                    {0.0, 0.0, -0.00852081528017131},
+                    {-0.031249999999999993, -0.062499999999999986, -0.001011263580012437},
+                    {0.031249999999999993, -0.062499999999999986, -0.001011263580012437},
+                    {0.12499999999999997, 0.24999999999999994, -0.016180217280198993},
+                    {-0.12499999999999997, 0.24999999999999994, -0.016180217280198993},
+                    {0.5355693512828954, 0.3073584546624453, -0.07897059225184244},
+                    {-0.5355693512828954, 0.3073584546624453, -0.07897059225184244},
+                    {0.8069686188220531, 0.28509336823378756, -0.05025679343442235},
+                    {-0.8069686188220531, 0.28509336823378756, -0.05025679343442235},
+                    {0.0, 0.7812500000000001, 0.16500000000000092},
+                };
+                mesh = new Mesh(verts, new int[][]{});
+                delaunayize();
+            } // doCannedThingFaceSweepKiller
+
 
             // Stress outward sweep, in slightly spiral way.
             private void doCannedThingOutStressorSpiral(int nVertsWanted)
@@ -15377,7 +15502,7 @@ OFF
                 "Fold Shortest at each face",
             };
         //private Listenable.Int netMethod = new Listenable.Int(0, netMethodNames.length-1, NETMETHOD_MY_ALGORITHM_MAYBE2_OUTWARD);
-        private Listenable.Int netMethod = new Listenable.Int(0, netMethodNames.length-1, NETMETHOD_MY_ALGORITHM_MAYBEFACE_OUTWARD);
+        private Listenable.Int netMethod = new Listenable.Int(0, netMethodNames.length-1, NETMETHOD_MY_ALGORITHM_MAYBEFACE_UPWARD);
         private Listenable.Int myAlgorithmMaxIters = new Listenable.Int(-1, 1000*1000*1000, -1);
 
         private java.awt.Component theCanvas = null;
@@ -15673,6 +15798,7 @@ OFF
         private boolean button2IsDown = false;
         private boolean button3IsDown = false;
         private boolean controlIsDown = false;
+        private boolean shiftIsDown = false;
         private UndoItem.State stateWhenPressed = null;
 
 
