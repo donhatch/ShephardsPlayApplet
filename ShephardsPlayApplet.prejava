@@ -352,6 +352,7 @@ TO DO:
 #define java_awt_event_MouseEvent_BUTTON3 3
 
 import com.donhatchsw.util.Arrays;
+import com.donhatchsw.util.BlueNoise;
 import com.donhatchsw.util.Complex;
 import com.donhatchsw.util.MyMath;
 import com.donhatchsw.util.VecMath;
@@ -10824,9 +10825,21 @@ public class ShephardsPlayApplet
                 //double overlappingDiskRadiusY = .2;
                 // heuristic to get same number of points as nxn square grid
                 // TODO: what was I thinking? redo this using http://mathoverflow.net/questions/238661/formula-for-density-of-maximal-poisson-disk-sampling-of-radius-1
+                // overlapping radius 1 -> density 0.6965[45] ± .00002
+                // therefore density is .696545 / overlappingRadius^2
+                // overlappingRadius = sqrt(.696545 / density)
+
+                /*
                 double magic = 1.6165;
                 double overlappingDiskRadiusX = magic/Math.sqrt(n);
                 double overlappingDiskRadiusY = magic/Math.sqrt(n);
+                */
+
+                double magic = .696545;
+                magic *= 4; // FUDGE-- I don't understand yet.  the mathoverflow question does talk in terms of overlapping disks, right???
+                double overlappingDiskRadiusX = Math.sqrt(magic / n);
+                double overlappingDiskRadiusY = Math.sqrt(magic / n);
+
                 double verts[][];
                 if (wrapAroundSphereFlag.get())
                 {
@@ -10848,6 +10861,7 @@ public class ShephardsPlayApplet
                     FORI (iVert, verts.length)
                         verts[iVert] = (double[])Arrays.append(verts[iVert], 0.); // make room for heights
                 }
+                PRINT(verts.length);
                 mesh = new Mesh(verts, new int[][]{});
             } // doBlueNoiseThing
 
@@ -15133,6 +15147,7 @@ OFF
         } // generateBlueNoiseOnUnitSphere
 
         // "unit square" = [-1,1]x[-1,1]
+        // (actually it's [0,1]x[0,1])
         private static double[][] generateBlueNoiseOnUnitSquare(double stubbornness,
                                                                 double overlappingDiskRadiusX,
                                                                 double overlappingDiskRadiusY, // radius of disks that half-overlap.  this is twice the radius of disks that don't overlap.
@@ -15140,97 +15155,111 @@ OFF
         {
             System.out.println("    in generateBlueNoiseOnUnitSquare");
             long t0millis = System.currentTimeMillis();
-            // adding margin of 2*overlappingDiskRadius and then throwing it away afterwards
-            // should be enough to avoid any boundary artifacts.
-            // XXX add another 2 so we don't need to check... ?
-            double minX = -2*overlappingDiskRadiusX;
-            double maxX = 1+2*overlappingDiskRadiusX;
-            double minY = -2*overlappingDiskRadiusY;
-            double maxY = 1+2*overlappingDiskRadiusY;
-
-            // we work with cells of size 1, in which overlappingDiskRadius is .5 (nonoverlapping disk radius is 1)
-            int nWorkCellsX = (int)Math.ceil((maxX-minX)/overlappingDiskRadiusX);
-            int nWorkCellsY = (int)Math.ceil((maxY-minY)/overlappingDiskRadiusY);
-            PRINT(nWorkCellsX);
-            PRINT(nWorkCellsY);
-            double cells[][][][] = new double[nWorkCellsY][nWorkCellsX][6][2];
-            int cellSizes[][] = new int[nWorkCellsY][nWorkCellsX]; // zeros initially
-            int nSuccesses = 0;
-            int nTries;
-            for (nTries = 0;
-                 nTries==0
-              || nTries < nSuccesses * stubbornness;  // first one is guaranteed to be a success
-                 ++nTries)
+            double answer[][];
+            if (true)
             {
-                double x = randomNumberGenerator.nextDouble() * nWorkCellsX;
-                double y = randomNumberGenerator.nextDouble() * nWorkCellsY;
-                int iX1 = (int)(x+.5);
-                int iX0 = iX1-1;
-                int iY1 = (int)(y+.5);
-                int iY0 = iY1-1;
-                iX0 = CLAMP(iX0, 0, nWorkCellsX-1);
-                iX1 = CLAMP(iX1, 0, nWorkCellsX-1);
-                iY0 = CLAMP(iY0, 0, nWorkCellsY-1);
-                iY1 = CLAMP(iY1, 0, nWorkCellsY-1);
-                boolean bad = false;
-                for (int iY = iY0; iY <= iY1 && !bad; ++iY)
+                System.out.println("      using maximal method");
+                assert_eq(overlappingDiskRadiusX, overlappingDiskRadiusY);
+                answer = BlueNoise.blueNoiseInUnitBox(2,
+                                                      overlappingDiskRadiusX / 4.,
+                                                      randomNumberGenerator);
+                VecMath.mpv(answer, answer, new double[]{.5,.5}); // [-.5,.5] -> [0,1]
+            }
+            else
+            {
+                // adding margin of 2*overlappingDiskRadius and then throwing it away afterwards
+                // should be enough to avoid any boundary artifacts.
+                // XXX add another 2 so we don't need to check... ?
+                double minX = -2*overlappingDiskRadiusX;
+                double maxX = 1+2*overlappingDiskRadiusX;
+                double minY = -2*overlappingDiskRadiusY;
+                double maxY = 1+2*overlappingDiskRadiusY;
+
+                // we work with cells of size 1, in which overlappingDiskRadius is .5 (nonoverlapping disk radius is 1)
+                int nWorkCellsX = (int)Math.ceil((maxX-minX)/overlappingDiskRadiusX);
+                int nWorkCellsY = (int)Math.ceil((maxY-minY)/overlappingDiskRadiusY);
+                PRINT(nWorkCellsX);
+                PRINT(nWorkCellsY);
+                double cells[][][][] = new double[nWorkCellsY][nWorkCellsX][6][2];
+                int cellSizes[][] = new int[nWorkCellsY][nWorkCellsX]; // zeros initially
+                int nSuccesses = 0;
+                int nTries;
+                for (nTries = 0;
+                     nTries==0
+                  || nTries < nSuccesses * stubbornness;  // first one is guaranteed to be a success
+                     ++nTries)
                 {
-                    for (int iX = iX0; iX <= iX1 && !bad; ++iX)
+                    double x = randomNumberGenerator.nextDouble() * nWorkCellsX;
+                    double y = randomNumberGenerator.nextDouble() * nWorkCellsY;
+                    int iX1 = (int)(x+.5);
+                    int iX0 = iX1-1;
+                    int iY1 = (int)(y+.5);
+                    int iY0 = iY1-1;
+                    iX0 = CLAMP(iX0, 0, nWorkCellsX-1);
+                    iX1 = CLAMP(iX1, 0, nWorkCellsX-1);
+                    iY0 = CLAMP(iY0, 0, nWorkCellsY-1);
+                    iY1 = CLAMP(iY1, 0, nWorkCellsY-1);
+                    boolean bad = false;
+                    for (int iY = iY0; iY <= iY1 && !bad; ++iY)
                     {
-                        double cell[][] = cells[iY][iX];
-                        double cellSize = cellSizes[iY][iX];
-                        for (int i = 0; i < cellSize; ++i)
+                        for (int iX = iX0; iX <= iX1 && !bad; ++iX)
                         {
-                            double q[] = cell[i];
-                            // if distance from q to new point < .5
-                            if (SQR(x-q[0])+SQR(y-q[1]) < .25)
+                            double cell[][] = cells[iY][iX];
+                            double cellSize = cellSizes[iY][iX];
+                            for (int i = 0; i < cellSize; ++i)
                             {
-                                bad = true;
-                                break;
+                                double q[] = cell[i];
+                                // if distance from q to new point < .5
+                                if (SQR(x-q[0])+SQR(y-q[1]) < .25)
+                                {
+                                    bad = true;
+                                    break;
+                                }
                             }
                         }
                     }
+                    if (!bad)
+                    {
+                        int iX = (int)x;
+                        int iY = (int)y;
+                        iX = CLAMP(iX, 0, nWorkCellsX-1);
+                        iY = CLAMP(iY, 0, nWorkCellsY-1);
+                        double entry[] = cells[iY][iX][cellSizes[iY][iX]++];
+                        entry[0] = x;
+                        entry[1] = y;
+                        nSuccesses++;
+                    }
                 }
-                if (!bad)
+
+                PRINT(nTries);
+                PRINT(nSuccesses);
+
+                answer = new double[nSuccesses][];
+                int iInCells = 0;
+                int iAnswer = 0;
+                int margin = 1; // should be 1, can set to 0 to see the margin too
+                FORI (iX, nWorkCellsX-2*margin)
+                FORI (iY, nWorkCellsY-2*margin)
                 {
-                    int iX = (int)x;
-                    int iY = (int)y;
-                    iX = CLAMP(iX, 0, nWorkCellsX-1);
-                    iY = CLAMP(iY, 0, nWorkCellsY-1);
-                    double entry[] = cells[iY][iX][cellSizes[iY][iX]++];
-                    entry[0] = x;
-                    entry[1] = y;
-                    nSuccesses++;
+                    double cell[][] = cells[iY+margin][iX+margin];
+                    double cellSize = cellSizes[iY+margin][iX+margin];
+                    for (int i = 0; i < cellSize; ++i)
+                    {
+                        double scratch[] = cell[i]; 
+                        answer[iAnswer] = scratch;
+                        scratch[0] = LERP(minX, maxX, scratch[0]/nWorkCellsX);
+                        scratch[1] = LERP(minY, maxY, scratch[1]/nWorkCellsY);
+                        if (INRANGE(0 <=, scratch[0], <= 1)
+                         && INRANGE(0 <=, scratch[1], <= 1))
+                            iAnswer++;
+                        iInCells++;
+                    }
                 }
+                if (margin == 0)
+                    assert_eq(iInCells, answer.length);
+                answer = (double[][])Arrays.subarray(answer, 0, iAnswer);
             }
 
-            PRINT(nTries);
-            PRINT(nSuccesses);
-
-            double answer[][] = new double[nSuccesses][];
-            int iInCells = 0;
-            int iAnswer = 0;
-            int margin = 1; // should be 1, can set to 0 to see the margin too
-            FORI (iX, nWorkCellsX-2*margin)
-            FORI (iY, nWorkCellsY-2*margin)
-            {
-                double cell[][] = cells[iY+margin][iX+margin];
-                double cellSize = cellSizes[iY+margin][iX+margin];
-                for (int i = 0; i < cellSize; ++i)
-                {
-                    double scratch[] = cell[i]; 
-                    answer[iAnswer] = scratch;
-                    scratch[0] = LERP(minX, maxX, scratch[0]/nWorkCellsX);
-                    scratch[1] = LERP(minY, maxY, scratch[1]/nWorkCellsY);
-                    if (INRANGE(0 <=, scratch[0], <= 1)
-                     && INRANGE(0 <=, scratch[1], <= 1))
-                        iAnswer++;
-                    iInCells++;
-                }
-            }
-            if (margin == 0)
-                assert_eq(iInCells, answer.length);
-            answer = (double[][])Arrays.subarray(answer, 0, iAnswer);
             long t1millis = System.currentTimeMillis();
             double seconds = (t1millis-t0millis) * 1e-3;
             System.out.println("    out generateBlueNoiseOnUnitSquare ("+seconds+" seconds)");
