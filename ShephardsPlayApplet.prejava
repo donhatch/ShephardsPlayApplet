@@ -168,9 +168,9 @@ BUGS:
           NetAndVisualizations doIt(params, mesh, dualMesh, sweepOriginHomo, maxIters, maxSubIters, putVisualizationsHere);
       }
 
-      - ability to "refine"/"makeGood" afterwards... maybe separate section? think about how to coordinate
+      - ability to "refine"/"polish"/"makeGood" afterwards... maybe separate section? think about how to coordinate
 
-    - makeGood should show graphical progress!
+    - polish should show graphical progress!
     - random auto net completion!
     - take net of triangle, turn on "Show primal underside and second dual sheet (if any)"; it draws a strange extra cut that looks wrong
     - can we color some edges red even when net is not complete?  I think the parts that are connected to the infinite can be colored.
@@ -3433,40 +3433,40 @@ public class ShephardsPlayApplet
                             }});
                             add(new JLabel("    "));
                             add(new JCol() {{
-                                add(new JCheckBox("Polish", applet.showNetMakeGoodFlag.get()) {Listenable.Listener enabledListener; {
+                                add(new JCheckBox("Polish", applet.showNetPolishFlag.get()) {Listenable.Listener enabledListener; {
                                     enabledListener = tieEnabledTo(this, applet.showNetFlag);
                                     setMargin(nomargin);
                                     addItemListener(new java.awt.event.ItemListener() {
                                         @Override public void itemStateChanged(java.awt.event.ItemEvent e)
                                         {
-                                            synchronized(applet.showNetMakeGoodFlag) // since another thread checks it once in a while
+                                            synchronized(applet.showNetPolishFlag) // since another thread checks it once in a while
                                             {
-                                                applet.showNetMakeGoodFlag.set(isSelected());
+                                                applet.showNetPolishFlag.set(isSelected());
                                             }
                                             applet.theCanvas.repaint();
                                         }
                                     });
-                                    applet.showNetMakeGoodFlag.addListener(applet.showNetMakeGoodFlagListener = new Listenable.Listener() {
+                                    applet.showNetPolishFlag.addListener(applet.showNetPolishFlagListener = new Listenable.Listener() {
                                         @Override public void valueChanged()
                                         {
-                                            setSelected(applet.showNetMakeGoodFlag.get()); // of the checkbox
+                                            setSelected(applet.showNetPolishFlag.get()); // of the checkbox
 
                                             // XXX TODO: arguably this should be in a different listener... it should happen even if we decided not to have this checkbox
                                             int fps = 10; // XXX need user control of this I think
                                             // XXX TODO: dup code
-                                            if (applet.showNetFlag.get() && applet.showNetMakeGoodFlag.get())
+                                            if (applet.showNetFlag.get() && applet.showNetPolishFlag.get())
                                             {
                                                 Runnable runnable = new Runnable() {
                                                     public void run()
                                                     {
                                                         System.out.println("starting animator thread");
-                                                        while (true) // while (applet.showNetFlag.get() && applet.showNetMakeGoodFlag.get()), but synchronized
+                                                        while (true) // while (applet.showNetFlag.get() && applet.showNetPolishFlag.get()), but synchronized
                                                         {
                                                             synchronized(applet.showNetFlag)
                                                             {
-                                                                synchronized(applet.showNetMakeGoodFlag)
+                                                                synchronized(applet.showNetPolishFlag)
                                                                 {
-                                                                    if (!applet.showNetFlag.get() || !applet.showNetMakeGoodFlag.get())
+                                                                    if (!applet.showNetFlag.get() || !applet.showNetPolishFlag.get())
                                                                         break;
                                                                 }
                                                             }
@@ -3491,7 +3491,7 @@ public class ShephardsPlayApplet
                                         }
                                     });
                                 }});
-                                add(new JCheckBoxForBoolean("very fast", applet.showNetMakeGoodVeryFastFlag) {{
+                                add(new JCheckBoxForBoolean("very fast", applet.showNetPolishVeryFastFlag) {{
                                     setMargin(nomargin);
                                     setToolTipText("repaint after each quantum during Polish(i.e. don't wait for fps)");
                                 }});
@@ -3500,7 +3500,7 @@ public class ShephardsPlayApplet
                                 setToolTipText("how many lagoon-exit-switches to do consecutively when Polish is in progress");
                                 enabledListener = tieEnabledTo(this, applet.showNetFlag);
                             }});
-                            add(new JTextFieldForNumber(applet.showNetMakeGoodQuantum) {Listenable.Listener enabledListener; {enabledListener = tieEnabledTo(this, applet.showNetFlag); }});
+                            add(new JTextFieldForNumber(applet.showNetPolishQuantum) {Listenable.Listener enabledListener; {enabledListener = tieEnabledTo(this, applet.showNetFlag); }});
                             add(new JLabel("    "));
                             add(new JCol() {{
                                 add(new JCheckBoxForBoolean("Continue after quantum done", applet.showNetContinueAfterQuantumDoneFlag) {Listenable.Listener enabledListener; {
@@ -7284,7 +7284,7 @@ public class ShephardsPlayApplet
                     }
                     case 'F':
                     {
-                        showNetMakeGoodFlag.set(!showNetMakeGoodFlag.get());
+                        showNetPolishFlag.set(!showNetPolishFlag.get());
                         break;
                     }
 
@@ -10109,15 +10109,15 @@ public class ShephardsPlayApplet
                                                   this);
                 }
 
-                if (showNetFlag.get() && showNetMakeGoodFlag.get())
+                if (showNetFlag.get() && showNetPolishFlag.get())
                 {
                     // CBB: this is undoubtably the wrong place for this.
                     // Apply some fixage.
                     OUT("before: nFixagesSinceLastNoise = "+nFixagesSinceLastNoise);
                     OUT("Applying fixage!");
-                    int quantum = showNetMakeGoodQuantum.get(); // snapshot
+                    int quantum = showNetPolishQuantum.get(); // snapshot
                     boolean strictFlag = true; // should maybe put this in ui somehow
-                    boolean madeItGood = theNet.makeGood(strictFlag, quantum, randomNumberGenerator, showNetMakeGoodFlag);
+                    boolean madeItGood = theNet.polish(strictFlag, quantum, randomNumberGenerator, showNetPolishFlag);
                     if (madeItGood)
                     {
                         if (showNetMakeBadAgainFlag.get())
@@ -10135,23 +10135,23 @@ public class ShephardsPlayApplet
                         }
                         else
                         {
-                            showNetMakeGoodFlag.set(false);
+                            showNetPolishFlag.set(false);
                         }
                     }
                     else
                     {
                         if (!showNetContinueAfterQuantumDoneFlag.get())
                         {
-                            showNetMakeGoodFlag.set(false);
+                            showNetPolishFlag.set(false);
                         }
                         nFixagesSinceLastNoise += quantum;
                     }
 
-                    if (showNetMakeGoodFlag.get() && showNetMakeGoodVeryFastFlag.get())
+                    if (showNetPolishFlag.get() && showNetPolishVeryFastFlag.get())
                     {
                         repaint();
                     }
-                    OUT("after: nFixagesSinceLastNoise = "+nFixagesSinceLastNoise); // CBB: this is just approximate since makeGood didn't return how many it did on success
+                    OUT("after: nFixagesSinceLastNoise = "+nFixagesSinceLastNoise); // CBB: this is just approximate since polish didn't return how many it did on success
                 }
 
                 if (eventVerbose >= 1) System.out.println("out paint");
@@ -15522,7 +15522,7 @@ OFF
         private Listenable.Listener showNetFlagListener = null;
         private Listenable.Listener showNetFlagListener2 = null;
         private Listenable.Listener showNetFlowFlagListener = null;
-        private Listenable.Listener showNetMakeGoodFlagListener = null;
+        private Listenable.Listener showNetPolishFlagListener = null;
         private Listenable.Listener netMethodListener = null;
         private Listenable.Listener calcInsideOutDualVertsFlagListener = null;
         private Listenable.Listener showInsideOutDualVertsFlagListener = null;
@@ -15623,12 +15623,12 @@ OFF
         private Listenable.Boolean showNetFlag = new Listenable.Boolean(false);
         private Listenable.Boolean showFlattenedNetFlag = new Listenable.Boolean(true);
         private Listenable.Boolean showNetFlowFlag = new Listenable.Boolean(false);
-        private Listenable.Boolean showNetMakeGoodFlag = new Listenable.Boolean(false);
-        private Listenable.Boolean showNetMakeGoodVeryFastFlag = new Listenable.Boolean(false);
+        private Listenable.Boolean showNetPolishFlag = new Listenable.Boolean(false);
+        private Listenable.Boolean showNetPolishVeryFastFlag = new Listenable.Boolean(false);
         private Listenable.Boolean showNetMakeBadAgainFlag = new Listenable.Boolean(false);
         private Listenable.Boolean showNetContinueAfterQuantumDoneFlag = new Listenable.Boolean(true);
         private int nFixagesSinceLastNoise = 0;
-        private Listenable.Int showNetMakeGoodQuantum = new Listenable.Int(0,1000, 10);
+        private Listenable.Int showNetPolishQuantum = new Listenable.Int(0,1000, 10);
         private boolean pointOutRedNetEdges = false;
         private int netFlowIndex = 0;
         private int highlightedDualEdgeIndex = -1;
