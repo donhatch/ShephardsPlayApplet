@@ -3409,24 +3409,49 @@ public class ShephardsPlayApplet
                                                                             1.));
                                 }});
                                 add(new JRow() {{
-                                    String toolTipTextWorkInProgress = "<html>WORK IN PROGRESS</html>";
-                                    setToolTipText(toolTipTextWorkInProgress);
-                                    setBackground(new java.awt.Color(255,128,0)); // orange
                                     add(new JLabel(" my alg sweep origin homo:"));
-                                    add(new JTextFieldForString(applet.myAlgorithmSweepOriginHomoSpec) {{
-                                        setToolTipText(toolTipTextWorkInProgress);
-                                        setBackground(new java.awt.Color(255,128,0)); // orange
-                                    }});
+                                    add(new JTextFieldForString(applet.myAlgorithmSweepOriginHomoSpec) {
+                                        @Override public boolean validate(String text)
+                                        {
+                                            return parseSweepOriginHomo(text) != null;
+                                        }
+                                    });
                                     add(new JCol() {{
-                                        setToolTipText(toolTipTextWorkInProgress);
-                                        setBackground(new java.awt.Color(255,128,0)); // orange
-                                        add(new JCheckBox("outward") {{
-                                            setToolTipText(toolTipTextWorkInProgress);
-                                            setBackground(new java.awt.Color(255,128,0)); // orange
+                                        add(new JCheckBox("outward") {Listenable.Listener listener; {
+                                            String mySpec = "0 0 1"; // outward
+                                            setSelected(applet.myAlgorithmSweepOriginHomoSpec.get().trim().equals(mySpec));
+                                            JCheckBox thisCheckBox = this;
+                                            addActionListener(new java.awt.event.ActionListener() {
+                                                @Override public void actionPerformed(java.awt.event.ActionEvent e)
+                                                {
+                                                    applet.myAlgorithmSweepOriginHomoSpec.set(mySpec);
+                                                    thisCheckBox.setSelected(true); // so turning it off turns it back on again
+                                                }
+                                            });
+                                            applet.myAlgorithmSweepOriginHomoSpec.addListener(listener = new Listenable.Listener() {
+                                                @Override public void valueChanged()
+                                                {
+                                                    thisCheckBox.setSelected(applet.myAlgorithmSweepOriginHomoSpec.get().trim().equals(mySpec));
+                                                }
+                                            });
                                         }});
-                                        add(new JCheckBox("upward") {{
-                                            setToolTipText(toolTipTextWorkInProgress);
-                                            setBackground(new java.awt.Color(255,128,0)); // orange
+                                        add(new JCheckBox("upward") {Listenable.Listener listener; {
+                                            String mySpec = "0 -1 0"; // upward
+                                            setSelected(applet.myAlgorithmSweepOriginHomoSpec.get().trim().equals(mySpec));
+                                            JCheckBox thisCheckBox = this;
+                                            addActionListener(new java.awt.event.ActionListener() {
+                                                @Override public void actionPerformed(java.awt.event.ActionEvent e)
+                                                {
+                                                    applet.myAlgorithmSweepOriginHomoSpec.set(mySpec);
+                                                    thisCheckBox.setSelected(true); // so turning it off turns it back on again
+                                                }
+                                            });
+                                            applet.myAlgorithmSweepOriginHomoSpec.addListener(listener = new Listenable.Listener() {
+                                                @Override public void valueChanged()
+                                                {
+                                                    thisCheckBox.setSelected(applet.myAlgorithmSweepOriginHomoSpec.get().trim().equals(mySpec));
+                                                }
+                                            });
                                         }});
                                     }});
                                 }});
@@ -8350,32 +8375,25 @@ public class ShephardsPlayApplet
 
                                 Mesh.Edge dualVertIndexToParentEdge[] = new Mesh.Edge[dualMesh.verts.size()]; // all null initially
                                 int netMethodValue = netMethod.get();
-                                if (netMethodValue == NETMETHOD_MY_ALGORITHM_MAYBE_UPWARD
-                                 || netMethodValue == NETMETHOD_MY_ALGORITHM_MAYBE_OUTWARD
-                                 || netMethodValue == NETMETHOD_MY_ALGORITHM_MAYBE2_UPWARD
-                                 || netMethodValue == NETMETHOD_MY_ALGORITHM_MAYBE2_OUTWARD
-                                 || netMethodValue == NETMETHOD_MY_ALGORITHM_MAYBEFACE_UPWARD
-                                 || netMethodValue == NETMETHOD_MY_ALGORITHM_MAYBEFACE_OUTWARD)
+                                if (netMethodValue == NETMETHOD_MY_ALGORITHM_MAYBE
+                                 || netMethodValue == NETMETHOD_MY_ALGORITHM_MAYBE2
+                                 || netMethodValue == NETMETHOD_MY_ALGORITHM_MAYBEFACE)
                                 {
                                     int maxIters = myAlgorithmMaxIters.get();
-                                    double sweepOriginHomo[] = (netMethodValue==NETMETHOD_MY_ALGORITHM_MAYBE_UPWARD
-                                                             || netMethodValue==NETMETHOD_MY_ALGORITHM_MAYBE2_UPWARD
-                                                             || netMethodValue==NETMETHOD_MY_ALGORITHM_MAYBEFACE_UPWARD
-                                        // BUG: if syntax error on this line, it's reported as wrong line number
-                                        ? new double[]{0,-1,0} // upward from -y axis
-                                        : new double[]{0,0,1}); // outward from origin
+                                    double sweepOriginHomo[] = parseSweepOriginHomo(myAlgorithmSweepOriginHomoSpec.get());
+                                    assert_ne(sweepOriginHomo, null); // because spec was validated
                                     int putProblematicVertsHereForDebugging[/*1*/][] = {null};
                                     double putLastPointSweptHere[/*1*/][/*2*/] = {null};
                                     try {
-                                        if (netMethodValue==NETMETHOD_MY_ALGORITHM_MAYBE_UPWARD||netMethodValue==NETMETHOD_MY_ALGORITHM_MAYBE_OUTWARD)
+                                        if (netMethodValue==NETMETHOD_MY_ALGORITHM_MAYBE)
                                         {
                                             theNet = MyAlgorithmMaybe.doIt(dualMesh, mesh, sweepOriginHomo, randomNumberGenerator, maxIters, putProblematicVertsHereForDebugging); // reversed since we want net of dual mesh
                                         }
-                                        else if (netMethodValue==NETMETHOD_MY_ALGORITHM_MAYBE2_UPWARD||netMethodValue==NETMETHOD_MY_ALGORITHM_MAYBE2_OUTWARD)
+                                        else if (netMethodValue==NETMETHOD_MY_ALGORITHM_MAYBE2)
                                         {
                                             theNet = MyAlgorithmMaybe.doIt2(dualMesh, mesh, sweepOriginHomo, maxIters, putProblematicVertsHereForDebugging, putLastPointSweptHere); // reversed since we want net of dual mesh
                                         }
-                                        else if (netMethodValue==NETMETHOD_MY_ALGORITHM_MAYBEFACE_UPWARD||netMethodValue==NETMETHOD_MY_ALGORITHM_MAYBEFACE_OUTWARD)
+                                        else if (netMethodValue==NETMETHOD_MY_ALGORITHM_MAYBEFACE)
                                         {
                                             theNet = MyAlgorithmMaybe.doItFaceSweep(dualMesh, mesh, sweepOriginHomo, maxIters, putProblematicVertsHereForDebugging, putLastPointSweptHere); // reversed since we want net of dual mesh
                                         }
@@ -15551,31 +15569,25 @@ OFF
             private static final int NETMETHOD_RANDOM = 1;
             private static final int NETMETHOD_UPWARD = 2;
             private static final int NETMETHOD_OUTWARD = 3;
-            private static final int NETMETHOD_MY_ALGORITHM_MAYBE_UPWARD = 4;
-            private static final int NETMETHOD_MY_ALGORITHM_MAYBE_OUTWARD = 5;
-            private static final int NETMETHOD_MY_ALGORITHM_MAYBE2_UPWARD = 6;
-            private static final int NETMETHOD_MY_ALGORITHM_MAYBE2_OUTWARD = 7;
-            private static final int NETMETHOD_MY_ALGORITHM_MAYBEFACE_UPWARD = 8;
-            private static final int NETMETHOD_MY_ALGORITHM_MAYBEFACE_OUTWARD = 9;
-            private static final int NETMETHOD_CUT_SHARPEST = 10;
-            private static final int NETMETHOD_CUT_DULLEST = 11;
-            private static final int NETMETHOD_CUT_LONGEST = 12;
-            private static final int NETMETHOD_CUT_SHORTEST = 13;
-            private static final int NETMETHOD_FOLD_SHARPEST = 14;
-            private static final int NETMETHOD_FOLD_DULLEST = 15;
-            private static final int NETMETHOD_FOLD_LONGEST = 16;
-            private static final int NETMETHOD_FOLD_SHORTEST = 17;
+            private static final int NETMETHOD_MY_ALGORITHM_MAYBE = 4;
+            private static final int NETMETHOD_MY_ALGORITHM_MAYBE2 = 5;
+            private static final int NETMETHOD_MY_ALGORITHM_MAYBEFACE = 6;
+            private static final int NETMETHOD_CUT_SHARPEST = 7;
+            private static final int NETMETHOD_CUT_DULLEST = 8;
+            private static final int NETMETHOD_CUT_LONGEST = 9;
+            private static final int NETMETHOD_CUT_SHORTEST = 10;
+            private static final int NETMETHOD_FOLD_SHARPEST = 11;
+            private static final int NETMETHOD_FOLD_DULLEST = 12;
+            private static final int NETMETHOD_FOLD_LONGEST = 13;
+            private static final int NETMETHOD_FOLD_SHORTEST = 14;
             private static final String netMethodNames[] = {
                 "Manual",
                 "Random",
                 "Upward",
                 "Outward",
-                "My algorithm maybe (upward)",
-                "My algorithm maybe (outward)",
-                "My algorithm maybe2 (upward)",
-                "My algorithm maybe2 (outward)",
-                "My algorithm facesweep (upward)",
-                "My algorithm facesweep (outward)",
+                "My algorithm maybe",
+                "My algorithm maybe2",
+                "My algorithm facesweep",
                 "Cut Sharpest at each vert",
                 "Cut Dullest at each vert",
                 "Cut Longest at each vert",
@@ -15585,8 +15597,7 @@ OFF
                 "Fold Longest at each face",
                 "Fold Shortest at each face",
             };
-        //private Listenable.Int netMethod = new Listenable.Int(0, netMethodNames.length-1, NETMETHOD_MY_ALGORITHM_MAYBE2_OUTWARD);
-        private Listenable.Int netMethod = new Listenable.Int(0, netMethodNames.length-1, NETMETHOD_MY_ALGORITHM_MAYBEFACE_UPWARD);
+        private Listenable.Int netMethod = new Listenable.Int(0, netMethodNames.length-1, NETMETHOD_MY_ALGORITHM_MAYBEFACE);
         private Listenable.Int myAlgorithmMaxIters = new Listenable.Int(-1, 1000*1000*1000, -1);
         private Listenable.String myAlgorithmSweepOriginHomoSpec = new Listenable.String("0 -1 0      "); // CBB: added spaces to increase textfield width; should make a more legit way to do that
 
@@ -16230,6 +16241,28 @@ OFF
         listenable.addListener(listener);
         return listener;
     }
+
+    private static double[] parseSweepOriginHomo(String text)
+    {
+        //String[] tokens = text.trim().split("\\s+");
+        String[] tokens = com.donhatchsw.compat.regex.split(text.trim(), "\\s+");
+        if (tokens.length != 3)
+            return null;
+        double[] answer = new double[3];
+        FORI (i, 3)
+        {
+            try
+            {
+                answer[i] = Double.parseDouble(tokens[i]);
+            }
+            catch (NumberFormatException e)
+            {
+                return null;
+            }
+        }
+        return answer;
+    } // parseSweepOriginHomo
+
 
 
 
