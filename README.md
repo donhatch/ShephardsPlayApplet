@@ -62,7 +62,9 @@ CONJECTURES ABOUT STRONGER UNFOLDINGS INVOLVING SWEEPS:
   for every sweep direction, there is an unfolding
   in which the cut tree follows the sweep direction
   [false, counterexample: sweepKiller, or sweepKiller1, can force flow to
-  arbitrarily close to 45 degrees away from the sweep direction]
+  arbitrarily close to 45 degrees away from the sweep direction,
+  and in fact steepKiller can force the flow to be arbitrarily steep,
+  however it's probably not possible to replicate that one]
 
 * For every trivalent convex polyhedron,
   there is a sweep direction and an unfolding
@@ -76,6 +78,8 @@ CONJECTURES ABOUT STRONGER UNFOLDINGS INVOLVING SWEEPS:
   for every sweep direction, there is an unfolding
   in which the cut tree's flow is always within 45 degrees
   (maybe exclusive, maybe inclusive) of the sweep direction
+  [false, counterexample: steepKiller, can force flow to be arbitrarily steep away
+  from the sweep direction. however probably not possible to replicate]
 
 * For every trivalent convex polyhedron,
   for every sweep direction, there is an unfolding
