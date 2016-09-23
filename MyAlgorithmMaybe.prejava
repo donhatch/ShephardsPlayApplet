@@ -336,7 +336,7 @@ public class MyAlgorithmMaybe
     public static Net doItFaceSweep(
         Mesh originalMesh, Mesh originalDualMesh, // generally reversed from the calling app's notion
         double sweepOriginHomo[/*3*/], // if [2] is 0, the vertex is infinitely far from origin
-        int maxIters,
+        int maxIters, // interpreted in funny way: on even iterations, sweep to next face but don't do anything with it.
         int putProblematicVertsHereForDebugging[/*1*/][],
         double putLastPointSweptHere[/*1*/][/*2*/])
     {
@@ -409,15 +409,27 @@ public class MyAlgorithmMaybe
         double sweepDirection[] = new double[2]; // scratch for loop
 
         boolean isVeryFirstNontrivialFace = true;
+        int lastFaceConsidered = -1;
 
-        // for each face, in order, in the sweep direction
-        for (int iFacePriority = 0;
-             iFacePriority < nFaces && (maxIters<0 || iFacePriority < maxIters);
-             iFacePriority++)
+        int iIter;
+        boolean fatalProblemDetected = false;
+        for (iIter = 0;
+             iIter/2 < nFaces && (maxIters<0 || iIter < maxIters) && !fatalProblemDetected;
+             ++iIter)
         {
+            // for each face, in order, in the sweep direction
+            int iFacePriority = iIter / 2;
             int iFace = priority2f[iFacePriority];
+            lastFaceConsidered = iFace;
 
-            if (verboseLevel >= 2) OUT("              top of loop");
+            // On even iterations, we just sweep to the next face but don't do anything with it.
+            // This helps for a nicer visualization.
+            if (iIter % 2 == 0)
+            {
+                continue;
+            }
+
+            if (verboseLevel >= 2) OUT("              iIter="+iIter+": top of loop");
             if (verboseLevel >= 2) OUT("                  priority="+iFacePriority+" iFace="+iFace);
 
             // Call the "light" ["dark"] sides of this face
@@ -693,6 +705,15 @@ public class MyAlgorithmMaybe
                 }
             } // iFacePriority > 0
         } // for iFacePriority
+        if ((iIter/2 == nFaces || maxIters<0) && !fatalProblemDetected)
+        {
+            if (verboseLevel >= 1) OUT("          finished in "+iIter+" iterations!");
+            lastFaceConsidered = -1;
+        }
+        else
+        {
+            if (verboseLevel >= 1) OUT("          didn't finish in "+iIter+" iterations!");
+        }
         // The result is now in v2parent.
         if (verboseLevel >= 2) PRINTVEC(v2parentEdge);
         if (verboseLevel >= 2) PRINTVEC(v2parentVert);
@@ -703,12 +724,10 @@ public class MyAlgorithmMaybe
                 net.cut(v2parentEdge[iVert], true);
         }
 
-#ifdef NOTYET  // TODO: think about what to display
-        if (lastVertexConsidered != -1 && putLastPointSweptHere != null)
+        if (lastFaceConsidered != -1 && putLastPointSweptHere != null)
         {
-            putLastPointSweptHere[0] = dualVertsXY[lastVertexConsidered];
+            putLastPointSweptHere[0] = dualVertsXY[lastFaceConsidered];
         }
-#endif
 
         if (globalWorstGoodness[0] < 0.)
         {
@@ -1118,6 +1137,7 @@ public class MyAlgorithmMaybe
         if (todo.isEmpty() && !fatalProblemDetected)
         {
             if (verboseLevel >= 1) OUT("          finished in "+iIter+" iterations!");
+            lastVertexConsidered = -1;
         }
         else
         {
