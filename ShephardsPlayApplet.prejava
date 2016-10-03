@@ -3759,7 +3759,8 @@ public class ShephardsPlayApplet
 
                 //theControlPanelWindow.setLocation(730, 10);
                 //theControlPanelWindow.setLocation(810, 10);
-                theControlPanelWindow.setLocation(20,225);
+                //theControlPanelWindow.setLocation(20,225);
+                theControlPanelWindow.setLocation(603,109);
                 theControlPanelWindow.pack();
                 theControlPanelWindow.setVisible(true);
             }
@@ -4745,6 +4746,26 @@ public class ShephardsPlayApplet
                         VecMath.sxv(2, scaleX, sweepCircleToDrawCenterHomo);
                     else
                         sweepCircleToDrawCenterHomo = null;
+                }
+                if (sweepVisualizationGraphics != null)
+                {
+                    int nGraphics = sweepVisualizationGraphics.size();
+                    FORI (iGraphic, nGraphics)
+                    {
+                        Object graphic = sweepVisualizationGraphics.get(iGraphic);
+                        Object graphicVertsAndColor[] = (Object[])graphic;
+                        double graphicVerts[][] = (double[][])graphicVertsAndColor[0];
+                        FORI (iGraphicVert, graphicVerts.length)
+                        {
+                            assert_eq(graphicVerts[iGraphicVert].length, 2);
+                            // Need to separate verts, otherwise shared verts will get double-scaled
+                            graphicVerts[iGraphicVert] = new double[]{
+                                graphicVerts[iGraphicVert][0] * scaleY,
+                                graphicVerts[iGraphicVert][1] * scaleX,
+                            };
+                        }
+                    }
+
                 }
             }
             if (undoRedoFlag)
@@ -8385,6 +8406,7 @@ public class ShephardsPlayApplet
                                 // Clear visualizations before running new algorithm
                                 sweepCircleToDrawThroughPoint = null;
                                 sweepCircleToDrawCenterHomo = null;
+                                sweepVisualizationGraphics = null;
 
                                 // Really better names for these would be "dualEdgeIsKnownToBeCut" etc.
                                 boolean dualEdgeIsCut[] = new boolean[mesh.edges.size()]; // all false initially
@@ -8401,6 +8423,7 @@ public class ShephardsPlayApplet
                                     assert_ne(sweepOriginHomo, null); // because spec was validated
                                     int putProblematicVertsHereForDebugging[/*1*/][] = {null};
                                     double putLastPointSweptHere[/*1*/][/*2*/] = {null};
+                                    ArrayList putGraphicsOfLastDecisionHere = new ArrayList();
                                     try {
                                         if (netMethodValue==NETMETHOD_MY_ALGORITHM_MAYBE)
                                         {
@@ -8412,7 +8435,7 @@ public class ShephardsPlayApplet
                                         }
                                         else if (netMethodValue==NETMETHOD_MY_ALGORITHM_MAYBEFACE)
                                         {
-                                            theNet = MyAlgorithmMaybe.doItFaceSweep(dualMesh, mesh, sweepOriginHomo, maxIters, putProblematicVertsHereForDebugging, putLastPointSweptHere); // reversed since we want net of dual mesh
+                                            theNet = MyAlgorithmMaybe.doItFaceSweep(dualMesh, mesh, sweepOriginHomo, maxIters, putProblematicVertsHereForDebugging, putLastPointSweptHere, putGraphicsOfLastDecisionHere); // reversed since we want net of dual mesh
                                         }
                                         else
                                         {
@@ -8446,6 +8469,7 @@ public class ShephardsPlayApplet
                                             sweepCircleToDrawThroughPoint = VecMath.copyvec(putLastPointSweptHere[0]);
                                             sweepCircleToDrawCenterHomo = VecMath.copyvec(sweepOriginHomo);
                                         }
+                                        sweepVisualizationGraphics = putGraphicsOfLastDecisionHere;
                                     }
                                 }
                                 else if (netMethodValue == NETMETHOD_RANDOM)
@@ -8921,7 +8945,7 @@ public class ShephardsPlayApplet
 
                 if (drawDualDiagramFlag && showNetFlagValue)
                 {
-                    // Draw stuff to help algorithm visualization.
+                    // Draw stuff to help algorithm visualization, BEFORE the main diagram.
                     if (sweepCircleToDrawThroughPoint != null
                      && sweepCircleToDrawCenterHomo != null)
                     {
@@ -9746,6 +9770,37 @@ public class ShephardsPlayApplet
                     } // if (drawDualDiagramFlag)
 
                 } // for _iFacingPass
+
+                if (drawDualDiagramFlag && showNetFlagValue)
+                {
+                    // Draw stuff to help algorithm visualization, AFTER the main diagram.
+                    // TODO: need sweepVisualizationGraphicsBefore and After?
+                    if (sweepVisualizationGraphics != null)
+                    {
+                        int nGraphics = sweepVisualizationGraphics.size();
+                        FORI (iGraphic, nGraphics)
+                        {
+                            Object graphic = sweepVisualizationGraphics.get(iGraphic);
+                            Object graphicVertsAndColor[] = (Object[])graphic;
+                            double graphicVerts[][] = (double[][])graphicVertsAndColor[0];
+                            java.awt.Color graphicColor = (java.awt.Color)graphicVertsAndColor[1];
+                            mg3d.setColor(graphicColor);
+                            if (graphicVerts.length == 2)
+                            {
+                                // a segment
+                                mg3d.drawLine(graphicVerts[0][0],
+                                              graphicVerts[0][1],
+                                              graphicVerts[1][0],
+                                              graphicVerts[1][1],
+                                              antiAliasingFlag);
+                            }
+                            else
+                            {
+                                assert(false); // not sure what this is supposed to be
+                            }
+                        }
+                    }
+                }
 
 
                 if (primalDualVisFlag.get()
@@ -15560,8 +15615,9 @@ OFF
         private int[] selectedDualVertIndices = {};
         private boolean allDualVertsAreSelected = false; // misnomer-- it really means "all dual verts are selected intentionally" or something
         // for visualizing some kinds of net algorithms
-        private double[/*2*/] sweepCircleToDrawThroughPoint = null;
-        private double[/*3*/] sweepCircleToDrawCenterHomo = null;
+        private double[/*2*/] sweepCircleToDrawThroughPoint = null; // may be soon subsumed by sweepVisualizationGraphics
+        private double[/*3*/] sweepCircleToDrawCenterHomo = null; // may be soon subsumed by sweepVisualizationGraphics
+        private ArrayList sweepVisualizationGraphics = null;
 
         private Mesh meshOfSelectedTris = mesh; // possibly ill-advised attempt to invalidate selectedTris and selectedDualVertIndices automatically so people can just reset mesh without having to remember
 
