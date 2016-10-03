@@ -11,6 +11,7 @@ import com.donhatchsw.compat.IntArrayList;
 import com.donhatchsw.util.SortStuff;
 import com.donhatchsw.util.Arrays;
 import com.donhatchsw.util.IndexBinaryHeap;
+import com.donhatchsw.util.IndexBinaryHeapKeyed;
 import com.donhatchsw.util.TopSorter;
 import com.donhatchsw.util.VecMath;
 
@@ -42,6 +43,84 @@ public class MyAlgorithmMaybe
         assert(n == b.length);
         return cmp(n, a, b);
     }
+
+    // TODO: move this to donhatchsw somewhere, maybe
+    // TODO: doing it in terms of priorities isn't acceptable, need a cmp function instead
+    static int[] constrainedIndexHeapSort(int n,
+                                          int nPartialOrder, int partialOrder[][],
+                                          double priorities[/*n*/])
+    {
+        int verboseLevel = 0; // 0: nothing, 1: print arrays, 2: progress
+        if (verboseLevel >= 1) OUT("in constrainedIndexHeapSort");
+        if (verboseLevel >= 1) PRINTARRAY(Arrays.subarray(partialOrder, 0, nPartialOrder));
+        if (verboseLevel >= 1) PRINTARRAY(Arrays.subarray(priorities, 0, n));
+
+        int successors[][];
+        {
+            int nSuccessors[] = new int[n]; // zeros initially
+            FORI (iEdge, nPartialOrder)
+                nSuccessors[partialOrder[iEdge][0]]++;
+            if (verboseLevel >= 2) PRINTARRAY(nSuccessors);
+            successors = new int[n][];
+            FORI (i, n)
+            {
+                successors[i] = new int[nSuccessors[i]];
+                nSuccessors[i] = 0;
+            }
+            FORI (iEdge, nPartialOrder)
+            {
+                int edge[] = partialOrder[iEdge];
+                successors[edge[0]][nSuccessors[edge[0]]++] = edge[1];
+            }
+        }
+        if (verboseLevel >= 2) PRINTARRAY(successors);
+        int nPredecessors[] = new int[n]; // zeros initially
+        FORI (iEdge, nPartialOrder)
+            nPredecessors[partialOrder[iEdge][1]]++;
+        if (verboseLevel >= 2) PRINTARRAY(nPredecessors);
+        IndexBinaryHeap candidates = new IndexBinaryHeap(n, new SortStuff.IntComparator() {
+            // CBB: isn't this just IndexBinaryHeapKeyed??  Did I separate that out for nothing??
+            @Override public int compare(int i, int j)
+            {
+                if (priorities[i] < priorities[j]) return -1;
+                if (priorities[i] > priorities[j]) return 1;
+                if (i < j) return -1;
+                if (i > j) return 1;
+                return 0;
+            }
+        });
+        FORI (i, n)
+            if (nPredecessors[i] == 0)
+            {
+                if (verboseLevel >= 2) OUT("        adding candidate "+i);
+                candidates.add(i);
+            }
+        int answer[] = new int[n];
+        FORI (i, n)
+        {
+            if (verboseLevel >= 2) OUT("        i = "+i+"/"+n);
+
+            assert(!candidates.isEmpty()); // if it's empty, there's a cycle
+            int x = candidates.extractMin();
+            if (verboseLevel >= 2) OUT("                extracted x="+x);
+            answer[i] = x;
+            FORI (j, successors[x].length)
+            {
+                int y = successors[x][j];
+                if (verboseLevel >= 2) OUT("                    decrementing nPredecessors[y="+y+"] "+nPredecessors[y]+" -> "+(nPredecessors[y]-1));
+                if (--nPredecessors[y] == 0)
+                {
+                    if (verboseLevel >= 2) OUT("                        adding candidate "+y);
+                    candidates.add(y);
+                }
+            }
+        }
+        if (verboseLevel >= 1) PRINTARRAY(answer);
+        assert(candidates.isEmpty()); // this will fail if there's a cycle
+        if (verboseLevel >= 1) OUT("out constrainedIndexHeapSort");
+        return answer;
+    } // constrainedIndexHeapSort
+
 
     // Compute sweep order on vertices.
     // This is just a directional sort.
@@ -108,10 +187,10 @@ public class MyAlgorithmMaybe
     {
         int verboseLevel = 0;
         if (verboseLevel >= 1) OUT("            in compute_priority2f");
-        if (sweepOriginHomo[2] == 0.)
+        if (sweepOriginHomo[2] == 0.) // infinitely far away
         {
             // cop-out
-            // (although if I do ever end up doing this,
+            // (although if I do ever end up doing this smartly,
             // would have to do something tricky to make sure we don't start out disconnected,
             // e.g. SweepKiller1epsMult >=2)
             return compute_priority2v(sweepOriginHomo, MeshUtils.getMeshVertsXY(dualMesh));
@@ -121,7 +200,7 @@ public class MyAlgorithmMaybe
 
         int nEdges = mesh.edges.size();
         int nFaces = dualMesh.verts.size();
-        int answer[] = new int[nFaces];
+        int answer[];
         int partialOrder[][] = new int[nEdges/2][]; // at most
         int partialOrderSize = 0;
 
@@ -163,7 +242,28 @@ public class MyAlgorithmMaybe
         }
 
         if (verboseLevel >= 1) OUT("              partialOrder = "+VecMath.toString(partialOrder));
-        TopSorter.topsort(nFaces, answer, partialOrderSize, partialOrder);
+        if (false)
+        {
+            // Less sane feeling order-- sweep circle jumps all over the place
+            answer = new int[nFaces];
+            TopSorter.topsort(nFaces, answer, partialOrderSize, partialOrder);
+        }
+        else
+        {
+            // More sane feeling order-- sweep circle sweeps mostly outwards
+            double priorities[] = new double[nFaces];
+            {
+                double dualVertsXY[][] = MeshUtils.getMeshVertsXY(dualMesh);
+                FORI (iFace, nFaces)
+                {
+                    assert(sweepOriginHomo[2] == 1.); // CBB: remove this assumption
+                    priorities[iFace] = VecMath.dist(2, sweepOriginHomo, dualVertsXY[iFace]);
+                }
+            }
+            answer = constrainedIndexHeapSort(nFaces,
+                                              partialOrderSize, partialOrder,
+                                              priorities);
+        }
         if (verboseLevel >= 1) OUT("            out compute_priority2f");
         return answer;
     } // compute_priority2f
@@ -802,7 +902,7 @@ public class MyAlgorithmMaybe
         int v2parentEdge[] = VecMath.fillvec(nVerts, -1);
         int v2parentVert[] = VecMath.fillvec(nVerts, -1);
 
-        IndexBinaryHeap todo = new IndexBinaryHeap(nVerts);
+        IndexBinaryHeapKeyed todo = new IndexBinaryHeapKeyed(nVerts);
         FORI (iVert, nVerts)
         {
             if (v2e[iVert].length != 0) // if not isolated, i.e. not one of the original inside out verts
@@ -1200,7 +1300,7 @@ public class MyAlgorithmMaybe
         int v2parentEdge[] = VecMath.fillvec(nVerts, -1);
         int v2parentVert[] = VecMath.fillvec(nVerts, -1);
 
-        IndexBinaryHeap todo = new IndexBinaryHeap(nVerts);
+        IndexBinaryHeapKeyed todo = new IndexBinaryHeapKeyed(nVerts);
         FORI (iVert, nVerts)
         {
             if (v2e[iVert].length != 0) // if not isolated, i.e. not one of the original inside out verts
