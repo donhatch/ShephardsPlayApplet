@@ -4893,7 +4893,18 @@ public class ShephardsPlayApplet
         // TODO: I bet the nonuniform scale could be done in terms of this too
         public void uniformScaleAndTranslateNoUndoRedo(double scale, double dx, double dy, boolean primalFlag, boolean dualFlag)
         {
-            //OUT("        in uniformScaleAndTranslateNoUndoRedo(primal="+primalFlag+", dual="+dualFlag+")");
+            int verboseLevel = 1;
+            if (verboseLevel >= 1) OUT("        in uniformScaleAndTranslateNoUndoRedo(primal="+primalFlag+", dual="+dualFlag+")");
+            if (!wrapAroundSphereFlag.get())
+            {
+                if (verboseLevel >= 1) OUT("          before:");
+                if (verboseLevel >= 2) PRINT(mesh);
+                if (verboseLevel >= 2) PRINT(getDualMesh());
+                mesh.sanityCheckCoords(1e-6);
+                getDualMesh().sanityCheckCoords(1e-6); // XXX ISSUE: sanityCheckCoords assumes paraboloid
+                if (verboseLevel >= 1) OUT("          sane.");
+            }
+
             assert(primalFlag || dualFlag); // or both
 
             if (primalFlag && !dualFlag)
@@ -5002,12 +5013,21 @@ public class ShephardsPlayApplet
                         assert_eq(dualVert.momentAndArea.length, 4);
                         dualVert.momentAndArea[0] = dualVert.X();
                         dualVert.momentAndArea[1] = dualVert.Y();
-                        dualVert.momentAndArea[2] = dualVert.Z();
+                        dualVert.momentAndArea[2] = dualVert.H();
                         dualVert.momentAndArea[3] = dualVert.W();
                     }
                 }
             }
-            //OUT("        out uniformScaleAndTranslateNoUndoRedo(primal="+primalFlag+", dual="+dualFlag+")");
+            if (!wrapAroundSphereFlag.get())
+            {
+                if (verboseLevel >= 1) OUT("          after:");
+                if (verboseLevel >= 2) PRINT(mesh);
+                if (verboseLevel >= 2) PRINT(getDualMesh());
+                mesh.sanityCheckCoords(1e-6);
+                getDualMesh().sanityCheckCoords(1e-6);
+                if (verboseLevel >= 1) OUT("          sane.");
+            }
+            if (verboseLevel >= 1) OUT("        out uniformScaleAndTranslateNoUndoRedo(primal="+primalFlag+", dual="+dualFlag+")");
         } // uniformScaleAndTranslateNoUndoRedo
 
 
@@ -5717,7 +5737,7 @@ public class ShephardsPlayApplet
                                         } // if verts.length >= 3
                                     } // if verts.size() >= 2 after adding the new vertex
 
-                                    mesh.sanityCheck();
+                                    mesh.sanityCheckTopology();
 
                                     beingDraggedVertIndex = verts.size()-1; // start dragging the one we just added
                                     // XXX not sure the following is right, since it's already been snapped, right? or has it?
@@ -5823,7 +5843,7 @@ public class ShephardsPlayApplet
                             // deleted something-- invalidate dual mesh
                             dirtyDualMesh();
 
-                            mesh.sanityCheck();
+                            mesh.sanityCheckTopology();
                         }
                         if (continuouslyDelaunayizeFlag.get()) delaunayize();
                     }
@@ -5872,7 +5892,7 @@ public class ShephardsPlayApplet
                             ArrayList verts = mesh.verts;
                             mesh.addEdgeBetweenTwoVertices(mesh.getVert(beingDraggedVertIndex),
                                                            mesh.getVert(finalVertIndex));
-                            mesh.sanityCheck();
+                            mesh.sanityCheckTopology();
                             PRINT(mesh.edges.size());
 
                             // added something-- invalidate dual mesh
@@ -6892,7 +6912,7 @@ public class ShephardsPlayApplet
                             System.out.println("Swapping diagonal edge e"+closestEdgeIndex);
                             continuouslyDelaunayizeFlag.set(false); // otherwise it's not obvious what the hell happened
                             mesh.swapDiagonal(mesh.getEdge(closestEdgeIndex), /*onlyIfMoreDelaunay=*/false, /*verbose=*/true);
-                            mesh.sanityCheck();
+                            mesh.sanityCheckTopology();
                             dirtyDualMesh();
                         }
 
@@ -6912,7 +6932,7 @@ public class ShephardsPlayApplet
                             System.out.println("Swapping diagonal edge e"+closestEdgeIndex);
                             continuouslyDelaunayizeFlag.set(false); // otherwise it's not obvious what the hell happened
                             mesh.swapDiagonal(mesh.getEdge(closestEdgeIndex), /*onlyIfMoreDelaunay=*/true, /*verbose=*/true);
-                            mesh.sanityCheck();
+                            mesh.sanityCheckTopology();
                             dirtyDualMesh();
                         }
                         UndoItem.State after = newUndoItemState();
@@ -7057,7 +7077,7 @@ public class ShephardsPlayApplet
                         {
                             System.out.println("Deleting edge e"+closestEdgeIndex);
                             mesh.deleteEdge(mesh.getEdge(closestEdgeIndex));
-                            mesh.sanityCheck();
+                            mesh.sanityCheckTopology();
                             // deleted something-- invalidate dual mesh
                             dirtyDualMesh();
                         }

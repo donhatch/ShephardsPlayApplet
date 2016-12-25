@@ -65,6 +65,22 @@ public class Mesh
            and should be consciously changed to x()/setx() or X()/setXnaive()
            as desired.
         */
+
+        // ISSUE: this assumes paraboloid. Will fail if sphere.
+        public void sanityCheckCoords(double tol)
+        {
+            assert_almost_eq(_Z, (_H - .5 * (_X*_X + _Y*_Y)) / _W, tol);
+            assert_almost_eq(_H, _Z*_W + .5 * (_X*_X + _Y*_Y), tol);
+            assert_almost_eq(h(), z() + (SQR(x())+SQR(y()))/2., tol);
+            if (momentAndArea != null)
+            {
+                assert_eq(momentAndArea.length, 4);
+                assert_almost_eq(momentAndArea[0], _X, tol);
+                assert_almost_eq(momentAndArea[1], _Y, tol);
+                assert_almost_eq(momentAndArea[2], _H, tol);
+                assert_almost_eq(momentAndArea[3], _W, tol);
+            }
+        }
                 
         private double _X;
         private double _Y;
@@ -126,6 +142,7 @@ public class Mesh
             _Y = y;
             _H = h;
             _Z = h - .5 * (x*x + y*y);
+            // note, momentAndArea is now wrong
         }
 
         public void setXYZW(double X, double Y, double Z, double W) // calculate H
@@ -135,6 +152,7 @@ public class Mesh
             _Z = Z;
             _W = W;
             _H = _Z*_W + .5 * (_X*_X+_Y*_Y);
+            // note, momentAndArea is now wrong
         }
         public void setXYHW(double X, double Y, double H, double W) // calculate Z; unfortunate divide
         {
@@ -143,6 +161,7 @@ public class Mesh
             _H = H;
             _W = W;
             _Z = (_H - .5 * (_X*_X+_Y*_Y)) / _W;
+            // note, momentAndArea is now wrong
         }
 
         //
@@ -364,7 +383,17 @@ public class Mesh
             ((Edge)edges.get(iEdge))._myIndex = iEdge;
     }
 
-    public void sanityCheck()
+    public void sanityCheckCoords(double tol)
+    {
+        int nVerts = this.verts.size();
+        FORI (iVert, nVerts)
+        {
+            Vertex vert = (Vertex)this.getVert(iVert);
+            vert.sanityCheckCoords(tol);
+        }
+    }
+
+    public void sanityCheckTopology()
     {
         int nVerts = this.verts.size();
         int nEdges = this.edges.size();
@@ -443,7 +472,7 @@ public class Mesh
             assert(sawEdgeAsNext[iEdge]);
             assert(sawEdgeAsPrev[iEdge]);
         }
-    } // sanityCheck
+    } // sanityCheckTopology
 
 
 
@@ -1597,7 +1626,7 @@ public class Mesh
             edge._initialVertex = finalInitials[iEdge];
             edge._initialVertex.arity++;
         }
-        sanityCheck();
+        sanityCheckTopology();
     } // flipLeftRight
     public void flipUpDown()
     {
@@ -1631,7 +1660,7 @@ public class Mesh
             edge._initialVertex = finalInitials[iEdge];
             edge._initialVertex.arity++;
         }
-        sanityCheck();
+        sanityCheckTopology();
     } // flipUpDown
     public void flipUpperLeftLowerRight()
     {
@@ -1665,7 +1694,7 @@ public class Mesh
             edge._initialVertex = finalInitials[iEdge];
             edge._initialVertex.arity++;
         }
-        sanityCheck();
+        sanityCheckTopology();
     } // flipUpperLeftLowerRight
     public void flipLowerLeftUpperRight()
     {
@@ -1699,7 +1728,7 @@ public class Mesh
             edge._initialVertex = finalInitials[iEdge];
             edge._initialVertex.arity++;
         }
-        sanityCheck();
+        sanityCheckTopology();
     } // flipLowerLeftUpperRight
 
     public Mesh()
@@ -1794,7 +1823,7 @@ public class Mesh
             Edge e12 = (Edge)vertIndsToEdge.get(v1_v2);
             e01.setNext(e12, true);
         }
-        sanityCheck();
+        sanityCheckTopology();
     } // Mesh from vertex positions and face indices
 
     // copy ctor
@@ -2077,6 +2106,14 @@ public class Mesh
                         // this keeps it homogeneous, with W = twice tri area.
                         // Known to break things downstream that call Xnaive() etc.,
                         // but they deserve to be broken.
+                        PRINT(xa/a);
+                        PRINT(ya/a);
+                        PRINT(haa/(a*a));
+                        PRINT(xa);
+                        PRINT(ya);
+                        PRINT(a);
+                        PRINT(haa);
+                        System.out.println("making new vertex with H = haa = totalMomentAndArea[2] = "+haa);
                         dualVert = dual.newVertex(xa,
                                                   ya,
                                                   0., // ignored
@@ -2122,7 +2159,11 @@ public class Mesh
                                      -dualVert.Z(),
                                      -dualVert.W());
                 }
-
+                PRINT(dualVert);
+                if (nEdges > 2) // XXX nEdges==2 known to be benign screwy case at the moment... we make a vertex with NaN but then it disappears
+                {
+                    dualVert.sanityCheckCoords(1e-6);
+                }
             }
 
             // Set dualVert to be the *final* vertex (i.e. initial vertex of opposite)
