@@ -120,6 +120,19 @@ BUGS:
         (hmm, can this be done in changing between cube and dodecahedron? would be wacky)
 
   Net-related:
+    - BUG: goodnesses (reds/greens) are wrong after this sequence of operations:
+          - blue noise
+          - continuously delaunayize -> on
+          - net -> on, my alg facesweep outward
+          - move whole thing to SE quadrant
+          - hit "Frame primal" button. some cuts turn red!
+             I think it must have some stale notion of centers i.e. moments?
+        and actually I changed the pan buttons to use uniformScaleAndTranslateNoUndoRedo,
+        and it happens then too. so just:
+          - blue noise
+          - continuously delaunayize -> on (and then off again if desired, it doesn't matter)
+          - net -> on, my alg facesweep outward
+          - pan a bit. some cuts turn red!
     - BUG (I think): out stressor spiral: why does number of cuts change when I zoom in and out!?
     - organize methods better!
       maybe make a uniform interface with consistent methods.
@@ -4564,16 +4577,20 @@ public class ShephardsPlayApplet
         public void pan(double dx, double dy)
         {
             UndoItem.State before = newUndoItemState();
-            FORIDOWN(iVert, mesh.verts.size())
-            {
-                Mesh.Vertex vert = mesh.getVert(iVert);
-                // XXX bogus! should pan around at constant offset distance from surface... or something.
-                vert.setxyh(vert.x() + dx,
-                            vert.y() + dy,
-                            vert.h());
-                assert_eq(vert.momentAndArea, null);
+            if (false) {
+              FORIDOWN(iVert, mesh.verts.size())
+              {
+                  Mesh.Vertex vert = mesh.getVert(iVert);
+                  // XXX bogus! should pan around at constant offset distance from surface... or something.
+                  vert.setxyh(vert.x() + dx,
+                              vert.y() + dy,
+                              vert.h());
+                  assert_eq(vert.momentAndArea, null);
+              }
+              dirtyDualMesh(); // TODO: do it explicitly instead! but beware of bugs like in frame
+            } else {
+              uniformScaleAndTranslateNoUndoRedo(1., dx, dy, true, true);
             }
-            dirtyDualMesh(); // TODO: do it explicitly instead!
             UndoItem.State after = newUndoItemState();
             undoTreeSquirrel.Do(new UndoItem(before, after));
             theCanvas.repaint();
@@ -4582,15 +4599,19 @@ public class ShephardsPlayApplet
         public void panDualOnly(double dx, double dy)
         {
             UndoItem.State before = newUndoItemState();
-            FORIDOWN(iVert, mesh.verts.size())
-            {
-                Mesh.Vertex vert = mesh.getVert(iVert);
-                vert.setXYZnaive(vert.x(),
-                                 vert.y(),
-                                 vert.z() - dx*vert.x() - dy*vert.y());
-                assert_eq(vert.momentAndArea, null);
+            if (false) {
+              FORIDOWN(iVert, mesh.verts.size())
+              {
+                  Mesh.Vertex vert = mesh.getVert(iVert);
+                  vert.setXYZnaive(vert.x(),
+                                   vert.y(),
+                                   vert.z() - dx*vert.x() - dy*vert.y());
+                  assert_eq(vert.momentAndArea, null);
+              }
+              dirtyDualMesh(); // TODO: do it explicitly instead!
+            } else {
+              uniformScaleAndTranslateNoUndoRedo(1., dx, dy, false, true);
             }
-            dirtyDualMesh(); // TODO: do it explicitly instead!
             UndoItem.State after = newUndoItemState();
             undoTreeSquirrel.Do(new UndoItem(before, after));
             theCanvas.repaint();
@@ -4598,9 +4619,17 @@ public class ShephardsPlayApplet
 
         public void panPrimalOnly(double dx, double dy)
         {
-            // cop out.  TODO: notice there's an inappropriate undo/redo item
-            pan(dx, dy);
-            panDualOnly(-dx, -dy);
+            if (false) {
+              // cop out.  TODO: notice there's an inappropriate undo/redo item
+              pan(dx, dy);
+              panDualOnly(-dx, -dy);
+            } else {
+              UndoItem.State before = newUndoItemState();
+              uniformScaleAndTranslateNoUndoRedo(1., dx, dy, true, false);
+              UndoItem.State after = newUndoItemState();
+              undoTreeSquirrel.Do(new UndoItem(before, after));
+              theCanvas.repaint();
+            }
         }
 
         // This only sort of makes sense---
@@ -4912,7 +4941,7 @@ public class ShephardsPlayApplet
                 FORIDOWN(iDualVert, dualMesh.verts.size())
                 {
                     Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
-                    assert_eq(dualVert.weight*2, dualVert.W());
+                    assert_eq(dualVert.weight*2, dualVert.W()); // i.e. W is twice primal tri area
                     // dualVert doesn't necessarily have W=1,
                     // so we can't call the "naive" get/set functions.
                     // Do it in homogeneous space.
@@ -4977,10 +5006,13 @@ public class ShephardsPlayApplet
                     dualVert.weight *= scale*scale; // I think this is right, since weight is tri area I think, currently
                     //if (iDualVert == 0.) PRINT(dualVert.weight);
                     //if (iDualVert == 0.) PRINT(dualVert.W());
-                    assert_eq(dualVert.weight*2, dualVert.W());
+                    assert_eq(dualVert.weight*2, dualVert.W()); // i.e. W is twice primal tri area
                 }
             }
             //OUT("        out uniformScaleAndTranslateNoUndoRedo(primal="+primalFlag+", dual="+dualFlag+")");
+
+            System.out.println("WARNING: I think moments are stale? and/or should have recalculated net?");
+
         } // uniformScaleAndTranslateNoUndoRedo
 
 
