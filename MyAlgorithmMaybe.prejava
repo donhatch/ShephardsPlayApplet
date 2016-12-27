@@ -446,6 +446,32 @@ public class MyAlgorithmMaybe
         }
     } // computeMomentAndAreaStrictlyUpstreamFromUpstream
 
+    // helper function.
+    static double computeExitGoodness(double v[/*2*/],
+                                      double momentAndWeightStrictlyUpstream[/*2*/],
+                                      double normalizedEdgeDirection[/*2*/],
+                                      double scratchCentroid[/*2*/],
+                                      double scratchVertMinusCentroid[/*2*/],
+                                      int verboseLevel)
+    {
+        double exitGoodness;
+        if (momentAndWeightStrictlyUpstream[2] > 0.)
+        {
+            VecMath.vxs(2, scratchCentroid, momentAndWeightStrictlyUpstream, 1./momentAndWeightStrictlyUpstream[2]);
+            VecMath.vmv(2, scratchVertMinusCentroid, v, scratchCentroid);
+            exitGoodness = VecMath.dot(2, normalizedEdgeDirection, scratchVertMinusCentroid);
+            if (verboseLevel >= 2) OUT("                                          exitGoodness = "+exitGoodness);
+        }
+        else
+        {
+            // There's no weight hanging from this vertex,
+            // So goodness is 0; it's good, but it's not really in danger of being bad.
+            //exitGoodness = 0.;
+            exitGoodness = Double.POSITIVE_INFINITY;
+            if (verboseLevel >= 2) OUT("                                          exitGoodness = 0 (setting to "+exitGoodness+" because no danger)");
+        }
+        return exitGoodness;
+    } // computeExitGoodness
 
     public static Net doItFaceSweep(
         Mesh originalMesh, Mesh originalDualMesh, // generally reversed from the calling app's notion
@@ -664,7 +690,7 @@ public class MyAlgorithmMaybe
                         double v0[] = i0!=nVerts ? vertsXY[i0] : VecMath.vmv(vertsXY[i1], e2direction[iEdge]);
                         double v1[] = i1!=nVerts ? vertsXY[i1] : VecMath.vpv(vertsXY[i0], e2direction[iEdge]);
                         putGraphicsOfLastDecisionHere.add(new Graphic(
-                            1, // iPass
+                            1, // iPass (after dual)
                             java.awt.Color.YELLOW.darker().darker(),
                             new double[][]{
                                 v0,
@@ -728,6 +754,13 @@ public class MyAlgorithmMaybe
                                 // CBB: extra work normalizing same thing over and over... I think I should normalize everything once at beginning
                                 VecMath.normalize(2, normalizedEdgeDirection, e2direction[jEdge]);
 
+                                double exitGoodness = computeExitGoodness(vertsXY[v0],
+                                                                          v2momentAndWeightStrictlyUpstream[v0],
+                                                                          normalizedEdgeDirection,
+                                                                          scratchCentroid,
+                                                                          vertMinusCentroid,
+                                                                          verboseLevel);
+
                                 // Get sweepDirection: unit, or zero (if sweep origin is exactly at vert).
                                 // sweepDirection = vertsXY[iVert] - sweepOrigin, homogeneous
                                 VecMath.sxvpsxv(2, sweepDirection,
@@ -737,25 +770,6 @@ public class MyAlgorithmMaybe
                                     VecMath.normalize(2, sweepDirection,
                                                          sweepDirection);
 
-                                double exitGoodness;
-                                {
-                                    double momentAndWeight[] = v2momentAndWeightStrictlyUpstream[v0];
-                                    if (momentAndWeight[2] > 0.)
-                                    {
-                                        VecMath.vxs(2, scratchCentroid, momentAndWeight, 1./momentAndWeight[2]);
-                                        VecMath.vmv(2, vertMinusCentroid, vertsXY[v0], scratchCentroid);
-                                        exitGoodness = VecMath.dot(2, normalizedEdgeDirection, vertMinusCentroid);
-                                        if (verboseLevel >= 2) OUT("                                          exitGoodness = "+exitGoodness);
-                                    }
-                                    else
-                                    {
-                                        // There's no weight hanging from this vertex,
-                                        // So goodness is 0; it's good, but it's not really in danger of being bad.
-                                        //exitGoodness = 0.;
-                                        exitGoodness = Double.POSITIVE_INFINITY;
-                                        if (verboseLevel >= 2) OUT("                                          exitGoodness = 0 (setting to "+exitGoodness+" because no danger)");
-                                    }
-                                }
                                 double sweepGoodness;
                                 {
                                     // CBB: actually I think I should be measuring sweepGoodness at the end points?  since that's the interface with other stuff.
@@ -767,7 +781,9 @@ public class MyAlgorithmMaybe
                                 thisLagoonExitGoodness[2] = exitGoodness;
                                 if (verboseLevel >= 2) OUT("                                          thisLagoonExitGoodness = "+VecMath.toString(thisLagoonExitGoodness));
                                 if (cmp(thisLagoonExitGoodness, worstLagoonExitGoodness) < 0)
+                                {
                                     VecMath.copyvec(worstLagoonExitGoodness, thisLagoonExitGoodness);
+                                }
                             }
                         }
                     }
@@ -830,6 +846,29 @@ public class MyAlgorithmMaybe
                     computeMomentAndAreaStrictlyUpstreamFromUpstream(v0, e2v, v2e, v2momentAndArea, v2parentVert,
                                                                      v2momentAndWeightStrictlyUpstream,
                                                                      verboseLevel);
+
+                    // CBB: extra work normalizing same thing over and over... I think I should normalize everything once at beginning.
+                    // In fact I don't even use this unless goodness is bad
+                    VecMath.normalize(2, normalizedEdgeDirection, e2direction[iEdge]);
+                    double exitGoodness = computeExitGoodness(vertsXY[v0],
+                                                              v2momentAndWeightStrictlyUpstream[v0],
+                                                              normalizedEdgeDirection,
+                                                              scratchCentroid,
+                                                              vertMinusCentroid,
+                                                              verboseLevel);
+                    if (exitGoodness < 0.)
+                    {
+                        double v0coords[] = v0!=nVerts ? vertsXY[v0] : VecMath.vmv(vertsXY[v1], e2direction[iEdge]);
+                        double v1coords[] = v1!=nVerts ? vertsXY[v1] : VecMath.vpv(vertsXY[v0], e2direction[iEdge]);
+                        putGraphicsOfLastDecisionHere.add(new Graphic(
+                            1, // iPass (after dual)
+                            java.awt.Color.RED,
+                            new double[][]{
+                                v0coords,
+                                v1coords,
+                            }
+                        ));
+                    }
                 }
                 for (int iLightSide = iBestLightSide+1; iLightSide < nLightSides; ++iLightSide)
                 {
@@ -846,6 +885,28 @@ public class MyAlgorithmMaybe
                     computeMomentAndAreaStrictlyUpstreamFromUpstream(v0, e2v, v2e, v2momentAndArea, v2parentVert,
                                                                      v2momentAndWeightStrictlyUpstream,
                                                                      verboseLevel);
+                    // CBB: extra work normalizing same thing over and over... I think I should normalize everything once at beginning.
+                    // In fact I don't even use this unless goodness is bad
+                    VecMath.normalize(2, normalizedEdgeDirection, e2direction[iEdge]);
+                    double exitGoodness = computeExitGoodness(vertsXY[v0],
+                                                              v2momentAndWeightStrictlyUpstream[v0],
+                                                              normalizedEdgeDirection,
+                                                              scratchCentroid,
+                                                              vertMinusCentroid,
+                                                              verboseLevel);
+                    if (exitGoodness < 0.)
+                    {
+                        double v0coords[] = v0!=nVerts ? vertsXY[v0] : VecMath.vmv(vertsXY[v1], e2direction[iEdge]);
+                        double v1coords[] = v1!=nVerts ? vertsXY[v1] : VecMath.vpv(vertsXY[v0], e2direction[iEdge]);
+                        putGraphicsOfLastDecisionHere.add(new Graphic(
+                            1, // iPass (after dual)
+                            java.awt.Color.RED,
+                            new double[][]{
+                                v0coords,
+                                v1coords,
+                            }
+                        ));
+                    }
                 }
             } // iFacePriority > 0
         } // for iFacePriority
@@ -859,8 +920,9 @@ public class MyAlgorithmMaybe
             if (verboseLevel >= 1) OUT("          didn't finish in "+iIter+" iterations!");
         }
         // The result is now in v2parent.
-        if (verboseLevel >= 2) PRINTVEC(v2parentEdge);
         if (verboseLevel >= 2) PRINTVEC(v2parentVert);
+        if (verboseLevel >= 2) PRINTVEC(v2parentEdge);
+        if (verboseLevel >= 2) PRINTVEC(f2parentEdge);
         Net net = new Net(originalMesh, originalDualMesh);
         FORI (iVert, nVerts)
         {
@@ -882,7 +944,6 @@ public class MyAlgorithmMaybe
         {
             if (verboseLevel >= 1) OUT("          OH NO!!! globalWorstGoodness = "+VecMath.toString(globalWorstGoodness));
 
-
             // I actually haven't seen this one fail yet,
             // despite throwing stuff at it that has made every other algorithm
             // fail (except the exit-swapping "polishing" non-algorithm heuristic
@@ -890,6 +951,7 @@ public class MyAlgorithmMaybe
             // Oh wait!  it does fail, on grid 8,10,11,...
             // Argh, but it's by -5.5511e-17 :-(
             //assert(false);
+            // And it really does fail, see "Face Sweep Killer" and "Simpler Face Sweep Killer"
         }
         else
         {
