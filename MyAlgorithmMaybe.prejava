@@ -831,81 +831,51 @@ public class MyAlgorithmMaybe
                 f2parentFace[iFace] = iBestNeighborFace;
 
                 // That nails down some more of the vertex tree as well...
-                FORIDOWN(iLightSide, iBestLightSide)
+                FORI (iPart, 2)
                 {
-                    int iEdge = lightSides[iLightSide] ^ 1; // backwards
+                    // First part: iBestLightSide-1 down to 0
+                    // Second part: iBestLightSide+1 up to nLightSides-1
+                    int iFirstLightSideInPart = (iPart==0 ? iBestLightSide-1 : iBestLightSide+1);
+                    int iPastLastLightSideInPart = (iPart==0 ? -1 : nLightSides);
+                    int incr = (iPart==0 ? -1 : 1);
+                    for (int iLightSide = iFirstLightSideInPart;
+                         iLightSide != iPastLastLightSideInPart;
+                         iLightSide += incr) {
+                        int iEdge = lightSides[iLightSide];
+                        if (iPart == 0) iEdge ^= 1; // backwards;
+                        int v0 = e2v[iEdge][0];
+                        int v1 = e2v[iEdge][1];
+                        if (verboseLevel >= 2) OUT("                          parenting "+v0+"->"+v1);
+                        v2parentEdge[v0] = iEdge;
+                        v2parentVert[v0] = v1;
+                        // since we're giving v0 a parent, we know its children are locked in
+                        // so we can compute its moment.
+                        computeMomentAndAreaStrictlyUpstreamFromUpstream(v0, e2v, v2e, v2momentAndArea, v2parentVert,
+                                                                         v2momentAndWeightStrictlyUpstream,
+                                                                         verboseLevel);
 
-                    // CBB: rest is dup code
-                    int v0 = e2v[iEdge][0];
-                    int v1 = e2v[iEdge][1];
-                    if (verboseLevel >= 2) OUT("                          parenting "+v0+"->"+v1);
-                    v2parentEdge[v0] = iEdge;
-                    v2parentVert[v0] = v1;
-                    // since we're giving v0 a parent, we know its children are locked in
-                    // so we can compute its moment.
-                    computeMomentAndAreaStrictlyUpstreamFromUpstream(v0, e2v, v2e, v2momentAndArea, v2parentVert,
-                                                                     v2momentAndWeightStrictlyUpstream,
-                                                                     verboseLevel);
-
-                    // CBB: extra work normalizing same thing over and over... I think I should normalize everything once at beginning.
-                    // In fact I don't even use this unless goodness is bad
-                    VecMath.normalize(2, normalizedEdgeDirection, e2direction[iEdge]);
-                    double exitGoodness = computeExitGoodness(vertsXY[v0],
-                                                              v2momentAndWeightStrictlyUpstream[v0],
-                                                              normalizedEdgeDirection,
-                                                              scratchCentroid,
-                                                              vertMinusCentroid,
-                                                              verboseLevel);
-                    if (exitGoodness < 0.)
-                    {
-                        double v0coords[] = v0!=nVerts ? vertsXY[v0] : VecMath.vmv(vertsXY[v1], e2direction[iEdge]);
-                        double v1coords[] = v1!=nVerts ? vertsXY[v1] : VecMath.vpv(vertsXY[v0], e2direction[iEdge]);
-                        putGraphicsOfLastDecisionHere.add(new Graphic(
-                            1, // iPass (after dual)
-                            java.awt.Color.RED,
-                            new double[][]{
-                                v0coords,
-                                v1coords,
-                            }
-                        ));
-                    }
-                }
-                for (int iLightSide = iBestLightSide+1; iLightSide < nLightSides; ++iLightSide)
-                {
-                    int iEdge = lightSides[iLightSide];
-
-                    // CBB: rest is dup code
-                    int v0 = e2v[iEdge][0];
-                    int v1 = e2v[iEdge][1];
-                    if (verboseLevel >= 2) OUT("                          parenting "+v0+"->"+v1);
-                    v2parentEdge[v0] = iEdge;
-                    v2parentVert[v0] = v1;
-                    // since we're giving v0 a parent, we know its children are locked in
-                    // so we can compute its moment.
-                    computeMomentAndAreaStrictlyUpstreamFromUpstream(v0, e2v, v2e, v2momentAndArea, v2parentVert,
-                                                                     v2momentAndWeightStrictlyUpstream,
-                                                                     verboseLevel);
-                    // CBB: extra work normalizing same thing over and over... I think I should normalize everything once at beginning.
-                    // In fact I don't even use this unless goodness is bad
-                    VecMath.normalize(2, normalizedEdgeDirection, e2direction[iEdge]);
-                    double exitGoodness = computeExitGoodness(vertsXY[v0],
-                                                              v2momentAndWeightStrictlyUpstream[v0],
-                                                              normalizedEdgeDirection,
-                                                              scratchCentroid,
-                                                              vertMinusCentroid,
-                                                              verboseLevel);
-                    if (exitGoodness < 0.)
-                    {
-                        double v0coords[] = v0!=nVerts ? vertsXY[v0] : VecMath.vmv(vertsXY[v1], e2direction[iEdge]);
-                        double v1coords[] = v1!=nVerts ? vertsXY[v1] : VecMath.vpv(vertsXY[v0], e2direction[iEdge]);
-                        putGraphicsOfLastDecisionHere.add(new Graphic(
-                            1, // iPass (after dual)
-                            java.awt.Color.RED,
-                            new double[][]{
-                                v0coords,
-                                v1coords,
-                            }
-                        ));
+                        // CBB: extra work normalizing same thing over and over... I think I should normalize everything once at beginning.
+                        // In fact I don't even use this unless goodness is bad
+                        VecMath.normalize(2, normalizedEdgeDirection, e2direction[iEdge]);
+                        double exitGoodness = computeExitGoodness(vertsXY[v0],
+                                                                  v2momentAndWeightStrictlyUpstream[v0],
+                                                                  normalizedEdgeDirection,
+                                                                  scratchCentroid,
+                                                                  vertMinusCentroid,
+                                                                  verboseLevel);
+                        if (exitGoodness < 0.)
+                        {
+                            double v0coords[] = v0!=nVerts ? vertsXY[v0] : VecMath.vmv(vertsXY[v1], e2direction[iEdge]);
+                            double v1coords[] = v1!=nVerts ? vertsXY[v1] : VecMath.vpv(vertsXY[v0], e2direction[iEdge]);
+                            putGraphicsOfLastDecisionHere.add(new Graphic(
+                                1, // iPass (after dual)
+                                java.awt.Color.RED,
+                                new double[][]{
+                                    v0coords,
+                                    v1coords,
+                                }
+                            ));
+                        }
                     }
                 }
             } // iFacePriority > 0
