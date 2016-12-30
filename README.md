@@ -64,7 +64,9 @@ CONJECTURES ABOUT STRONGER UNFOLDINGS INVOLVING SWEEPS:
   [false, counterexample: sweepKiller, or sweepKiller1, can force flow to
   arbitrarily close to 45 degrees away from the sweep direction,
   and in fact steepKiller can force the flow to be arbitrarily steep,
-  however it's probably not possible to replicate that one]
+  however it's probably not possible to replicate that one.
+  Also every counterexaple to the similar face-oriented conjecture
+  is a counterexample to this one.]
 
 * For every trivalent convex polyhedron,
   there is a sweep direction and an unfolding
