@@ -201,12 +201,14 @@ public class MyAlgorithmMaybe
     {
         int verboseLevel = 0;
         if (verboseLevel >= 1) OUT("            in compute_priority2f");
+        assert_gt(VecMath.normsqrd(3, sweepOriginHomo), 0.);
         if (sweepOriginHomo[2] == 0.) // infinitely far away
         {
             // cop-out
             // (although if I do ever end up doing this smartly,
             // would have to do something tricky to make sure we don't start out disconnected,
             // e.g. SweepKiller1epsMult >=2)
+            // TODO: Revisit this now that I'm doing the homogeneous math right. What's the problem with starting out disconnected?  Something to do with the assertion that no-light-sides only happens on the very first face?  Well, isn't the same thing going to happen if sweep origin is sufficiently far from zero even if not infinite?
             return compute_priority2v(sweepOriginHomo, MeshUtils.getMeshVertsXY(dualMesh));
         }
         double center[] = VecMath.vxs(2, sweepOriginHomo, 1./sweepOriginHomo[2]);
@@ -270,8 +272,82 @@ public class MyAlgorithmMaybe
                 double dualVertsXY[][] = MeshUtils.getMeshVertsXY(dualMesh);
                 FORI (iFace, nFaces)
                 {
-                    assert(sweepOriginHomo[2] == 1.); // CBB: remove this assumption
-                    priorities[iFace] = VecMath.dist(2, sweepOriginHomo, dualVertsXY[iFace]);
+                    // Problem statement:
+                    //   a = ax,ay,aw  homogeneous (ax/aw, ay/aw), could be very far or even infinitely far from origin
+                    //   b = bx,by    (0,0 in this case)
+                    //   c = cx,cy
+                    // compute ||c - a|| - ||b - a||
+
+
+                    // I posted this: http://math.stackexchange.com/questions/2077174/how-do-you-compute-c-a-b-a-without-catastrophic-cancellation
+                    //===============================================================================
+                    // Q: how do you compute ||c-a|| - ||b-a|| without catastrophic cancellation?
+                    //
+                    // Given 3 points in the plane:
+                    //     a = (a_x,a_y)
+                    //     b = (b_x,b_x)
+                    //     c = (c_x,c_y)
+                    // How do you compute ||c-a||-||b-a||, i.e. "how much farther is it from a to c than from a to b"?
+                    // All coordinates and computatations are to be in double precision IEEE754 floating point arithmetic.
+                    // The answer must be reasonably accurate even if a is very large compared to b and c.
+                    // Note that naively computing the answer as:
+                    //     sqrt((c_x-a_x)^2+(c_y-a_y)^2) - sqrt((b_x-a_x)^2+(b_y-a_y)^2)
+                    // results in catastrophic cancellation if a has much greater magnitude than b and c.
+                    // For example, if:
+                    //     a = (-1e20,-1e20)
+                    //     b = (0,0)
+                    //     c = (1,1)
+                    // then the answer is (sqrt(2),sqrt(2)),
+                    // but computing it naively will produce (0,0) due to catastrophic cancellation.
+                    //===============================================================================
+                    //
+                    // And LutzL's answer (with my intermediate steps added) is:
+                    //    ||c-a||-||b-a|| = (||c-a||^2-||b-a||^2)     / (||c-a||+||b-a||)
+                    //                    = <c-a,c-a>-<b-a,b-a>       / (||c-a||+||b-a||)
+                    //                    = <(c-a)+(b-a),(c-a)-(b-a)> / (||c-a||+||b-a||)
+                    //                    = <b+c-2a,c-b)>             / (||c-a||+||b-a||)
+                    // So let's see, I'll simplify by assuming b is 0:
+                    //    ||c-a||-||a|| = (||c-a||^2-||a||^2)     / (||c-a||+||a||)
+                    //                    = <c-a,c-a>-<a,a>       / (||c-a||+||a||)
+                    //                    = <(c-a)-(a),(c-a)+(a)> / (||c-a||+||a||)
+                    //                    = <c-2a,c>              / (||c-a||+||a||)
+                    // So, how do I do it when a is homogeneous?
+                    // Well, as a approaches infinite, both the numerator and denominator get big.
+                    // so is there a way to cancl the bigness out of both?
+                    // Well, isn't the bigness 1/aw? So how about multiplying top and bottom by aw?
+                    //                      <c-2a,c> / (||c-a||+||a||)
+                    //                    = (cx^2+cy^2-2(axcx+aycy)/aw) / (||(cxaw-ax,cyaw-ay)/aw|| + ||(ax,ay)/aw||)
+                    //                    = ((cx^2+cy^2)*aw-2(axcx+aycy)) / (||(cxaw-ax,cyaw-ay)|| + ||(ax,ay)||)
+                    //                    = ((cx^2+cy^2)*aw-2(axcx+aycy)) / (||c*aw-(ax,ay)|| + ||(ax,ay)||)
+                    // That works.
+                    // However, note that it blows up if both c and a are at or close to the origin,
+                    // so we need to only use this in the case that a is far (say, >= unit distance) from origin.
+                    //
+                    // TODO:
+                    // Hmm... can we further modify the equation to make it robust in all cases??
+                    // Maybe divide top and bottom by ||ax,ay||?  Or something.
+                    double a[] = sweepOriginHomo;
+                    double c[] = dualVertsXY[iFace];
+                    double ax = a[0];
+                    double ay = a[1];
+                    double aw = a[2];
+                    double cx = c[0];
+                    double cy = c[1];
+                    assert_gt(ax*ax+ay*ay+aw*aw, 0.); // non-degenerate homogeneous, we already checked this at the start
+                    if (ax*ax+ay*ay <= aw*aw)
+                    {
+                        if (verboseLevel >= 1) OUT("                  NEAR (<= 1)");
+                        // a at most unit distance from origin
+                        priorities[iFace] = Math.hypot(cx-ax/aw, cy-ay/aw);
+                    }
+                    else
+                    {
+                        if (verboseLevel >= 1) OUT("                  FAR (> 1)");
+                        // a more than unit distance from origin, perhaps infinitely far
+                        double numerator = (cx*cx+cy*cy)*aw - 2*(ax*cx+ay*cy);
+                        double denominator = Math.hypot(cx*aw-ax,cy*aw-ay) + Math.hypot(ax,ay); // this is 0 if both at origin, that's why 2 cases
+                        priorities[iFace] = numerator / denominator;
+                    }
                 }
             }
             answer = constrainedIndexHeapSort(nFaces,
