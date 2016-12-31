@@ -204,38 +204,38 @@ public class MyAlgorithmMaybe
         assert_gt(VecMath.normsqrd(3, sweepOriginHomo), 0.);
         if (true) // XXX working towards making this false
         {
-          if (sweepOriginHomo[2] == 0.) // infinitely far away
-          {
-              // cop-out.
-              // Actually don't need to do this any more.
+            if (sweepOriginHomo[2] == 0.) // infinitely far away
+            {
+                // cop-out.
+                // Actually don't need to do this any more, except for the following issue.
 
-              // If I do ever end up doing this smartly,
-              // would have to do something tricky to make sure we don't start out disconnected,
-              // e.g. SweepKiller1epsMult >=2.
-              // What's the problem with starting out disconnected?
-              // Something to do with the assertion that no-light-sides only happens on the very first face?
-              // Well, isn't the same thing going to happen if sweep origin is sufficiently far from zero even if not infinite?
-              // Answer: no, it would require several edges to *pass through* the sweep origin.
-              // I think a similar problem might occur if there's a vertex at the sweep origin, though?
-              // No, actually it isn't a problem. In that case there's one first, the others have predecessors which form folds,
-              // and the last one makes one fold and one cut from the sweep origin, which is appropriate.
-              // It *is* a problem in the infinite center case though:
-              // - (minor) no-light-sides happens on multiple faces (not a big deal, could just remove the assertion)
-              // - face tree isn't a tree, it's a forest (not a big deal-- could just let it be a forest,
-              //     or add an extra synthetic face similar to how we add the extra synthetic vertex)
-              // - but if there's a forest, it will cause some infinite face to have to choose
-              //     which of two infinite predecessors to attach to, and the other one will be a cut:
-              //     i.e. a cut flowing upward from infinity, which generally isn't done and has undefined weight&moment semantics.
-              // Possible resolutions:
-              //  - allow the infinite cuts upward from infinity, but give them zero weight and remove them at some point
-              //  - treat this as a special case: if we see we're about to make a cut flowing upward from infinity,
-              //        just make it a fold instead
-              //  - fudge the order so this doesn't happen: that is, pick one special one of the infinite-downward faces,
-              //    make it first, and the rest ordered after it, appropriately, so every one has a predecessor which becomes a fold
-              //  - just treat them all as firsts all at once, with folds between them
+                // If I do ever end up doing this smartly,
+                // would have to do something tricky to make sure we don't start out disconnected,
+                // e.g. SweepKiller1epsMult >=2.
+                // What's the problem with starting out disconnected?
+                // Something to do with the assertion that no-light-sides only happens on the very first face?
+                // Well, isn't the same thing going to happen if sweep origin is sufficiently far from zero even if not infinite?
+                // Answer: no, it would require several edges to *pass through* the sweep origin.
+                // I think a similar problem might occur if there's a vertex at the sweep origin, though?
+                // No, actually it isn't a problem. In that case there's one first, the others have predecessors which form folds,
+                // and the last one makes one fold and one cut from the sweep origin, which is appropriate.
+                // It *is* a problem in the infinite center case though:
+                // - (minor) no-light-sides happens on multiple faces (not a big deal, could just remove the assertion)
+                // - face tree isn't a tree, it's a forest (not a big deal-- could just let it be a forest,
+                //     or add an extra synthetic face similar to how we add the extra synthetic vertex)
+                // - but if there's a forest, it will cause some infinite face to have to choose
+                //     which of two infinite predecessors to attach to, and the other one will be a cut:
+                //     i.e. a cut flowing upward from infinity, which generally isn't done and has undefined weight&moment semantics.
+                // Possible resolutions:
+                //  - allow the infinite cuts upward from infinity, but give them zero weight and remove them at some point
+                //  - treat this as a special case: if we see we're about to make a cut flowing upward from infinity,
+                //        just make it a fold instead
+                //  - fudge the order so this doesn't happen: that is, pick one special one of the infinite-downward faces,
+                //    make it first, and the rest ordered after it, appropriately, so every one has a predecessor which becomes a fold
+                //  - just treat them all as firsts all at once, with folds between them
 
-              return compute_priority2v(sweepOriginHomo, MeshUtils.getMeshVertsXY(dualMesh));
-          }
+                return compute_priority2v(sweepOriginHomo, MeshUtils.getMeshVertsXY(dualMesh));
+            }
         }
         assert_ge(sweepOriginHomo[2], 0.); // things might get reversed and confusing otherwise
         int nEdges = mesh.edges.size();
@@ -293,6 +293,7 @@ public class MyAlgorithmMaybe
         }
 
         if (verboseLevel >= 1) OUT("              partialOrder = "+VecMath.toString((int[][])Arrays.subarray(partialOrder, 0, partialOrderSize)));
+
         if (false)
         {
             // Less sane feeling order-- sweep circle jumps all over the place
@@ -301,7 +302,12 @@ public class MyAlgorithmMaybe
         }
         else
         {
-            // More sane feeling order-- sweep circle sweeps mostly outwards
+            // More sane feeling order-- sweep circle sweeps mostly outwards.
+
+            // Okay, partialOrder is the constraints for the topsort.
+            // We also want to compute priorities,
+            // as tiebreakers for when there are multiple choices
+            // for the next element in the topsort.
             double priorities[] = new double[nFaces];
             {
                 double dualVertsXY[][] = MeshUtils.getMeshVertsXY(dualMesh);
@@ -357,10 +363,16 @@ public class MyAlgorithmMaybe
                     // That works.
                     // However, note that it blows up if both c and a are at or close to the origin,
                     // so we need to only use this in the case that a is far (say, >= unit distance) from origin.
-                    //
-                    // TODO:
-                    // Hmm... can we further modify the equation to make it robust in all cases??
+                    // TODO: Hmm... can we further modify the equation to make it robust in all cases??
                     // Maybe divide top and bottom by ||ax,ay||?  Or something.
+                    //
+                    // WOOPS wait a minute.  Got some signs wrong if aw is negative.
+                    // I think, in general, I needed to multiply by abs(aw) instead.
+                    //                    = (cx^2+cy^2-2(axcx+aycy)/aw) / (||(cxaw-ax,cyaw-ay)/aw|| + ||(ax,ay)/aw||)
+                    //                    = (cx^2+cy^2-2(axcx+aycy)/aw) / (||(cxaw-ax,cyaw-ay)||/abs(aw) + ||(ax,ay)||/abs(aw))
+                    //                    = ((cx^2+cy^2)*abs(aw)-2(axcx+aycy)*sgn(aw)) / (||(cxaw-ax,cyaw-ay)|| + ||(ax,ay)||)
+                    //                    = sgn(aw) * ((cx^2+cy^2)*aw-2(axcx+aycy)) / (||(cxaw-ax,cyaw-ay)|| + ||(ax,ay)||)
+                    //
                     double a[] = sweepOriginHomo;
                     double c[] = dualVertsXY[iFace];
                     double ax = a[0];
@@ -380,6 +392,11 @@ public class MyAlgorithmMaybe
                         // a is more than unit distance from origin, perhaps infinitely far
                         double numerator = (cx*cx+cy*cy)*aw - 2*(ax*cx+ay*cy);
                         double denominator = Math.hypot(cx*aw-ax,cy*aw-ay) + Math.hypot(ax,ay); // this is 0 if both at origin, that's why 2 cases
+
+                        // We test sign of 1./aw rather than aw, so that -0 will be judged negative.
+                        // (An alternative would be to just prohibit negative aw including -0)
+                        if (1./aw < 0.) numerator *= -1.;
+
                         priorities[iFace] = numerator / denominator;
                         if (verboseLevel >= 2) OUT("                  FAR (> 1): priorities[iFace="+iFace+"] - "+priorities[iFace]);
                     }
