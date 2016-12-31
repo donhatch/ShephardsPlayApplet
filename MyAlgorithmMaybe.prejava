@@ -237,7 +237,19 @@ public class MyAlgorithmMaybe
                 return compute_priority2v(sweepOriginHomo, MeshUtils.getMeshVertsXY(dualMesh));
             }
         }
-        assert_ge(sweepOriginHomo[2], 0.); // things might get reversed and confusing otherwise
+
+        // center is sweepOriginHomo "normalized" (i.e. sign of w made positive, including if it was -0)
+        double centerX = sweepOriginHomo[0];
+        double centerY = sweepOriginHomo[1];
+        double centerW = sweepOriginHomo[2];
+        if (1./centerW < 0.)
+        {
+            centerX *= -1.;
+            centerY *= -1.;
+            centerW *= -1.;
+        }
+        assert_ge(1./centerW, 0.);
+
         int nEdges = mesh.edges.size();
         int nFaces = dualMesh.verts.size();
         int answer[];
@@ -262,9 +274,9 @@ public class MyAlgorithmMaybe
             {
                 double v0x = v0.x();
                 double v0y = v0.y();
-                // centerProxy = v0 + some *finite* multiple of (sweepOriginHomo-v0)
-                double centerProxyX = v0x + (sweepOriginHomo[0] - v0x*sweepOriginHomo[2]);
-                double centerProxyY = v0y + (sweepOriginHomo[1] - v0y*sweepOriginHomo[2]);
+                // centerProxy = v0 + some *finite* multiple of (center-v0)
+                double centerProxyX = v0x + (centerX - v0x*centerW);
+                double centerProxyY = v0y + (centerY - v0y*centerW);
                 area = GeomUtils.twiceTriangleArea(centerProxyX, centerProxyY,
                                                    v0x, v0y,
                                                    v0x+edge.direction[0], v0y+edge.direction[1]);
@@ -274,8 +286,8 @@ public class MyAlgorithmMaybe
                 double v1x = v1.x();
                 double v1y = v1.y();
                 // centerProxy = v1 + some *finite* multiple of (sweepOriginHomo-v1)
-                double centerProxyX = v1x + (sweepOriginHomo[0] - v1x*sweepOriginHomo[2]);
-                double centerProxyY = v1y + (sweepOriginHomo[1] - v1y*sweepOriginHomo[2]);
+                double centerProxyX = v1x + (centerX - v1x*centerW);
+                double centerProxyY = v1y + (centerY - v1y*centerW);
                 area = GeomUtils.twiceTriangleArea(centerProxyX, centerProxyY,
                                                    v1x-edge.direction[0], v1y-edge.direction[1],
                                                    v1x, v1y);
@@ -395,7 +407,13 @@ public class MyAlgorithmMaybe
 
                         // We test sign of 1./aw rather than aw, so that -0 will be judged negative.
                         // (An alternative would be to just prohibit negative aw including -0)
-                        if (1./aw < 0.) numerator *= -1.;
+                        if (1./aw < 0.)
+                        {
+                            // actually might be less confusing to just use "normalized"
+                            // centerX,centerY,centerW from earlier.
+                            // The reasoning above actually justifies that, I think.
+                            numerator *= -1.;
+                        }
 
                         priorities[iFace] = numerator / denominator;
                         if (verboseLevel >= 2) OUT("                  FAR (> 1): priorities[iFace="+iFace+"] - "+priorities[iFace]);
