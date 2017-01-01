@@ -137,60 +137,12 @@ public class MyAlgorithmMaybe
 
 
     // Compute sweep order on vertices.
-    // This is just a directional sort.
-    private static int[] compute_priority2v(double sweepOriginHomo[/*3*/], double vertsXY[][/*2*/])
+    // This is just a sort by distance from sweep origin.
+    // The math happens to be exactly the same for that of compute_priority2f, but ignoring heights.
+    private static int[] compute_priority2v(double sweepOriginHomo[/*3*/], Mesh mesh, Mesh dualMesh)
     {
-        int nVerts = vertsXY.length;
-        double v2orderKey[] = new double[nVerts]; // vertex to radius squared, i.e. distance squared from center
-        {
-            // TODO: do this homo math right... if there is a "right"
-            assert_eq(sweepOriginHomo.length, 3);
-            if (sweepOriginHomo[2] == 0.)
-            {
-                FORI (iVert, nVerts)
-                    v2orderKey[iVert] = -VecMath.dot(2, vertsXY[iVert], sweepOriginHomo);
-            }
-            else
-            {
-                double center[] = new double[2]; // scratch for loop
-                VecMath.vxs(2, center, sweepOriginHomo, 1./sweepOriginHomo[2]);
-                FORI (iVert, nVerts)
-                    v2orderKey[iVert] = VecMath.distsqrd(2, vertsXY[iVert], center);
-            }
-        }
-
-        double v2orderKeySecondary[] = null;
-        if (sweepOriginHomo[2] == 0.)
-        {
-            // and another, as tiebreaker (needed for sweepKille1epsMult to keep from starting disconnected)
-            v2orderKeySecondary = new double[nVerts];
-            FORI (iVert, nVerts)
-                v2orderKeySecondary[iVert] = -VecMath.vxv2(vertsXY[iVert], sweepOriginHomo);
-        }
-        final double v2orderKeySecondaryFinal[] = v2orderKeySecondary;
-
-        // Could just make an IndexBinaryHeap based on v2orderKey,
-        // but it's nicer to use indices that reflect how much progress has been made.
-        int priority2v[] = VecMath.identityperm(nVerts);
-        SortStuff.sort(priority2v, new SortStuff.IntComparator() {
-            @Override public int compare(int a, int b)
-            {
-                if (v2orderKey[a] < v2orderKey[b]) return -1;
-                if (v2orderKey[a] > v2orderKey[b]) return 1;
-                if (v2orderKeySecondaryFinal != null)
-                {
-                    if (v2orderKeySecondaryFinal[a] < v2orderKeySecondaryFinal[b]) return -1;
-                    if (v2orderKeySecondaryFinal[a] > v2orderKeySecondaryFinal[b]) return 1;
-                }
-                // Arbitrarily use original index as final tiebreaker
-                // Could also use a random permutation, but I would like to be deterministic, so no.
-                if (a < b) return -1;
-                if (a > b) return 1;
-                return 0;
-            }
-        });
-        return priority2v;
-    } // compute_priority2v
+        return compute_priority2f(sweepOriginHomo, dualMesh, mesh, false);
+    }
 
         // Helper function.
         // Square root of height of face plane at sweep origin
@@ -243,7 +195,7 @@ public class MyAlgorithmMaybe
     // Priority of a face is the height of the face plane at the sweep origin.
     // Ties are broken by priorities relative to some arbitrary other sweep origin.
     // Remaining ties are broken by face index.
-    private static int[] compute_priority2f(double sweepOriginHomo[/*3*/], Mesh mesh, Mesh dualMesh)
+    private static int[] compute_priority2f(double sweepOriginHomo[/*3*/], Mesh mesh, Mesh dualMesh, boolean useHeights)
     {
         int verboseLevel = 0;
         if (verboseLevel >= 1) OUT("            in compute_priority2f");
@@ -253,7 +205,8 @@ public class MyAlgorithmMaybe
         {
             sweepOriginHomo = VecMath.sxv(-1., sweepOriginHomo);
         }
-        double facesXYH[][] = MeshUtils.getMeshVertsXYH(dualMesh);
+        double facesXYH[][] = useHeights ? MeshUtils.getMeshVertsXYH(dualMesh)
+                                         : MeshUtils.getMeshVertsXY(dualMesh);
         int nFaces = facesXYH.length;
         // Order key is (relative) height of the face plane at the sweep origin.
         double f2orderKey[][] = new double[nFaces][3];
@@ -284,7 +237,7 @@ public class MyAlgorithmMaybe
         {
             double x = facesXYH[iFace][0];
             double y = facesXYH[iFace][1];
-            double h = facesXYH[iFace][2];
+            double h = useHeights ? facesXYH[iFace][2] : 0.;
             // for starters, just make the sweep center 0
             f2orderKey[iFace][0] = relativeHeightOfFacePlaneAtSweepOrigin(x, y, h, c0x, c0y, c0w);
             f2orderKey[iFace][1] = relativeHeightOfFacePlaneAtSweepOrigin(x, y, h, c1x, c1y, c1w);
@@ -571,7 +524,7 @@ public class MyAlgorithmMaybe
         double dualVertsXY[][] = dualHelperDataStructure.vertsXY;
         int e2f[][] = dualHelperDataStructure.e2v;
         int f2e[][] = dualHelperDataStructure.v2e;
-        int priority2f[] = compute_priority2f(sweepOriginHomo, originalMesh, originalDualMesh);
+        int priority2f[] = compute_priority2f(sweepOriginHomo, originalMesh, originalDualMesh, true);
         if (verboseLevel >= 2) OUT("          priority2f = "+VecMath.toString(priority2f));
         int f2priority[] = VecMath.invertperm(priority2f);
 
@@ -1030,7 +983,7 @@ public class MyAlgorithmMaybe
         double e2direction[][] = helperDataStructure.e2direction;
         int e2v[][] = helperDataStructure.e2v;
         int v2e[][] = helperDataStructure.v2e;
-        int priority2v[] = compute_priority2v(sweepOriginHomo, vertsXY);
+        int priority2v[] = compute_priority2v(sweepOriginHomo, originalMesh, originalDualMesh);
         int v2priority[] = VecMath.invertperm(priority2v);
 
         double v2momentAndWeightStrictlyUpstream[][] = new double[nVerts][3];
@@ -1428,7 +1381,7 @@ public class MyAlgorithmMaybe
         double e2direction[][] = helperDataStructure.e2direction;
         int e2v[][] = helperDataStructure.e2v;
         int v2e[][] = helperDataStructure.v2e;
-        int priority2v[] = compute_priority2v(sweepOriginHomo, vertsXY);
+        int priority2v[] = compute_priority2v(sweepOriginHomo, originalMesh, originalDualMesh);
         int v2priority[] = VecMath.invertperm(priority2v);
 
         double v2momentAndWeightStrictlyUpstream[][] = new double[nVerts][3];
