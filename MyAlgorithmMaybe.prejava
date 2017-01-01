@@ -201,6 +201,67 @@ public class MyAlgorithmMaybe
     {
         int verboseLevel = 2;
         if (verboseLevel >= 1) OUT("            in compute_priority2f");
+        // Simplify life
+        if (1./sweepOriginHomo[2] < 0.)
+        {
+            sweepOriginHomo = VecMath.sxv(-1., sweepOriginHomo);
+        }
+
+        if (true) // bold new way
+        {
+            if (sweepOriginHomo[2] != 0.) // for starters, only do it in finite case
+            {
+                OUT("DOING IT NEW WAY");
+                double facesXYH[][] = MeshUtils.getMeshVertsXYH(dualMesh);
+                int nFaces = facesXYH.length;
+                // Order key is (relative) height of the face plane at the sweep center.
+                double f2orderKey[][] = new double[nFaces][3];
+                FORI (iFace, nFaces)
+                {
+                    double primarySweepOriginX = sweepOriginHomo[0]/sweepOriginHomo[2];
+                    double primarySweepOriginY = sweepOriginHomo[1]/sweepOriginHomo[2];
+                    // Pick a secondary sweep origin as tiebreaker.
+                    // Anything not too close to the primary sweep center will suffice.
+                    double secondarySweepOriginX = primarySweepOriginX>0. ? -1. : 1.;
+                    double secondarySweepOriginY = 0.;
+                    double x = facesXYH[iFace][0];
+                    double y = facesXYH[iFace][1];
+                    double h = facesXYH[iFace][2];
+                    if (verboseLevel >= 2) OUT("                  iFace="+iFace+": x="+x+" y="+y+" h="+h);
+                    if (verboseLevel >= 2) OUT("                      (x*x+y*y)*.5-h = "+((x*x+y*y)*.5-h));
+                    // for starters, just make the sweep center 0
+                    f2orderKey[iFace][0] = (SQR(x-primarySweepOriginX) + SQR(y-primarySweepOriginY))*.5 - h;
+                    f2orderKey[iFace][1] = (SQR(x-secondarySweepOriginX) + SQR(y-secondarySweepOriginY))*.5 - h;
+                    f2orderKey[iFace][2] = iFace; // make face index be the tiebreaker
+
+                    // And then to sneak in the homogeneous, we'll do this:
+                    // (x-cx/cw)^2 + (y-cy/cw)^2 - h
+                    // (x*cw-cx)^2 + (y*cw-cy)^2 - h*cw^2
+                }
+                SortStuff.sort(f2orderKey, new SortStuff.Comparator() {
+                    // generic lexicographic compare
+                    @Override public int compare(Object a, Object b)
+                    {
+                        double A[] = (double[])a;
+                        double B[] = (double[])b;
+                        FORI (i, A.length)
+                        {
+                            if (A[i] < B[i]) return -1;
+                            if (A[i] > B[i]) return 1;
+                        }
+                        return 0;
+                    }
+                });
+                int priority2f[] = new int[nFaces];
+                FORI (iFace, nFaces)
+                {
+                    priority2f[iFace] = (int)f2orderKey[iFace][2];
+                }
+                PRINTVEC(priority2f);
+                return priority2f;
+            }
+        }
+
         assert(!VecMath.isZeroExactly(sweepOriginHomo));
         if (true) // XXX working towards making this false
         {
@@ -630,7 +691,7 @@ public class MyAlgorithmMaybe
         double putLastPointSweptHere[/*1*/][/*2*/],
         ArrayList putGraphicsOfLastDecisionHere)
     {
-        int verboseLevel = 2; // 1: constant, 2: linear
+        int verboseLevel = 1; // 1: constant, 2: linear
         if (verboseLevel >= 1) OUT("        in MyAlgorithmMaybe.doItFaceSweep");
         if (verboseLevel >= 1) OUT("          sweepOriginHomo = "+VecMath.toString(sweepOriginHomo));
         assert_eq(sweepOriginHomo.length, 3);
