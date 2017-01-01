@@ -193,303 +193,183 @@ public class MyAlgorithmMaybe
     } // compute_priority2v
 
     // Compute sweep order on faces.
-    // Note: if sweepOriginHomo is at infinity, this can be done by a simple
-    // directional sort on the dual verts;
-    // I suspect it's possible to use that same strategy in general via some projective
-    // transformation, but I don't know what it is, so topsorting instead.
+    // Priority of a face is the height of the face plane at the sweep origin.
+    // Ties are broken by priorities relative to some arbitrary other sweep origin.
+    // Remaining ties are broken by face index.
     private static int[] compute_priority2f(double sweepOriginHomo[/*3*/], Mesh mesh, Mesh dualMesh)
     {
         int verboseLevel = 2;
         if (verboseLevel >= 1) OUT("            in compute_priority2f");
+        assert(!VecMath.isZeroExactly(sweepOriginHomo));
         // Simplify life
         if (1./sweepOriginHomo[2] < 0.)
         {
             sweepOriginHomo = VecMath.sxv(-1., sweepOriginHomo);
         }
+        double facesXYH[][] = MeshUtils.getMeshVertsXYH(dualMesh);
+        int nFaces = facesXYH.length;
+        // Order key is (relative) height of the face plane at the sweep origin.
+        double f2orderKey[][] = new double[nFaces][3];
 
-        if (true) // bold new way
+        double c0x = sweepOriginHomo[0];
+        double c0y = sweepOriginHomo[1];
+        double c0w = sweepOriginHomo[2];
+        assert_ge(1./c0w, 0.);
+        // Pick a secondary sweep origin as tiebreaker.
+        // Anything not too close to primary sweep center will suffice.
+        double c1x = c0x<0. ? .5 : -.5;
+        double c1y = 0.;
+        double c1w = 1.;
+
+        // Priority of a face is the height of the face plane at the sweep origin.
+        // For sweep origin at 0, that's:
+        //      (x^2+y^2)*.5 - h
+        // For finite sweep origin cx,cy, that's:
+        //      ((x-cx)^2+(y-cy)^2)*.5 - h
+        // For homogeneous sweep origin cx/cw,cy/cw, that's:
+        //      ((x-cx/cw)^2+(y-cy/cw)^2)*.5 - h
+
+        // Since it's all relative and cw>=0, we can multiply through by cw:
+        //      ((x*cw-cx)^2+(y*cw-cy)^2)*.5 - h
+
+        // Oh, WOOPS!  This is baloney!  That ends up totally ignoring x,y if cw=0!
+
+        // I think I need to do something like the following instead:
+
+        /*
+        // Square root of height of face plane at sweep origin
+        // minus square root of height of face plane 0 at sweep origin.
+        double relativeHeightOfFacePlaneAtSweepOrigin(double x, double y, double h,
+                                                      double cx, double cy, double cw)
         {
-            if (sweepOriginHomo[2] != 0.) // for starters, only do it in finite case
+        }
+        */
+                                        
+
+
+        FORI (iFace, nFaces)
+        {
+            double x = facesXYH[iFace][0];
+            double y = facesXYH[iFace][1];
+            double h = facesXYH[iFace][2];
+            if (verboseLevel >= 2) OUT("                  iFace="+iFace+": x="+x+" y="+y+" h="+h);
+            if (verboseLevel >= 2) OUT("                      (x*x+y*y)*.5-h = "+((x*x+y*y)*.5-h));
+            // for starters, just make the sweep center 0
+            f2orderKey[iFace][0] = (SQR(x*c0w-c0x) + SQR(y*c0w-c0y))*.5 - h;
+            f2orderKey[iFace][1] = (SQR(x*c1w-c1x) + SQR(y*c1w-c1y))*.5 - h;
+            f2orderKey[iFace][2] = iFace; // make face index be the tiebreaker
+        }
+        SortStuff.sort(f2orderKey, new SortStuff.Comparator() {
+            // generic lexicographic compare
+            @Override public int compare(Object a, Object b)
             {
-                OUT("DOING IT NEW WAY");
-                double facesXYH[][] = MeshUtils.getMeshVertsXYH(dualMesh);
-                int nFaces = facesXYH.length;
-                // Order key is (relative) height of the face plane at the sweep center.
-                double f2orderKey[][] = new double[nFaces][3];
-                FORI (iFace, nFaces)
+                double A[] = (double[])a;
+                double B[] = (double[])b;
+                FORI (i, A.length)
                 {
-                    double primarySweepOriginX = sweepOriginHomo[0]/sweepOriginHomo[2];
-                    double primarySweepOriginY = sweepOriginHomo[1]/sweepOriginHomo[2];
-                    // Pick a secondary sweep origin as tiebreaker.
-                    // Anything not too close to the primary sweep center will suffice.
-                    double secondarySweepOriginX = primarySweepOriginX>0. ? -1. : 1.;
-                    double secondarySweepOriginY = 0.;
-                    double x = facesXYH[iFace][0];
-                    double y = facesXYH[iFace][1];
-                    double h = facesXYH[iFace][2];
-                    if (verboseLevel >= 2) OUT("                  iFace="+iFace+": x="+x+" y="+y+" h="+h);
-                    if (verboseLevel >= 2) OUT("                      (x*x+y*y)*.5-h = "+((x*x+y*y)*.5-h));
-                    // for starters, just make the sweep center 0
-                    f2orderKey[iFace][0] = (SQR(x-primarySweepOriginX) + SQR(y-primarySweepOriginY))*.5 - h;
-                    f2orderKey[iFace][1] = (SQR(x-secondarySweepOriginX) + SQR(y-secondarySweepOriginY))*.5 - h;
-                    f2orderKey[iFace][2] = iFace; // make face index be the tiebreaker
-
-                    // And then to sneak in the homogeneous, we'll do this:
-                    // (x-cx/cw)^2 + (y-cy/cw)^2 - h
-                    // (x*cw-cx)^2 + (y*cw-cy)^2 - h*cw^2
+                    if (A[i] < B[i]) return -1;
+                    if (A[i] > B[i]) return 1;
                 }
-                SortStuff.sort(f2orderKey, new SortStuff.Comparator() {
-                    // generic lexicographic compare
-                    @Override public int compare(Object a, Object b)
-                    {
-                        double A[] = (double[])a;
-                        double B[] = (double[])b;
-                        FORI (i, A.length)
-                        {
-                            if (A[i] < B[i]) return -1;
-                            if (A[i] > B[i]) return 1;
-                        }
-                        return 0;
-                    }
-                });
-                int priority2f[] = new int[nFaces];
-                FORI (iFace, nFaces)
-                {
-                    priority2f[iFace] = (int)f2orderKey[iFace][2];
-                }
-                PRINTVEC(priority2f);
-                return priority2f;
+                return 0;
             }
-        }
-
-        assert(!VecMath.isZeroExactly(sweepOriginHomo));
-        if (true) // XXX working towards making this false
+        });
+        int priority2f[] = new int[nFaces];
+        FORI (iFace, nFaces)
         {
-            if (sweepOriginHomo[2] == 0.) // infinitely far away
-            {
-                // cop-out.
-                // Actually don't need to do this any more, except for the following issue.
-
-                // If I do ever end up doing this smartly,
-                // would have to do something tricky to make sure we don't start out disconnected,
-                // e.g. SweepKiller1epsMult >=2.
-                // What's the problem with starting out disconnected?
-                // Something to do with the assertion that no-light-sides only happens on the very first face?
-                // Well, isn't the same thing going to happen if sweep origin is sufficiently far from zero even if not infinite?
-                // Answer: no, it would require several edges to *pass through* the sweep origin.
-                // I think a similar problem might occur if there's a vertex at the sweep origin, though?
-                // No, actually it isn't a problem. In that case there's one first, the others have predecessors which form folds,
-                // and the last one makes one fold and one cut from the sweep origin, which is appropriate.
-                // It *is* a problem in the infinite center case though:
-                // - (minor) no-light-sides happens on multiple faces (not a big deal, could just remove the assertion)
-                // - face tree isn't a tree, it's a forest (not a big deal-- could just let it be a forest,
-                //     or add an extra synthetic face similar to how we add the extra synthetic vertex)
-                // - but if there's a forest, it will cause some infinite face to have to choose
-                //     which of two infinite predecessors to attach to, and the other one will be a cut:
-                //     i.e. a cut flowing upward from infinity, which generally isn't done and has undefined weight&moment semantics.
-                // Possible resolutions:
-                //  - allow the infinite cuts upward from infinity, but give them zero weight and remove them at some point
-                //  - treat this as a special case: if we see we're about to make a cut flowing upward from infinity,
-                //        just make it a fold instead
-                //  - fudge the order so this doesn't happen: that is, pick one special one of the infinite-downward faces,
-                //    make it first, and the rest ordered after it, appropriately, so every one has a predecessor which becomes a fold
-                //  - just treat them all as firsts all at once, with folds between them
-
-                return compute_priority2v(sweepOriginHomo, MeshUtils.getMeshVertsXY(dualMesh));
-            }
+            priority2f[iFace] = (int)f2orderKey[iFace][2];
         }
-
-        // center is sweepOriginHomo "normalized" (i.e. sign of w made positive, including if it was -0)
-        double centerX = sweepOriginHomo[0];
-        double centerY = sweepOriginHomo[1];
-        double centerW = sweepOriginHomo[2];
-        if (1./centerW < 0.)
-        {
-            centerX *= -1.;
-            centerY *= -1.;
-            centerW *= -1.;
-        }
-        assert_ge(1./centerW, 0.);
-
-        int nEdges = mesh.edges.size();
-        int nFaces = dualMesh.verts.size();
-        int answer[];
-        int partialOrder[][] = new int[nEdges/2][]; // at most
-        int partialOrderSize = 0;
-
-        FORI (iUndirectedEdge, nEdges/2)
-        {
-            int iEdge = 2*iUndirectedEdge;
-            Mesh.Edge edge = mesh.getEdge(iEdge);
-            Mesh.Edge dualEdge = dualMesh.getEdge(iEdge);
-            if (verboseLevel >= 1) OUT("              iEdge="+iEdge);
-            if (verboseLevel >= 1) OUT("                  edge="+edge);
-            if (verboseLevel >= 1) OUT("                  dualEdge="+dualEdge);
-            Mesh.Vertex v0 = edge.initialVertex();
-            Mesh.Vertex v1 = edge.finalVertex();
-            Mesh.Vertex f1 = dualEdge.initialVertex(); // which-is-which is dog science
-            Mesh.Vertex f0 = dualEdge.finalVertex(); // which-is-which is dog science
-            double area;
-            if (v1 == null
-            || (v0!=null && v0.weight >= v1.weight)) // in particular, if v0 is rightside-out and v1 is inside-out
-            {
-                double v0x = v0.x();
-                double v0y = v0.y();
-                // centerProxy = v0 + some *finite* multiple of (center-v0)
-                double centerProxyX = v0x + (centerX - v0x*centerW);
-                double centerProxyY = v0y + (centerY - v0y*centerW);
-                area = GeomUtils.twiceTriangleArea(centerProxyX, centerProxyY,
-                                                   v0x, v0y,
-                                                   v0x+edge.direction[0], v0y+edge.direction[1]);
-            }
-            else
-            {
-                double v1x = v1.x();
-                double v1y = v1.y();
-                // centerProxy = v1 + some *finite* multiple of (sweepOriginHomo-v1)
-                double centerProxyX = v1x + (centerX - v1x*centerW);
-                double centerProxyY = v1y + (centerY - v1y*centerW);
-                area = GeomUtils.twiceTriangleArea(centerProxyX, centerProxyY,
-                                                   v1x-edge.direction[0], v1y-edge.direction[1],
-                                                   v1x, v1y);
-            }
-            PRINT(area);
-            // CBB: could actually be a cycle due to roundoff error
-            if (area > 0.)
-                partialOrder[partialOrderSize++] = new int[]{f1.myIndex(),f0.myIndex()};
-            else if (area < 0.)
-                partialOrder[partialOrderSize++] = new int[]{f0.myIndex(),f1.myIndex()};
-            else
-            {
-                // I guess the edge line passes through the center-- no order constraint in this case
-            }
-        }
-
-        if (verboseLevel >= 1) OUT("              partialOrder = "+VecMath.toString((int[][])Arrays.subarray(partialOrder, 0, partialOrderSize)));
-
-        if (false)
-        {
-            // Less sane feeling order-- sweep circle jumps all over the place
-            answer = new int[nFaces];
-            TopSorter.topsort(nFaces, answer, partialOrderSize, partialOrder);
-        }
-        else
-        {
-            // More sane feeling order-- sweep circle sweeps mostly outwards.
-
-            // Okay, partialOrder is the constraints for the topsort.
-            // We also want to compute priorities,
-            // as tiebreakers for when there are multiple choices
-            // for the next element in the topsort.
-            double priorities[] = new double[nFaces];
-            {
-                double dualVertsXY[][] = MeshUtils.getMeshVertsXY(dualMesh);
-                FORI (iFace, nFaces)
-                {
-                    // Problem statement:
-                    //   a = ax,ay,aw  homogeneous (ax/aw, ay/aw), could be very far or even infinitely far from origin
-                    //   b = bx,by    (0,0 in this case)
-                    //   c = cx,cy
-                    // compute ||c - a|| - ||b - a||
-
-
-                    // I posted this: http://math.stackexchange.com/questions/2077174/how-do-you-compute-c-a-b-a-without-catastrophic-cancellation
-                    //===============================================================================
-                    // Q: how do you compute ||c-a|| - ||b-a|| without catastrophic cancellation?
-                    //
-                    // Given 3 points in the plane:
-                    //     a = (a_x,a_y)
-                    //     b = (b_x,b_x)
-                    //     c = (c_x,c_y)
-                    // How do you compute ||c-a||-||b-a||, i.e. "how much farther is it from a to c than from a to b"?
-                    // All coordinates and computatations are to be in double precision IEEE754 floating point arithmetic.
-                    // The answer must be reasonably accurate even if a is very large compared to b and c.
-                    // Note that naively computing the answer as:
-                    //     sqrt((c_x-a_x)^2+(c_y-a_y)^2) - sqrt((b_x-a_x)^2+(b_y-a_y)^2)
-                    // results in catastrophic cancellation if a has much greater magnitude than b and c.
-                    // For example, if:
-                    //     a = (-1e20,-1e20)
-                    //     b = (0,0)
-                    //     c = (1,1)
-                    // then the answer is (sqrt(2),sqrt(2)),
-                    // but computing it naively will produce (0,0) due to catastrophic cancellation.
-                    //===============================================================================
-                    //
-                    // And LutzL's answer (with my intermediate steps added) is:
-                    //    ||c-a||-||b-a|| = (||c-a||^2-||b-a||^2)     / (||c-a||+||b-a||)
-                    //                    = <c-a,c-a>-<b-a,b-a>       / (||c-a||+||b-a||)
-                    //                    = <(c-a)+(b-a),(c-a)-(b-a)> / (||c-a||+||b-a||)
-                    //                    = <b+c-2a,c-b)>             / (||c-a||+||b-a||)
-                    // So let's see, I'll simplify by assuming b is 0:
-                    //    ||c-a||-||a|| = (||c-a||^2-||a||^2)     / (||c-a||+||a||)
-                    //                    = <c-a,c-a>-<a,a>       / (||c-a||+||a||)
-                    //                    = <(c-a)-(a),(c-a)+(a)> / (||c-a||+||a||)
-                    //                    = <c-2a,c>              / (||c-a||+||a||)
-                    // So, how do I do it when a is homogeneous?
-                    // Well, as a approaches infinite, both the numerator and denominator get big.
-                    // so is there a way to cancl the bigness out of both?
-                    // Well, isn't the bigness 1/aw? So how about multiplying top and bottom by aw?
-                    //                      <c-2a,c> / (||c-a||+||a||)
-                    //                    = (cx^2+cy^2-2(axcx+aycy)/aw) / (||(cxaw-ax,cyaw-ay)/aw|| + ||(ax,ay)/aw||)
-                    //                    = ((cx^2+cy^2)*aw-2(axcx+aycy)) / (||(cxaw-ax,cyaw-ay)|| + ||(ax,ay)||)
-                    //                    = ((cx^2+cy^2)*aw-2(axcx+aycy)) / (||c*aw-(ax,ay)|| + ||(ax,ay)||)
-                    // That works.
-                    // However, note that it blows up if both c and a are at or close to the origin,
-                    // so we need to only use this in the case that a is far (say, >= unit distance) from origin.
-                    // TODO: Hmm... can we further modify the equation to make it robust in all cases??
-                    // Maybe divide top and bottom by ||ax,ay||?  Or something.
-                    //
-                    // WOOPS wait a minute.  Got some signs wrong if aw is negative.
-                    // I think, in general, I needed to multiply by abs(aw) instead.
-                    //                    = (cx^2+cy^2-2(axcx+aycy)/aw) / (||(cxaw-ax,cyaw-ay)/aw|| + ||(ax,ay)/aw||)
-                    //                    = (cx^2+cy^2-2(axcx+aycy)/aw) / (||(cxaw-ax,cyaw-ay)||/abs(aw) + ||(ax,ay)||/abs(aw))
-                    //                    = ((cx^2+cy^2)*abs(aw)-2(axcx+aycy)*sgn(aw)) / (||(cxaw-ax,cyaw-ay)|| + ||(ax,ay)||)
-                    //                    = sgn(aw) * ((cx^2+cy^2)*aw-2(axcx+aycy)) / (||(cxaw-ax,cyaw-ay)|| + ||(ax,ay)||)
-                    //
-                    double a[] = sweepOriginHomo;
-                    double c[] = dualVertsXY[iFace];
-                    double ax = a[0];
-                    double ay = a[1];
-                    double aw = a[2];
-                    double cx = c[0];
-                    double cy = c[1];
-                    assert_gt(ax*ax+ay*ay+aw*aw, 0.); // non-degenerate homogeneous, we already checked this at the start
-                    if (ax*ax+ay*ay <= aw*aw)
-                    {
-                        // a is at most unit distance from origin
-                        priorities[iFace] = Math.hypot(cx-ax/aw, cy-ay/aw);
-                        if (verboseLevel >= 2) OUT("                  NEAR (<= 1): priorities[iFace="+iFace+"] - "+priorities[iFace]);
-                    }
-                    else
-                    {
-                        // a is more than unit distance from origin, perhaps infinitely far
-                        double numerator = (cx*cx+cy*cy)*aw - 2*(ax*cx+ay*cy);
-                        double denominator = Math.hypot(cx*aw-ax,cy*aw-ay) + Math.hypot(ax,ay); // this is 0 if both at origin, that's why 2 cases
-
-                        // We test sign of 1./aw rather than aw, so that -0 will be judged negative.
-                        // (An alternative would be to just prohibit negative aw including -0)
-                        if (1./aw < 0.)
-                        {
-                            // actually might be less confusing to just use "normalized"
-                            // centerX,centerY,centerW from earlier.
-                            // The reasoning above actually justifies that, I think.
-                            numerator *= -1.;
-                        }
-
-                        priorities[iFace] = numerator / denominator;
-                        if (verboseLevel >= 2) OUT("                  FAR (> 1): priorities[iFace="+iFace+"] - "+priorities[iFace]);
-                    }
-
-                    // TODO: need secondary tiebreaker, for cases like SweepKiller1eps>=2 -- see what compute_priority2v does
-                }
-            }
-            if (verboseLevel >= 0) PRINTARRAY(priorities);
-            answer = constrainedIndexHeapSort(nFaces,
-                                              partialOrderSize, partialOrder,
-                                              priorities);
-        }
+        PRINTVEC(priority2f);
         if (verboseLevel >= 1) OUT("            out compute_priority2f");
-        return answer;
+        return priority2f;
+
+        // XXX the following is the old comment.   salvage whatever I want to keep
+        // Have to do something tricky to make sure we don't start out disconnected,
+        // e.g. SweepKiller1epsMult >=2.
+        // What's the problem with starting out disconnected?
+        // Something to do with the assertion that no-light-sides only happens on the very first face?
+        // Well, isn't the same thing going to happen if sweep origin is sufficiently far from zero even if not infinite?
+        // Answer: no, it would require several edges to *pass through* the sweep origin.
+        // I think a similar problem might occur if there's a vertex at the sweep origin, though?
+        // No, actually it isn't a problem. In that case there's one first, the others have predecessors which form folds,
+        // and the last one makes one fold and one cut from the sweep origin, which is appropriate.
+        // It *is* a problem in the infinite center case though:
+        // - (minor) no-light-sides happens on multiple faces (not a big deal, could just remove the assertion)
+        // - face tree isn't a tree, it's a forest (not a big deal-- could just let it be a forest,
+        //     or add an extra synthetic face similar to how we add the extra synthetic vertex)
+        // - but if there's a forest, it will cause some infinite face to have to choose
+        //     which of two infinite predecessors to attach to, and the other one will be a cut:
+        //     i.e. a cut flowing upward from infinity, which generally isn't done and has undefined weight&moment semantics.
+        // Possible resolutions:
+        //  - allow the infinite cuts upward from infinity, but give them zero weight and remove them at some point
+        //  - treat this as a special case: if we see we're about to make a cut flowing upward from infinity,
+        //        just make it a fold instead
+        //  - fudge the order so this doesn't happen: that is, pick one special one of the infinite-downward faces,
+        //    make it first, and the rest ordered after it, appropriately, so every one has a predecessor which becomes a fold
+        //  - just treat them all as firsts all at once, with folds between them
+        // center is sweepOriginHomo "normalized" (i.e. sign of w made positive, including if it was -0)
+
+        // XXX and another old comment.  weird thing is, do I now have a method
+        // that's even simpler??
+        // Problem statement:
+        //   a = ax,ay,aw  homogeneous (ax/aw, ay/aw), could be very far or even infinitely far from origin
+        //   b = bx,by    (0,0 in this case)
+        //   c = cx,cy
+        // compute ||c - a|| - ||b - a||
+
+
+        // I posted this: http://math.stackexchange.com/questions/2077174/how-do-you-compute-c-a-b-a-without-catastrophic-cancellation
+        //===============================================================================
+        // Q: how do you compute ||c-a|| - ||b-a|| without catastrophic cancellation?
+        //
+        // Given 3 points in the plane:
+        //     a = (a_x,a_y)
+        //     b = (b_x,b_x)
+        //     c = (c_x,c_y)
+        // How do you compute ||c-a||-||b-a||, i.e. "how much farther is it from a to c than from a to b"?
+        // All coordinates and computatations are to be in double precision IEEE754 floating point arithmetic.
+        // The answer must be reasonably accurate even if a is very large compared to b and c.
+        // Note that naively computing the answer as:
+        //     sqrt((c_x-a_x)^2+(c_y-a_y)^2) - sqrt((b_x-a_x)^2+(b_y-a_y)^2)
+        // results in catastrophic cancellation if a has much greater magnitude than b and c.
+        // For example, if:
+        //     a = (-1e20,-1e20)
+        //     b = (0,0)
+        //     c = (1,1)
+        // then the answer is (sqrt(2),sqrt(2)),
+        // but computing it naively will produce (0,0) due to catastrophic cancellation.
+        //===============================================================================
+        //
+        // And LutzL's answer (with my intermediate steps added) is:
+        //    ||c-a||-||b-a|| = (||c-a||^2-||b-a||^2)     / (||c-a||+||b-a||)
+        //                    = <c-a,c-a>-<b-a,b-a>       / (||c-a||+||b-a||)
+        //                    = <(c-a)+(b-a),(c-a)-(b-a)> / (||c-a||+||b-a||)
+        //                    = <b+c-2a,c-b)>             / (||c-a||+||b-a||)
+        // So let's see, I'll simplify by assuming b is 0:
+        //    ||c-a||-||a|| = (||c-a||^2-||a||^2)     / (||c-a||+||a||)
+        //                    = <c-a,c-a>-<a,a>       / (||c-a||+||a||)
+        //                    = <(c-a)-(a),(c-a)+(a)> / (||c-a||+||a||)
+        //                    = <c-2a,c>              / (||c-a||+||a||)
+        // So, how do I do it when a is homogeneous?
+        // Well, as a approaches infinite, both the numerator and denominator get big.
+        // so is there a way to cancl the bigness out of both?
+        // Well, isn't the bigness 1/aw? So how about multiplying top and bottom by aw?
+        //                      <c-2a,c> / (||c-a||+||a||)
+        //                    = (cx^2+cy^2-2(axcx+aycy)/aw) / (||(cxaw-ax,cyaw-ay)/aw|| + ||(ax,ay)/aw||)
+        //                    = ((cx^2+cy^2)*aw-2(axcx+aycy)) / (||(cxaw-ax,cyaw-ay)|| + ||(ax,ay)||)
+        //                    = ((cx^2+cy^2)*aw-2(axcx+aycy)) / (||c*aw-(ax,ay)|| + ||(ax,ay)||)
+        // That works.
+        // However, note that it blows up if both c and a are at or close to the origin,
+        // so we need to only use this in the case that a is far (say, >= unit distance) from origin.
+        // TODO: Hmm... can we further modify the equation to make it robust in all cases??
+        // Maybe divide top and bottom by ||ax,ay||?  Or something.
+        //
+        // WOOPS wait a minute.  Got some signs wrong if aw is negative.
+        // I think, in general, I needed to multiply by abs(aw) instead.
+        //                    = (cx^2+cy^2-2(axcx+aycy)/aw) / (||(cxaw-ax,cyaw-ay)/aw|| + ||(ax,ay)/aw||)
+        //                    = (cx^2+cy^2-2(axcx+aycy)/aw) / (||(cxaw-ax,cyaw-ay)||/abs(aw) + ||(ax,ay)||/abs(aw))
+        //                    = ((cx^2+cy^2)*abs(aw)-2(axcx+aycy)*sgn(aw)) / (||(cxaw-ax,cyaw-ay)|| + ||(ax,ay)||)
+        //                    = sgn(aw) * ((cx^2+cy^2)*aw-2(axcx+aycy)) / (||(cxaw-ax,cyaw-ay)|| + ||(ax,ay)||)
+        //
     } // compute_priority2f
 
 
