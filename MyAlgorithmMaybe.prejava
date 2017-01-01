@@ -219,20 +219,22 @@ public class MyAlgorithmMaybe
             {
                 // Follow the method of http://math.stackexchange.com/questions/2077174/how-do-you-compute-c-a-b-a-without-catastrophic-cancellation.
                 // That is, first apply scalar binary identity, then vector binary identity.
-                // Actually let "height" and "height0" be twice the above, for simpler expressions.
-                // sqrt(height) - sqrt(height0)
+                // Actually work with twice height and height0 from above, for simpler expressions,
+                // to get sqrt(2) times the answer.
+                //   sqrt(2*height) - sqrt(2*height0)
                 // = sqrt((x-cx/cw)^2+(y-cy/cw)^2-2h) - sqrt((cx/cw)^2+(cy/cw)^2)
                 // = ((x-cx/cw)^2+(y-cy/cw)^2-2h - ((cx/cw)^2+(cy/cw)^2)) / (sqrt((x-cx/cw)^2+(y-cy/cw)^2-2h)+sqrt((cx/cw)^2+(cy/cw)^2))
-                // = ((p-c/cw).self - (c/cw).self - 2h) / (sqrt(...)+sqrt(...))
-                // = ((p-c/cw+c/cw).(p-c/cw-c/cw) - 2h) / (sqrt(...)+sqrt(...))
+                // = ((p-c/cw).self - (c/cw).self - 2h) / (...)
+                // = ((p-c/cw+c/cw).(p-c/cw-c/cw) - 2h) / (...)
                 // = (p.(p-2*c/cw) - 2h) / (...)
+                // = (p.p - 2h - 2*p.c/cw) / (...)
                 // Multiplying numerator and denominator by abs(cw)=cw (since cw is guaranteed nonnegative) gives:
-                // = (p.(p*cw-2*c) - 2*h*cw) / (sqrt((x*cw-cx)^2+(y*cw-cy)^2-2*h*cw)+sqrt((cx)^2+(cy)^2))
-                assert(1./cw >= 0.); // it's non-negative and not -0 either
-                double numerator = x*(x*cw-2*cx) + y*(y*cw-2*cy) - 2*h*cw;
-                double denominator = Math.sqrt(SQR(x*cw-cx) + SQR(y*cw-cy) - 2*h*cw) + Math.hypot(cx, cy);
-                answer = numerator / denominator;
-                answer *= Math.sqrt(.5); // make up for the fact that I fudged heights to be twice what they really were
+                // = (cw*(p.p-2*h) - 2*p.c) / ( sqrt((cw*x-cx)^2 + (cw*y-cy)^2 - 2*cw*h) + sqrt(cx^2+cy^2) )
+                // So answer is sqrt(.5) times that.
+                assert_ge(1./cw, 0.); // it's non-negative and not -0 either
+                double numerator = cw*(x*x+y*y-2*h) - 2*(x*cx+y*cy);
+                double denominator = Math.sqrt(SQR(cw*x-cx) + SQR(cw*y-cy) - 2*cw*h) + Math.hypot(cx, cy);
+                answer = numerator / denominator * Math.sqrt(.5);
             }
             return answer;
         }
@@ -243,7 +245,7 @@ public class MyAlgorithmMaybe
     // Remaining ties are broken by face index.
     private static int[] compute_priority2f(double sweepOriginHomo[/*3*/], Mesh mesh, Mesh dualMesh)
     {
-        int verboseLevel = 2;
+        int verboseLevel = 0;
         if (verboseLevel >= 1) OUT("            in compute_priority2f");
         assert(!VecMath.isZeroExactly(sweepOriginHomo));
         // Simplify life
@@ -283,12 +285,12 @@ public class MyAlgorithmMaybe
             double x = facesXYH[iFace][0];
             double y = facesXYH[iFace][1];
             double h = facesXYH[iFace][2];
-            if (verboseLevel >= 2) OUT("                  iFace="+iFace+": x="+x+" y="+y+" h="+h);
-            if (verboseLevel >= 2) OUT("                      (x*x+y*y)*.5-h = "+((x*x+y*y)*.5-h));
             // for starters, just make the sweep center 0
             f2orderKey[iFace][0] = relativeHeightOfFacePlaneAtSweepOrigin(x, y, h, c0x, c0y, c0w);
             f2orderKey[iFace][1] = relativeHeightOfFacePlaneAtSweepOrigin(x, y, h, c1x, c1y, c1w);
             f2orderKey[iFace][2] = iFace; // make face index be the tiebreaker
+            if (verboseLevel >= 2) OUT("                  iFace="+iFace+": x="+x+" y="+y+" h="+h);
+            if (verboseLevel >= 2) OUT("                      f2orderKey[iFace="+iFace+"] = "+Arrays.toStringCompact(f2orderKey[iFace]));
         }
         SortStuff.sort(f2orderKey, new SortStuff.Comparator() {
             // generic lexicographic compare
@@ -309,7 +311,7 @@ public class MyAlgorithmMaybe
         {
             priority2f[iFace] = (int)f2orderKey[iFace][2];
         }
-        PRINTVEC(priority2f);
+        if (verboseLevel >= 1) PRINTVEC(priority2f);
         if (verboseLevel >= 1) OUT("            out compute_priority2f");
         return priority2f;
 
@@ -339,68 +341,6 @@ public class MyAlgorithmMaybe
         //  - just treat them all as firsts all at once, with folds between them
         // center is sweepOriginHomo "normalized" (i.e. sign of w made positive, including if it was -0)
 
-        // XXX and another old comment.  weird thing is, do I now have a method
-        // that's even simpler??
-        // Problem statement:
-        //   a = ax,ay,aw  homogeneous (ax/aw, ay/aw), could be very far or even infinitely far from origin
-        //   b = bx,by    (0,0 in this case)
-        //   c = cx,cy
-        // compute ||c - a|| - ||b - a||
-
-
-        // I posted this: http://math.stackexchange.com/questions/2077174/how-do-you-compute-c-a-b-a-without-catastrophic-cancellation
-        //===============================================================================
-        // Q: how do you compute ||c-a|| - ||b-a|| without catastrophic cancellation?
-        //
-        // Given 3 points in the plane:
-        //     a = (a_x,a_y)
-        //     b = (b_x,b_x)
-        //     c = (c_x,c_y)
-        // How do you compute ||c-a||-||b-a||, i.e. "how much farther is it from a to c than from a to b"?
-        // All coordinates and computatations are to be in double precision IEEE754 floating point arithmetic.
-        // The answer must be reasonably accurate even if a is very large compared to b and c.
-        // Note that naively computing the answer as:
-        //     sqrt((c_x-a_x)^2+(c_y-a_y)^2) - sqrt((b_x-a_x)^2+(b_y-a_y)^2)
-        // results in catastrophic cancellation if a has much greater magnitude than b and c.
-        // For example, if:
-        //     a = (-1e20,-1e20)
-        //     b = (0,0)
-        //     c = (1,1)
-        // then the answer is (sqrt(2),sqrt(2)),
-        // but computing it naively will produce (0,0) due to catastrophic cancellation.
-        //===============================================================================
-        //
-        // And LutzL's answer (with my intermediate steps added) is:
-        //    ||c-a||-||b-a|| = (||c-a||^2-||b-a||^2)     / (||c-a||+||b-a||)
-        //                    = <c-a,c-a>-<b-a,b-a>       / (||c-a||+||b-a||)
-        //                    = <(c-a)+(b-a),(c-a)-(b-a)> / (||c-a||+||b-a||)
-        //                    = <b+c-2a,c-b)>             / (||c-a||+||b-a||)
-        // So let's see, I'll simplify by assuming b is 0:
-        //    ||c-a||-||a|| = (||c-a||^2-||a||^2)     / (||c-a||+||a||)
-        //                    = <c-a,c-a>-<a,a>       / (||c-a||+||a||)
-        //                    = <(c-a)-(a),(c-a)+(a)> / (||c-a||+||a||)
-        //                    = <c-2a,c>              / (||c-a||+||a||)
-        // So, how do I do it when a is homogeneous?
-        // Well, as a approaches infinite, both the numerator and denominator get big.
-        // so is there a way to cancl the bigness out of both?
-        // Well, isn't the bigness 1/aw? So how about multiplying top and bottom by aw?
-        //                      <c-2a,c> / (||c-a||+||a||)
-        //                    = (cx^2+cy^2-2(axcx+aycy)/aw) / (||(cxaw-ax,cyaw-ay)/aw|| + ||(ax,ay)/aw||)
-        //                    = ((cx^2+cy^2)*aw-2(axcx+aycy)) / (||(cxaw-ax,cyaw-ay)|| + ||(ax,ay)||)
-        //                    = ((cx^2+cy^2)*aw-2(axcx+aycy)) / (||c*aw-(ax,ay)|| + ||(ax,ay)||)
-        // That works.
-        // However, note that it blows up if both c and a are at or close to the origin,
-        // so we need to only use this in the case that a is far (say, >= unit distance) from origin.
-        // TODO: Hmm... can we further modify the equation to make it robust in all cases??
-        // Maybe divide top and bottom by ||ax,ay||?  Or something.
-        //
-        // WOOPS wait a minute.  Got some signs wrong if aw is negative.
-        // I think, in general, I needed to multiply by abs(aw) instead.
-        //                    = (cx^2+cy^2-2(axcx+aycy)/aw) / (||(cxaw-ax,cyaw-ay)/aw|| + ||(ax,ay)/aw||)
-        //                    = (cx^2+cy^2-2(axcx+aycy)/aw) / (||(cxaw-ax,cyaw-ay)||/abs(aw) + ||(ax,ay)||/abs(aw))
-        //                    = ((cx^2+cy^2)*abs(aw)-2(axcx+aycy)*sgn(aw)) / (||(cxaw-ax,cyaw-ay)|| + ||(ax,ay)||)
-        //                    = sgn(aw) * ((cx^2+cy^2)*aw-2(axcx+aycy)) / (||(cxaw-ax,cyaw-ay)|| + ||(ax,ay)||)
-        //
     } // compute_priority2f
 
 
