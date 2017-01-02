@@ -575,6 +575,7 @@ final class GeomUtils
 
 
 
+    // TODO: move this to VecMath?
     // Find the row-oriented 3x3 rotation matrix that rotates unit vectors u to v,
     // using householder reflections.
     public static double[][] parallelTransport(double u[], double v[])
@@ -599,6 +600,13 @@ final class GeomUtils
         return answer;
     }
 
+    // ISSUE: I'm confused about what's happening with [2].
+    // Comment says it's h*A^2 or z*A.
+    // But if it's h*A^2, does it make sense to be accumulating like this?
+    // And am I doing it right here in the centroid-oriented version?  I'm confused.
+    // Thinking about it, it seems like combining h's should really be by averaging h
+    // in proportion to A.  So then isn't the correct way
+    // to divide [2] by A^2, then average according to A's, then multiply by final A^2?
     public static void accumulateMomentAndArea(double accumulator[/*3 or 4*/],
                                                double increment[/*3 or 4*/])
     {
@@ -610,6 +618,27 @@ final class GeomUtils
         accumulator[accumulator.length-1] += increment[increment.length-1]; // A
     }
 
+    // NOT USED-- MAY HAVE BUGS
+    // After all these years, I think maybe it's better in general
+    // to accumulate centroids instead of moments.
+    // The reason is that that will keep positions
+    // in convex hull of input positions better.
+    // ISSUE: I don't think what I do for [2] here makes sense if it's h*A^2, see above
+    public static void accumulateCentroidAndArea(double accumulator[/*3 or 4*/],
+                                                 double increment[/*3 or 4*/])
+    {
+        double accumulatorArea = accumulator[accumulator.length-1];
+        double incrementArea = increment[increment.length-1];
+        double sumArea = accumulatorArea + incrementArea;
+        double incrementFrac = incrementArea / sumArea;
+        double accumulatorFrac = 1. - incrementFrac;
+        accumulator[0] = accumulatorFrac*accumulator[0] + incrementFrac*increment[0]; // x*A
+        accumulator[1] = accumulatorFrac*accumulator[1] + incrementFrac*increment[1]; // x*A
+        if (accumulator.length == 4
+         && increment.length == 4)
+            accumulator[2] = accumulatorFrac*accumulator[2] + incrementFrac*increment[2]; // h*A^2, or z*A
+        accumulator[accumulatorLength-1] = sumArea;
+    }
 
 
     // find intersection point of p0+t*v0
