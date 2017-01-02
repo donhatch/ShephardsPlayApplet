@@ -64,9 +64,7 @@ CONJECTURES ABOUT STRONGER UNFOLDINGS INVOLVING SWEEPS:
   [false, counterexample: sweepKiller, or sweepKiller1, can force flow to
   arbitrarily close to 45 degrees away from the sweep direction,
   and in fact steepKiller can force the flow to be arbitrarily steep,
-  however it's probably not possible to replicate that one.
-  Also every counterexaple to the similar face-oriented conjecture
-  is a counterexample to this one.]
+  however it's probably not possible to replicate that one.]
 
 * For every trivalent convex polyhedron,
   there is a sweep direction and an unfolding
@@ -92,6 +90,15 @@ CONJECTURES ABOUT STRONGER UNFOLDINGS INVOLVING SWEEPS:
   there is a sweep direction and an unfolding
   in which the faces and folds follow the sweep direction
   [false, counterexample: sufficiently many copies of FaceSweepKiller in varying directions]
+
+* Every vertex sweep aligned unfolding is a face sweep aligned unfolding.
+  [false, counterexample: consider a vertex with one edge southwest and two edges northeast,
+  the lower one of the northeast edges cut. this is a vertex sweep
+  but not a face sweep.]
+
+* If there's a good vertex upward sweep aligned unfolding,
+  then there's a good face upward sweep aligned unfolding.
+  [false, counterexample: FaceSweepNotVertexSweepKiller]
 
 CONJECTURES ABOUT REFINEMENTS:
 
