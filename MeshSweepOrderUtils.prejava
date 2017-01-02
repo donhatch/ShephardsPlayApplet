@@ -1,0 +1,193 @@
+#include "macros.h"
+
+import com.donhatchsw.util.Arrays;
+import com.donhatchsw.util.SortStuff;
+import com.donhatchsw.util.VecMath;
+
+public class MeshSweepOrderUtils
+{
+    private MeshSweepOrderUtils(){ throw new AssertionError(); } // non-instantiatable util class
+
+    // Note on the sweep order on faces:
+    // Have to do something tricky to make sure we don't start out disconnected,
+    // e.g. SweepKiller1epsMult >=2.
+    // What's the problem with starting out disconnected?
+    // Something to do with the assertion that no-light-sides only happens on the very first face?
+    // Well, isn't the same thing going to happen if sweep origin is sufficiently far from zero even if not infinite?
+    // Answer: no, it would require several edges to *pass through* the sweep origin.
+    // I think a similar problem might occur if there's a vertex at the sweep origin, though?
+    // No, actually it isn't a problem. In that case there's one first, the others have predecessors which form folds,
+    // and the last one makes one fold and one cut from the sweep origin, which is appropriate.
+    // It *is* a problem in the infinite center case though:
+    // - (minor) no-light-sides happens on multiple faces (not a big deal, could just remove the assertion)
+    // - face tree isn't a tree, it's a forest (not a big deal-- could just let it be a forest,
+    //     or add an extra synthetic face similar to how we add the extra synthetic vertex)
+    // - but if there's a forest, it will cause some infinite face to have to choose
+    //     which of two infinite predecessors to attach to, and the other one will be a cut:
+    //     i.e. a cut flowing upward from infinity, which generally isn't done and has undefined weight&moment semantics.
+    // Possible resolutions:
+    //  - allow the infinite cuts upward from infinity, but give them zero weight and remove them at some point
+    //  - treat this as a special case: if we see we're about to make a cut flowing upward from infinity,
+    //        just make it a fold instead
+    //  - just treat them all as firsts all at once, with folds between them
+    //  - fudge the order so this doesn't happen: that is, pick one special one of the infinite-downward faces,
+    //    make it first, and the rest ordered after it, appropriately, so every one has a predecessor which becomes a fold
+    //    (this is effectively what I ended up doing: secondarily sort according to some other sweep origin)
+
+    // Compute sweep order on faces.
+    // Priority of a face is (in same order as) the height of the face plane at the sweep origin.
+    // Ties are broken by priorities relative to some arbitrary other sweep origin.
+    // Remaining ties are broken by face index.
+    public static int[] compute_priority2f(double sweepOriginHomo[/*3*/], Mesh meshIgnored, Mesh dualMesh)
+    {
+        return compute_priority2v_or_f(sweepOriginHomo, MeshUtils.getMeshVertsXYH(dualMesh));
+    }
+
+    // Compute sweep order on vertices.
+    // This is just a sort by distance from sweep origin, breaking ties by index.
+    // The homogeneous math happens to be exactly the same for that of compute_priority2f, but ignoring heights.
+    public static int[] compute_priority2v(double sweepOriginHomo[/*3*/], Mesh mesh, Mesh dualMeshIgnored)
+    {
+        return compute_priority2v_or_f(sweepOriginHomo, MeshUtils.getMeshVertsXY(mesh));
+    }
+
+    // Common code used by compute_priority2v and compute_priority2f.
+    private static int[] compute_priority2v_or_f(
+        double sweepOriginHomo[/*3*/],
+        double facesXYH[/*nVerts or nFaces*/][/*2 or 3*/]) // actually vertsXY if computing vertex priorities.
+    {
+        int verboseLevel = 0;
+        if (verboseLevel >= 1) OUT("            in compute_priority2f");
+        boolean useHeights = (facesXYH.length > 0 && facesXYH[0].length == 3);
+        assert(!VecMath.isZeroExactly(sweepOriginHomo));
+        // Simplify life
+        if (1./sweepOriginHomo[2] < 0.)
+        {
+            sweepOriginHomo = VecMath.sxv(-1., sweepOriginHomo);
+        }
+        int nFaces = facesXYH.length;
+        // Order key is (relative) height of the face plane at the sweep origin.
+        double f2orderKey[][] = new double[nFaces][3];
+
+        double c0x = sweepOriginHomo[0];
+        double c0y = sweepOriginHomo[1];
+        double c0w = sweepOriginHomo[2];
+        assert_ge(1./c0w, 0.);
+        // Pick a secondary sweep origin as tiebreaker.
+        // Anything not too close to primary sweep center will suffice.
+        double c1x = c0x<0. ? .25 : -.25;
+        double c1y = 0.;
+        double c1w = 1.;
+
+        // Easiest method would be:
+        // Priority of a face is the height of the face plane at the sweep origin.
+        // For sweep origin at 0, that's:
+        //      (x^2+y^2)*.5 - h
+        // For finite sweep origin cx,cy, that's:
+        //      ((x-cx)^2+(y-cy)^2)*.5 - h
+        // For homogeneous sweep origin cx/cw,cy/cw, that's:
+        //      ((x-cx/cw)^2+(y-cy/cw)^2)*.5 - h
+        // Unfortunately that doesn't behave well when cw approaches 0.
+        // So we take the square root of that, instead,
+        // minus the same expression for the zero face plane.
+        // That's what relativeHeightOfFacePlaneAtSweepOrigin does.
+        FORI (iFace, nFaces)
+        {
+            double x = facesXYH[iFace][0];
+            double y = facesXYH[iFace][1];
+            double h = useHeights ? facesXYH[iFace][2] : 0.;
+            // for starters, just make the sweep center 0
+            f2orderKey[iFace][0] = relativeHeightOfFacePlaneAtSweepOrigin(x, y, h, c0x, c0y, c0w);
+            f2orderKey[iFace][1] = relativeHeightOfFacePlaneAtSweepOrigin(x, y, h, c1x, c1y, c1w);
+            f2orderKey[iFace][2] = iFace; // make face index be the tiebreaker
+            if (verboseLevel >= 2) OUT("                  iFace="+iFace+": x="+x+" y="+y+" h="+h);
+            if (verboseLevel >= 2) OUT("                      f2orderKey[iFace="+iFace+"] = "+Arrays.toStringCompact(f2orderKey[iFace]));
+        }
+        //final double tol = 0.; // SweepKiller1eps mult19 rotated 45 degrees ccw with center=-1 -1 0 fails
+        //final double tol = 1e-17; // fails
+        //final double tol = 1e-16; // fails
+        //final double tol = 2e-16; // fails
+        //final double tol = 3e-16; // fails
+        //final double tol = 4e-16; // fails
+        //final double tol = 5e-16; // succeeds
+        //final double tol = 1e-15; // succeeds
+        final double tol = 1e-12; // succeeds
+        //final double tol = 1e-11; // succeeds
+        //final double tol = 1e-10; // succeeds
+        //final double tol = 1e-9; // succeeds
+        //final double tol = 1e-5; // succeeds
+        //final double tol = 5e-5; // succeeds
+        //final double tol = 8e-5; // succeeds
+        //final double tol = 9e-5; // fails
+        //final double tol = 1e-4; // fails
+        //final double tol = 1e-3; // fails
+        //final double tol = 1e-2; // fails
+        //final double tol = 1e-1; // fails
+        SortStuff.sort(f2orderKey, new SortStuff.Comparator() {
+            @Override public int compare(Object a, Object b)
+            {
+                // use generic lexicographic fuzzy compare
+                return VecMath.cmp((double[])a, (double[])b, tol);
+            }
+        });
+        int priority2f[] = new int[nFaces];
+        FORI (iFace, nFaces)
+        {
+            priority2f[iFace] = (int)f2orderKey[iFace][2];
+        }
+        if (verboseLevel >= 1) PRINTVEC(priority2f);
+        if (verboseLevel >= 1) OUT("            out compute_priority2f");
+        return priority2f;
+
+    } // compute_priority2v_or_f
+
+    // Helper function.
+    // Square root of height of face plane at sweep origin
+    // minus square root of height of face plane 0 at sweep origin.
+    // This varies roughly linearly with distance from sweep origin (exactly, if h is 0).
+    // h matters less and less the smaller cw is, i.e. the closer to infinite c is.
+    private static double relativeHeightOfFacePlaneAtSweepOrigin(
+      double x, double y, double h,    // face plane normal
+      double cx, double cy, double cw) // sweep origin
+    {
+        double answer;
+        if (false)
+        {
+            // Naive way for starters.
+            // This actually works perfectly well,
+            // don't really need to put all that thought into it.
+            if (cw == .0)
+            {
+                cw = 1e-9;
+            }
+            double height = (SQR(x-cx/cw)+SQR(y-cy/cw))*.5 - h;
+            double height0 = (SQR(0-cx/cw)+SQR(0-cy/cw))*.5;
+            answer = Math.sqrt(height) - Math.sqrt(height0);
+        }
+        else
+        {
+            // Follow the method of http://math.stackexchange.com/questions/2077174/how-do-you-compute-c-a-b-a-without-catastrophic-cancellation.
+            // That is, first apply scalar binary identity, then vector binary identity.
+            // Actually work with twice height and height0 from above, for simpler expressions,
+            // to get sqrt(2) times the answer.
+            //   sqrt(2*height) - sqrt(2*height0)
+            // = sqrt((x-cx/cw)^2+(y-cy/cw)^2-2h) - sqrt((cx/cw)^2+(cy/cw)^2)
+            // = ((x-cx/cw)^2+(y-cy/cw)^2-2h - ((cx/cw)^2+(cy/cw)^2)) / (sqrt((x-cx/cw)^2+(y-cy/cw)^2-2h)+sqrt((cx/cw)^2+(cy/cw)^2))
+            // = ((p-c/cw).self - (c/cw).self - 2h) / (...)
+            // = ((p-c/cw+c/cw).(p-c/cw-c/cw) - 2h) / (...)
+            // = (p.(p-2*c/cw) - 2h) / (...)
+            // = (p.p - 2h - 2*p.c/cw) / (...)
+            // Multiplying numerator and denominator by abs(cw)=cw (since cw is guaranteed nonnegative) gives:
+            // = (cw*(p.p-2*h) - 2*p.c) / ( sqrt((cw*x-cx)^2 + (cw*y-cy)^2 - 2*cw*h) + sqrt(cx^2+cy^2) )
+            // So answer is sqrt(.5) times that.
+            assert_ge(1./cw, 0.); // it's non-negative and not -0 either
+            double numerator = cw*(x*x+y*y-2*h) - 2*(x*cx+y*cy);
+            double denominator = Math.sqrt(SQR(cw*x-cx) + SQR(cw*y-cy) - 2*cw*h) + Math.hypot(cx, cy);
+            answer = numerator / denominator * Math.sqrt(.5);
+        }
+        return answer;
+    } // relativeHeightOfFacePlaneAtSweepOrigin
+
+
+} // class MeshSweepOrderUtils
+

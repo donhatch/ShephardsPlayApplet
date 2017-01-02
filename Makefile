@@ -61,6 +61,7 @@ CLASSES = \
         SymmetryUtils.class \
         Mesh.class \
         MeshUtils.class \
+        MeshSweepOrderUtils.class \
         Net.class \
         MyAlgorithmMaybe.class \
         Surface.class \
