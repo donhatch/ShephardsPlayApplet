@@ -38,6 +38,8 @@
                            +" (error = "+((a)-(b))+")" \
                            ); \
     } while (false)
+#define assert_almost_eq_rel(a,b,tol) \
+    assert_almost_eq(a,b,(tol)*Math.max(Math.max(Math.abs(a),Math.abs(b)),1.))
 #define assert_almost_inorder(a,b,c,tol) \
     do { \
         if (!((a)-(b)<=(tol)) || !((b)-(c)<=(tol))) \
