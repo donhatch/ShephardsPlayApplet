@@ -288,23 +288,41 @@ public class MyAlgorithmMaybe
     // Convenience because I'm getting annoyed at the verbosity of native BigInteger idiomatic usage.
     private static class BigInt
     {
+        // Simple static conveniences for working with java.math.BigInteger directly
+        public static boolean eq(java.math.BigInteger a, java.math.BigInteger b) { return a.compareTo(b) == 0; }
+        public static boolean ne(java.math.BigInteger a, java.math.BigInteger b) { return a.compareTo(b) != 0; }
+        public static boolean lt(java.math.BigInteger a, java.math.BigInteger b) { return a.compareTo(b) < 0; }
+        public static boolean gt(java.math.BigInteger a, java.math.BigInteger b) { return a.compareTo(b) > 0; }
+        public static boolean le(java.math.BigInteger a, java.math.BigInteger b) { return a.compareTo(b) <= 0; }
+        public static boolean ge(java.math.BigInteger a, java.math.BigInteger b) { return a.compareTo(b) >= 0; }
+        public static boolean eq(java.math.BigInteger a, long b) { return eq(a, java.math.BigInteger.valueOf(b)); }
+        public static boolean ne(java.math.BigInteger a, long b) { return ne(a, java.math.BigInteger.valueOf(b)); }
+        public static boolean lt(java.math.BigInteger a, long b) { return lt(a, java.math.BigInteger.valueOf(b)); }
+        public static boolean gt(java.math.BigInteger a, long b) { return gt(a, java.math.BigInteger.valueOf(b)); }
+        public static boolean le(java.math.BigInteger a, long b) { return le(a, java.math.BigInteger.valueOf(b)); }
+        public static boolean ge(java.math.BigInteger a, long b) { return ge(a, java.math.BigInteger.valueOf(b)); }
+        public static java.math.BigInteger plus(java.math.BigInteger a, long b) { return a.add(java.math.BigInteger.valueOf(b)); }
+        public static java.math.BigInteger times(java.math.BigInteger a, long b) { return a.multiply(java.math.BigInteger.valueOf(b)); }
+
+        // More convenient object for when accumulating
         public java.math.BigInteger i;
         public BigInt(java.math.BigInteger i) { this.i = i; }
         public BigInt(long i) { this(java.math.BigInteger.valueOf(i)); }
-        public boolean eq(BigInt that) { return i.compareTo(that.i) == 0; }
-        public boolean ne(BigInt that) { return i.compareTo(that.i) != 0; }
-        public boolean lt(BigInt that) { return i.compareTo(that.i) < 0; }
-        public boolean gt(BigInt that) { return i.compareTo(that.i) > 0; }
-        public boolean le(BigInt that) { return i.compareTo(that.i) <= 0; }
-        public boolean ge(BigInt that) { return i.compareTo(that.i) >= 0; }
-        public boolean eq(long that) { return i.compareTo(java.math.BigInteger.valueOf(that)) == 0; }
-        public boolean ne(long that) { return i.compareTo(java.math.BigInteger.valueOf(that)) != 0; }
-        public boolean lt(long that) { return i.compareTo(java.math.BigInteger.valueOf(that)) < 0; }
-        public boolean gt(long that) { return i.compareTo(java.math.BigInteger.valueOf(that)) > 0; }
-        public boolean le(long that) { return i.compareTo(java.math.BigInteger.valueOf(that)) <= 0; }
-        public boolean ge(long that) { return i.compareTo(java.math.BigInteger.valueOf(that)) >= 0; }
-        public BigInt plusEquals(long that) { this.i = this.i.add(java.math.BigInteger.valueOf(that)); return this; }
-        public BigInt timesEquals(long that) { this.i = this.i.multiply(java.math.BigInteger.valueOf(that)); return this; }
+
+        public boolean eq(BigInt that) { return eq(this.i, that.i); }
+        public boolean ne(BigInt that) { return ne(this.i, that.i); }
+        public boolean lt(BigInt that) { return lt(this.i, that.i); }
+        public boolean gt(BigInt that) { return gt(this.i, that.i); }
+        public boolean le(BigInt that) { return le(this.i, that.i); }
+        public boolean ge(BigInt that) { return ge(this.i, that.i); }
+        public boolean eq(long that) { return eq(this.i, that); }
+        public boolean ne(long that) { return ne(this.i, that); }
+        public boolean lt(long that) { return lt(this.i, that); }
+        public boolean gt(long that) { return gt(this.i, that); }
+        public boolean le(long that) { return le(this.i, that); }
+        public boolean ge(long that) { return ge(this.i, that); }
+        public BigInt plusEquals(long that) { this.i = plus(this.i, that); return this; }
+        public BigInt timesEquals(long that) { this.i = times(this.i, that); return this; }
         public int intValue() { return i.intValue(); }
         public long longValue() { return i.longValue(); }
         public int divEqualsReturningRemainder(int that) {
@@ -342,8 +360,8 @@ public class MyAlgorithmMaybe
         int f2lightSides[][],
         java.math.BigInteger iNet)
     {
+        assert(BigInt.ge(iNet, 0));
         BigInt scratch = new BigInt(iNet);
-        assert(scratch.ge(0));
         Net net = new Net(originalMesh, originalDualMesh);
         FORI (iFace, f2lightSides.length)
         {
@@ -357,6 +375,18 @@ public class MyAlgorithmMaybe
         assert(scratch.eq(0));
         return net;
     } // selectFaceSweep_from_f2lightSides
+
+    public static Net selectFaceSweepOrNull(
+        Mesh originalMesh, Mesh originalDualMesh, // generally reversed from the calling app's notion.   XXX why am I calling these "original"?
+        double sweepOriginHomo[/*3*/], // if [2] is 0, the vertex is infinitely far from origin
+        java.math.BigInteger iNet)
+    {
+        if (BigInt.lt(iNet, 0)) return null;
+        int f2lightSides[][] = compute_f2lightSides_from_dual(originalDualMesh, sweepOriginHomo);
+        java.math.BigInteger nNets = countFaceSweeps_from_f2lightSides(f2lightSides);
+        if (BigInt.ge(iNet, nNets)) return null;
+        return selectFaceSweep_from_f2lightSides(originalMesh, originalDualMesh, f2lightSides, iNet);
+    }
 
     public static Net[] enumerateAllFaceSweeps(
         Mesh originalMesh, Mesh originalDualMesh, // generally reversed from the calling app's notion.   XXX why am I calling these "original"?
