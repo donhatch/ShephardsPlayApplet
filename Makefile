@@ -63,6 +63,7 @@ CLASSES = \
         MeshUtils.class \
         MeshSweepOrderUtils.class \
         Net.class \
+        BigInt.class \
         MyAlgorithmMaybe.class \
         Surface.class \
         ShephardsPlayApplet.class \
