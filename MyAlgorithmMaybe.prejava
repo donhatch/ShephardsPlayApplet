@@ -230,14 +230,12 @@ public class MyAlgorithmMaybe
         return exitGoodness;
     } // computeExitGoodness
 
-    // analogous to compute_f2lightSides_from_dual (which should perhaps be named compute_f2eEarlier)
-    // ARGH, actually the "later" concept isn't fully well-formed... don't I really want "upward"? edges can go to later and still start downward...
-    public static int[][] compute_v2eLater(
+    public static int[][] compute_v2eSweepward(
       Mesh originalMesh, // generally reversed from the calling app's notion.   XXX why am I calling these "original"?
       double sweepOriginHomo[/*3*/]) // if [2] is 0, the vertex is infinitely far from origin
     {
         int verboseLevel = 0; // 1: constant, 2: linear
-        if (verboseLevel >= 1) OUT("            in MyAlgorithmMaybe.compute_v2eLater");
+        if (verboseLevel >= 1) OUT("            in MyAlgorithmMaybe.compute_v2eSweepward");
         int nVerts = originalMesh.verts.size();
         int nEdges = originalMesh.edges.size();
         if (verboseLevel >= 1) OUT("              nVerts = "+nVerts);
@@ -259,15 +257,17 @@ public class MyAlgorithmMaybe
         }
         assert_eq(v2e.length, nVerts+1);
         assert_eq(e2v.length, nEdges);
+        double vertsXY[/*nVerts*/][/*2*/] = MeshUtils.getMeshVertsXY(originalMesh);
+        assert_eq(vertsXY.length, nVerts);
 
-        int v2eLater[][] = new int[nVerts][];
+        int v2eSweepward[][] = new int[nVerts][];
+        double sweepDirection[] = new double[2]; // scratch for loop
+        double normalizedEdgeDirection[] = new double[2]; // scratch for loop
         {
-            int scratchEdgesLater[] = new int[nEdges/2];
-
+            int scratchEdgesSweepward[] = new int[nEdges/2];
             FORI (iVert, nVerts)
             {
-                int nLaterEdgesThisVert = 0; // and counting
-                int iVertPriority = v2priority[iVert];
+                int nSweepwardEdgesThisVert = 0; // and counting
                 int edgesThisVert[] = v2e[iVert];
                 FORI (iEdgeThisVert, edgesThisVert.length)
                 {
@@ -275,19 +275,40 @@ public class MyAlgorithmMaybe
                     assert_eq(e2v[iEdge][0], iVert);
                     int iNeighborVert = e2v[iEdge][1];
                     assert_ne(iNeighborVert, iVert);
-                    // XXX TODO: argh, what was I thinking with this directiont test? needs to be against arbitrary direction
-                    if (iNeighborVert==nVerts ? originalMesh.getEdge(iEdge).direction[1] > 0. // the infinite synthetic vert.
-                                              : v2priority[iNeighborVert] > iVertPriority)
-                        scratchEdgesLater[nLaterEdgesThisVert++] = iEdge;
+
+                    // It's upward if edge direction
+                    // has positive dot product with (vert - sweepCenter).
+
+                    double sweepGoodness;
+                    {
+                        // Get sweepDirection: unit, or zero (if sweep origin is exactly at vert).
+                        // sweepDirection = vertsXY[iVert] - sweepOrigin, homogeneous
+                        VecMath.sxvpsxv(2, sweepDirection,
+                                        sweepOriginHomo[2], vertsXY[iVert],
+                                        -1., sweepOriginHomo);
+                        if (VecMath.normsqrd(2, sweepDirection) != 0.) // if vertex is not exactly on sweep origin
+                            VecMath.normalize(2, sweepDirection,
+                                                 sweepDirection);
+                        VecMath.normalize(2, normalizedEdgeDirection, originalMesh.getEdge(iEdge).direction);
+                        sweepGoodness = VecMath.dot(2, normalizedEdgeDirection, sweepDirection);
+                    }
+                    // TODO: must also check that it's going to something strictly greater!
+                    // so that we don't accidentally form a cycle due to floating point roundoff error.
+                    if (sweepGoodness > 0.)
+                    {
+                        if (iNeighborVert == nVerts // the infinite synthetic vert
+                         || v2priority[iNeighborVert] > v2priority[iVert])
+                            scratchEdgesSweepward[nSweepwardEdgesThisVert++] = iEdge;
+                        else
+                            OUT("HEY! looks like a backwards edge is sweepward: e"+iEdge+" from v"+iVert+" to v"+iNeighborVert+"");
+                    }
                 }
-                v2eLater[iVert] = (int[])Arrays.subarray(scratchEdgesLater, 0,nLaterEdgesThisVert);
+                v2eSweepward[iVert] = (int[])Arrays.subarray(scratchEdgesSweepward, 0,nSweepwardEdgesThisVert);
             }
         }
-
-        if (verboseLevel >= 2) OUT("              v2eLater = "+VecMath.toString(v2eLater));
-        if (verboseLevel >= 1) OUT("            out MyAlgorithmMaybe.compute_v2eLater");
-        return v2eLater;
-    } // compute_v2eLater
+        if (verboseLevel >= 1) OUT("            out MyAlgorithmMaybe.compute_v2eSweepward");
+        return v2eSweepward;
+    } // compute_v2eSweepward
 
     public static int[][] compute_f2lightSides_from_dual(
       Mesh originalDualMesh, // generally reversed from the calling app's notion.   XXX why am I calling these "original"?
@@ -344,14 +365,14 @@ public class MyAlgorithmMaybe
         return f2lightSides;
     } // compute_f2lightSides_from_dual
 
-    public static BigInt countVertSweeps_from_v2eLater(int v2eLater[][])
+    public static BigInt countVertSweeps_from_v2eSweepward(int v2eSweepward[][])
     {
         BigInt answer = new BigInt(1);
-        int nVerts = v2eLater.length;
+        int nVerts = v2eSweepward.length;
         int nZeros = 0;
         FORI (iVert, nVerts)
         {
-            int nLightSides = v2eLater[iVert].length;
+            int nLightSides = v2eSweepward[iVert].length;
             if (nLightSides == 0)
                 nZeros++;
             else
@@ -359,7 +380,7 @@ public class MyAlgorithmMaybe
         }
         assert(nZeros == 0 || nZeros == nVerts);   // this is the only difference from countFaceSweeps_from_f2lightSides
         return answer;
-    } // countVertSweeps_from_v2eLater
+    } // countVertSweeps_from_v2eSweepward
 
     public static BigInt countFaceSweeps_from_f2lightSides(int f2lightSides[][])
     {
@@ -378,26 +399,26 @@ public class MyAlgorithmMaybe
         return answer;
     } // countFaceSweeps_from_f2lightSides
 
-    public static Net selectVertSweep_from_v2eLater(
+    public static Net selectVertSweep_from_v2eSweepward(
         Mesh originalMesh, Mesh originalDualMesh, // generally reversed from the calling app's notion.   XXX why am I calling these "original"?
-        int v2eLater[][],
+        int v2eSweepward[][],
         BigInt iNet)
     {
         assert(iNet.ge(0));
         BigInt scratch = iNet.copy();
         Net net = new Net(originalMesh, originalDualMesh);
-        FORI (iVert, v2eLater.length)
+        FORI (iVert, v2eSweepward.length)
         {
-            if (v2eLater[iVert].length > 0)
+            if (v2eSweepward[iVert].length > 0)
             {
-                int remainder = scratch.divEqualsReturningRemainder(v2eLater[iVert].length);
-                int iEdge = v2eLater[iVert][remainder];
+                int remainder = scratch.divEqualsReturningRemainder(v2eSweepward[iVert].length);
+                int iEdge = v2eSweepward[iVert][remainder];
                 net.cut(iEdge, true);
             }
         }
         assert(scratch.eq(0));
         return net;
-    } // selectVertSweep_from_v2eLater
+    } // selectVertSweep_from_v2eSweepward
 
     public static Net selectFaceSweep_from_f2lightSides(
         Mesh originalMesh, Mesh originalDualMesh, // generally reversed from the calling app's notion.   XXX why am I calling these "original"?
@@ -426,11 +447,11 @@ public class MyAlgorithmMaybe
         BigInt iNet)
     {
         if (iNet.lt(0)) return null;
-        int v2eLater[][] = compute_v2eLater(originalMesh, sweepOriginHomo);
-        BigInt nNets = countVertSweeps_from_v2eLater(v2eLater);
+        int v2eSweepward[][] = compute_v2eSweepward(originalMesh, sweepOriginHomo);
+        BigInt nNets = countVertSweeps_from_v2eSweepward(v2eSweepward);
         if (iNet.ge(nNets)) return null;
         OUT("Vert sweep "+iNet+"/"+nNets); // XXX need to do this somewhere more graceful, in caller. but then caller needs to get n. think about it.
-        return selectVertSweep_from_v2eLater(originalMesh, originalDualMesh, v2eLater, iNet);
+        return selectVertSweep_from_v2eSweepward(originalMesh, originalDualMesh, v2eSweepward, iNet);
     } // selectVertSweepOrNull
 
     public static Net selectFaceSweepOrNull(
