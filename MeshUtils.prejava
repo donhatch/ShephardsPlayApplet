@@ -127,24 +127,21 @@ final public class MeshUtils
         return null;
     } // findPrimalFaceFromDualVert
 
-    private static double detDestructiveDouble(int n, java.math.BigInteger M[/*n*/][/*n*/])
+    private static double detNonDestructiveDouble(int n, BigInt M[/*n*/][/*n*/])
     {
-        // Not really destructive.
         double Mdouble[][] = new double[n][n];
         for (int i = 0; i < n; ++i)
         for (int j = 0; j < n; ++j)
-            Mdouble[i][j] = M[i][j].doubleValue();
+            Mdouble[i][j] = M[i][j].i.doubleValue();
         double answer = VecMath.detDestructive(Mdouble);
         return answer;
     }
 
-    // Return an array of BigIntegers whose product is the determinant in question.
+    // Return an array of BigInts whose product is the determinant in question.
     // First entry will be 1 or -1, the others will be positive.
-    private static java.math.BigInteger[] factorizeDetDestructive(int n, java.math.BigInteger M[][])
+    private static BigInt[] factorizeDetDestructive(int n, BigInt M[][])
     {
         int verboseLevel = 0;
-        java.math.BigInteger ZERO = java.math.BigInteger.ZERO;
-        java.math.BigInteger ONE = java.math.BigInteger.ONE;
         if (verboseLevel >= 1) OUT("        in factorizeDetDestructive(n="+n+")");
         if (verboseLevel >= 1) OUT("          before:");
         if (verboseLevel >= 1) PRINTMAT(M);
@@ -164,14 +161,14 @@ final public class MeshUtils
                 // to do this.
                 int jPivot = -1;
                 int kPivot = -1;
-                java.math.BigInteger absPivot = null;
+                BigInt absPivot = null;
                 for (int j = i; j < n; ++j)
                 for (int k = i; k < n; ++k)
                 {
                     if (M[j][k].signum() != 0)
                     {
-                        java.math.BigInteger absEntry = M[j][k].abs();
-                        if (absPivot == null || absEntry.compareTo(absPivot) < 0)
+                        BigInt absEntry = M[j][k].abs();
+                        if (absPivot == null || absEntry.lt(absPivot))
                         {
                             jPivot = j;
                             kPivot = k;
@@ -185,14 +182,14 @@ final public class MeshUtils
                 {
                     if (jPivot != i)
                     {
-                        java.math.BigInteger temp[];
+                        BigInt temp[];
                         SWAP(M[i], M[jPivot], temp);
                         sign *= -1;
                     }
                     if (kPivot != i)
                     {
                         // CBB: maybe maintain a column permutation instead of all these swaps?
-                        java.math.BigInteger temp;
+                        BigInt temp;
                         for (int j = i; j < n; ++j)
                             SWAP(M[j][i], M[j][kPivot], temp);
                         sign *= -1;
@@ -209,7 +206,7 @@ final public class MeshUtils
                 {
                     sign *= -1;
                     for (int k = i; k < n; ++k)
-                        M[j][k] = M[j][k].negate();
+                        M[j][k].timesEquals(-1);
                 }
             }
             if (verboseLevel >= 2) OUT("                  after nonnegativizing:");
@@ -230,20 +227,20 @@ final public class MeshUtils
                 {
                     iters++;
                     assert_lt(iters, maxIters);
-                    java.math.BigInteger a = M[i][i];
-                    java.math.BigInteger b = M[j][i];
+                    BigInt a = M[i][i];
+                    BigInt b = M[j][i];
                     if (verboseLevel >= 3) OUT("                      a = "+a);
                     if (verboseLevel >= 3) OUT("                      b = "+b);
-                    java.math.BigInteger q = a.divide(b);
+                    java.math.BigInteger q = a.i.divide(b.i);
                     // a,b = b,a%b
                     // One step in euclidean algorithm: a -= q * b, then swap a,b
                     // Do it to the whole row.
                     for (int k = i; k < n; ++k)
                     {
                         //M[i][k] -= q * M[j][k];
-                        M[i][k] = M[i][k].subtract(M[j][k].multiply(q));
+                        M[i][k].minusEquals(M[j][k].i.multiply(q));
                     }
-                    java.math.BigInteger temp[];
+                    BigInt temp[];
                     SWAP(M[i], M[j], temp);
                     sign *= -1;
                 }
@@ -251,9 +248,8 @@ final public class MeshUtils
         }
         if (verboseLevel >= 1) OUT("      after:");
         if (verboseLevel >= 1) PRINTMAT(M);
-        java.math.BigInteger answer[] = new java.math.BigInteger[n+1];
-        answer[0] = sign<0 ? ONE.negate()
-                           : ONE;
+        BigInt answer[] = new BigInt[n+1];
+        answer[0] = new BigInt(sign);
         for (int i = 0; i < n; ++i)
             answer[i+1] = M[i][i];
         if (verboseLevel >= 1) OUT("    out factorizeDetDestructive(n="+n+"), returning "+VecMath.toString(answer));
@@ -261,31 +257,29 @@ final public class MeshUtils
     }
     // Unfortunately not sure whether I should be returning long or double.
     // Long might be more exact, but can overflow.
-    private static java.math.BigInteger detDestructiveBigInteger(int n, java.math.BigInteger M[][])
+    private static BigInt detDestructiveBigInt(int n, BigInt M[][])
     {
         int verboseLevel = 1;
         if (verboseLevel >= 1) OUT("    in detDestructiveLong(n="+n+")");
-        java.math.BigInteger factors[] = factorizeDetDestructive(n, M);
-        java.math.BigInteger answer = java.math.BigInteger.ONE;
+        BigInt factors[] = factorizeDetDestructive(n, M);
+        BigInt answer = new BigInt(1);
         for (int i = 0; i < factors.length; ++i)
-            answer = answer.multiply(factors[i]);
+            answer.timesEquals(factors[i]);
         if (verboseLevel >= 1) OUT("    out detDestructiveLong("+n+"), returning "+answer);
         return answer;
     }
 
     // Uses Kirchoff's theorem. https://en.wikipedia.org/wiki/Kirchhoff%27s_theorem
-    public static java.math.BigInteger countSpanningTrees(Mesh mesh)
+    public static BigInt countSpanningTrees(Mesh mesh)
     {
         OUT("    in countSpanningTrees");
-        java.math.BigInteger ZERO = java.math.BigInteger.ZERO;
-        java.math.BigInteger ONE = java.math.BigInteger.ONE;
         int nVerts = mesh.verts.size();
         if (nVerts == 0)
-            return ZERO;
-        java.math.BigInteger laplacian[][] = new java.math.BigInteger[nVerts+1][nVerts+1];
+            return new BigInt(0);
+        BigInt laplacian[][] = new BigInt[nVerts+1][nVerts+1];
         for (int i = 0; i < laplacian.length; ++i)
         for (int j = 0; j < laplacian[0].length; ++j)
-            laplacian[i][j] = ZERO;
+            laplacian[i][j] = new BigInt(0);
 
         int nEdges = mesh.edges.size();
         for (int iEdge = 0; iEdge < nEdges; ++iEdge)
@@ -297,26 +291,30 @@ final public class MeshUtils
             int i1 = v1==null ? nVerts : v1.myIndex();
             if (i0 != i1) // self-loops are irrelevant
             {
-                laplacian[i0][i0] = laplacian[i0][i0].add(ONE);
-                laplacian[i0][i1] = laplacian[i0][i1].subtract(ONE);
+                laplacian[i0][i0].plusEquals(1);
+                laplacian[i0][i1].minusEquals(1);
             }
         }
         PRINTMAT(laplacian);
-        boolean hasEdgesToNowhere = laplacian[nVerts][nVerts].signum() != 0;
+        boolean hasEdgesToNowhere = laplacian[nVerts][nVerts].i.signum() != 0;
         PRINT(hasEdgesToNowhere);
-        java.math.BigInteger detBigInteger = detDestructiveBigInteger(
-                                  hasEdgesToNowhere ? nVerts : nVerts-1,
-                                  (java.math.BigInteger[][])Arrays.copy(laplacian, 2));
-        PRINT(detBigInteger);
-        PRINT(detBigInteger.doubleValue());
-        assert_ge(detBigInteger.signum(), 0);
-        double detDouble = detDestructiveDouble(hasEdgesToNowhere ? nVerts : nVerts-1,
-                                          laplacian); // all but last nontrivial row&column
-        assert_ge(detDouble, 0);
+
+        // Must do this one first. since detDestructiveBigInt really does destroy the contents
+        double detDouble = detNonDestructiveDouble(hasEdgesToNowhere ? nVerts : nVerts-1,
+                                                   laplacian); // all but last nontrivial row&column
         PRINT(detDouble);
-        assert_almost_eq(detBigInteger.doubleValue(), detDouble, detDouble*1e-12);
-        OUT("    out countSpanningTrees, returning "+detBigInteger);
-        return detBigInteger;
+        assert_ge(detDouble, 0);
+
+        BigInt detBigInt = detDestructiveBigInt(
+            hasEdgesToNowhere ? nVerts : nVerts-1,
+            laplacian);
+        PRINT(detBigInt);
+        PRINT(detBigInt.doubleValue());
+        assert_ge(detBigInt.signum(), 0);
+
+        assert_almost_eq(detBigInt.doubleValue(), detDouble, detDouble*1e-12);
+        OUT("    out countSpanningTrees, returning "+detBigInt);
+        return detBigInt;
     } // countSpanningTrees
 
     // Simpler mesh data structure, suitable for running
@@ -554,7 +552,7 @@ final public class MeshUtils
         System.out.println("    in analyzeRandomSpanningTrees");
         int nEdges = mesh.edges.size();
         PRINT(nEdges);
-        if (nEdges > 26) // i.e. 13 undirected.
+        if (nEdges > 26) // i.e. 13 undirected.  (takes too long otherwise)
         {
             System.out.println("      too many edges, bailing");
             System.out.println("    out analyzeRandomSpanningTrees");
@@ -587,7 +585,10 @@ final public class MeshUtils
                 whichTree = 0;
                 FORI (iUndirectedEdge, answer.length)
                     if (answer[iUndirectedEdge])
+                    {
+                        assert_lt(iUndirectedEdge, 32);
                         whichTree |= (1 << iUndirectedEdge);
+                    }
             }
             else if (false)
             {

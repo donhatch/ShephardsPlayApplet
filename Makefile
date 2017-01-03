@@ -60,10 +60,10 @@ CLASSES = \
         SizeTrackingMergeFind.class \
         SymmetryUtils.class \
         Mesh.class \
+        BigInt.class \
         MeshUtils.class \
         MeshSweepOrderUtils.class \
         Net.class \
-        BigInt.class \
         MyAlgorithmMaybe.class \
         Surface.class \
         ShephardsPlayApplet.class \
