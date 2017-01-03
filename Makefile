@@ -118,11 +118,7 @@ ${JARFILE}.is_renumbered: $(JAR_DEPENDS_ON)
 .PHONY: renumber
 renumber: $(JARFILE).is_renumbered
 
-
-MyGraphics.class: macros.h Makefile donhatchsw.jar
-MyGraphics3D.class: macros.h Makefile donhatchsw.jar
-GraphicsAntiAliasingSetter.class: macros.h Makefile donhatchsw.jar
-ShephardsPlayApplet.class: macros.h Makefile donhatchsw.jar
+${CLASSES}: macros.h Makefile donhatchsw.jar
 
 SENDFILES = index.php $(JARFILE)
 .PHONY: send
