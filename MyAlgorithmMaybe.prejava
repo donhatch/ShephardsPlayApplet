@@ -285,30 +285,12 @@ public class MyAlgorithmMaybe
         return f2lightSides;
     } // compute_f2lightSides_from_dual
 
-
-    // conveniences because I'm getting annoyed at the verbosity of native BigInteger usage.
-    // TODO: would it make sense to have a Big class, with some extras? it would be a bit less efficient, since it couldn't use the valueOf factory, but whatever.  Hmm, would also need to allocate a new one for results of add and multiply... hmm. could make it non-mutable? hmm. then could do accumulation etc.
-    private static java.math.BigInteger Big(long i) { return java.math.BigInteger.valueOf(i); }
-    private static boolean BigEQ(java.math.BigInteger a, java.math.BigInteger b) { return a.compareTo(b) == 0; }
-    private static boolean BigLT(java.math.BigInteger a, java.math.BigInteger b) { return a.compareTo(b) < 0; }
-    private static boolean BigGT(java.math.BigInteger a, java.math.BigInteger b) { return a.compareTo(b) > 0; }
-    private static boolean BigLE(java.math.BigInteger a, java.math.BigInteger b) { return a.compareTo(b) <= 0; }
-    private static boolean BigGE(java.math.BigInteger a, java.math.BigInteger b) { return a.compareTo(b) >= 0; }
-    private static boolean BigEQ(java.math.BigInteger a, long b) { return BigEQ(a, Big(b)); }
-    private static boolean BigLT(java.math.BigInteger a, long b) { return BigLT(a, Big(b)); }
-    private static boolean BigGT(java.math.BigInteger a, long b) { return BigGT(a, Big(b)); }
-    private static boolean BigLE(java.math.BigInteger a, long b) { return BigLE(a, Big(b)); }
-    private static boolean BigGE(java.math.BigInteger a, long b) { return BigGE(a, Big(b)); }
-    private static java.math.BigInteger BigPlus(java.math.BigInteger a, long b) { return a.add(Big(b)); }
-    private static java.math.BigInteger BigTimes(java.math.BigInteger a, long b) { return a.multiply(Big(b)); }
-    // trying it
-    // More convenient wrapper
-
-    // Convenience because I'm getting annoyed at the verbosity of native BigInteger usage.
+    // Convenience because I'm getting annoyed at the verbosity of native BigInteger idiomatic usage.
     private static class BigInt
     {
         public java.math.BigInteger i;
-        public BigInt(long i) { this.i = java.math.BigInteger.valueOf(i); }
+        public BigInt(java.math.BigInteger i) { this.i = i; }
+        public BigInt(long i) { this(java.math.BigInteger.valueOf(i)); }
         public boolean eq(BigInt that) { return i.compareTo(that.i) == 0; }
         public boolean ne(BigInt that) { return i.compareTo(that.i) != 0; }
         public boolean lt(BigInt that) { return i.compareTo(that.i) < 0; }
@@ -323,12 +305,24 @@ public class MyAlgorithmMaybe
         public boolean ge(long that) { return i.compareTo(java.math.BigInteger.valueOf(that)) >= 0; }
         public BigInt plusEquals(long that) { this.i = this.i.add(java.math.BigInteger.valueOf(that)); return this; }
         public BigInt timesEquals(long that) { this.i = this.i.multiply(java.math.BigInteger.valueOf(that)); return this; }
-    }
+        public int intValue() { return i.intValue(); }
+        public long longValue() { return i.longValue(); }
+        public int divEqualsReturningRemainder(int that) {
+            java.math.BigInteger quotientAndRemainder[/*2*/] = this.i.divideAndRemainder(java.math.BigInteger.valueOf(that));
+            this.i = quotientAndRemainder[0];
+            return quotientAndRemainder[1].intValue();
+        }
+        public long divEqualsReturningRemainder(long that) {
+            java.math.BigInteger quotientAndRemainder[/*2*/] = this.i.divideAndRemainder(java.math.BigInteger.valueOf(that));
+            this.i = quotientAndRemainder[0];
+            return quotientAndRemainder[1].longValue();
+        }
+    } // BigInt
 
 
-    public static java.math.BigInteger countFaceSweeps_from_f2lightSides(int f2lightSides[][])
+    public static BigInt countFaceSweeps_from_f2lightSides(int f2lightSides[][])
     {
-        java.math.BigInteger answer = Big(1);
+        BigInt answer = new BigInt(1);
         int nFaces = f2lightSides.length;
         int nZeros = 0;
         FORI (iFace, nFaces)
@@ -337,7 +331,7 @@ public class MyAlgorithmMaybe
             if (nLightSides == 0)
                 nZeros++;
             else
-                answer = BigTimes(answer, nLightSides);
+                answer.timesEquals(nLightSides);
         }
         assert(nZeros == 1 || nZeros == nFaces);
         return answer;
@@ -348,23 +342,19 @@ public class MyAlgorithmMaybe
         int f2lightSides[][],
         java.math.BigInteger iNet)
     {
-        assert(BigGE(iNet, 0));
+        BigInt scratch = new BigInt(iNet);
+        assert(scratch.ge(0));
         Net net = new Net(originalMesh, originalDualMesh);
-        java.math.BigInteger scratch = iNet;
         FORI (iFace, f2lightSides.length)
         {
             if (f2lightSides[iFace].length > 0)
             {
-                // CBB: maybe a better way of doing this
-                java.math.BigInteger quotientAndRemainder[/*2*/] = scratch.divideAndRemainder(Big(f2lightSides[iFace].length));
-                java.math.BigInteger quotient = quotientAndRemainder[0];
-                java.math.BigInteger remainder = quotientAndRemainder[1];
-                scratch = quotient;
-                int iEdge = f2lightSides[iFace][remainder.intValue()];
+                int remainder = scratch.divEqualsReturningRemainder(f2lightSides[iFace].length);
+                int iEdge = f2lightSides[iFace][remainder];
                 net.fold(iEdge, true);
             }
         }
-        assert(BigEQ(scratch, 0));
+        assert(scratch.eq(0));
         return net;
     } // selectFaceSweep_from_f2lightSides
 
@@ -375,19 +365,19 @@ public class MyAlgorithmMaybe
         int verboseLevel = 1; // 1: constant, 2: linear
         if (verboseLevel >= 1) OUT("        in MyAlgorithmMaybe.enumerateAllFaceSweeps");
         int f2lightSides[][] = compute_f2lightSides_from_dual(originalDualMesh, sweepOriginHomo);
-        java.math.BigInteger nAnswers = countFaceSweeps_from_f2lightSides(f2lightSides);
-        if (BigGT(nAnswers, 1000*1000))
+        BigInt nAnswers = countFaceSweeps_from_f2lightSides(f2lightSides);
+        if (nAnswers.gt(1000*1000))
         {
             if (verboseLevel >= 1) OUT("        out MyAlgorithmMaybe.enumerateAllFaceSweeps ("+nAnswers+" is too many, giving up)");
             return new Net[0];
         }
 
         Net answer[] = new Net[nAnswers.intValue()];
-        for (java.math.BigInteger iNet = Big(0);
-             BigLT(iNet, nAnswers);
-             iNet = BigPlus(iNet, 1))
+        for (BigInt iNet = new BigInt(0);
+             iNet.lt(nAnswers);
+             iNet.plusEquals(1))
         {
-            answer[iNet.intValue()] = selectFaceSweep_from_f2lightSides(originalMesh, originalDualMesh, f2lightSides, iNet);
+            answer[iNet.intValue()] = selectFaceSweep_from_f2lightSides(originalMesh, originalDualMesh, f2lightSides, iNet.i);
         }
 
         if (verboseLevel >= 1) OUT("        out MyAlgorithmMaybe.enumerateAllFaceSweeps");
@@ -419,17 +409,17 @@ public class MyAlgorithmMaybe
             // XXX put this somewhere else
             int f2lightSides[][] = compute_f2lightSides_from_dual(originalDualMesh, sweepOriginHomo);
             PRINTARRAY(f2lightSides);
-            java.math.BigInteger nFaceSweeps = countFaceSweeps_from_f2lightSides(f2lightSides);
+            BigInt nFaceSweeps = countFaceSweeps_from_f2lightSides(f2lightSides);
             PRINT(nFaceSweeps);
-            if (BigLE(nFaceSweeps, 100))
+            if (nFaceSweeps.le(100))
             {
                 Net allFaceSweeps[] = enumerateAllFaceSweeps(originalMesh, originalDualMesh, sweepOriginHomo);
                 PRINTARRAY(allFaceSweeps);
             }
-            java.math.BigInteger iNet = Big(maxIters);
-            if (BigGE(iNet, 0) && BigLT(iNet, nFaceSweeps))
+            BigInt iNet = new BigInt(maxIters);
+            if (iNet.ge(0) && iNet.lt(nFaceSweeps))
             {
-                Net net = selectFaceSweep_from_f2lightSides(originalMesh, originalDualMesh, f2lightSides, Big(maxIters));
+                Net net = selectFaceSweep_from_f2lightSides(originalMesh, originalDualMesh, f2lightSides, iNet.i);
                 return net;
             }
         }
