@@ -228,6 +228,87 @@ public class MyAlgorithmMaybe
         return exitGoodness;
     } // computeExitGoodness
 
+    public static int[][] compute_f2lightSides_from_dual(
+      Mesh originalDualMesh, // generally reversed from the calling app's notion.   XXX why am I calling these "original"?
+      double sweepOriginHomo[/*3*/]) // if [2] is 0, the vertex is infinitely far from origin
+    {
+        int verboseLevel = 0; // 1: constant, 2: linear
+        if (verboseLevel >= 1) OUT("            in MyAlgorithmMaybe.compute_f2lightSides_from_dual");
+        int nEdges = originalDualMesh.edges.size();
+        int nFaces = originalDualMesh.verts.size();
+        if (verboseLevel >= 1) OUT("              nEdges = "+nEdges);
+        if (verboseLevel >= 1) OUT("              nFaces = "+nFaces);
+
+        int priority2f[] = MeshSweepOrderUtils.compute_priority2f_from_dual(sweepOriginHomo, originalDualMesh);
+        if (verboseLevel >= 2) OUT("              priority2f = "+VecMath.toString(priority2f));
+        assert_eq(priority2f.length, nFaces);
+        int f2priority[] = VecMath.invertperm(priority2f);
+        assert_eq(f2priority.length, nFaces);
+        if (verboseLevel >= 2) OUT("              f2priority = "+VecMath.toString(f2priority));
+
+        int f2e[][];
+        int e2f[][];
+        {
+            MeshUtils.SimplerMeshDataStructure dualSimplerMeshDataStructure = new MeshUtils.SimplerMeshDataStructure(originalDualMesh, false); // all verts are finite, for this one
+            e2f = dualSimplerMeshDataStructure.e2v;
+            f2e = dualSimplerMeshDataStructure.v2e;
+        }
+        assert_eq(e2f.length, nEdges);
+        assert_eq(f2e.length, nFaces);
+
+        int f2lightSides[][] = new int[nFaces][];
+        {
+            int scratchFaceLightSides[] = new int[nEdges/2];
+
+            FORI (iFace, nFaces)
+            {
+                int nLightSidesThisFace = 0; // and counting
+                int iFacePriority = f2priority[iFace];
+                int edgesThisFace[] = f2e[iFace];
+                FORI (iEdgeThisFace, edgesThisFace.length)
+                {
+                    int iEdge = edgesThisFace[iEdgeThisFace];
+                    assert_eq(e2f[iEdge][0], iFace);
+                    int iNeighborFace = e2f[iEdge][1];
+                    assert_ne(iNeighborFace, iFace);
+                    if (f2priority[iNeighborFace] < iFacePriority)
+                        scratchFaceLightSides[nLightSidesThisFace++] = iEdge;
+                }
+                f2lightSides[iFace] = (int[])Arrays.subarray(scratchFaceLightSides, 0,nLightSidesThisFace);
+            }
+        }
+
+        if (verboseLevel >= 2) OUT("              f2lightSides = "+VecMath.toString(f2lightSides));
+        if (verboseLevel >= 1) OUT("            out MyAlgorithmMaybe.compute_f2lightSides_from_dual");
+        return f2lightSides;
+    } // compute_f2lightSides_from_dual
+
+    public static java.math.BigInteger countFaceSweeps_from_f2lightSides(int f2lightSides[][])
+    {
+        java.math.BigInteger answer = java.math.BigInteger.valueOf(1);
+        int nFaces = f2lightSides.length;
+        int nZeros = 0;
+        FORI (iFace, nFaces)
+        {
+            int nLightSides = f2lightSides[iFace].length;
+            if (nLightSides == 0)
+                nZeros++;
+            else
+                answer = answer.multiply(java.math.BigInteger.valueOf(nLightSides));
+        }
+        assert(nZeros == 1 || nZeros == nFaces);
+        return answer;
+    } // countFaceSweeps_from_f2lightSides
+
+    public static java.math.BigInteger countFaceSweeps_from_dual(
+      Mesh originalDualMesh, // generally reversed from the calling app's notion.   XXX why am I calling these "original"?
+      double sweepOriginHomo[/*3*/]) // if [2] is 0, the vertex is infinitely far from origin
+    {
+        int f2lightSides[][] = compute_f2lightSides_from_dual(originalDualMesh, sweepOriginHomo);
+        java.math.BigInteger answer = countFaceSweeps_from_f2lightSides(f2lightSides);
+        return answer;
+    } // countFaceSweeps_from_dual
+
     public static Net doItFaceSweep(
         Mesh originalMesh, Mesh originalDualMesh, // generally reversed from the calling app's notion.   XXX why am I calling these "original"?
         double sweepOriginHomo[/*3*/], // if [2] is 0, the vertex is infinitely far from origin
@@ -247,6 +328,13 @@ public class MyAlgorithmMaybe
         if (verboseLevel >= 1) OUT("          nVerts = "+nVerts);
         if (verboseLevel >= 1) OUT("          nEdges = "+nEdges);
         if (verboseLevel >= 1) OUT("          nFaces = "+nFaces);
+
+        if (true)
+        {
+            // XXX put this somewhere else
+            PRINTARRAY(compute_f2lightSides_from_dual(originalDualMesh, sweepOriginHomo));
+            PRINT(countFaceSweeps_from_dual(originalDualMesh, sweepOriginHomo));
+        }
 
         if (nEdges == 0)
         {
