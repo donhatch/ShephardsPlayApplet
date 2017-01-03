@@ -1,6 +1,8 @@
 #include "macros.h"
 
 /*
+    BUG: sweepKiller1eps, iterate through all face sweeps. thermometer disagrees with picture
+
     failure: alg5killer1 outward: null pointer exception (now "null initial and final vertex" message ) in compute_priority2f
         (actually I think this is structural badness-- doesn't happen if re-delaunayize)
     assertion failure: if symmetrical and no vertex at origin
@@ -283,9 +285,25 @@ public class MyAlgorithmMaybe
         return f2lightSides;
     } // compute_f2lightSides_from_dual
 
+
+    // conveniences because I'm getting annoyed at the verbosity of native BigInteger usage.
+    // TODO: would it make sense to have a Big class, with some extras? it would be a bit less efficient, since it couldn't use valueOf
+    private static java.math.BigInteger Big(long i) { return java.math.BigInteger.valueOf(i); }
+    private static boolean BigLT(java.math.BigInteger a, java.math.BigInteger b) { return a.compareTo(b) < 0; }
+    private static boolean BigGT(java.math.BigInteger a, java.math.BigInteger b) { return a.compareTo(b) > 0; }
+    private static boolean BigLE(java.math.BigInteger a, java.math.BigInteger b) { return a.compareTo(b) <= 0; }
+    private static boolean BigGE(java.math.BigInteger a, java.math.BigInteger b) { return a.compareTo(b) >= 0; }
+    private static boolean BigLT(java.math.BigInteger a, long b) { return BigLT(a, Big(b)); }
+    private static boolean BigGT(java.math.BigInteger a, long b) { return BigGT(a, Big(b)); }
+    private static boolean BigLE(java.math.BigInteger a, long b) { return BigLE(a, Big(b)); }
+    private static boolean BigGE(java.math.BigInteger a, long b) { return BigGE(a, Big(b)); }
+    private static java.math.BigInteger BigPlus(java.math.BigInteger a, long b) { return a.add(Big(b)); }
+    private static java.math.BigInteger BigTimes(java.math.BigInteger a, long b) { return a.multiply(Big(b)); }
+
+
     public static java.math.BigInteger countFaceSweeps_from_f2lightSides(int f2lightSides[][])
     {
-        java.math.BigInteger answer = java.math.BigInteger.valueOf(1);
+        java.math.BigInteger answer = Big(1);
         int nFaces = f2lightSides.length;
         int nZeros = 0;
         FORI (iFace, nFaces)
@@ -294,7 +312,7 @@ public class MyAlgorithmMaybe
             if (nLightSides == 0)
                 nZeros++;
             else
-                answer = answer.multiply(java.math.BigInteger.valueOf(nLightSides));
+                answer = BigTimes(answer, nLightSides);
         }
         assert(nZeros == 1 || nZeros == nFaces);
         return answer;
@@ -308,6 +326,64 @@ public class MyAlgorithmMaybe
         java.math.BigInteger answer = countFaceSweeps_from_f2lightSides(f2lightSides);
         return answer;
     } // countFaceSweeps_from_dual
+
+    public static Net[] enumerateAllFaceSweeps(
+        Mesh originalMesh, Mesh originalDualMesh, // generally reversed from the calling app's notion.   XXX why am I calling these "original"?
+        double sweepOriginHomo[/*3*/]) // if [2] is 0, the vertex is infinitely far from origin
+    {
+        int verboseLevel = 1; // 1: constant, 2: linear
+        if (verboseLevel >= 1) OUT("        in MyAlgorithmMaybe.enumerateAllFaceSweeps");
+        int f2lightSides[][] = compute_f2lightSides_from_dual(originalDualMesh, sweepOriginHomo);
+        java.math.BigInteger nAnswers = countFaceSweeps_from_f2lightSides(f2lightSides);
+        if (BigGT(nAnswers, 1000*1000))
+        {
+            if (verboseLevel >= 1) OUT("        out MyAlgorithmMaybe.enumerateAllFaceSweeps ("+nAnswers+" is too many, giving up)");
+            return new Net[0];
+        }
+
+        Net answer[] = new Net[nAnswers.intValue()];
+        for (java.math.BigInteger iAnswer = Big(0);
+             BigLT(iAnswer, nAnswers);
+             iAnswer = BigPlus(iAnswer, 1))
+        {
+            Net net = new Net(originalMesh, originalDualMesh);
+            java.math.BigInteger scratch = iAnswer;
+            FORI (iFace, f2lightSides.length)
+            {
+                if (f2lightSides[iFace].length > 0)
+                {
+                    // CBB: maybe a better way of doing this
+                    java.math.BigInteger quotientAndRemainder[/*2*/] = scratch.divideAndRemainder(Big(f2lightSides[iFace].length));
+                    java.math.BigInteger quotient = quotientAndRemainder[0];
+                    java.math.BigInteger remainder = quotientAndRemainder[1];
+                    scratch = quotient;
+                    int iEdge = f2lightSides[iFace][remainder.intValue()];
+                    net.fold(iEdge, true);
+                }
+            }
+            answer[iAnswer.intValue()] = net;
+        }
+
+        if (verboseLevel >= 1) OUT("        out MyAlgorithmMaybe.enumerateAllFaceSweeps");
+        return answer;
+    } // enumerateAllFaceSweeps
+
+    public static Net oneOfEnumerationOfAllFaceSweeps(
+        Mesh originalMesh, Mesh originalDualMesh, // generally reversed from the calling app's notion.   XXX why am I calling these "original"?
+        double sweepOriginHomo[/*3*/], // if [2] is 0, the vertex is infinitely far from origin
+        java.math.BigInteger iNet)
+    {
+        // CBB: ridiculous to be computing them all
+        Net allFaceSweeps[] = enumerateAllFaceSweeps(originalMesh, originalDualMesh, sweepOriginHomo);
+        if (BigGE(iNet, 0) && BigLT(iNet, allFaceSweeps.length))
+        {
+            return allFaceSweeps[iNet.intValue()];
+        }
+        else
+        {
+            return null;
+        }
+    } // oneOfEnumerationOfAllFaceSweeps
 
     public static Net doItFaceSweep(
         Mesh originalMesh, Mesh originalDualMesh, // generally reversed from the calling app's notion.   XXX why am I calling these "original"?
@@ -333,7 +409,15 @@ public class MyAlgorithmMaybe
         {
             // XXX put this somewhere else
             PRINTARRAY(compute_f2lightSides_from_dual(originalDualMesh, sweepOriginHomo));
-            PRINT(countFaceSweeps_from_dual(originalDualMesh, sweepOriginHomo));
+            java.math.BigInteger nFaceSweeps = countFaceSweeps_from_dual(originalDualMesh, sweepOriginHomo);
+            PRINT(nFaceSweeps);
+            Net allFaceSweeps[] = enumerateAllFaceSweeps(originalMesh, originalDualMesh, sweepOriginHomo);
+            PRINTARRAY(allFaceSweeps);
+            Net maybe = oneOfEnumerationOfAllFaceSweeps(originalMesh, originalDualMesh, sweepOriginHomo, Big(maxIters));
+            if (maybe != null)
+            {
+                return maybe;
+            }
         }
 
         if (nEdges == 0)
