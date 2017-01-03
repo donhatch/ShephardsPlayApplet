@@ -4696,8 +4696,19 @@ public class ShephardsPlayApplet
         // rescales dual too, in the dual way.
         public void rescale(double scaleX, double scaleY, boolean undoRedoFlag)
         {
+            int verboseLevel = 1;
+            if (verboseLevel >= 1) OUT("        in rescale(scaleX="+scaleX+", scaleY="+scaleY+", undoRedoFlag="+undoRedoFlag);
             UndoItem.State before = undoRedoFlag ? newUndoItemState() : null;
             Mesh dualMesh = getDualMesh(); // before scaling mesh!
+            if (!wrapAroundSphereFlag.get())
+            {
+                if (verboseLevel >= 1) OUT("          before:");
+                if (verboseLevel >= 2) PRINT(mesh);
+                if (verboseLevel >= 2) PRINT(getDualMesh());
+                mesh.sanityCheckCoords(1e-6);
+                getDualMesh().sanityCheckCoords(1e-6); // XXX ISSUE: sanityCheckCoords assumes paraboloid
+                if (verboseLevel >= 1) OUT("          sane.");
+            }
             FORIDOWN (iVert, mesh.verts.size())
             {
                 Mesh.Vertex vert = mesh.getVert(iVert);
@@ -4724,38 +4735,37 @@ public class ShephardsPlayApplet
                     Mesh.Vertex dualVert = dualMesh.getVert(iDualVert);
                     double scaleW = scaleX*scaleY;
                     {
-                        assert_eq(dualVert.weight*2, dualVert.W());
-                        dualVert.setXYZW(dualVert.X() * scaleY * scaleW, // converse
-                                         dualVert.Y() * scaleX * scaleW, // converse
-                                         dualVert.Z() * scaleW * scaleW,
-                                         dualVert.W() * scaleW);
-                        dualVert.weight *= scaleW;
-                        assert_eq(dualVert.weight*2, dualVert.W());
+                        assert_eq(dualVert.weight*2, dualVert.W()); // i.e. W is twice primal tri area
+
+                        // The following two are equivalent.
+                        // CBB: vertex should maybe remember which of H and Z was originally set, and use that one
+                        if (true)
+                        {
+                            dualVert.setXYHW(dualVert.X() * scaleY * scaleW, // converse
+                                             dualVert.Y() * scaleX * scaleW, // converse
+                                             dualVert.H() * CUB(scaleW),
+                                             dualVert.W() * scaleW);
+                        }
+                        else
+                        {
+                            dualVert.setXYZW(dualVert.X() * scaleY * scaleW, // converse
+                                             dualVert.Y() * scaleX * scaleW, // converse
+                                             dualVert.Z() * SQR(scaleW),
+                                             dualVert.W() * scaleW);
+                        }
+
+                        dualVert.weight *= scaleW; // i.e. scaleX*scaleY. makes sense since weight is tri area
+                        assert_eq(dualVert.weight*2, dualVert.W()); // i.e. W is twice primal tri area
                     }
 
                     if (dualVert.momentAndArea != null) // it will be null in strange cases such as when I created it by hand in cannedThingSingleExitLagoonPolygon
                     {
-                        // XXX I'm confused-- isn't momentAndArea equal to exactly X,Y,Z,W?  in which case why are we doing this funky translate stuff?
+                        // Yes, redundant.
                         assert_eq(dualVert.momentAndArea.length, 4);
-
-                        // holy hell this is incredibly hard to get right!!
-                        dualVert.momentAndArea[2] -= .5 * (SQR(dualVert.momentAndArea[0]) + SQR(dualVert.momentAndArea[1])); // convert to "actual"
-
-                        dualVert.momentAndArea[0] *= scaleY * scaleW; // converse
-                        dualVert.momentAndArea[1] *= scaleX * scaleW; // converse
-
-
-
-                        // TODO: figure out which of these is right
-                        dualVert.momentAndArea[2] *= CUB(scaleW); // XXX wait, what? I thought [2] was Z, in which case should be doing same thing as above
-
-                        //OUT(""+dualVert.momentAndArea[2]+" *= "+scaleW+"^2 = "+(dualVert.momentAndArea[2]*SQR(scaleW)));
-                        //dualVert.momentAndArea[2] *= SQR(scaleW); // XXX wait, what? I thought [2] was Z, in which case should be doing same thing as above
-
-
-                        dualVert.momentAndArea[3] *= scaleW;
-
-                        dualVert.momentAndArea[2] += .5 * (SQR(dualVert.momentAndArea[0]) + SQR(dualVert.momentAndArea[1])); // convert from "actual"
+                        dualVert.momentAndArea[0] = dualVert.X();
+                        dualVert.momentAndArea[1] = dualVert.Y();
+                        dualVert.momentAndArea[2] = dualVert.H();
+                        dualVert.momentAndArea[3] = dualVert.W();
                     }
                 }
 
@@ -4798,12 +4808,22 @@ public class ShephardsPlayApplet
 
                 }
             }
+            if (!wrapAroundSphereFlag.get())
+            {
+                if (verboseLevel >= 1) OUT("          after:");
+                if (verboseLevel >= 2) PRINT(mesh);
+                if (verboseLevel >= 2) PRINT(getDualMesh());
+                mesh.sanityCheckCoords(1e-6);
+                getDualMesh().sanityCheckCoords(1e-6);
+                if (verboseLevel >= 1) OUT("          sane.");
+            }
             if (undoRedoFlag)
             {
                 UndoItem.State after = newUndoItemState();
                 undoTreeSquirrel.Do(new UndoItem(before, after));
                 theCanvas.repaint();
             }
+            if (verboseLevel >= 1) OUT("        out rescale(scaleX="+scaleX+", scaleY="+scaleY+", undoRedoFlag="+undoRedoFlag);
         } // rescale
 
         // Not modified by ctrl (gangFlag=true):
@@ -4914,6 +4934,7 @@ public class ShephardsPlayApplet
             {
                 FORIDOWN(iVert, mesh.verts.size())
                 {
+                    // TODO: what's this naive crap? it won't work if done on output from unwrapAroundSphere
                     Mesh.Vertex vert = mesh.getVert(iVert);
                     vert.setXYZnaive(vert.Xnaive(),
                                      vert.Ynaive(),
@@ -4921,7 +4942,7 @@ public class ShephardsPlayApplet
                 }
                 dirtyDualMesh(); // TODO: do better
             }
-            else
+            else // primalFlag && dualFlag
             {
                 FORIDOWN(iVert, mesh.verts.size())
                 {
@@ -4998,15 +5019,11 @@ public class ShephardsPlayApplet
                                          dualVert.H() * CUB(scaleW),
                                          newW);
                     }
-                    dualVert.weight *= scale*scale; // I think this is right, since weight is tri area I think, currently
-                    //if (iDualVert == 0.) PRINT(dualVert.weight);
-                    //if (iDualVert == 0.) PRINT(dualVert.W());
+                    dualVert.weight *= scaleW; // i.e. scale*scale. makes sense since weight is tri area
                     assert_eq(dualVert.weight*2, dualVert.W()); // i.e. W is twice primal tri area
                     if (dualVert.momentAndArea != null)
                     {
                         // Yes, redundant.
-                        // Note, rescale does something a lot more complicated here for Z;
-                        // that's because the nonuniform scale makes it very complicated, I think.
                         assert_eq(dualVert.momentAndArea.length, 4);
                         dualVert.momentAndArea[0] = dualVert.X();
                         dualVert.momentAndArea[1] = dualVert.Y();
