@@ -879,8 +879,23 @@ final public class MeshUtils
             {
                 int nEdges = e2v.length;
                 if (verboseLevel >= 2) OUT(repeat("    ",iEdge/2)+"        in recurse(iEdge="+iEdge+"/"+nEdges+")");
+                if (true)
+                {
+                    // This stuff just naturally works out, I guess...
+                    // The fact that we don't allow cuts that form cycles
+                    // means we can always extend the current cuts to a maximal cut tree,
+                    // and the fact that we don't allow folds that form cycles of faces
+                    // means we can always extend the current folds to form a maximal fold tree.
+                    int nCutsTarget = nVerts - 1;
+                    int minPossibleCuts = edgeIndices.size();
+                    int maxPossibleCuts = edgeIndices.size() + (nEdges - iEdge);
+                    assert_le(minPossibleCuts, nCutsTarget);
+                    assert_le(nCutsTarget, maxPossibleCuts);
+                }
+
                 if (iEdge == nEdges)
                 {
+                    assert_eq(edgeIndices.size(), nVerts-1);
                     return callback.run(edgeIndices);
                 }
                 MergeFind vertMergeFind = (MergeFind)vertMergeFindStack.get(vertMergeFindStack.size()-1);
@@ -895,28 +910,28 @@ final public class MeshUtils
                     // It's cuttable.
                     MergeFind newVertMergeFind = new MergeFind(vertMergeFind);
                     newVertMergeFind.merge(iVert, jVert);
-                    vertMergeFindStack.add(newVertMergeFind);
-                    edgeIndices.add(iVert);
+                    vertMergeFindStack.add(newVertMergeFind); // push
+                    edgeIndices.add(iEdge); // push
                     if (!recurse(iEdge+2)) // we only look at one direction of each edge
                     {
                         if (verboseLevel >= 2) OUT(repeat("    ",iEdge/2)+"        out recurse(iEdge="+iEdge+"/"+nEdges+"), returning false");
                         return false;
                     }
-                    edgeIndices.removeIndex(edgeIndices.size()-1);
-                    vertMergeFindStack.remove(vertMergeFindStack.size()-1);
+                    edgeIndices.removeIndex(edgeIndices.size()-1); // pop
+                    vertMergeFindStack.remove(vertMergeFindStack.size()-1); // pop
                 }
                 if (faceMergeFind.find(iFace) != faceMergeFind.find(jFace))
                 {
                     // It's foldable.
                     MergeFind newFaceMergeFind = new MergeFind(faceMergeFind);
                     newFaceMergeFind.merge(iFace, jFace);
-                    faceMergeFindStack.add(newFaceMergeFind);
+                    faceMergeFindStack.add(newFaceMergeFind); // push
                     if (!recurse(iEdge+2)) // we only look at one direction of each edge
                     {
                         if (verboseLevel >= 2) OUT(repeat("    ",iEdge/2)+"        out recurse(iEdge="+iEdge+"/"+nEdges+"), returning false");
                         return false;
                     }
-                    faceMergeFindStack.remove(faceMergeFindStack.size()-1);
+                    faceMergeFindStack.remove(faceMergeFindStack.size()-1); // pop
                 }
                 if (verboseLevel >= 2) OUT(repeat("    ",iEdge/2)+"        out recurse(iEdge="+iEdge+"/"+nEdges+"), returning true");
                 return true;
@@ -931,9 +946,10 @@ final public class MeshUtils
     {
         int verboseLevel = 1;
         if (verboseLevel >= 1) OUT("    in enumerateAllSpanningTreesDumb");
+        long t0millis = System.currentTimeMillis();
 
         int e2v[][] = new SimplerMeshDataStructure(mesh, true).e2v; // assumes infinite vert was omitted
-        int e2f[][] = new SimplerMeshDataStructure(dualMesh, false).e2v; // assumes there's no infinite face
+        int e2f[][] = new SimplerMeshDataStructure(dualMesh, false).e2v; // assumes there's no missing inside out face
         int nEdges = e2v.length;
         assert_eq(nEdges, e2f.length);
         assert_eq(nEdges%2, 0); // directed edges
@@ -958,7 +974,8 @@ final public class MeshUtils
             edgeIndices,
             verboseLevel);
         boolean finished = helper.recurse(0);
-        if (verboseLevel >= 1) OUT("    out enumerateAllSpanningTreesDumb, returning finished="+finished);
+        long t1millis = System.currentTimeMillis();
+        if (verboseLevel >= 1) OUT("    out enumerateAllSpanningTreesDumb, returning finished="+finished+" in "+(t1millis-t0millis)/1000.+" secs");
         return finished;
     } // enumerateAllSpanningTreesDumb
 
