@@ -1,6 +1,7 @@
 #include "macros.h"
 
 import com.donhatchsw.compat.ArrayList;
+import com.donhatchsw.compat.IntArrayList;
 import com.donhatchsw.util.Arrays;
 import com.donhatchsw.util.FuzzyPointHashTable;
 import com.donhatchsw.util.MergeFind;
@@ -260,12 +261,12 @@ final public class MeshUtils
     private static BigInt detDestructiveBigInt(int n, BigInt M[][])
     {
         int verboseLevel = 1;
-        if (verboseLevel >= 1) OUT("    in detDestructiveLong(n="+n+")");
+        if (verboseLevel >= 1) OUT("    in detDestructiveBigInt(n="+n+")");
         BigInt factors[] = factorizeDetDestructive(n, M);
         BigInt answer = new BigInt(1);
         for (int i = 0; i < factors.length; ++i)
             answer.timesEquals(factors[i]);
-        if (verboseLevel >= 1) OUT("    out detDestructiveLong("+n+"), returning "+answer);
+        if (verboseLevel >= 1) OUT("    out detDestructiveBigInt("+n+"), returning "+answer);
         return answer;
     }
 
@@ -690,6 +691,277 @@ final public class MeshUtils
 
         System.out.println("    out analyzeRandomSpanningTrees");
     } // analyzeRandomSpanningTrees
+
+
+    /*
+        What about enumerating all spanning trees?
+        References:
+          http://www.hariharan-ramesh.com/papers/spantree1.pdf
+            "Algorithms for Enumerating All Spanning Trees of Undirected and Weighted Graphs"
+              By Sanjiv Kapoor, H. Ramesh
+            Sounds like it has a particularly nice form of output (1-edge diffs between each tree and next)
+
+          https://en.wikipedia.org/wiki/Kirchhoff's_theorem#Explicit_enumeration_of_spanning_trees
+            do the determinant algorithm on intederminates; resulting polynomial's monomials are the possible
+            spanning trees
+
+          http://www.scielo.br/scielo.php?script=sci_arttext&pid=S0101-74382005000200004
+            "An algorithm to generate all spanning trees of a graph in order of increasing cost"
+              by Kenneth Sörensen; Gerrit K. Janssens
+
+          http://www.cs.colorado.edu/department/publications/reports/docs/CU-CS-103-77.pdf
+            "Finding All Spanning Trees of Undirected and Directed Graphs"
+              by Harold N. Gabow
+
+          http://www.cs.ou.edu/~thulasi/Algorithm/Complexity%20of%20Computation%20of%20a%20Spanning%20Tree%20Enumeration%20Algorithm.pdf
+            "Complexity of Computation of a Spanning Tree Enumeration Algorithm"
+              by R. JAYAKUMAR, K. THULASIRAMAN, AND M. N. S. SWAMY
+
+          http://math.mit.edu/~apost/papers/tree.pdf
+            "ENUMERATION OF SPANNING TREES OF GRAPHS"
+              by Igor Pak, Alexander Postnikov
+
+    */
+    /*
+        I'm going to use Algorithm 2 in Kapoor/Ramesh's paper,
+        and I can use the following simplifying assumptions:
+          - the graph is biconnected (i.e. no cut vertices), so decomposition into biconnected components is unnecessary
+    */
+
+#ifdef NOTYET
+    private static void enumerateAllSpanningTreesSmartWorkInProgress(int v2e[/*nVerts*/][/*2*/], int e2v[/*nEdges*/][])
+    {
+        // "The data structure will store the current spanning tree in the form of a parent pointer
+        // and list of child pointers for each node, with only edges not currently in the IN set present."
+        // I think maybe each child list should be a doubly linked list, for O(1) combining.
+        // 1. find a dfs spanning tree, for the root node of the computation tree.
+        class DFSVert
+        {
+            public DFSVert(int iVert)
+            {
+                this.iVert = iVert;
+            }
+            int iVert;
+            DFSVert parent = null;
+            DFSVert firstChild = null;
+            DFSVert nextSibling = null;
+            boolean selfToFirstChildIsBackEdge;
+            boolean parentToNextSiblingIsBackEdge;
+        }
+        int nVerts = v2e.length;
+        int nEdges = e2v.length;
+        DFSVert dfsVerts[] = new DFSVert[nVerts];
+        {
+            FORI (iVert, nVerts)
+                dfsVerts[iVert] = new DFSVert(iVert);
+            FORI (iVert, nVerts)
+            {
+                FORIDOWN (iChild, v2e[iVert].length)
+                {
+                    int edge[/*2*/] = e2v[v2e[iVert][iChild]];
+                    assert_eq(edge[0], iVert);
+                    int jVert = edge[1];
+                    dfsVerts[jVert].parent = dfsVerts[iVert];
+                    dfsVerts[jVert].nextSibling = dfsVerts[iVert].firstChild;
+                    dfsVerts[iVert].firstChild = dfsVerts[iVert];
+                }
+            }
+        }
+
+        static void dfs(DFSVert dfsVert)
+        {
+            for (DFSVert child = dfsVert.firstChild;
+                 child != null;
+                 child = child.nextSibling)
+            {
+                if (child.seen)
+                {
+                    if (child == dfsVert.firstChild)
+                        dfsVert.selfToFirstChildIsBackEdge = true;
+                    else
+                        previous.parentToNextSiblingIsBackEdge = true;
+                }
+                else
+                {
+                }
+            }
+        }
+        boolean v2seen[] = new boolean[nVerts]; // all false initially
+        boolean e2isInTree[] = new int[nEdges];
+        boolean e2isBack[] = new int[nEdges];
+
+        static void dfs(int v2e[][], int e2v[][],
+                        boolean v2seen[], int e2isBack[],
+                        int iVert)
+        {
+            assert(!v2seen[iVert]);
+            v2seen[iVert] = true;
+            FORI (iChild, v2e[iVert].length)
+            {
+                int iEdge = v2e[iVert][iChild];
+                assert_eq(e2v[iEdge][0], iVert);
+                int jVert = e2v[iEdge][1];
+                if (v2seen[jVert])
+                    e2isBack[iEdge] = true;
+                else
+                {
+                    v2parent[jVert] = iVert;
+                    dfs(v2e, e2v, v2seen, e2isBack, jVert);
+                }
+            }
+        }
+        FORI (iVert, nVerts)
+            if (!v2seen[iVert])
+                dfs(v2e, e2v, v2seen, e2isBack, iVert);
+
+        /*
+        static void dfs(int iVert, int v2e[][], int e2v[][], DFSVert dfsVerts[])
+        {
+            DFSVert lastChild = null;
+            FORIDOWN (iChild, v2e[iVert].length)
+            {
+                assert_eq(v2e[iVert][iChild][0], iVert);
+                int jVert = v2e[iVert][iChild][1];
+                dfsVerts[jVert].nextSibling = dfsVerts[iVert].firstChild;
+                dfsVerts[iVert].firstChild = dfsVerts[iVert];
+            }
+            FORI (iChild, v2e[iVert].length)
+            {
+                dfsVerts[iVert].
+            }
+        }
+        */
+
+    } // enumerateAllSpanningTrees
+#endif // NOTYET
+
+    // http://stackoverflow.com/questions/1235179/simple-way-to-repeat-a-string-in-java/4903603#answer-4903603
+    private static String repeat(String s, int n) { return new String(new char[n]).replace("\0", s); }
+
+    // Just to hold stuff for recursion used by enumerateAllSpanningTreesDumb
+    public interface enumerateAllSpanningTreesDumbCallback
+    {
+        boolean run(IntArrayList edgeIndices); // return true iff should continue
+    }
+        private static class enumerateAllSpanningTreesDumbHelper
+        {
+            private int nVerts;
+            private int e2v[][];
+            private int nFaces;
+            private int e2f[][];
+            enumerateAllSpanningTreesDumbCallback callback;
+            ArrayList vertMergeFindStack;
+            ArrayList faceMergeFindStack;
+            IntArrayList edgeIndices;
+            int verboseLevel;
+
+            public enumerateAllSpanningTreesDumbHelper(
+                int nVerts, int e2v[][],
+                int nFaces, int e2f[][],
+                enumerateAllSpanningTreesDumbCallback callback,
+                ArrayList vertMergeFindStack,
+                ArrayList faceMergeFindStack,
+                IntArrayList edgeIndices,
+                int verboseLevel)
+            {
+                assert_eq(e2v.length, e2f.length);
+                this.nVerts = nVerts;
+                this.e2v = e2v;
+                this.nFaces = nFaces;
+                this.e2f = e2f;
+                this.callback = callback;
+                this.vertMergeFindStack = vertMergeFindStack;
+                this.faceMergeFindStack = faceMergeFindStack;
+                this.edgeIndices = edgeIndices;
+                this.verboseLevel = verboseLevel;
+            }
+            public boolean recurse(int iEdge)
+            {
+                int nEdges = e2v.length;
+                if (verboseLevel >= 2) OUT(repeat("    ",iEdge/2)+"        in recurse(iEdge="+iEdge+"/"+nEdges+")");
+                if (iEdge == nEdges)
+                {
+                    return callback.run(edgeIndices);
+                }
+                MergeFind vertMergeFind = (MergeFind)vertMergeFindStack.get(vertMergeFindStack.size()-1);
+                MergeFind faceMergeFind = (MergeFind)faceMergeFindStack.get(faceMergeFindStack.size()-1);
+                int iVert = e2v[iEdge][0];
+                int jVert = e2v[iEdge][1];
+                int iFace = e2f[iEdge][0];
+                int jFace = e2f[iEdge][1];
+                if (verboseLevel >= 2) OUT(repeat("    ",iEdge/2)+"          iVert="+iVert+" jVert="+jVert+" nVerts="+nVerts+"  iFace="+iFace+" jFace="+jFace+" nFaces="+nFaces);
+                if (vertMergeFind.find(iVert) != vertMergeFind.find(jVert))
+                {
+                    // It's cuttable.
+                    MergeFind newVertMergeFind = new MergeFind(vertMergeFind);
+                    newVertMergeFind.merge(iVert, jVert);
+                    vertMergeFindStack.add(newVertMergeFind);
+                    edgeIndices.add(iVert);
+                    if (!recurse(iEdge+2)) // we only look at one direction of each edge
+                    {
+                        if (verboseLevel >= 2) OUT(repeat("    ",iEdge/2)+"        out recurse(iEdge="+iEdge+"/"+nEdges+"), returning false");
+                        return false;
+                    }
+                    edgeIndices.removeIndex(edgeIndices.size()-1);
+                    vertMergeFindStack.remove(vertMergeFindStack.size()-1);
+                }
+                if (faceMergeFind.find(iFace) != faceMergeFind.find(jFace))
+                {
+                    // It's foldable.
+                    MergeFind newFaceMergeFind = new MergeFind(faceMergeFind);
+                    newFaceMergeFind.merge(iFace, jFace);
+                    faceMergeFindStack.add(newFaceMergeFind);
+                    if (!recurse(iEdge+2)) // we only look at one direction of each edge
+                    {
+                        if (verboseLevel >= 2) OUT(repeat("    ",iEdge/2)+"        out recurse(iEdge="+iEdge+"/"+nEdges+"), returning false");
+                        return false;
+                    }
+                    faceMergeFindStack.remove(faceMergeFindStack.size()-1);
+                }
+                if (verboseLevel >= 2) OUT(repeat("    ",iEdge/2)+"        out recurse(iEdge="+iEdge+"/"+nEdges+"), returning true");
+                return true;
+            }
+        } // private static class enumerateAllSpanningTreesDumbHelper
+
+    // Assumption: *not* "Calc underside when delaunayizing".
+    // Should assert-fail fairly early due to checking euler's formula, if not.
+    public static boolean enumerateAllSpanningTreesDumb(
+        Mesh mesh, Mesh dualMesh,  // typically backwards from caller... although it doesn't really matter, this algorithm is self dual
+        enumerateAllSpanningTreesDumbCallback callback)
+    {
+        int verboseLevel = 1;
+        if (verboseLevel >= 1) OUT("    in enumerateAllSpanningTreesDumb");
+
+        int e2v[][] = new SimplerMeshDataStructure(mesh, true).e2v; // assumes infinite vert was omitted
+        int e2f[][] = new SimplerMeshDataStructure(dualMesh, false).e2v; // assumes there's no infinite face
+        int nEdges = e2v.length;
+        assert_eq(nEdges, e2f.length);
+        assert_eq(nEdges%2, 0); // directed edges
+        int nVerts = mesh.verts.size() + 1;
+        int nFaces = dualMesh.verts.size();
+        // Check euler's formula, so we don't go down a rabbit hole if they gave us a bad mesh
+        assert_eq(nVerts+nFaces, nEdges/2 + 2);
+
+        if (verboseLevel >= 1) OUT("      nVerts = "+nVerts);
+        if (verboseLevel >= 1) OUT("      nFaces = "+nFaces);
+        if (verboseLevel >= 1) OUT("      nEdges = "+nEdges+" = 2*"+(nEdges/2));
+
+        ArrayList/*<MergeFind>*/ vertMergeFindStack = new ArrayList(); vertMergeFindStack.add(new MergeFind(nVerts));
+        ArrayList/*<MergeFind>*/ faceMergeFindStack = new ArrayList(); faceMergeFindStack.add(new MergeFind(nFaces));
+        IntArrayList edgeIndices = new IntArrayList();
+        enumerateAllSpanningTreesDumbHelper helper = new enumerateAllSpanningTreesDumbHelper(
+            nVerts, e2v,
+            nFaces, e2f,
+            callback,
+            vertMergeFindStack,
+            faceMergeFindStack,
+            edgeIndices,
+            verboseLevel);
+        boolean finished = helper.recurse(0);
+        if (verboseLevel >= 1) OUT("    out enumerateAllSpanningTreesDumb, returning finished="+finished);
+        return finished;
+    } // enumerateAllSpanningTreesDumb
+
 
     // I seem to have set the bar too high on using VecMath for this... make private utility function instead
     private static double[] v3xm44(double v[/*3*/], double m[/*4*/][/*4*/])
