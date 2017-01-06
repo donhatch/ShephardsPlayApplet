@@ -31,11 +31,15 @@ public class Mesh
             Edge edge = (Edge)edges.get(iEdge);
             Vertex v0 = edge.initialVertex();
             Vertex v1 = edge.finalVertex();
-            sb.append("    "
-                    + (v0==null ? "null" : "v"+v0.myIndex())
-                    + " -> "
-                    + (v1==null ? "null" : "v"+v1.myIndex())
-                    + "\n");
+            sb.append("    "+edge+"\n");
+        }
+        if (false)
+        {
+            // CBB: should do something like in DUMP.off
+            sb.append("faces (sort of):\n");
+            FORI (iEdge, edges.size())
+            {
+            }
         }
         return sb.toString();
     }
@@ -277,6 +281,9 @@ public class Mesh
             {
                 Edge opposite = new Edge(false);
                 setOpposite(opposite, true);
+                // CBB: actually should maybe do this directly here, then everything else can be in terms of splices and can assert sanity?  not sure
+                setNext(opposite, true);
+                setPrev(opposite, true);
             }
         }
 
@@ -324,7 +331,7 @@ public class Mesh
 
         public void setInitialVertex(Vertex v)
         {
-            assert_eq(_initialVertex, null); // initial vertex can't be changed
+            assert_eq(_initialVertex, null); // initial vertex can't be changed (wait, what? that can't be true. but if it is changed, that must be in conjunction with something else)
             _initialVertex = v;
             _initialVertex.arity++;
         }
@@ -494,6 +501,7 @@ public class Mesh
     {
         if (nonEventVerbose >= 1)
             System.out.println("        In insertEdgeBefore(insertThisEdge="+insertThisEdge.myIndex()+", beforeThisEdge="+beforeThisEdge.myIndex()+"");
+        assert_eq(insertThisEdge.prev(), insertThisEdge.opposite()); // CBB: really need to be using general splice
         beforeThisEdge.prev().setNext(insertThisEdge, true);
         insertThisEdge.opposite().setNext(beforeThisEdge, true);
         insertThisEdge.setInitialVertex(beforeThisEdge.initialVertex());
@@ -607,6 +615,7 @@ public class Mesh
         e.setNext(e.opposite(), true);
         e.setPrev(e.opposite(), true);
     }
+    // kind of automagic. probably not what we want for algebraic operations like delta-wye stuff.
     public void addEdgeBetweenTwoVertices(Vertex v0, Vertex v1)
     {
         assert_ne(v0, v1);
@@ -748,6 +757,7 @@ public class Mesh
         return sum;
     } // twiceFaceArea
 
+    // XXX redundant with newVertex. get rid?
     public void addIsolatedVertex(double x, double y, double h)
     {
         new Vertex(x,y,h); // adds itself to verts
@@ -822,6 +832,7 @@ public class Mesh
     }
     public void deleteVertex(Vertex v, int oldToNew[], int newToOld[])
     {
+        // CBB: don't need to traverse all edges, if v.arity is 0, I think?
         FORI (iEdge, edges.size())
         {
             Edge edge = (Edge)edges.get(iEdge);
@@ -1859,8 +1870,11 @@ public class Mesh
             Edge edge = (Edge)edges.get(iEdge);
             Edge originalEdge = (Edge)original.getEdge(iEdge);
             assert_eq(edge._initialVertex, null);
-            edge._initialVertex = (Vertex)verts.get(originalEdge._initialVertex._myIndex);
-            edge._initialVertex.arity++;
+            if (originalEdge._initialVertex != null)
+            {
+                edge._initialVertex = (Vertex)verts.get(originalEdge._initialVertex._myIndex);
+                edge._initialVertex.arity++;
+            }
             edge._opposite = (Edge)edges.get(originalEdge._opposite._myIndex);
             edge._prev = (Edge)edges.get(originalEdge._prev._myIndex);
             edge._next = (Edge)edges.get(originalEdge._next._myIndex);
@@ -1878,6 +1892,7 @@ public class Mesh
 
     // Accessors for construction of inner class objects
     // XXX not sure this is the right way to do it
+    // XXX hmm, addIsolatedVertex does the same thing?
     Edge newEdge(boolean andBack)
     {
         return new Edge(andBack);

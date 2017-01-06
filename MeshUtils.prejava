@@ -138,15 +138,88 @@ final public class MeshUtils
         return answer;
     }
 
+
+    private static java.math.BigInteger myModInverseOrZero(java.math.BigInteger a, java.math.BigInteger b)
+    {
+        if (false)
+        {
+            // XXX WORK IN PROGRESS, maybe
+            if (a.signum() == 0) return a; // or throw an exception? the library's version of it doesn't
+            if (a.equals(java.math.BigInteger.ONE)) return a;
+            if (a.equals(java.math.BigInteger.ONE.negate())) return a;
+
+            java.math.BigInteger M[][] = {
+                {a, java.math.BigInteger.ONE, java.math.BigInteger.ZERO},
+                {b, java.math.BigInteger.ZERO, java.math.BigInteger.ONE},
+            };
+            // Do determinant-preserving integer matrix operations
+            // (i.e. adding a multiple of one row to the other)
+            // until one of the entries in the first column is zero
+            // and the other is the gcd.
+            while (true)
+            {
+                if (M[0][0].signum() == 0) {
+                } else if (M[1][0].signum() == 0) {
+                } else {
+                }
+
+                if (M[0][0].signum() != 0) {
+                } else if (M[1][0].signum() != 0) {
+                } else {
+                    break;
+                }
+            }
+            while (M[0][0].signum() != 0) {
+                // subtract the appropriate multiple of 00 from 10 to reduce it, and swap rows
+                assert(false); // XXX IMPLEMENT ME
+            }
+            return null;
+        }
+        else
+        {
+            if (a.signum() == 0) return a; // or throw an exception? the library's version of it doesn't. and it actually happens that this is what we want
+            assert(a.signum() > 0);
+            assert(a.compareTo(b) < 0);
+            java.math.BigInteger bmoda = b.mod(a);
+            java.math.BigInteger x;
+            if (bmoda.signum() == 0)
+            {
+                assert(a.equals(java.math.BigInteger.ONE));
+                x = java.math.BigInteger.ONE;
+            }
+            else
+            {
+                java.math.BigInteger y = bmoda.modInverse(a); // or could recurse... but in that case should iterate instead
+                // x*a+b*y = 1
+                // so x = (1-y*b)/a
+                java.math.BigInteger numerator = java.math.BigInteger.ONE.subtract(y.multiply(b));
+                //x = numerator.divide(a);
+                java.math.BigInteger quotientAndRemainder[/*2*/] = numerator.divideAndRemainder(a);
+                x = quotientAndRemainder[0];
+                assert_eq(quotientAndRemainder[1].signum(), 0);
+                if (x.signum() < 0)
+                    x = x.add(b);
+                assert(x.signum() > 0);
+                assert(x.compareTo(b) < 0);
+            }
+            //assert(x.multiply(a).mod(b).equals(java.math.BigInteger.ONE)); // takes too long if huge
+            return x;
+        }
+    } // myModInverse
+
+
     // Return an array of BigInts whose product is the determinant in question.
     // First entry will be 1 or -1, the others will be positive.
     private static BigInt[] factorizeDetDestructive(int n, BigInt M[][])
     {
-        int verboseLevel = 0;
+        int verboseLevel = 1;
         if (verboseLevel >= 1) OUT("        in factorizeDetDestructive(n="+n+")");
         if (verboseLevel >= 1) OUT("          before:");
         if (verboseLevel >= 1) PRINTMAT(M);
         if (verboseLevel >= 1) PRINT(n);
+
+        BigInt maxEntryEver = new BigInt(0);
+
         int sign = 1;
         FORI (i, n)
         {
@@ -157,9 +230,14 @@ final public class MeshUtils
             if (pivotFlag)
             {
                 // Optional, but helps keep numbers relatively small:
-                // Choose the pivot to be the smallest-magnitude entry in [>=i][>=i].
+                // Choose the pivot to be the smallest-magnitude nonzero entry in [>=i][>=i].
                 // This is a heuristic; I actually don't know the best way
                 // to do this.
+                //
+                // Ideas:
+                //   - choose the column with the least gcd (1 if possible)
+                //   - in that column, sort the entries so we deal with smallest first,
+                //     to get to gcd as fast as possible
                 int jPivot = -1;
                 int kPivot = -1;
                 BigInt absPivot = null;
@@ -169,6 +247,8 @@ final public class MeshUtils
                     if (M[j][k].signum() != 0)
                     {
                         BigInt absEntry = M[j][k].abs();
+                        if (absEntry.gt(maxEntryEver))
+                            maxEntryEver.set(absEntry);
                         if (absPivot == null || absEntry.lt(absPivot))
                         {
                             jPivot = j;
@@ -217,38 +297,153 @@ final public class MeshUtils
             if (verboseLevel >= 2) PRINTMAT(M);
             // Zero out all entries [>i][i]
             // by doing row operations against row i.
+            // What's left in [i][i] afterwards will be the gcd of [>=i][i].
             for (int j = i+1; j < n; ++j)
             {
                 if (verboseLevel >= 3) OUT("                  j="+j);
                 assert_ge(M[j][i].signum(), 0);
-                int iters = 0;
-                int maxIters = 20000; // holy moly! 1000 wasn't enough, for a 100-node blue noise, needed 16109. the numbers got super big. any way to prevent this?? the final number isn't that big!
-
-                // CBB: this isn't as efficient as it could be; should use CRT instead, I think.
-                while (M[j][i].signum() != 0)
+                if (true)
                 {
-                    iters++;
-                    //assert_lt(iters, maxIters);
-                    if (iters > maxIters)
+                    int iters = 0;
+                    int maxIters = 20000; // holy moly! 1000 wasn't enough, for a 100-node blue noise, needed 16109. the numbers got super big. any way to prevent this?? the final number isn't that big!
+
+                    // CBB: this isn't as efficient as it could be; should use CRT instead, I think. Or rather, EGCD.
+                    // Oh wait! BigInteger has modInverse!  I think that can be used.
+                    // Oh but it's sucky slow :-(
+                    while (M[j][i].signum() != 0)
                     {
-                        OUT("HEY! iters="+iters+" > maxIters="+maxIters);
+                        iters++;
+                        //assert_lt(iters, maxIters);
+                        if (iters > maxIters)
+                        {
+                            OUT("HEY! iters="+iters+" > maxIters="+maxIters);
+                        }
+                        BigInt a = M[i][i];
+                        BigInt b = M[j][i];
+                        if (verboseLevel >= 3) OUT("                      a = "+a);
+                        if (verboseLevel >= 3) OUT("                      b = "+b);
+                        java.math.BigInteger q = a.i.divide(b.i);
+                        // a,b = b,a%b
+                        // One step in euclidean algorithm: a -= q * b, then swap a,b
+                        // Do it to the whole row.
+                        for (int k = i; k < n; ++k)
+                        {
+                            //M[i][k] -= q * M[j][k];
+                            M[i][k].minusEquals(M[j][k].i.multiply(q));
+                        }
+                        BigInt temp[];
+                        SWAP(M[i], M[j], temp);
+                        sign *= -1;
                     }
-                    BigInt a = M[i][i];
-                    BigInt b = M[j][i];
-                    if (verboseLevel >= 3) OUT("                      a = "+a);
-                    if (verboseLevel >= 3) OUT("                      b = "+b);
-                    java.math.BigInteger q = a.i.divide(b.i);
-                    // a,b = b,a%b
-                    // One step in euclidean algorithm: a -= q * b, then swap a,b
-                    // Do it to the whole row.
-                    for (int k = i; k < n; ++k)
-                    {
-                        //M[i][k] -= q * M[j][k];
-                        M[i][k].minusEquals(M[j][k].i.multiply(q));
+                }
+                else
+                {
+                    //====================
+                    // See DUMP.off.egcd_takes_forever
+                    // WTF?  This is still hugely slower than the other?? what's going on here??
+                    // Is modular inverse ridiculously inefficient or something??
+                    // Hmm I think it's producing matrix entries tending to be much bigger than
+                    // the other method... !?  Why?? isn't it essentially going
+                    // through the same arithmetic, except shortcutting it??
+                    // Wait a minute... but then it's faster next time through?
+                    // Is BigInteger cache misbehaving or something??
+                    // oh WAIT a minute, is it just the crappy terminal misbehaving? no beachball these days but maybe that's something to do with it? ...
+                    // No, I think it really is misbehaving.
+                    // Can I catch it in a really slow modular inverse?
+                    // And, in the meantime, can I do my own modular inverse?
+                    // Bleah, intermediate values are almost a million digits? wtf? something is dreadfully wrong here!
+                    // But, note that it's taking a long time to get modular inverse of a 1 digit number modulo a 911341 digit
+                    // number... that should be almost instantaneous, shouldn't it?
+                    // Unless it's doing something ridiculous... let's see, what's the other method it might be using...?
+                    // Options:
+                    //     - implement my own modularInverse using gcd
+                    //     - I think mostly I'm taking the inverse of a very small number mod a very big number,
+                    //       which it can't seem to handle...  but isn't that computationally the same as taking the 
+                    //       inverse of a big number mod a small number??  so, could just choose the way
+                    //       it likes better.
+                    //       E.g.  suppose x = a^-1 mod b.
+                    //             then x*a + y*b = 1 for some y, namely y = (1-x*a)/b
+                    //             and y = b^-1 mod a.
+                    //       So can compute x as follows, instead:
+                    //             y = b^-1 mod a
+                    //             x = (1-y*b)/a
+                    //       This might be the most expedient.  Still might be slow
+                    //       if *both* numbers are big, though.
+                    //====================
+
+
+                    // How to do that better?
+                    // Well, if a = M[i][i], b = M[j][i], g = gcd(a,b),
+                    // want to reduce [i][i] to g and [j][i] to 0,
+                    // using row operations.
+                    // I.e. we want to multiply by some 2x2 matrix with det=1 on the left.
+                    // That is, we want a 2x2 matrix R, with determinant 1, such that:
+                    // R * [a] = [g]
+                    //     [b]   [0]
+                    // Well, let x,y be such that a*x + b*y == g,
+                    // i.e. (a/g)*x + (b/g)*y == 1.
+                    // then we can let:
+                    //    R = [  x   y ]
+                    //        [-b/g a/g]
+                    // Then R has the desired properties.
+                    // How do we find x,y?
+                    // Well, let A=a/g, B=b/g.
+                    // We want x,y such that A*x+B*y==1.
+                    // Let x=A^1 mod B, and let y = (1-A*x)/B; that does it.
+                    // (But with an optimization, see below.)
+                    assert(M[i][i].signum() != 0);
+                    if (M[j][i].i.signum() != 0) {
+                        java.math.BigInteger a = M[i][i].i;
+                        java.math.BigInteger b = M[j][i].i;
+                        java.math.BigInteger g = a.gcd(b);
+                        //OUT("===========");
+                        //PRINT(a);
+                        //PRINT(b);
+                        //PRINT(g);
+                        java.math.BigInteger A = a.divide(g);
+                        java.math.BigInteger B = b.divide(g);
+                        //PRINT(A);
+                        //PRINT(B);
+                        if (false)
+                        {
+                            int Alength = A.toString().length();
+                            int Blength = B.toString().length();
+                            System.out.print("("+Alength+(Alength<=2?"("+A+")":"")+","+Blength+")?"); System.out.flush();
+                        }
+                        //java.math.BigInteger x = A.modInverse(B); // apparently mods by B first, and inverse of 0 is 0, which works for us.  XXX oh wait, I think A is never zero here, right?  I must have imagined that.  oh, no I didn't... it's never zero, but it's often zero mod b. e.g. a,b both 1.
+                        java.math.BigInteger x = myModInverseOrZero(A.mod(B),B);
+                        System.out.print("!"); System.out.flush();
+
+                        assert(A.signum() != 0);
+                        if (true)
+                        {
+                          // Optimization to prevent numbers from getting unnecessarily big.
+                          // E.g. if A=9, B=5, then:
+                          //   x=4, y=-7
+                          // but we would have been better off choosing:
+                          //   x=-1, y=-2
+                          java.math.BigInteger scratch = B.subtract(x);
+                          if (BigInt.lt(scratch, x))
+                              x = scratch.negate();
+                        }
+
+                        java.math.BigInteger y = java.math.BigInteger.ONE.subtract(A.multiply(x)).divide(B);
+                        //PRINT(x);
+                        //PRINT(y);
+
+                        assert(A.multiply(x).add(B.multiply(y)).equals(java.math.BigInteger.ONE));
+                        for (int k = i; k < n; ++k)
+                        {
+                            // new M[i][k] =  x*M[i][k] + y*M[j][k]
+                            // new M[j][k] = -B*M[i][k] + A*M[j][k]
+                            java.math.BigInteger Mik = M[i][k].i;
+                            java.math.BigInteger Mjk = M[j][k].i;
+                            M[i][k].i = x.multiply(Mik).add(y.multiply(Mjk));
+                            M[j][k].i = A.multiply(Mjk).subtract(B.multiply(Mik));
+                        }
+                        assert(M[i][i].i.equals(g));
+                        assert(M[j][i].signum() == 0);
                     }
-                    BigInt temp[];
-                    SWAP(M[i], M[j], temp);
-                    sign *= -1;
                 }
             }
         }
@@ -258,6 +453,41 @@ final public class MeshUtils
         answer[0] = new BigInt(sign);
         for (int i = 0; i < n; ++i)
             answer[i+1] = M[i][i];
+        if (verboseLevel >= 1) OUT("      maxEntryEver = "+maxEntryEver);
+        if (false)
+        {
+            // very ad-hoc analyzing.  bleah, not finding it to be very composite.
+            System.out.print("      = ");
+            System.out.flush();
+            BigInt scratch = maxEntryEver.copy();
+            BigInt scratch2 = new BigInt(0);
+            if (scratch.ne(0))
+                for (int i = 2; i < 10*1000*1000; ++i)
+                {
+                    if (i > 2 && i % 2 == 0) continue;
+                    if (i > 3 && i % 3 == 0) continue;
+                    if (i > 5 && i % 5 == 0) continue;
+                    if (i > 7 && i % 7 == 0) continue;
+                    if (i > 11 && i % 11 == 0) continue;
+                    if (i > 13 && i % 13 == 0) continue;
+                    if (i > 17 && i % 17 == 0) continue;
+                    if (i > 19 && i % 19 == 0) continue;
+                    if (i > 23 && i % 23 == 0) continue;
+                    if (i > 29 && i % 29 == 0) continue;
+                    if (i > 31 && i % 31 == 0) continue;
+                    if (i > 37 && i % 37 == 0) continue;
+                    scratch2.set(scratch);
+                    while (scratch2.divEqualsReturningRemainder(i) == 0)
+                    {
+                        System.out.print(" "+i);
+                        System.out.flush();
+                        scratch.set(scratch2);
+                    }
+                }
+            if (scratch.ne(1))
+                System.out.print(" "+scratch);
+            System.out.println();
+        }
         if (verboseLevel >= 1) OUT("    out factorizeDetDestructive(n="+n+"), returning "+VecMath.toString(answer));
         return answer;
     }
@@ -275,7 +505,8 @@ final public class MeshUtils
         return answer;
     }
 
-    // Uses Kirchoff's theorem. https://en.wikipedia.org/wiki/Kirchhoff%27s_theorem
+    // Uses Kirchoff's theorem. https://en.wikipedia.org/wiki/Kirchhoff%27s_theorem.
+    // Kinda sucks since it's either inexact or uses bigints whose intermediate values blow up super big :-(
     public static BigInt countSpanningTrees(Mesh mesh)
     {
         OUT("    in countSpanningTrees");
@@ -322,6 +553,261 @@ final public class MeshUtils
         OUT("    out countSpanningTrees, returning "+detBigInt);
         return detBigInt;
     } // countSpanningTrees
+
+    // TODO: this paper: https://pdfs.semanticscholar.org/208b/71b285804d96897731d41f9a4079d0523068.pdf
+    // says "Colbourn et al. in [9] have proposed an algorithm which runs in O(n^2) time for an n-vertex planar graph!"
+    // The Colbourn paper is:
+    //  C.J. Colbourn, J.S. Provan, and D. Vertigan: A new approach to solving three combinatorial enumeration problems on planar graphs. Discrete Appl. Math. 60, 119–129 (1995)
+    // Cool, found it here: http://www.sciencedirect.com/science/article/pii/0166218X95E01113
+    // So let's code it up!
+    // Oh argh, does it not use integer arithmetic?  I'm afraid this will blow up immensely.
+    // Ah I see, they claim O(n log n) digits accuracy is sufficient.  Hmm.
+    //
+    // Okay how do I guide the search?
+    // Can't seem to find any of the papers that show how to reduce any planar graph
+    // in O(n^2) operations, but there is this: https://en.wikipedia.org/wiki/Y-%CE%94_transform
+    // which gives some clues...
+    // Oh wait!  Check out http://www.wikiwand.com/en/Steinitz's_theorem .
+    // It says any convex polyhedron can be transformed to a tetrahedron
+    // by delta-Y and Y-deltas?
+    public static void messAroundWithDeltaWye(Mesh originalMesh)
+    {
+        int verboseLevel = 2;
+        if (verboseLevel >= 1) OUT("    in messAroundWithDeltaWye");
+        if (verboseLevel >= 3) OUT("      originalMesh = "+originalMesh);
+        if (false) originalMesh.sanityCheckTopology(); // XXX woops! dual mesh flunks because of the null endpoints!
+        Mesh mesh = new Mesh(originalMesh);
+        if (verboseLevel >= 3) OUT("      mesh = "+mesh);
+        if (false) mesh.sanityCheckTopology(); // XXX woops! dual mesh flunks because of the null endpoints!
+
+        // Hack-- get rid of that nonexistent vertex.
+        // (CBB: should something like this be in Mesh?)
+        {
+            int nEdges = mesh.edges.size();
+            boolean hasInfiniteVertex = false;
+            FORI (iEdge, nEdges)
+                if (mesh.getEdge(iEdge).initialVertex() == null)
+                {
+                    hasInfiniteVertex = true;
+                    break;
+                }
+            if (hasInfiniteVertex)
+            {
+                Mesh.Vertex vert = mesh.newVertex(0.,0.,0.,0.); // meaningless
+                FORI (iEdge, nEdges)
+                {
+                    Mesh.Edge edge = mesh.getEdge(iEdge);
+                    if (edge.initialVertex() == null)
+                        edge.setInitialVertex(vert);
+                }
+                if (verboseLevel >= 3) OUT("      after fixing: mesh = "+mesh);
+            }
+            FORI (iEdge, nEdges)
+            {
+                assert_ne(mesh.getEdge(iEdge).initialVertex(), null);
+                assert_ne(mesh.getEdge(iEdge).next(), null);
+            }
+        }
+        mesh.sanityCheckTopology(); // finally it's sane
+
+        while (true)
+        {
+            if (verboseLevel >= 2) OUT("      top of loop: nVerts="+mesh.verts.size()+" nEdges="+mesh.edges.size());
+            // Always go from simpler to more complicated,
+            // so that we don't get confused, e.g. a pendant satisfies condition of a series
+            // reduction.
+
+            // loop deletion
+            {
+                if (verboseLevel >= 2) OUT("          checking for loops...");
+                Mesh.Edge loop = null;
+                {
+                    int nEdges = mesh.edges.size();
+                    FORI (iEdge, nEdges)
+                    {
+                        Mesh.Edge edge = mesh.getEdge(iEdge);
+                        if (edge.initialVertex() == edge.finalVertex())
+                        {
+                            loop = edge;
+                            break;
+                        }
+                    }
+                }
+                if (loop != null)
+                {
+                    if (verboseLevel >= 2) OUT("              found a loop! deleting it");
+                    mesh.deleteEdge(loop);
+                    continue;
+                }
+            }
+
+            // pendant edge deletion
+            {
+                if (verboseLevel >= 2) OUT("          checking for pendants...");
+                Mesh.Edge pendant = null;
+                {
+                    int nEdges = mesh.edges.size();
+                    FORI (iEdge, nEdges)
+                    {
+                        Mesh.Edge edge = mesh.getEdge(iEdge);
+                        Mesh.Edge nextEdge = edge.next();
+                        assert_ne(nextEdge, edge); // since no loops
+                        assert_eq(nextEdge==edge.opposite(),
+                                  edge.finalVertex().arity == 1);
+                        if (edge.finalVertex().arity == 1)
+                        {
+                            pendant = edge;
+                            break;
+                        }
+                    }
+                }
+                if (pendant != null)
+                {
+                    if (verboseLevel >= 2) OUT("              found a pendant! deleting it");
+                    Mesh.Vertex vert = pendant.finalVertex();
+                    // just deleting the vert would do it, but deleting the edge first
+                    // is potentially more efficient
+                    assert_eq(vert.arity, 1);
+                    mesh.deleteEdge(pendant);
+                    assert_eq(vert.arity, 0);
+                    mesh.deleteVertex(vert, null, null);
+                    continue;
+                }
+            }
+            // parallel reduction
+            {
+                if (verboseLevel >= 2) OUT("          checking for parallels...");
+                Mesh.Edge parallel = null;
+                {
+                    int nEdges = mesh.edges.size();
+                    FORI (iEdge, nEdges)
+                    {
+                        Mesh.Edge edge = mesh.getEdge(iEdge);
+                        Mesh.Edge nextEdge = edge.next();
+                        assert_ne(nextEdge, edge); // since no loops
+                        assert_ne(nextEdge, edge.opposite()); // since no pendants
+                        if (nextEdge.finalVertex() == edge.initialVertex())
+                        {
+                            parallel = edge;
+                            break;
+                        }
+                    }
+                }
+                if (parallel != null)
+                {
+                    if (verboseLevel >= 2) OUT("              found a parallel! "+parallel+" deleting it");
+                    mesh.deleteEdge(parallel);
+                    continue;
+                }
+            }
+            // series reduction
+            {
+                if (verboseLevel >= 2) OUT("          checking for serieses...");
+                Mesh.Edge seriesStart = null;
+                {
+                    int nEdges = mesh.edges.size();
+                    FORI (iEdge, nEdges)
+                    {
+                        Mesh.Edge edge = mesh.getEdge(iEdge);
+                        Mesh.Edge nextEdge = edge.next();
+                        assert_ne(nextEdge, edge); // since no loops
+                        assert_ne(nextEdge, edge.opposite()); // since no pendants
+                        assert_ne(nextEdge.finalVertex(), edge.initialVertex()); // since no parallels
+                        assert_eq(edge.next().opposite().next().opposite()==edge,
+                                  edge.finalVertex().arity == 2);
+                        if (edge.finalVertex().arity == 2)
+                        {
+                            seriesStart = edge;
+                            break;
+                        }
+                    }
+                }
+                if (seriesStart != null)
+                {
+                    if (verboseLevel >= 2) OUT("              found a series! deleting it");
+
+                    if (verboseLevel >= 3) OUT("                  before: "+mesh);
+
+                    // create a replacement edge,
+                    // then delete the two originals and the vertex.
+                    mesh.sanityCheckTopology();
+                    Mesh.Edge shortCut = mesh.newEdge(true);
+                    // can't call sanityCheckTopology again until after connected both endpoints
+                    // see picture at insertEdgeBefore
+                    assert_eq(shortCut.prev(), shortCut.opposite());
+                    mesh.insertEdgeBefore(shortCut, seriesStart);
+                    assert_ne(shortCut.prev(), shortCut.opposite());
+                    assert_eq(shortCut.opposite().prev(), shortCut);
+                    mesh.insertEdgeBefore(shortCut.opposite(), seriesStart.next().next());
+                    mesh.sanityCheckTopology();
+                    Mesh.Vertex vert = seriesStart.finalVertex();
+                    assert_eq(vert.arity, 2);
+                    mesh.deleteEdge(seriesStart.next());
+                    assert_eq(vert.arity, 1);
+                    mesh.deleteEdge(seriesStart);
+                    assert_eq(vert.arity, 0);
+                    mesh.deleteVertex(vert, null, null);
+                    mesh.sanityCheckTopology();
+
+                    if (verboseLevel >= 3) OUT("                  after: "+mesh);
+                    continue;
+                }
+            }
+            // wye-delta transformation
+            {
+                if (verboseLevel >= 2) OUT("          checking for wyes...");
+                Mesh.Edge towardsWye = null;
+                {
+                    int nEdges = mesh.edges.size();
+                    FORI (iEdge, nEdges)
+                    {
+                        Mesh.Edge edge = mesh.getEdge(iEdge);
+                        assert_eq(edge.next().opposite().next().opposite().next().opposite()==edge,
+                                  edge.finalVertex().arity == 3);
+                        if (edge.finalVertex().arity == 3)
+                        {
+                            towardsWye = edge;
+                            break;
+                        }
+                    }
+                }
+                if (towardsWye != null)
+                {
+                    if (verboseLevel >= 2) OUT("              found a wye! changing it to a delta");
+                    Mesh.Edge A = towardsWye;
+                    Mesh.Edge B = A.next().opposite();
+                    Mesh.Edge C = B.next().opposite();
+                    assert_eq(A, C.next().opposite());
+                    Mesh.Edge AB = mesh.newEdge(true);
+                    Mesh.Edge BC = mesh.newEdge(true);
+                    Mesh.Edge CA = mesh.newEdge(true);
+                    mesh.insertEdgeBefore(AB, A);
+                    mesh.insertEdgeBefore(BC, B);
+                    mesh.insertEdgeBefore(CA, C);
+                    mesh.insertEdgeBefore(AB.opposite(), B.opposite().next());
+                    mesh.insertEdgeBefore(BC.opposite(), C.opposite().next());
+                    mesh.insertEdgeBefore(CA.opposite(), A.opposite().next());
+
+                    mesh.sanityCheckTopology();
+                    Mesh.Vertex vert = A.finalVertex();
+                    assert_eq(vert.arity, 3);
+                    mesh.deleteEdge(A);
+                    assert_eq(vert.arity, 2);
+                    mesh.deleteEdge(B);
+                    assert_eq(vert.arity, 1);
+                    mesh.deleteEdge(C);
+                    assert_eq(vert.arity, 0);
+                    mesh.deleteVertex(vert, null, null);
+                    mesh.sanityCheckTopology();
+
+                    continue;
+                }
+            }
+            break; // didn't find any of the constructs
+        }
+        if (verboseLevel >= 1) OUT("    out messAroundWithDeltaWye");
+    } // messAroundWithDeltaWye
+
 
     // Simpler mesh data structure, suitable for running
     // the algorithm from David Bruce Wilson

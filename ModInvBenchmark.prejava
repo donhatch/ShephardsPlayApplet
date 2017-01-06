@@ -1,0 +1,197 @@
+#include "macros.h"
+import com.donhatchsw.util.VecMath; // XXX get rid
+// java.math.BigInteger.invMod is freaky slow, wtf?
+public class ModInvBenchmark
+{
+    private static String describe(java.math.BigInteger x, int maxDigits)
+    {
+        int bitLength = x.bitLength();
+        int numDigits = (int)Math.floor(bitLength * Math.log10(2.)); // approximately
+        if (numDigits <= maxDigits)
+            return x.toString();
+        String answer = "("+numDigits+" digit"+(numDigits==1?"":"s")+" or so)";
+        return answer;
+    }
+
+    private static java.math.BigInteger myModInverse(java.math.BigInteger a, java.math.BigInteger b)
+    {
+        java.math.BigInteger ZERO = java.math.BigInteger.ZERO;
+        java.math.BigInteger ONE = java.math.BigInteger.ONE;
+        if (b.signum() <= 0)
+            throw new ArithmeticException("myModInverse called with b<=0");
+        if (b.equals(ONE)) return ZERO; // I guess it's allowed; special case it
+        if (a.signum() < 0 || a.compareTo(b) >= 0)
+            a = a.mod(b);
+
+        // Extended euclidean algorithm.
+        // We want x,y such that 1 = x*a + y*b (then x will be the answer).
+        // Start with this:
+        //      a = 1*a + 0*b
+        //      b = 0*a + 1*b
+        // i.e. the augmented matrix:
+        //      [a 1 0]
+        //      [b 0 1]
+        // and do row operations (i.e. add a multiple of one row to the other
+        // or swap rows, so that the determinant of the right 2x2 submatrix
+        // stays 1 or -1), until the first column is 1,0.
+        // The matrix will then look like this:
+        //      [1  x y]
+        //      [0 -b a]
+        // or maybe:
+        //      [1  x  y]
+        //      [0  b -a]
+        java.math.BigInteger M[][] = {
+            {a, ONE, ZERO},
+            {b, ZERO, ONE},
+        };
+        int nIterations = 0;
+        while (M[1][0].signum() != 0) {
+            java.math.BigInteger q = M[0][0].divide(M[1][0]);
+            // subtract q times row 1 from row 0
+            for (int j = 0; j < 3; ++j)
+                M[0][j] = M[0][j].subtract(q.multiply(M[1][j]));
+            // swap the rows
+            java.math.BigInteger temp[] = M[0]; M[0] = M[1]; M[1] = temp;
+            nIterations++;
+        }
+        PRINT(nIterations);
+        if (!M[0][0].equals(ONE))
+            throw new ArithmeticException("myModInverse called with a,b not relatively prime");
+        assert(M[1][1].abs().equals(b));
+        assert(M[1][2].abs().equals(a));
+        java.math.BigInteger x = M[0][1];
+        // x is the answer, up to some multiple of b
+        if (x.signum() <= 0 || x.compareTo(b) >= 0)
+            x = x.mod(b);
+        assert(a.multiply(x).mod(b).equals(ONE));
+        return x;
+    }
+
+    // what the fuck!? gcd is broken too!? fast for little numbers but not for big ones?
+    // so actually maybe this is what I need to report, it's a lot simpler.
+    private static java.math.BigInteger myGcd(java.math.BigInteger a, java.math.BigInteger b)
+    {
+        a = a.abs();
+        b = b.abs();
+        while (b.signum() != 0)
+        {
+            java.math.BigInteger amodb = a.mod(b);
+            a = b;
+            b = amodb;
+        }
+        return a;
+    }
+
+    private static void testOneCase(String aDescription, java.math.BigInteger a, java.math.BigInteger b, boolean useMine)
+    {
+        System.out.print("    1/"+aDescription+" mod b = ");
+        System.out.flush();
+        long t0nanos = System.nanoTime();
+
+        java.math.BigInteger aInverse = useMine ? myModInverse(a, b)
+                                                : a.modInverse(b);
+
+        long t1nanos = System.nanoTime();
+        System.out.println(""+describe(aInverse, 100)+" in "+(t1nanos-t0nanos)/1e9+" secs.");
+        System.out.flush();
+    }
+
+    public static void main(String args[])
+    {
+        boolean useMine = false; // XXX make a param
+
+        java.math.BigInteger ZERO = java.math.BigInteger.ZERO;
+        java.math.BigInteger ONE = java.math.BigInteger.ONE;
+        java.math.BigInteger TEN = java.math.BigInteger.TEN;
+
+        if (false)
+        {
+            int bNumZeros = args.length>=1 ? Integer.parseInt(args[0]) : 1000000;
+            PRINT(bNumZeros);
+
+
+            long t0nanos, t1nanos;
+            // b is 1 followed by a million (or however many) zeros.
+            System.out.print("Creating b...");
+            System.out.flush();
+            t0nanos = System.nanoTime();
+            java.math.BigInteger b = TEN.pow(bNumZeros);
+            t1nanos = System.nanoTime();
+            System.out.println("done in "+(t1nanos-t0nanos)/1e9+" secs.");
+            System.out.flush();
+            System.out.println("b = "+describe(b, 1000));
+
+            // Some small numbers...
+            for (int i = -20; i <= 20; ++i)
+            {
+                java.math.BigInteger a = java.math.BigInteger.valueOf(i);
+                if (myGcd(a,b).equals(ONE))
+                    testOneCase(a.toString(), a, b, useMine);
+            }
+            // Increasing numbers of zeros
+            for (int aNumZeros = 1; aNumZeros < bNumZeros; aNumZeros *= 10)
+            {
+                java.math.BigInteger a = TEN.pow(aNumZeros);
+                while (!myGcd(a,b).equals(ONE)) a = a.add(ONE);
+                testOneCase("(10^"+aNumZeros+" or so)", a, b, useMine);
+            }
+            // Something around b/2
+            {
+                java.math.BigInteger a = b.divide(java.math.BigInteger.valueOf(2));
+                while (!myGcd(a,b).equals(ONE)) a = a.add(ONE);
+                testOneCase("(b/2 or so)", a, b, useMine);
+            }
+            // Some numbers around b
+            for (int i = -20; i <= 20; ++i)
+            {
+                java.math.BigInteger a = b.add(java.math.BigInteger.valueOf(i));
+                if (myGcd(a,b).equals(ONE))
+                    testOneCase(i < 0 ? "(b - "+(-i)+")"
+                               : "(b + "+i+")", a, b, useMine);
+            }
+
+            // Some number in golden ratio to b.
+            // It's basically impossible to get this simply;
+            // we'd need to be able to perform a square root,
+            // which is just as hard as the subsequent gcd.
+            // Oh wait! That's not true.  We can
+            // exponentiate that 2x2 matrix....
+            {
+                double phi = (Math.sqrt(5.)+1)/2.;
+                long denominator = 1L << 62;
+                long numerator = (long)(phi * (double)denominator);
+                PRINT(phi);
+                PRINT((double)numerator/(double)denominator);
+                java.math.BigInteger a = b.multiply(java.math.BigInteger.valueOf(denominator)).divide(java.math.BigInteger.valueOf(numerator));
+                while (!myGcd(a,b).equals(ONE)) a = a.add(ONE);
+                testOneCase("(b/phi)", a, b, useMine);
+            }
+
+            // Random number less than b.
+            // Hmm, actually, this gives a good test case.
+            {
+                java.math.BigInteger a = new java.math.BigInteger(b.bitLength()-1, new java.util.Random());
+                while (!myGcd(a,b).equals(ONE)) a = a.add(ONE);
+                testOneCase("(random less than b)", a, b, useMine);
+            }
+        }
+
+        if (true)
+        {
+            java.math.BigInteger a = java.math.BigInteger.valueOf(3);
+            for (int bNumZeros = 0; bNumZeros < 1000*1000; bNumZeros += 1000)
+            {
+                java.math.BigInteger b = TEN.pow(bNumZeros);
+                System.out.print(bNumZeros+" ");
+                System.out.flush();
+
+                long t0nanos = System.nanoTime();
+                java.math.BigInteger aInverse = useMine ? myModInverse(a, b)
+                                                        : a.modInverse(b);
+                long t1nanos = System.nanoTime();
+                System.out.println(""+(t1nanos-t0nanos)/1e9+" secs: "+describe(aInverse, 100));
+                System.out.flush();
+            }
+        }
+    } // main
+}
