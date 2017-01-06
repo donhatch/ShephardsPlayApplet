@@ -4,9 +4,9 @@
 gnuplot
   gnuplot>
     set ylabel "Seconds"
-    set xlabel "Number of digits"
+    set xlabel "n = number of digits"
     set log
-    plot "RMME.gcd.theirs" using 1:2 title "a.gcd(b)", "RMME.gcd.mine" using 1:2 title "myGcd(a,b)", x**2*2.3e-10, x*2.3e-9
+    plot "RMME.gcd.theirs" using 1:2 title "a.gcd(b)", "RMME.gcd.mine" using 1:2 title "myGcd(a,b)", 2.3e-10 * x**2, 2.3e-9 * x
     set log
     replot
 
@@ -25,8 +25,9 @@ using either the builtin gcd or my own simple implementation.
 
 I ran it using java 8 under ubuntu linux,
 runtime version 1.8.0_111-8u111-b14-2ubuntu0.16.04.2-b14.
+Timings are similar on a macbook.
 
-As shown in the plot, the builtin a.gcd(b) takes roughly O(n^2) time,
+As shown in the plots, the builtin a.gcd(b) takes roughly O(n^2) time,
 and mine takes roughly O(n) time.
 In particular, the builtin (10^1000000-3).gcd(10^1000000) takes 250 seconds, and
 myGcd(10^1000000-3, 10^1000000) takes 0.002148847 seconds.
