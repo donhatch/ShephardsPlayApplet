@@ -1,0 +1,116 @@
+/*
+./RUNME.GcdBenchmark mine > ! RMME.gcd.mine
+./RUNME.GcdBenchmark theirs > ! RMME.gcd.theirs
+gnuplot
+  gnuplot>
+    set ylabel "Seconds"
+    set xlabel "Number of digits"
+    set log
+    plot "RMME.gcd.theirs" using 1:2 title "a.gcd(b)", "RMME.gcd.mine" using 1:2 title "myGcd(a,b)", x**2*2.3e-10, x*2.3e-9
+    set log
+    replot
+
+===================
+Q: why are java.math.BigInteger.gcd and modInverse so slow?
+
+I'm trying to use java.math.BigInteger
+for some exact integer matrix computations in which the values get up to about a million digits.
+I've noticed that some of the builtin BigInteger operations I expect to be pretty fast are very slow,
+for example some cases of gcd, and many more cases of modInverse.
+It seems that I can implement my own versions of these functions that are much faster.
+
+Below is a program that prints timings for calculating
+gcd(10^n-3, 10^n) for n=0,10000,20000,...,1000000,
+using either the builtin gcd or my own simple implementation.
+
+I ran it using java 8 under ubuntu linux,
+runtime version 1.8.0_111-8u111-b14-2ubuntu0.16.04.2-b14.
+
+As shown in the plot, the builtin a.gcd(b) takes roughly O(n^2) time,
+and mine takes roughly O(n) time.
+In particular, the builtin (10^1000000-3).gcd(10^1000000) takes 250 seconds, and
+myGcd(10^1000000-3, 10^1000000) takes 0.002148847 seconds.
+So mine is more than 100000 times faster than the builtin one in that case.
+
+Is the builtin gcd function doing something other than the euclidean algorithm?  Why?
+
+I get very similar timings for the builtin modInverse vs. my own implementation
+using the extended euclidean algorithm (not shown here).
+The builtin modInverse does poorly in even more cases than the builtin gcd does,
+e.g. when a is a small number like 2,3,4,... and b is large.
+
+*/
+
+class BigIntegerBenchmarkGcd
+{
+    // Simple alternative implementation of gcd.
+    // 100000 times faster than the builtin gcd for a=10^1000000-3, b=10^1000000.
+    private static java.math.BigInteger myGcd(java.math.BigInteger a, java.math.BigInteger b)
+    {
+        a = a.abs();
+        b = b.abs();
+        while (true)
+        {
+            if (b.signum() == 0) return a;
+            a = a.mod(b);
+            if (a.signum() == 0) return b;
+            b = b.mod(a);
+        }
+    } // myGcd
+
+    // Make sure myGcd(a,b) gives the same answer as a.gcd(b) for small values.
+    private static void myGcdConfidenceTest()
+    {
+        System.err.print("Running confidence test... ");
+        System.err.flush();
+        for (int i = -10; i < 10; ++i)
+        for (int j = -10; j < 10; ++j)
+        {
+            java.math.BigInteger a = java.math.BigInteger.valueOf(i);
+            java.math.BigInteger b = java.math.BigInteger.valueOf(j);
+            java.math.BigInteger theirAnswer = a.gcd(b);
+            java.math.BigInteger myAnswer = myGcd(a, b);
+            if (!myAnswer.equals(theirAnswer)) {
+                throw new AssertionError("they say gcd("+a+","+b+") is "+theirAnswer+", I say it's "+myAnswer);
+            }
+        }
+        System.err.println("passed.");
+        System.err.flush();
+    }
+
+    public static void main(String args[])
+    {
+        boolean useMine = false;
+        if (args.length==1 && args[0].equals("theirs"))
+            useMine = false;
+        else if (args.length==1 && args[0].equals("mine"))
+            useMine = true;
+        else
+        {
+            System.err.println("Usage: BigIntegerBenchmarkGcd theirs|mine");
+            System.exit(1);
+        }
+
+        myGcdConfidenceTest();
+
+        java.math.BigInteger ZERO = java.math.BigInteger.ZERO;
+        java.math.BigInteger ONE = java.math.BigInteger.ONE;
+        java.math.BigInteger TEN = java.math.BigInteger.TEN;
+
+        for (int bNumZeros = 0; bNumZeros <= 1000*1000; bNumZeros += 10000)
+        {
+            java.math.BigInteger b = TEN.pow(bNumZeros);
+            java.math.BigInteger a = b.subtract(java.math.BigInteger.valueOf(3));
+
+            System.out.print(bNumZeros+" ");
+            System.out.flush();
+
+            long t0nanos = System.nanoTime();
+            java.math.BigInteger aInverse = useMine ? myGcd(a, b)
+                                                    : a.gcd(b);
+            long t1nanos = System.nanoTime();
+            System.out.println(""+(t1nanos-t0nanos)/1e9);
+            System.out.flush();
+        }
+    } // main
+} // class BigIntegerBenchmarkGcd
