@@ -89,12 +89,21 @@ Here's the program listing:
     javac BigIntegerBenchmarkGcd.java
     java BigIntegerBenchmarkGcd mine > OUT.gcd.mine
     java BigIntegerBenchmarkGcd theirs > OUT.gcd.theirs
+
     gnuplot
       set ylabel "Seconds"
       set xlabel "Number of digits"
       unset log
       set yrange [0:.5]
-      #set terminal png size 640,480 enhanced
+      plot [1:2**20] "OUT.gcd.theirs" with linespoints title "a.gcd(b)", "OUT.gcd.mine" with linespoints title "myGcd(a,b)"
+      unset yrange; replot
+      set log; replot
+
+    gnuplot
+      set ylabel "Seconds"
+      set xlabel "Number of digits"
+      unset log
+      set yrange [0:.5]
       set terminal png size 512,384 enhanced
       set output 'OUT0.png'
       plot [1:2**20] "OUT.gcd.theirs" with linespoints title "a.gcd(b)", "OUT.gcd.mine" with linespoints title "myGcd(a,b)"
