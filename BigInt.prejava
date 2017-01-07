@@ -1,3 +1,4 @@
+#include "macros.h" // for always-enabled assert, which I should probably stop using
 /** Convenience because I'm getting annoyed at the verbosity of native BigInteger idiomatic usage. */
 public class BigInt
 {
@@ -17,6 +18,135 @@ public class BigInt
     public static java.math.BigInteger plus(java.math.BigInteger a, long b) { return a.add(java.math.BigInteger.valueOf(b)); }
     public static java.math.BigInteger minus(java.math.BigInteger a, long b) { return a.subtract(java.math.BigInteger.valueOf(b)); }
     public static java.math.BigInteger times(java.math.BigInteger a, long b) { return a.multiply(java.math.BigInteger.valueOf(b)); }
+
+    // http://stackoverflow.com/questions/41517149/why-are-javas-biginteger-gcd-and-modinverse-so-slow
+    public static java.math.BigInteger gcd(java.math.BigInteger a, java.math.BigInteger b)
+    {
+        a = a.abs();
+        b = b.abs();
+        while (true)
+        {
+            // Note, can do about 2x better if we avoid the mod
+            // when it's clear we can do it in a small number of subtracts instead,
+            // see BigIntegerBenchmark.
+            if (b.signum() == 0) return a;
+            a = a.mod(b);
+            if (a.signum() == 0) return b;
+            b = b.mod(a);
+        }
+    } // gcd
+
+    private static java.math.BigInteger gcdExtended(java.math.BigInteger a, java.math.BigInteger b,
+                                                    java.math.BigInteger coeffs[])
+    {
+        java.math.BigInteger ZERO = java.math.BigInteger.ZERO;
+        java.math.BigInteger ONE = java.math.BigInteger.ONE;
+        java.math.BigInteger aAbs = a.abs();
+        java.math.BigInteger bAbs = b.abs();
+
+        // (In this comment, when we say a,b, we really mean aAbs,bAbs).
+        // We want x,y such that g = x*a + y*b (then x will be the answer).
+        // Start with this:
+        //      a = 1*a + 0*b
+        //      b = 0*a + 1*b
+        // i.e. the augmented matrix:
+        //      [a 1 0]
+        //      [b 0 1]
+        // and do row operations (i.e. add a multiple of one row to the other
+        // or swap rows, so that the determinant of the right 2x2 submatrix
+        // stays 1 or -1), until the first column is 1,0.
+        // The matrix will then look like this:
+        //      [g   x   y ]
+        //      [0 -b/g a/g]
+        // or maybe:
+        //      [g   x    y ]
+        //      [0  b/g -a/g]
+        java.math.BigInteger M[][] = {
+            {aAbs, ONE, ZERO},
+            {bAbs, ZERO, ONE},
+        };
+        int nIterations = 0;
+        while (M[1][0].signum() != 0) {
+            java.math.BigInteger q = M[0][0].divide(M[1][0]);
+            // subtract q times row 1 from row 0
+            for (int j = 0; j < 3; ++j)
+                M[0][j] = M[0][j].subtract(q.multiply(M[1][j]));
+            // and swap the rows
+            java.math.BigInteger temp[] = M[0]; M[0] = M[1]; M[1] = temp;
+            nIterations++;
+        }
+        //PRINT(nIterations);
+        java.math.BigInteger g = M[0][0];
+        assert(M[1][1].multiply(g).abs().equals(bAbs));
+        assert(M[1][2].multiply(g).abs().equals(aAbs));
+        java.math.BigInteger x = M[0][1];
+        java.math.BigInteger y = M[0][2];
+
+        // Get x,y as close to 0 as possible:
+        // e.g. if x > b/2, then it's better to take x-b instead.
+        // we know:
+        //     x*a + y*b = g
+        // so could also use:
+        //     (x-b)*a + (y+a)*b = g
+        {
+            if (false)
+            {
+                OUT("====");
+                PRINT(aAbs);
+                PRINT(bAbs);
+                PRINT(x);
+                PRINT(y);
+                OUT("====");
+            }
+            // Huh? wait a minute, I didn't expect the following...
+            assert(bAbs.signum() == 0 || x.abs().shiftLeft(1).compareTo(bAbs) <= 0); // XXX wait, what? this is always true?
+            assert(aAbs.signum() == 0 || (aAbs.equals(ONE)&&bAbs.equals(ONE)) || y.abs().shiftLeft(1).compareTo(aAbs) <= 0); // XXX wait, what? this is always true?
+
+            // So we don't need the following after all.
+
+            java.math.BigInteger xAbs = x.abs();
+            if (bAbs.signum() != 0 && xAbs.shiftLeft(1).compareTo(bAbs) > 0) // if 2*|x| > |b|, i.e. |x| > |b|/2., i.e. |b|-|x|>|x|
+            {
+                assert(false); // XXX wait, what? this is never going off? ok, I'm confused
+                if (x.signum() < 0)
+                {
+                    x = x.add(bAbs);
+                    y = y.subtract(aAbs);
+                }
+                else
+                {
+                    x = x.subtract(bAbs);
+                    y = y.add(aAbs);
+                }
+                assert(x.abs().compareTo(xAbs) < 0); // strictly improved
+            }
+        }
+
+        if (a.signum() < 0) x = x.negate();
+        if (b.signum() < 0) y = y.negate();
+        assert(a.multiply(x).add(b.multiply(y)).equals(g));
+        coeffs[0] = x;
+        coeffs[1] = y;
+        return g;
+    } // gcdExtended
+
+    private static java.math.BigInteger modInverse(java.math.BigInteger a, java.math.BigInteger b)
+    {
+        java.math.BigInteger ZERO = java.math.BigInteger.ZERO;
+        java.math.BigInteger ONE = java.math.BigInteger.ONE;
+        if (b.signum() <= 0)
+            throw new ArithmeticException("myModInverse called with b<=0");
+        if (b.equals(ONE)) return ZERO; // I guess it's allowed, and a can be anything including 0 in this case; special case it
+        a = a.mod(b);  // XXX actually... should I make it as close to 0 as possible? not sure
+        java.math.BigInteger coeffs[] = new java.math.BigInteger[2];
+        java.math.BigInteger g = gcdExtended(a, b, coeffs);
+        if (!g.equals(ONE))
+            throw new ArithmeticException("myModInverse called with a,b not relatively prime");
+        java.math.BigInteger x = coeffs[0];
+        x = x.mod(b);
+        return x;
+    } // myModInverse
+
 
     /**
     * More convenient object for when accumulating.
@@ -79,4 +209,74 @@ public class BigInt
         this.i = quotientAndRemainder[0];
         return quotientAndRemainder[1].longValue();
     }
+
+
+    // Make sure gcd(a,b) give the same answer as a.gcd(b) for small values (NOT using BigInt).
+    private static void gcdConfidenceTest()
+    {
+        System.err.print("Running gcd confidence test... ");
+        System.err.flush();
+        java.math.BigInteger coeffs[] = new java.math.BigInteger[2];
+        int max = 1000;
+        for (int i = -max; i <= max; ++i)
+        for (int j = -max; j <= max; ++j)
+        {
+            java.math.BigInteger a = java.math.BigInteger.valueOf(i);
+            java.math.BigInteger b = java.math.BigInteger.valueOf(j);
+            java.math.BigInteger theirAnswer = a.gcd(b);
+            java.math.BigInteger myAnswer = gcd(a, b);
+            if (!myAnswer.equals(theirAnswer)) {
+                throw new AssertionError("they say gcd("+a+","+b+") is "+theirAnswer+", I say it's "+myAnswer);
+            }
+            java.math.BigInteger myAnswerExtended = gcdExtended(a, b, coeffs);
+            if (!myAnswerExtended.equals(theirAnswer)) {
+                throw new AssertionError("they say gcd("+a+","+b+") is "+theirAnswer+", I (extended) say it's "+myAnswerExtended);
+            }
+        }
+        System.err.println("passed.");
+    } // gcdConfidenceTest
+
+    private static void modInverseConfidenceTest()
+    {
+        System.err.print("Running modInverse confidence test... ");
+        System.err.flush();
+        int max = 1000;
+        for (int i = -max; i <= max; ++i)
+        for (int j = -5  ; j <= max; ++j) // don't need many negative cases, they all throw
+        {
+            java.math.BigInteger a = java.math.BigInteger.valueOf(i);
+            java.math.BigInteger b = java.math.BigInteger.valueOf(j);
+            boolean shouldThrow = b.signum() <= 0 || !gcd(a,b).equals(java.math.BigInteger.ONE);
+            java.math.BigInteger theirAnswer = null;
+            java.math.BigInteger myAnswer = null;
+            ArithmeticException theirException = null;
+            ArithmeticException myException = null;
+            try {
+                theirAnswer = a.modInverse(b);
+            } catch (ArithmeticException e) {
+                theirException = e;
+            }
+            try {
+                myAnswer = modInverse(a, b);
+            } catch (ArithmeticException e) {
+                myException = e;
+            }
+            assert((theirException!=null) == shouldThrow);
+            assert((myException!=null) == shouldThrow);
+            if (!shouldThrow)
+            {
+                if (!myAnswer.equals(theirAnswer)) {
+                    throw new AssertionError("they say modInverse("+a+","+b+") is "+theirAnswer+", I say it's "+myAnswer);
+                }
+            }
+        }
+        System.err.println("passed.");
+    } // gcdConfidenceTest
+
+
+    public static void main(String args[])
+    {
+        gcdConfidenceTest();
+        modInverseConfidenceTest();
+    } // main
 } // BigInt
