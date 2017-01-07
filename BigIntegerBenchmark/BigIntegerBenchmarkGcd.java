@@ -15,9 +15,9 @@ using either the builtin gcd or my own simple alternative implementation.
 
 I ran it using java 8 under ubuntu linux,
 runtime version 1.8.0_111-8u111-b14-2ubuntu0.16.04.2-b14.
-Timings are similar on a macbook.
+Timings are roughly similar, relatively, on a macbook with java runtime 1.8.0_92.
 
-Builtin:
+Builtin gcd is roughly quadratic:
 
     # numDigits seconds
     1 0.000005626
@@ -42,7 +42,7 @@ Builtin:
     524288 67.685927438
     1048576 259.500887989
 
-Mine:
+Mine is roughly linear:
 
     # numDigits seconds
     1 0.000002845
@@ -67,9 +67,7 @@ Mine:
     524288 0.009635206
     1048576 0.022034768
 
-As shown in the plots, the builtin a.gcd(b) takes roughly O(n^2) time,
-whereas mine takes roughly O(n) time.
-In particular, for a million digits, the builtin gcd takes more than 10000
+Notice that, for a million digits, the builtin gcd takes more than 10000
 times as long as mine: 259 seconds vs. .0220 seconds.
 
 Is the builtin gcd function doing something other than the euclidean algorithm?  Why?
@@ -78,6 +76,11 @@ I get similar timings for the builtin modInverse vs. my own implementation
 using the extended euclidean algorithm (not shown here).
 The builtin modInverse does poorly in even more cases than the builtin gcd does,
 e.g. when a is a small number like 2,3,4,... and b is large.
+
+Here are three plots of the above data (two different linear scales and then log scale):
+[OUT0.gcd.png]
+[OUT1.gcd.png]
+[OUT2.gcd.png]
 
 Here's the program listing:
 
@@ -91,28 +94,19 @@ Here's the program listing:
     java BigIntegerBenchmarkGcd theirs > OUT.gcd.theirs
 
     gnuplot
+      set title "Timing gcd(a=10^n-3, b=10^n)"
       set ylabel "Seconds"
       set xlabel "Number of digits"
       unset log
       set yrange [0:.5]
+      #set terminal png size 512,384 enhanced font "Helvetica,10"
+      #set output 'OUT0.gcd.png'
       plot [1:2**20] "OUT.gcd.theirs" with linespoints title "a.gcd(b)", "OUT.gcd.mine" with linespoints title "myGcd(a,b)"
+      #set output 'OUT1.gcd.png'
       unset yrange; replot
-      set log; replot
-
-    gnuplot
-      set ylabel "Seconds"
-      set xlabel "Number of digits"
-      unset log
-      set yrange [0:.5]
-      set terminal png size 512,384 enhanced
-      set output 'OUT0.png'
-      plot [1:2**20] "OUT.gcd.theirs" with linespoints title "a.gcd(b)", "OUT.gcd.mine" with linespoints title "myGcd(a,b)"
-      set output 'OUT1.png'
-      unset yrange; replot
-      set output 'OUT2.png'
+      #set output 'OUT2.gcd.png'
       set log; replot
 */
-
 class BigIntegerBenchmarkGcd
 {
     // Simple alternative implementation of gcd.
