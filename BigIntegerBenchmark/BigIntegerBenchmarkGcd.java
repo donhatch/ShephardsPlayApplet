@@ -6,8 +6,8 @@ Q: why are java.math.BigInteger.gcd and modInverse so slow?
 I'm trying to use java.math.BigInteger
 for some exact integer matrix computations in which the scalar values get up to millions of digits.
 I've noticed that some of the builtin BigInteger operations are unexpectedly very slow--
-in particular some cases of gcd, and many more cases of modInverse.
-Apparently I can implement my own versions of these functions that are much faster.
+particularly some cases of gcd, and many more cases of modInverse.
+It seems I can implement my own versions of these functions that are much faster.
 
 Below is a program that prints timings for calculating
 gcd(10^n-3, 10^n) for increasing values of n up to a million or so,
