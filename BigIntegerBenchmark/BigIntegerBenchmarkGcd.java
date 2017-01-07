@@ -79,6 +79,8 @@ using the extended euclidean algorithm (not shown here).
 The builtin modInverse does poorly in even more cases than the builtin gcd does,
 e.g. when a is a small number like 2,3,4,... and b is large.
 
+Here's the program listing:
+
 */
 
 /*
