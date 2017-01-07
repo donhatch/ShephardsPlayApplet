@@ -139,75 +139,6 @@ final public class MeshUtils
     }
 
 
-    private static java.math.BigInteger myModInverseOrZero(java.math.BigInteger a, java.math.BigInteger b)
-    {
-        if (false)
-        {
-            // XXX WORK IN PROGRESS, maybe
-            if (a.signum() == 0) return a; // or throw an exception? the library's version of it doesn't
-            if (a.equals(java.math.BigInteger.ONE)) return a;
-            if (a.equals(java.math.BigInteger.ONE.negate())) return a;
-
-            java.math.BigInteger M[][] = {
-                {a, java.math.BigInteger.ONE, java.math.BigInteger.ZERO},
-                {b, java.math.BigInteger.ZERO, java.math.BigInteger.ONE},
-            };
-            // Do determinant-preserving integer matrix operations
-            // (i.e. adding a multiple of one row to the other)
-            // until one of the entries in the first column is zero
-            // and the other is the gcd.
-            while (true)
-            {
-                if (M[0][0].signum() == 0) {
-                } else if (M[1][0].signum() == 0) {
-                } else {
-                }
-
-                if (M[0][0].signum() != 0) {
-                } else if (M[1][0].signum() != 0) {
-                } else {
-                    break;
-                }
-            }
-            while (M[0][0].signum() != 0) {
-                // subtract the appropriate multiple of 00 from 10 to reduce it, and swap rows
-                assert(false); // XXX IMPLEMENT ME
-            }
-            return null;
-        }
-        else
-        {
-            if (a.signum() == 0) return a; // or throw an exception? the library's version of it doesn't. and it actually happens that this is what we want
-            assert(a.signum() > 0);
-            assert(a.compareTo(b) < 0);
-            java.math.BigInteger bmoda = b.mod(a);
-            java.math.BigInteger x;
-            if (bmoda.signum() == 0)
-            {
-                assert(a.equals(java.math.BigInteger.ONE));
-                x = java.math.BigInteger.ONE;
-            }
-            else
-            {
-                java.math.BigInteger y = bmoda.modInverse(a); // or could recurse... but in that case should iterate instead
-                // x*a+b*y = 1
-                // so x = (1-y*b)/a
-                java.math.BigInteger numerator = java.math.BigInteger.ONE.subtract(y.multiply(b));
-                //x = numerator.divide(a);
-                java.math.BigInteger quotientAndRemainder[/*2*/] = numerator.divideAndRemainder(a);
-                x = quotientAndRemainder[0];
-                assert_eq(quotientAndRemainder[1].signum(), 0);
-                if (x.signum() < 0)
-                    x = x.add(b);
-                assert(x.signum() > 0);
-                assert(x.compareTo(b) < 0);
-            }
-            //assert(x.multiply(a).mod(b).equals(java.math.BigInteger.ONE)); // takes too long if huge
-            return x;
-        }
-    } // myModInverse
-
-
     // Return an array of BigInts whose product is the determinant in question.
     // First entry will be 1 or -1, the others will be positive.
     private static BigInt[] factorizeDetDestructive(int n, BigInt M[][])
@@ -306,10 +237,6 @@ final public class MeshUtils
                 {
                     int iters = 0;
                     int maxIters = 20000; // holy moly! 1000 wasn't enough, for a 100-node blue noise, needed 16109. the numbers got super big. any way to prevent this?? the final number isn't that big!
-
-                    // CBB: this isn't as efficient as it could be; should use CRT instead, I think. Or rather, EGCD.
-                    // Oh wait! BigInteger has modInverse!  I think that can be used.
-                    // Oh but it's sucky slow :-(
                     while (M[j][i].signum() != 0)
                     {
                         iters++;
@@ -336,41 +263,12 @@ final public class MeshUtils
                         sign *= -1;
                     }
                 }
-                else
+                else if (true)
                 {
-                    //====================
-                    // See DUMP.off.egcd_takes_forever
-                    // WTF?  This is still hugely slower than the other?? what's going on here??
-                    // Is modular inverse ridiculously inefficient or something??
-                    // Hmm I think it's producing matrix entries tending to be much bigger than
-                    // the other method... !?  Why?? isn't it essentially going
-                    // through the same arithmetic, except shortcutting it??
-                    // Wait a minute... but then it's faster next time through?
-                    // Is BigInteger cache misbehaving or something??
-                    // oh WAIT a minute, is it just the crappy terminal misbehaving? no beachball these days but maybe that's something to do with it? ...
-                    // No, I think it really is misbehaving.
-                    // Can I catch it in a really slow modular inverse?
-                    // And, in the meantime, can I do my own modular inverse?
-                    // Bleah, intermediate values are almost a million digits? wtf? something is dreadfully wrong here!
-                    // But, note that it's taking a long time to get modular inverse of a 1 digit number modulo a 911341 digit
-                    // number... that should be almost instantaneous, shouldn't it?
-                    // Unless it's doing something ridiculous... let's see, what's the other method it might be using...?
-                    // Options:
-                    //     - implement my own modularInverse using gcd
-                    //     - I think mostly I'm taking the inverse of a very small number mod a very big number,
-                    //       which it can't seem to handle...  but isn't that computationally the same as taking the 
-                    //       inverse of a big number mod a small number??  so, could just choose the way
-                    //       it likes better.
-                    //       E.g.  suppose x = a^-1 mod b.
-                    //             then x*a + y*b = 1 for some y, namely y = (1-x*a)/b
-                    //             and y = b^-1 mod a.
-                    //       So can compute x as follows, instead:
-                    //             y = b^-1 mod a
-                    //             x = (1-y*b)/a
-                    //       This might be the most expedient.  Still might be slow
-                    //       if *both* numbers are big, though.
-                    //====================
-
+                    // How to do that better?
+                    // Well, if a = M[i][i], b = M[j][i], g = gcd(a,b),
+                    // want to reduce [i][i] to g and [j][i] to 0,
+                    // using row operations.
 
                     // How to do that better?
                     // Well, if a = M[i][i], b = M[j][i], g = gcd(a,b),
@@ -386,64 +284,26 @@ final public class MeshUtils
                     //    R = [  x   y ]
                     //        [-b/g a/g]
                     // Then R has the desired properties.
-                    // How do we find x,y?
-                    // Well, let A=a/g, B=b/g.
-                    // We want x,y such that A*x+B*y==1.
-                    // Let x=A^1 mod B, and let y = (1-A*x)/B; that does it.
-                    // (But with an optimization, see below.)
-                    assert(M[i][i].signum() != 0);
-                    if (M[j][i].i.signum() != 0) {
-                        java.math.BigInteger a = M[i][i].i;
-                        java.math.BigInteger b = M[j][i].i;
-                        java.math.BigInteger g = a.gcd(b);
-                        //OUT("===========");
-                        //PRINT(a);
-                        //PRINT(b);
-                        //PRINT(g);
-                        java.math.BigInteger A = a.divide(g);
-                        java.math.BigInteger B = b.divide(g);
-                        //PRINT(A);
-                        //PRINT(B);
-                        if (false)
-                        {
-                            int Alength = A.toString().length();
-                            int Blength = B.toString().length();
-                            System.out.print("("+Alength+(Alength<=2?"("+A+")":"")+","+Blength+")?"); System.out.flush();
-                        }
-                        //java.math.BigInteger x = A.modInverse(B); // apparently mods by B first, and inverse of 0 is 0, which works for us.  XXX oh wait, I think A is never zero here, right?  I must have imagined that.  oh, no I didn't... it's never zero, but it's often zero mod b. e.g. a,b both 1.
-                        java.math.BigInteger x = myModInverseOrZero(A.mod(B),B);
-                        System.out.print("!"); System.out.flush();
-
-                        assert(A.signum() != 0);
-                        if (true)
-                        {
-                          // Optimization to prevent numbers from getting unnecessarily big.
-                          // E.g. if A=9, B=5, then:
-                          //   x=4, y=-7
-                          // but we would have been better off choosing:
-                          //   x=-1, y=-2
-                          java.math.BigInteger scratch = B.subtract(x);
-                          if (BigInt.lt(scratch, x))
-                              x = scratch.negate();
-                        }
-
-                        java.math.BigInteger y = java.math.BigInteger.ONE.subtract(A.multiply(x)).divide(B);
-                        //PRINT(x);
-                        //PRINT(y);
-
-                        assert(A.multiply(x).add(B.multiply(y)).equals(java.math.BigInteger.ONE));
-                        for (int k = i; k < n; ++k)
-                        {
-                            // new M[i][k] =  x*M[i][k] + y*M[j][k]
-                            // new M[j][k] = -B*M[i][k] + A*M[j][k]
-                            java.math.BigInteger Mik = M[i][k].i;
-                            java.math.BigInteger Mjk = M[j][k].i;
-                            M[i][k].i = x.multiply(Mik).add(y.multiply(Mjk));
-                            M[j][k].i = A.multiply(Mjk).subtract(B.multiply(Mik));
-                        }
-                        assert(M[i][i].i.equals(g));
-                        assert(M[j][i].signum() == 0);
+                    java.math.BigInteger a = M[i][i].i;
+                    java.math.BigInteger b = M[j][i].i;
+                    java.math.BigInteger coeffs[] = new java.math.BigInteger[2];
+                    java.math.BigInteger g = BigInt.gcdExtended(a, b, coeffs);
+                    java.math.BigInteger x = coeffs[0];
+                    java.math.BigInteger y = coeffs[1];
+                    java.math.BigInteger A = a.divide(g);
+                    java.math.BigInteger B = b.divide(g);
+                    assert(A.multiply(x).add(B.multiply(y)).equals(java.math.BigInteger.ONE));
+                    for (int k = i; k < n; ++k)
+                    {
+                        // new M[i][k] =  x*M[i][k] + y*M[j][k]
+                        // new M[j][k] = -B*M[i][k] + A*M[j][k]
+                        java.math.BigInteger Mik = M[i][k].i;
+                        java.math.BigInteger Mjk = M[j][k].i;
+                        M[i][k].i = x.multiply(Mik).add(y.multiply(Mjk));
+                        M[j][k].i = A.multiply(Mjk).subtract(B.multiply(Mik));
                     }
+                    assert(M[i][i].i.equals(g));
+                    assert(M[j][i].signum() == 0);
                 }
             }
         }
