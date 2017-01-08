@@ -154,6 +154,7 @@ final public class MeshUtils
     } // bitLengthsSigned
 
 
+
     // Return an array of BigInts whose product is the determinant in question.
     // First entry will be 1 or -1, the others will be positive.
     private static BigInt[] factorizeDetDestructive(int n, BigInt M[][])
@@ -381,8 +382,7 @@ final public class MeshUtils
         if (verboseLevel >= 1) OUT("    out factorizeDetDestructive(n="+n+"), returning "+VecMath.toString(answer)+" in "+(t1millis-t0millis)/1000.+" secs.");
         return answer;
     } // factorizeDetDestructive
-    // Unfortunately not sure whether I should be returning long or double.
-    // Long might be more exact, but can overflow.
+
     private static BigInt detDestructiveBigInt(int n, BigInt M[][])
     {
         int verboseLevel = 1;
@@ -395,6 +395,76 @@ final public class MeshUtils
         if (verboseLevel >= 1) OUT("    out detDestructiveBigInt("+n+"), returning "+answer);
         return answer;
     }
+    private static BigInt detNonDestructiveBigInt(int n, BigInt M[][])
+    {
+        BigInt Mcopy[][] = new BigInt[n][n];
+        FORI (i, n)
+        FORI (j, n)
+            Mcopy[i][j] = M[i][j].copy();
+        return detDestructiveBigInt(n, Mcopy);
+    } // detnonDestructiveBigInt
+
+    // https://en.wikipedia.org/wiki/Bareiss_algorithm
+    // http://www.ams.org/journals/mcom/1968-22-103/S0025-5718-1968-0226829-0/S0025-5718-1968-0226829-0.pdf
+    // http://cs.nyu.edu/exact/core/download/core_v1.4/core_v1.4/progs/bareiss/bareiss.cpp
+    // Crazy good and simple!  I was previously reducing to upper-triangular form using egcd at each step,
+    // but it was way more complicated and blew up unless I did strange heuristics.
+    // XXX does this really do pivoting?? the comment in the source code says yes, but the code seems too simple.
+    /*
+        double Matrix::determinant() const {
+           Matrix A = *this;
+           double det;
+           int i, j, k;
+
+           for (i = 0; i < n-1; i++) {
+              // assert(a(i, i) == 0);
+              for (j = i + 1; j < n; j++)
+                 for (k = i + 1; k < n; k++) {
+                    A(j,k) = (A(j,k)*A(i,i)-A(j,i)*A(i,k));
+                    if (i) A(j, k) /= A(i-1,i-1);
+                 }
+           }
+
+           return A(n-1,n-1);
+        }
+    */
+    private static BigInt bareissDetDestructive(int n, BigInt M[][])
+    {
+        OUT("in bareissDetDestructive(n="+n+")");
+        long t0millis = System.currentTimeMillis();
+        int maxBitLength = 0;
+        FORI (i, n-1)
+        {
+            //assert(M[i][i].signum() == 0); XXX what is this?? it fails
+            for (int j = i+1; j < n; ++j)
+            for (int k = i+1; k < n; ++k)
+            {
+                // jk = jk*ii-ji*ik
+                M[j][k].timesEquals(M[i][i]).minusEquals(M[j][i].i.multiply(M[i][k].i));
+                maxBitLength = MAX(maxBitLength, M[j][k].i.bitLength());
+                if (i > 0)
+                {
+                    java.math.BigInteger remainder = M[j][k].divEqualsReturningRemainder(M[i-1][i-1].i);
+                    assert(remainder.signum() == 0);
+                    maxBitLength = MAX(maxBitLength, M[j][k].i.bitLength());
+                }
+            }
+        }
+        BigInt answer = M[n-1][n-1];
+        long t1millis = System.currentTimeMillis();
+        OUT("  maxBitLength = "+maxBitLength);
+        OUT("out bareissDetDestructive(n="+n+"), returning "+answer+" in "+(t1millis-t0millis)/1000.+" secs.");
+        return answer;
+    } // bareissDetDestructive
+    private static BigInt bareissDetNonDestructive(int n, BigInt M[][])
+    {
+        BigInt Mcopy[][] = new BigInt[n][n];
+        FORI (i, n)
+        FORI (j, n)
+            Mcopy[i][j] = M[i][j].copy();
+        return bareissDetDestructive(n, Mcopy);
+    } // bareissDetNonDestructive
+
 
     // Uses Kirchoff's theorem. https://en.wikipedia.org/wiki/Kirchhoff%27s_theorem.
     // Kinda sucks since it's either inexact or uses bigints whose intermediate values blow up super big :-(
@@ -433,7 +503,7 @@ final public class MeshUtils
         PRINT(detDouble);
         assert_ge(detDouble, 0);
 
-        BigInt detBigInt = detDestructiveBigInt(
+        BigInt detBigInt = detNonDestructiveBigInt(
             hasEdgesToNowhere ? nVerts : nVerts-1,
             laplacian);
         PRINT(detBigInt);
@@ -441,6 +511,10 @@ final public class MeshUtils
         PRINT(detDouble);
         assert_ge(detBigInt.signum(), 0);
         assert_almost_eq_rel(detBigInt.doubleValue(), detDouble, 1e-12);
+
+        BigInt bareiss = bareissDetNonDestructive(hasEdgesToNowhere ? nVerts : nVerts-1, laplacian);
+        PRINT(bareiss);
+
         OUT("    out countSpanningTrees, returning "+detBigInt);
         return detBigInt;
     } // countSpanningTrees
