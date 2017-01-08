@@ -130,279 +130,18 @@ final public class MeshUtils
 
     private static double detNonDestructiveDouble(int n, BigInt M[/*n*/][/*n*/])
     {
+        int verboseLevel = 1;
+        if (verboseLevel >= 1) OUT("in detNonDestructiveDouble(n="+n+")");
+        long t0millis = System.currentTimeMillis();
         double Mdouble[][] = new double[n][n];
         for (int i = 0; i < n; ++i)
         for (int j = 0; j < n; ++j)
             Mdouble[i][j] = M[i][j].i.doubleValue();
         double answer = VecMath.detDestructive(Mdouble);
-        return answer;
-    }
-
-
-    private static int[][] bitLengthsSigned(BigInt M[][])
-    {
-        int answer[][] = new int[M.length][];
-        FORIDOWN (i, M.length)
-        {
-            answer[i] = new int[M[i].length];
-            FORIDOWN (j, M[i].length)
-            {
-                answer[i][j] = M[i][j].signum() * M[i][j].bitLength();
-            }
-        }
-        return answer;
-    } // bitLengthsSigned
-
-
-
-    // Return an array of BigInts whose product is the determinant in question.
-    // First entry will be 1 or -1, the others will be positive.
-    private static BigInt[] factorizeDetDestructive(int n, BigInt M[][])
-    {
-        int verboseLevel = 1;
-        if (verboseLevel >= 1) OUT("        in factorizeDetDestructive(n="+n+")");
-        if (verboseLevel >= 1) OUT("          before:");
-        if (verboseLevel >= 1) PRINTMAT(M);
-        if (verboseLevel >= 1) PRINT(n);
-        long t0millis = System.currentTimeMillis();
-
-        java.math.BigInteger maxAbsEntryEver = java.math.BigInteger.ZERO;
-        java.math.BigInteger minusMaxAbsEntryEver = java.math.BigInteger.ZERO;
-
-        int sign = 1;
-        FORI (i, n)
-        {
-            if (verboseLevel >= 2) OUT("              i="+i);
-            if (verboseLevel >= 2) PRINTMAT(M);
-
-            // update maxAbsEntryEver
-            for (int j = i; j < n; ++j)
-            for (int k = i; k < n; ++k)
-            {
-                java.math.BigInteger entry = M[j][k].i;
-                int entrySignum = entry.signum();
-                if (BigInt.gt(entry, maxAbsEntryEver) || BigInt.lt(entry, minusMaxAbsEntryEver))
-                {
-                    minusMaxAbsEntryEver = (entrySignum<0 ? entry : entry.negate());
-                    maxAbsEntryEver = (entrySignum<0 ? entry.negate() : entry);
-                }
-            }
-
-            boolean pivotFlag = false; // actually don't seem to need it, in fact better without it, when using transpose trick?
-            if (pivotFlag)
-            {
-                // Optional, but helps keep numbers relatively small:
-                // Choose the pivot to be the smallest-magnitude nonzero entry in [>=i][>=i].
-                // This is a heuristic; I actually don't know the best way
-                // to do this.
-                // Actually, I think we *have* to pivot somewhat, at least to make [i][i] nonzero, don't we?
-                //
-                // Ideas:
-                //   - transpose after each iteration.  (doing it; it's a huge win!! don't know why)
-                //   - start with the least-complicated-looking minor
-                //   - choose the column (or row) with the least gcd (1 if possible)
-                //   - in that column, sort the entries so we deal with smallest first,
-                //     to get to gcd as fast as possible
-                //   - use rationals?
-                //   - use partway rationals-- just keep track of a denominator for each row and column?
-                {
-                    int jPivot = -1;
-                    int kPivot = -1;
-                    java.math.BigInteger absPivot = null;
-                    java.math.BigInteger minusAbsPivot = null;
-                    for (int j = i; j < n; ++j)
-                    {
-                        for (int k = i; k < n; ++k)
-                        {
-                            java.math.BigInteger entry = M[j][k].i;
-                            int entrySignum = entry.signum();
-                            if (entrySignum != 0)
-                            {
-                                if (absPivot == null ||
-                                    BigInt.gt(entry, minusAbsPivot) && BigInt.lt(entry, absPivot))
-                                {
-                                    jPivot = j;
-                                    kPivot = k;
-                                    minusAbsPivot = (entrySignum<0 ? entry : entry.negate());
-                                    absPivot = (entrySignum<0 ? entry.negate() : entry);
-                                    if (absPivot.equals(java.math.BigInteger.ONE))
-                                        break;
-                                }
-                            }
-                            if (absPivot != null && absPivot.equals(java.math.BigInteger.ONE))
-                                break;
-                        }
-                    }
-                    if (verboseLevel >= 2) OUT("              jPivot="+jPivot);
-                    if (verboseLevel >= 2) OUT("              kPivot="+kPivot);
-                    if (absPivot != null)
-                    {
-                        if (jPivot != i)
-                        {
-                            BigInt temp[];
-                            SWAP(M[i], M[jPivot], temp);
-                            sign *= -1;
-                        }
-                        if (kPivot != i)
-                        {
-                            // CBB: maybe maintain a column permutation instead of all these swaps?
-                            BigInt temp;
-                            for (int j = i; j < n; ++j)
-                                SWAP(M[j][i], M[j][kPivot], temp);
-                            sign *= -1;
-                        }
-                    }
-                }
-                if (verboseLevel >= 2) OUT("                  after pivoting:");
-                if (verboseLevel >= 2) PRINTMAT(M);
-            }
-
-            // Make sure everything we're going to deal with in this column is nonnegative
-            for (int j = i; j < n; ++j)
-            {
-                if (M[j][i].signum() < 0)
-                {
-                    sign *= -1;
-                    for (int k = i; k < n; ++k)
-                        M[j][k].timesEquals(-1);
-                }
-            }
-            if (verboseLevel >= 2) OUT("                  after nonnegativizing:");
-            if (verboseLevel >= 2) PRINTMAT(M);
-
-            // XXX what was this? fixing what?
-            //if (verboseLevel >= 2) OUT("                  after fixing:");
-            //if (verboseLevel >= 2) PRINTMAT(M);
-
-
-            // Zero out all entries [>i][i]
-            // by doing row operations against row i.
-            // What's left in [i][i] afterwards will be the gcd of [>=i][i].
-            for (int j = i+1; j < n; ++j)
-            {
-                if (verboseLevel >= 3) OUT("                  j="+j);
-                assert_ge(M[j][i].signum(), 0);
-                if (true)
-                {
-                    int iters = 0;
-                    int maxIters = 20000; // holy moly! 1000 wasn't enough, for a 100-node blue noise, needed 16109. the numbers got super big. any way to prevent this?? the final number isn't that big!
-                    while (M[j][i].signum() != 0)
-                    {
-                        iters++;
-                        //assert_lt(iters, maxIters);
-                        if (iters > maxIters)
-                        {
-                            OUT("HEY! iters="+iters+" > maxIters="+maxIters);
-                        }
-                        BigInt a = M[i][i];
-                        BigInt b = M[j][i];
-                        if (verboseLevel >= 3) OUT("                      a = "+a);
-                        if (verboseLevel >= 3) OUT("                      b = "+b);
-                        java.math.BigInteger q = a.i.divide(b.i);
-                        // a,b = b,a%b
-                        // One step in euclidean algorithm: a -= q * b, then swap a,b
-                        // Do it to the whole row.
-                        for (int k = i; k < n; ++k)
-                        {
-                            //M[i][k] -= q * M[j][k];
-                            M[i][k].minusEquals(M[j][k].i.multiply(q));
-                        }
-                        BigInt temp[];
-                        SWAP(M[i], M[j], temp);
-                        sign *= -1;
-                    }
-                }
-                else if (true)
-                {
-                    // How to do that better?
-                    // Well, if a = M[i][i], b = M[j][i], g = gcd(a,b),
-                    // want to reduce [i][i] to g and [j][i] to 0,
-                    // using row operations.
-
-                    // How to do that better?
-                    // Well, if a = M[i][i], b = M[j][i], g = gcd(a,b),
-                    // want to reduce [i][i] to g and [j][i] to 0,
-                    // using row operations.
-                    // I.e. we want to multiply by some 2x2 matrix with det=1 on the left.
-                    // That is, we want a 2x2 matrix R, with determinant 1, such that:
-                    // R * [a] = [g]
-                    //     [b]   [0]
-                    // Well, let x,y be such that a*x + b*y == g,
-                    // i.e. (a/g)*x + (b/g)*y == 1.
-                    // then we can let:
-                    //    R = [  x   y ]
-                    //        [-b/g a/g]
-                    // Then R has the desired properties.
-                    java.math.BigInteger a = M[i][i].i;
-                    java.math.BigInteger b = M[j][i].i;
-                    java.math.BigInteger coeffs[] = new java.math.BigInteger[2];
-                    java.math.BigInteger g = BigInt.gcdExtended(a, b, coeffs);
-                    java.math.BigInteger x = coeffs[0];
-                    java.math.BigInteger y = coeffs[1];
-                    java.math.BigInteger A = a.divide(g);
-                    java.math.BigInteger B = b.divide(g);
-                    assert(A.multiply(x).add(B.multiply(y)).equals(java.math.BigInteger.ONE));
-                    for (int k = i; k < n; ++k)
-                    {
-                        // new M[i][k] =  x*M[i][k] + y*M[j][k]
-                        // new M[j][k] = -B*M[i][k] + A*M[j][k]
-                        java.math.BigInteger Mik = M[i][k].i;
-                        java.math.BigInteger Mjk = M[j][k].i;
-                        M[i][k].i = x.multiply(Mik).add(y.multiply(Mjk));
-                        M[j][k].i = A.multiply(Mjk).subtract(B.multiply(Mik));
-                    }
-                    assert(M[i][i].i.equals(g));
-                    assert(M[j][i].signum() == 0);
-                }
-            } // for j
-
-            boolean transposeHack = true;
-            if (transposeHack)
-            {
-                // transpose [>i][>i] for next pass
-                BigInt temp;
-                for (int ii = i+1; ii < n; ++ii)
-                for (int jj = ii+1; jj < n; ++jj)
-                {
-                    SWAP(M[ii][jj], M[jj][ii], temp);
-                }
-            }
-        } // for i
-        if (verboseLevel >= 1) OUT("      after:");
-        if (verboseLevel >= 2 || (verboseLevel>=1 && maxAbsEntryEver.bitLength() <= 3000)) PRINTMAT(M);
-        if (verboseLevel >= 1) PRINTMAT(bitLengthsSigned(M));
-
-        BigInt answer[] = new BigInt[n+1];
-        answer[0] = new BigInt(sign);
-        for (int i = 0; i < n; ++i)
-            answer[i+1] = M[i][i];
-        if (verboseLevel >= 2 || (verboseLevel>=1 && maxAbsEntryEver.bitLength() <= 3000)) OUT("      maxAbsEntryEver = "+maxAbsEntryEver);
-        if (verboseLevel >= 1) OUT("      maxAbsEntryEver.bitLength() = "+maxAbsEntryEver.bitLength());
         long t1millis = System.currentTimeMillis();
-        if (verboseLevel >= 1) OUT("    out factorizeDetDestructive(n="+n+"), returning "+VecMath.toString(answer)+" in "+(t1millis-t0millis)/1000.+" secs.");
-        return answer;
-    } // factorizeDetDestructive
-
-    private static BigInt detDestructiveBigInt(int n, BigInt M[][])
-    {
-        int verboseLevel = 1;
-        if (verboseLevel >= 1) OUT("    in detDestructiveBigInt(n="+n+")");
-        BigInt factors[] = factorizeDetDestructive(n, M);
-        BigInt answer = new BigInt(1);
-        for (int i = 0; i < factors.length; ++i)
-            answer.timesEquals(factors[i]);
-        if (verboseLevel >= 1) OUT("      answer.bitLength() "+answer.bitLength());
-        if (verboseLevel >= 1) OUT("    out detDestructiveBigInt("+n+"), returning "+answer);
+        if (verboseLevel >= 1) OUT("out detNonDestructiveDouble(n="+n+"), returning "+answer+" in "+(t1millis-t0millis)/1000.+" secs.");
         return answer;
     }
-    private static BigInt detNonDestructiveBigInt(int n, BigInt M[][])
-    {
-        BigInt Mcopy[][] = new BigInt[n][n];
-        FORI (i, n)
-        FORI (j, n)
-            Mcopy[i][j] = M[i][j].copy();
-        return detDestructiveBigInt(n, Mcopy);
-    } // detnonDestructiveBigInt
 
     // https://en.wikipedia.org/wiki/Bareiss_algorithm
     // http://www.ams.org/journals/mcom/1968-22-103/S0025-5718-1968-0226829-0/S0025-5718-1968-0226829-0.pdf
@@ -430,7 +169,8 @@ final public class MeshUtils
     */
     private static BigInt bareissDetDestructive(int n, BigInt M[][])
     {
-        OUT("in bareissDetDestructive(n="+n+")");
+        int verboseLevel = 1;
+        if (verboseLevel >= 1) OUT("in bareissDetDestructive(n="+n+")");
         long t0millis = System.currentTimeMillis();
         int maxBitLength = 0;
         FORI (i, n-1)
@@ -452,8 +192,8 @@ final public class MeshUtils
         }
         BigInt answer = M[n-1][n-1];
         long t1millis = System.currentTimeMillis();
-        OUT("  maxBitLength = "+maxBitLength);
-        OUT("out bareissDetDestructive(n="+n+"), returning "+answer+" in "+(t1millis-t0millis)/1000.+" secs.");
+        if (verboseLevel >= 1) OUT("  maxBitLength = "+maxBitLength);
+        if (verboseLevel >= 1) OUT("out bareissDetDestructive(n="+n+"), returning "+answer+" in "+(t1millis-t0millis)/1000.+" secs.");
         return answer;
     } // bareissDetDestructive
     private static BigInt bareissDetNonDestructive(int n, BigInt M[][])
@@ -497,23 +237,20 @@ final public class MeshUtils
         boolean hasEdgesToNowhere = laplacian[nVerts][nVerts].i.signum() != 0;
         PRINT(hasEdgesToNowhere);
 
-        // Must do this one first. since detDestructiveBigInt really does destroy the contents
         double detDouble = detNonDestructiveDouble(hasEdgesToNowhere ? nVerts : nVerts-1,
                                                    laplacian); // all but last nontrivial row&column
         PRINT(detDouble);
         assert_ge(detDouble, 0);
 
-        BigInt detBigInt = detNonDestructiveBigInt(
+        BigInt detBigInt = bareissDetNonDestructive(
             hasEdgesToNowhere ? nVerts : nVerts-1,
             laplacian);
         PRINT(detBigInt);
         PRINT(detBigInt.doubleValue());
+
         PRINT(detDouble);
         assert_ge(detBigInt.signum(), 0);
         assert_almost_eq_rel(detBigInt.doubleValue(), detDouble, 1e-12);
-
-        BigInt bareiss = bareissDetNonDestructive(hasEdgesToNowhere ? nVerts : nVerts-1, laplacian);
-        PRINT(bareiss);
 
         OUT("    out countSpanningTrees, returning "+detBigInt);
         return detBigInt;
