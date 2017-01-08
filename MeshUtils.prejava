@@ -164,7 +164,8 @@ final public class MeshUtils
         if (verboseLevel >= 1) PRINT(n);
         long t0millis = System.currentTimeMillis();
 
-        BigInt maxEntryEver = new BigInt(0);
+        java.math.BigInteger maxAbsEntryEver = java.math.BigInteger.ZERO;
+        java.math.BigInteger minusMaxAbsEntryEver = java.math.BigInteger.ZERO;
 
         int sign = 1;
         FORI (i, n)
@@ -192,21 +193,30 @@ final public class MeshUtils
                 {
                     int jPivot = -1;
                     int kPivot = -1;
-                    BigInt absPivot = null;
+                    java.math.BigInteger absPivot = null;
+                    java.math.BigInteger minusAbsPivot = null;
                     for (int j = i; j < n; ++j)
                     {
                         for (int k = i; k < n; ++k)
                         {
                             if (M[j][k].signum() != 0)
                             {
-                                BigInt absEntry = M[j][k].abs();
-                                if (absEntry.gt(maxEntryEver))
-                                    maxEntryEver.set(absEntry);
-                                if (absPivot == null || absEntry.lt(absPivot))
+                                java.math.BigInteger entry = M[j][k].i;
+                                int entrySignum = entry.signum();
+
+                                if (BigInt.gt(entry, maxAbsEntryEver) || BigInt.lt(entry, minusMaxAbsEntryEver))
+                                {
+                                    minusMaxAbsEntryEver = (entrySignum<0 ? entry : entry.negate());
+                                    maxAbsEntryEver = (entrySignum<0 ? entry.negate() : entry);
+                                }
+
+                                if (absPivot == null ||
+                                    BigInt.gt(entry, minusAbsPivot) && BigInt.lt(entry, absPivot))
                                 {
                                     jPivot = j;
                                     kPivot = k;
-                                    absPivot = absEntry;
+                                    minusAbsPivot = (entrySignum<0 ? entry : entry.negate());
+                                    absPivot = (entrySignum<0 ? entry.negate() : entry);
                                     if (absPivot.equals(java.math.BigInteger.ONE))
                                         break;
                                 }
@@ -352,49 +362,15 @@ final public class MeshUtils
             }
         } // for i
         if (verboseLevel >= 1) OUT("      after:");
-        if (verboseLevel >= 2 || (verboseLevel>=1 && maxEntryEver.bitLength() <= 3000)) PRINTMAT(M);
+        if (verboseLevel >= 2 || (verboseLevel>=1 && maxAbsEntryEver.bitLength() <= 3000)) PRINTMAT(M);
         if (verboseLevel >= 1) PRINTMAT(bitLengthsSigned(M));
 
         BigInt answer[] = new BigInt[n+1];
         answer[0] = new BigInt(sign);
         for (int i = 0; i < n; ++i)
             answer[i+1] = M[i][i];
-        if (verboseLevel >= 2 || (verboseLevel>=1 && maxEntryEver.bitLength() <= 3000)) OUT("      maxEntryEver = "+maxEntryEver);
-        if (verboseLevel >= 1) OUT("      maxEntryEver.bitLength() = "+maxEntryEver.bitLength());
-        if (false)
-        {
-            // very ad-hoc analyzing maxEntryEver.  bleah, not finding it to be very composite.
-            System.out.print("      = ");
-            System.out.flush();
-            BigInt scratch = maxEntryEver.copy();
-            BigInt scratch2 = new BigInt(0);
-            if (scratch.ne(0))
-                for (int i = 2; i < 10*1000*1000; ++i)
-                {
-                    if (i > 2 && i % 2 == 0) continue;
-                    if (i > 3 && i % 3 == 0) continue;
-                    if (i > 5 && i % 5 == 0) continue;
-                    if (i > 7 && i % 7 == 0) continue;
-                    if (i > 11 && i % 11 == 0) continue;
-                    if (i > 13 && i % 13 == 0) continue;
-                    if (i > 17 && i % 17 == 0) continue;
-                    if (i > 19 && i % 19 == 0) continue;
-                    if (i > 23 && i % 23 == 0) continue;
-                    if (i > 29 && i % 29 == 0) continue;
-                    if (i > 31 && i % 31 == 0) continue;
-                    if (i > 37 && i % 37 == 0) continue;
-                    scratch2.set(scratch);
-                    while (scratch2.divEqualsReturningRemainder(i) == 0)
-                    {
-                        System.out.print(" "+i);
-                        System.out.flush();
-                        scratch.set(scratch2);
-                    }
-                }
-            if (scratch.ne(1))
-                System.out.print(" "+scratch);
-            System.out.println();
-        }
+        if (verboseLevel >= 2 || (verboseLevel>=1 && maxAbsEntryEver.bitLength() <= 3000)) OUT("      maxAbsEntryEver = "+maxAbsEntryEver);
+        if (verboseLevel >= 1) OUT("      maxAbsEntryEver.bitLength() = "+maxAbsEntryEver.bitLength());
         long t1millis = System.currentTimeMillis();
         if (verboseLevel >= 1) OUT("    out factorizeDetDestructive(n="+n+"), returning "+VecMath.toString(answer)+" in "+(t1millis-t0millis)/1000.+" secs.");
         return answer;
