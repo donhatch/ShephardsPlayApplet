@@ -131,7 +131,7 @@ final public class MeshUtils
     private static double detDouble(int n, java.math.BigInteger M[/*n*/][/*n*/])
     {
         int verboseLevel = 1;
-        if (verboseLevel >= 1) OUT("in detDouble(n="+n+")");
+        if (verboseLevel >= 1) OUT("            in detDouble(n="+n+")");
         long t0millis = System.currentTimeMillis();
         double Mdouble[][] = new double[n][n];
         for (int i = 0; i < n; ++i)
@@ -139,7 +139,7 @@ final public class MeshUtils
             Mdouble[i][j] = M[i][j].doubleValue();
         double answer = VecMath.detDestructive(Mdouble);
         long t1millis = System.currentTimeMillis();
-        if (verboseLevel >= 1) OUT("out detDouble(n="+n+"), returning "+answer+" in "+(t1millis-t0millis)/1000.+" secs.");
+        if (verboseLevel >= 1) OUT("            out detDouble(n="+n+"), returning "+answer+" in "+(t1millis-t0millis)/1000.+" secs.");
         return answer;
     }
 
@@ -169,31 +169,37 @@ final public class MeshUtils
     private static java.math.BigInteger detDestructive(int n, java.math.BigInteger M[][])
     {
         int verboseLevel = 1;
-        if (verboseLevel >= 1) OUT("in bareissDetDestructive(n="+n+")");
+        if (verboseLevel >= 1) OUT("            in detDestructive(n="+n+")");
         long t0millis = System.currentTimeMillis();
         int maxBitLength = 0;
-        FORI (i, n-1)
+        java.math.BigInteger answer;
+        if (n == 0)
+            answer = java.math.BigInteger.ONE;
+        else
         {
-            //assert(M[i][i].signum() == 0); XXX what is this?? it fails
-            for (int j = i+1; j < n; ++j)
-            for (int k = i+1; k < n; ++k)
+            FORI (i, n-1)
             {
-                // jk = jk*ii-ji*ik
-                M[j][k] = M[j][k].multiply(M[i][i]).subtract(M[j][i].multiply(M[i][k]));
-                maxBitLength = MAX(maxBitLength, M[j][k].bitLength());
-                if (i > 0)
+                //assert(M[i][i].signum() == 0); XXX what is this?? it fails
+                for (int j = i+1; j < n; ++j)
+                for (int k = i+1; k < n; ++k)
                 {
-                    java.math.BigInteger quotientAndRemainder[/*2*/] = M[j][k].divideAndRemainder(M[i-1][i-1]);
-                    M[j][k] = quotientAndRemainder[0];
-                    assert(quotientAndRemainder[1].signum() == 0);
-                    // that didn't increase the bitlength, so don't need to update maxBitLength
+                    // jk = jk*ii-ji*ik
+                    M[j][k] = M[j][k].multiply(M[i][i]).subtract(M[j][i].multiply(M[i][k]));
+                    maxBitLength = MAX(maxBitLength, M[j][k].bitLength());
+                    if (i > 0)
+                    {
+                        java.math.BigInteger quotientAndRemainder[/*2*/] = M[j][k].divideAndRemainder(M[i-1][i-1]);
+                        M[j][k] = quotientAndRemainder[0];
+                        assert(quotientAndRemainder[1].signum() == 0);
+                        // that didn't increase the bitlength, so don't need to update maxBitLength
+                    }
                 }
             }
+            answer = M[n-1][n-1];
         }
-        java.math.BigInteger answer = M[n-1][n-1];
         long t1millis = System.currentTimeMillis();
-        if (verboseLevel >= 1) OUT("  maxBitLength = "+maxBitLength);
-        if (verboseLevel >= 1) OUT("out bareissDetDestructive(n="+n+"), returning "+answer+" in "+(t1millis-t0millis)/1000.+" secs.");
+        if (verboseLevel >= 1) OUT("              maxBitLength = "+maxBitLength);
+        if (verboseLevel >= 1) OUT("            out detDestructive(n="+n+"), returning "+answer+" in "+(t1millis-t0millis)/1000.+" secs.");
         return answer;
     } // detDestructive
 
@@ -222,7 +228,9 @@ final public class MeshUtils
     } // countSpanningTrees
     public static java.math.BigInteger countSpanningTrees(int nVerts, int e2v[][], boolean withAnalysis)
     {
-        if (withAnalysis) OUT("    in countSpanningTrees");
+        if (withAnalysis) OUT("        in countSpanningTrees");
+        if (withAnalysis) OUT("          nVerts="+nVerts);
+        if (withAnalysis) OUT("          e2v="+Arrays.toStringCompact(e2v));
         if (nVerts == 0) return java.math.BigInteger.ZERO; // special case to avoid determinant of size -1
         java.math.BigInteger laplacianCofactor[][] = new java.math.BigInteger[nVerts-1][nVerts-1];
         for (int i = 0; i < laplacianCofactor.length; ++i)
@@ -249,18 +257,17 @@ final public class MeshUtils
             PRINTMAT(laplacianCofactor);
 
             double detDouble = detDouble(nVerts-1, laplacianCofactor);
-            PRINT(detDouble);
+            OUT("          detDouble="+detDouble);
             assert_ge(detDouble, 0);
 
             java.math.BigInteger detBigInt = det(nVerts-1, laplacianCofactor);
-            PRINT(detBigInt);
-            PRINT(detBigInt.doubleValue());
-
-            PRINT(detDouble);
+            OUT("          detBigInt="+detBigInt);
+            OUT("          detBigInt.doubleValue()="+detBigInt.doubleValue());
+            OUT("          detDouble="+detDouble); // again
             assert_ge(detBigInt.signum(), 0);
             assert_almost_eq_rel(detBigInt.doubleValue(), detDouble, 1e-12);
 
-            OUT("    out countSpanningTrees, returning "+detBigInt);
+            OUT("        out countSpanningTrees, returning "+detBigInt);
             return detBigInt;
         }
         else
@@ -559,8 +566,39 @@ final public class MeshUtils
     // it's only relevant for dual, and then only when "calc underside" is on.
     public static class SimplerMeshDataStructure
     {
-        public int e2v[/*nEdges*/][/*2*/]; // edge to verts
         public int v2e[/*nVerts*/][]; // vert to edges out
+        public int e2v[/*nEdges*/][/*2*/]; // edge to verts
+
+        // Note, we allow multigraphs and loops
+        public static void sanityCheck(int v2e[][], int e2v[][])
+        {
+            int nVerts = v2e.length;
+            int nEdges = e2v.length;
+            assert_eq(nEdges % 2, 0);
+            FORI (iEdge, nEdges)
+            {
+                assert_eq(e2v[iEdge][0], e2v[iEdge^1][1]); // other gets checked on the other one
+            }
+            FORI (iEdge, nEdges)
+            {
+                int iVert = e2v[iEdge][0];
+                int jVert = e2v[iEdge][1];
+                assert_le_lt(0, iVert, nVerts);
+                assert_le_lt(0, jVert, nVerts);
+            }
+            int sumOfArities = 0;
+            FORI (iVert, nVerts)
+            {
+                FORI (j, v2e[iVert].length)
+                {
+                    int iEdge = v2e[iVert][j];
+                    assert_le_lt(0, iEdge, nEdges);
+                    assert_eq(e2v[iEdge][0], iVert);
+                }
+                sumOfArities += v2e[iVert].length;
+            }
+            assert_eq(sumOfArities, nEdges);
+        } // sanityCheck
 
         public SimplerMeshDataStructure(Mesh mesh, boolean mergeInsideOutVertsIntoInfiniteVert)
         {
@@ -1210,8 +1248,13 @@ final public class MeshUtils
         private static int[] selectSpanningTreeRecurse(
             int v2e[][], int e2v[][],
             java.math.BigInteger iNet,
-            java.math.BigInteger nNets) // caller should compute as countSpanningTrees(v2e.length, e2v)
+            java.math.BigInteger nNets, // caller should compute as countSpanningTrees(v2e.length, e2v)
+            int recursionDepth,
+            int verboseLevel)
         {
+            if (verboseLevel >= 2) OUT(repeat("    ", recursionDepth)+"        in selectSpanningTreeRecurse(iNet="+iNet+"/"+nNets+", recursionDepth="+recursionDepth+")");
+            if (verboseLevel >= 2) OUT(repeat("    ", recursionDepth)+"          v2e = "+Arrays.toStringCompact(v2e));
+            if (verboseLevel >= 2) OUT(repeat("    ", recursionDepth)+"          e2v = "+Arrays.toStringCompact(e2v));
             assert(iNet.signum() >= 0);
             assert(iNet.compareTo(nNets) < 0);
 
@@ -1222,17 +1265,17 @@ final public class MeshUtils
             }
 
             int iEdge = 0; // or could use last edge, doesn't matter much
+            int i0 = e2v[iEdge][0]; // we'll retain this vertex
+            int i1 = e2v[iEdge][1]; // we'll delete this vertex
 
-            int v2e_edgeContracted[][];
-            int e2v_edgeContracted[][];
+            int v2e_edgeContracted[][] = null;
+            int e2v_edgeContracted[][] = null;
+            if (i0 != i1) // can only be contracted if unequal
             {
-                int i0 = v2e[iEdge][0]; // we'll retain this vertex
-                int i1 = v2e[iEdge][1]; // we'll delete this vertex
-
                 v2e_edgeContracted = (int[][])Arrays.delete(v2e, i1);
                 e2v_edgeContracted = (int[][])Arrays.concat(Arrays.subarray(e2v, 0, iEdge),
-                                                           Arrays.subarray(e2v, iEdge+2, e2v.length-(iEdge+2)));
-                assert(i0 != i1);
+                                                            Arrays.subarray(e2v, iEdge+2, e2v.length-(iEdge+2)));
+                e2v_edgeContracted = VecMath.copymat(e2v_edgeContracted); // has to be deep copy, so we don't mess with e2v
                 int i0new = (i0<i1 ? i0 : i0-1);
                 // Dump both i0's and i1's edge lists, except for the edge in question (either direction), into i0new's.
                 v2e_edgeContracted[i0new] = new int[v2e[i0].length-1 + v2e[i1].length-1];
@@ -1250,74 +1293,106 @@ final public class MeshUtils
                 FORI (i, v2e_edgeContracted.length)
                     FORI (j, v2e_edgeContracted[i].length)
                     {
-                        int iOld = v2e_edgeContracted[i][j];
-                        assert(iOld != iEdge && iOld != (iEdge^1));
-                        int iNew = (iOld > iEdge ? iOld-2 : iOld);
-                        v2e_edgeContracted[i][j] = iNew;
+                        int iEdgeOld = v2e_edgeContracted[i][j];
+                        assert(iEdgeOld != iEdge && iEdgeOld != (iEdge^1));
+                        int iEdgeNew = (iEdgeOld > iEdge ? iEdgeOld-2 : iEdgeOld);
+                        v2e_edgeContracted[i][j] = iEdgeNew;
                     }
                 // Reindex e2v_edgeContracted to account for deletion of i1.
                 FORI (i, e2v_edgeContracted.length)
                     FORI (j, 2)
                     {
-                        int iOld = e2v_edgeContracted[i][j];
-                        int iNew = iOld==i1 ? i0new : iOld>i1 ? iOld-1 : iOld;
-                        e2v_edgeContracted[i][j] = iNew;
+                        int iVertOld = e2v_edgeContracted[i][j];
+                        int iVertNew = iVertOld==i1 ? i0new : iVertOld>i1 ? iVertOld-1 : iVertOld;
+                        OUT("CCC changing e2v_edgeContracted["+i+"]["+j+"] from "+iVertOld+" to "+iVertNew);
+                        e2v_edgeContracted[i][j] = iVertNew;
                     }
             }
             int v2e_edgeDeleted[][];
             int e2v_edgeDeleted[][];
             {
                 v2e_edgeDeleted = VecMath.copymat(v2e); // for starters
+                PRINTVEC(e2v);
+                PRINT(iEdge);
+                PRINT(iEdge+1);
                 e2v_edgeDeleted = (int[][])Arrays.concat(Arrays.subarray(e2v, 0, iEdge),
                                                          Arrays.subarray(e2v, iEdge+2, e2v.length-(iEdge+2)));
-                int i0 = v2e[iEdge][0];
-                int i1 = v2e[iEdge][1];
-                assert(i0 != i1);
+                e2v_edgeDeleted = VecMath.copymat(e2v_edgeDeleted); // has to be deep copy, so we don't mess with e2v
+                PRINTVEC(e2v_edgeDeleted);
                 // Remove iEdge from i0's edge list, and iEdge^1 from i1's edge list.
-                v2e_edgeDeleted[i0] = Arrays.delete(v2e_edgeDeleted[i0], iEdge);
-                v2e_edgeDeleted[i1] = Arrays.delete(v2e_edgeDeleted[i1], iEdge^1);
+                v2e_edgeDeleted[i0] = Arrays.delete(v2e_edgeDeleted[i0], Arrays.indexOf(v2e_edgeDeleted[i0], iEdge));
+                v2e_edgeDeleted[i1] = Arrays.delete(v2e_edgeDeleted[i1], Arrays.indexOf(v2e_edgeDeleted[i1], iEdge^1));
                 // XXX DUP CODE ALERT
                 // Reindex v2e_edgeDeleted to account for deletion of iEdge and iEdge^1.
                 FORI (i, v2e_edgeDeleted.length)
                     FORI (j, v2e_edgeDeleted[i].length)
                     {
-                        int iOld = v2e_edgeDeleted[i][j];
-                        assert(iOld != iEdge && iOld != (iEdge^1));
-                        int iNew = (iOld > iEdge ? iOld-2 : iOld);
-                        v2e_edgeDeleted[i][j] = iNew;
+                        int iEdgeOld = v2e_edgeDeleted[i][j];
+                        assert(iEdgeOld != iEdge && iEdgeOld != (iEdge^1));
+                        int iEdgeNew = (iEdgeOld > iEdge ? iEdgeOld-2 : iEdgeOld);
+                        OUT("DDD changing v2e_edgeDeleted["+i+"]["+j+"] from "+iEdgeOld+" to "+iEdgeNew);
+                        v2e_edgeDeleted[i][j] = iEdgeNew;
                     }
+                // No vertices got removed, so no need to reindex e2v_edgeDeleted.
             }
 
-            java.math.BigInteger countContracted = countSpanningTrees(v2e_edgeContracted.length, e2v_edgeContracted, false);
-            java.math.BigInteger countDeleted = countSpanningTrees(v2e_edgeDeleted.length, e2v_edgeDeleted, false);
+            if (verboseLevel >= 2) OUT(repeat("    ", recursionDepth)+"          v2e_edgeContracted = "+Arrays.toStringCompact(v2e_edgeContracted));
+            if (verboseLevel >= 2) OUT(repeat("    ", recursionDepth)+"          e2v_edgeContracted = "+Arrays.toStringCompact(e2v_edgeContracted));
+            if (verboseLevel >= 2) OUT(repeat("    ", recursionDepth)+"          v2e_edgeDeleted = "+Arrays.toStringCompact(v2e_edgeDeleted));
+            if (verboseLevel >= 2) OUT(repeat("    ", recursionDepth)+"          e2v_edgeDeleted = "+Arrays.toStringCompact(e2v_edgeDeleted));
+            SimplerMeshDataStructure.sanityCheck(v2e, e2v);
+            if (i0 != i1)
+                SimplerMeshDataStructure.sanityCheck(v2e_edgeContracted, e2v_edgeContracted);
+            SimplerMeshDataStructure.sanityCheck(v2e_edgeDeleted, e2v_edgeDeleted);
+
+            boolean withAnalysis = (verboseLevel >= 2);
+            java.math.BigInteger countContracted = i0==i1 ? java.math.BigInteger.ZERO : countSpanningTrees(v2e_edgeContracted.length, e2v_edgeContracted, withAnalysis);
+            java.math.BigInteger countDeleted = countSpanningTrees(v2e_edgeDeleted.length, e2v_edgeDeleted, withAnalysis);
+            if (verboseLevel >= 2) OUT(repeat("    ", recursionDepth)+"          countContracted = "+countContracted);
+            if (verboseLevel >= 2) OUT(repeat("    ", recursionDepth)+"          countDeleted = "+countDeleted);
+            if (verboseLevel >= 2) OUT(repeat("    ", recursionDepth)+"          countContracted+countDeleted = "+countContracted.add(countDeleted));
+            if (verboseLevel >= 2) OUT(repeat("    ", recursionDepth)+"          nNets = "+nNets);
+
             assert(countContracted.add(countDeleted).equals(nNets));
+
+            int answer[];
             if (iNet.compareTo(countContracted) < 0)
             {
                 v2e_edgeDeleted = null;
                 e2v_edgeDeleted = null;
-                int answer[] = selectSpanningTreeRecurse(v2e_edgeContracted,
-                                                        e2v_edgeContracted,
-                                                        iNet,
-                                                        countContracted);
+                answer = selectSpanningTreeRecurse(v2e_edgeContracted,
+                                                   e2v_edgeContracted,
+                                                   iNet,
+                                                   countContracted,
+                                                   recursionDepth+1,
+                                                   verboseLevel);
                 answer = (int[])Arrays.append(answer, iEdge);
-                FORI (i, answer.length)
-                    if (answer[i] > iEdge) // so we don't change the iEdge we just added
+                OUT("BEFORE: answer="+Arrays.toStringCompact(answer));
+                FORI (i, answer.length-1)
+                {
+                    assert_ne(answer[i], iEdge);
+                    assert_ne(answer[i], iEdge^1);
+                    if (answer[i] > iEdge)
                         answer[i] += 2;
-                return answer;
+                }
+                OUT("AFTER: answer="+Arrays.toStringCompact(answer));
             }
             else
             {
                 v2e_edgeContracted = null;
                 e2v_edgeContracted = null;
-                int answer[] = selectSpanningTreeRecurse(v2e_edgeDeleted,
-                                                        e2v_edgeDeleted,
-                                                        iNet.subtract(countDeleted),
-                                                        nNets.subtract(countDeleted));
+                answer = selectSpanningTreeRecurse(v2e_edgeDeleted,
+                                                   e2v_edgeDeleted,
+                                                   iNet.subtract(countContracted),
+                                                   nNets.subtract(countContracted),
+                                                   recursionDepth+1,
+                                                   verboseLevel);
                 FORI (i, answer.length)
-                    if (answer[i] > iEdge)
+                    if (answer[i] >= iEdge)
                         answer[i] += 2;
-                return answer;
             }
+            if (verboseLevel >= 2) OUT(repeat("    ",recursionDepth)+"        out selectSpanningTreeRecurse(iNet="+iNet+"/"+nNets+", recursionDepth="+recursionDepth+"), returning "+Arrays.toStringCompact(answer));
+            return answer;
         }
     // returns the selected spanning tree as a list of edge indices, i.e. cuts, all even
 
@@ -1325,13 +1400,27 @@ final public class MeshUtils
         Mesh mesh, Mesh dualMeshUnused,  // typically backwards from caller... although it doesn't really matter, this algorithm is self dual
         java.math.BigInteger iNet)
     {
+        int verboseLevel = 2;
+        if (verboseLevel >= 1) OUT("    in selectSpanningTreeOrNull(iNet="+iNet+")");
+        if (iNet.signum() < 0)
+        {
+            OUT("    out selectSpanningTreeOrNull(iNet="+iNet+"), returning null (out of bounds)");
+            return null;
+        }
         SimplerMeshDataStructure s = new SimplerMeshDataStructure(mesh, false);
         int v2e[][] = s.v2e;
         int e2v[][] = s.e2v;
-        java.math.BigInteger nNets = countSpanningTrees(v2e.length, e2v, false);
-        if (iNet.signum() < 0) return null;
-        if (iNet.compareTo(nNets) >= 0) return null;
-        return selectSpanningTreeRecurse(v2e, e2v, iNet, nNets);
+        boolean withAnalysis = (verboseLevel >= 2);
+        java.math.BigInteger nNets = countSpanningTrees(v2e.length, e2v, withAnalysis);
+        OUT("      okay, so selecting net "+iNet+"/"+nNets);
+        if (iNet.compareTo(nNets) >= 0)
+        {
+            OUT("    out selectSpanningTreeOrNull(iNet="+iNet+"), returning null (out of bounds)");
+            return null;
+        }
+        int answer[] = selectSpanningTreeRecurse(v2e, e2v, iNet, nNets, 0, verboseLevel);
+        if (verboseLevel >= 1) OUT("    out selectSpanningTreeOrNull(iNet="+iNet+"), returning "+Arrays.toStringCompact(answer));
+        return answer;
     } // selectSpanningTreeOrNull
 
 
