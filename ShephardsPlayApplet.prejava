@@ -7398,9 +7398,10 @@ public class ShephardsPlayApplet
                             MeshUtils.analyzeRandomSpanningTrees(mesh);
                             MeshUtils.analyzeRandomSpanningTrees(getDualMesh());
                         }
+                        java.math.BigInteger nPrimalSpanningTrees = null;
                         if (true) // note, this can take a long time if num verts > 300 or so
                         {
-                            java.math.BigInteger nPrimalSpanningTrees = MeshUtils.countSpanningTrees(mesh, true);
+                            nPrimalSpanningTrees = MeshUtils.countSpanningTrees(mesh, true);
                             PRINT(nPrimalSpanningTrees);
                             // If fully triangulated, then the number of spanning trees will be same
                             // for primal and dual, in which case we don't really need to compute it
@@ -7431,57 +7432,67 @@ public class ShephardsPlayApplet
                         }
                         if (true)
                         {
-                            final BigInt count = new BigInt(0);
-                            final BigInt nGood = new BigInt(0);
-                            final BigInt nBad = new BigInt(0);
-                            boolean finished = MeshUtils.enumerateAllSpanningTreesDumb(getDualMesh(), mesh,
-                                new MeshUtils.enumerateAllSpanningTreesDumbCallback() {
-                                    public boolean run(IntArrayList edgeIndices)
-                                    {
-                                        if (true)
-                                        {
-                                            Mesh dualMesh = getDualMesh();
-                                            int nEdges = dualMesh.edges.size();
-
-                                            int edgeStatuses[] = VecMath.fillvec(nEdges, Net.FOLD);
-                                            FORIDOWN (i, edgeIndices.size())
-                                            {
-                                                int iEdge = edgeIndices.get(i);
-                                                edgeStatuses[iEdge] = Net.CUT;
-                                                edgeStatuses[iEdge^1] = Net.CUT;
-                                            }
-                                            Net net = new Net(dualMesh, mesh, // reversed, so we get net of dual
-                                                              edgeStatuses);
-
-                                            double momentAndWeightStrictlyBelowEachVertex[][] = net.computeMomentAndWeightStrictlyBelowEachVertexInitially();
-                                            boolean edgeIsOffBalanceCut[] = new boolean[nEdges];
-                                            int offBalanceCuts[] = new int[nEdges];
-                                            int nOffBalanceCuts = net.figureOutWhatsOffBalanceInitially(
-                                                momentAndWeightStrictlyBelowEachVertex,
-                                                edgeIsOffBalanceCut,
-                                                offBalanceCuts);
-                                            if (nOffBalanceCuts > 0)
-                                                nBad.plusEquals(1);
-                                            else
-                                                nGood.plusEquals(1);
-                                        }
-                                        count.plusEquals(1);
-
-                                        int max = 1000*1000; // CBB: 10*1000 is good for large meshes; 1000*1000 is needed for small ones to get them all but makes large ones take too long
-                                        if (count.ge(max))
-                                        {
-                                            OUT("    (giving up at "+max+")");
-                                            return false;
-                                        }
-                                        return true;
-                                    }
-                                });
-                            PRINT(finished);
-                            PRINT(count);
-                            if (finished)
+                            // 10*1000 is reasonable for larger meshes; 1000*1000 is needed for small ones to get them all but makes large ones take too long getting to the limit.  So, if we know it's going to cross the limit, don't even try.
+                            int max = 1000*1000;
+                            if (BigInt.gt(nPrimalSpanningTrees, max))
                             {
-                                PRINT(nGood);
-                                PRINT(nBad);
+                                OUT("    too many spanning trees to enumerate");
+                            }
+                            else
+                            {
+                                final BigInt count = new BigInt(0);
+                                final BigInt nGood = new BigInt(0);
+                                final BigInt nBad = new BigInt(0);
+                                boolean finished = MeshUtils.enumerateAllSpanningTreesDumb(
+                                    getDualMesh(), mesh,
+                                    new MeshUtils.enumerateAllSpanningTreesDumbCallback() {
+                                        public boolean run(IntArrayList edgeIndices)
+                                        {
+                                            if (count.ge(max))
+                                            {
+                                                OUT("    (giving up at "+max+" since there's more)");
+                                                return false;
+                                            }
+                                            if (true)
+                                            {
+                                                Mesh dualMesh = getDualMesh();
+                                                int nEdges = dualMesh.edges.size();
+
+                                                int edgeStatuses[] = VecMath.fillvec(nEdges, Net.FOLD);
+                                                FORIDOWN (i, edgeIndices.size())
+                                                {
+                                                    int iEdge = edgeIndices.get(i);
+                                                    edgeStatuses[iEdge] = Net.CUT;
+                                                    edgeStatuses[iEdge^1] = Net.CUT;
+                                                }
+                                                Net net = new Net(dualMesh, mesh, // reversed, so we get net of dual
+                                                                  edgeStatuses);
+
+                                                double momentAndWeightStrictlyBelowEachVertex[][] = net.computeMomentAndWeightStrictlyBelowEachVertexInitially();
+                                                boolean edgeIsOffBalanceCut[] = new boolean[nEdges];
+                                                int offBalanceCuts[] = new int[nEdges];
+                                                int nOffBalanceCuts = net.figureOutWhatsOffBalanceInitially(
+                                                    momentAndWeightStrictlyBelowEachVertex,
+                                                    edgeIsOffBalanceCut,
+                                                    offBalanceCuts);
+                                                if (nOffBalanceCuts > 0)
+                                                    nBad.plusEquals(1);
+                                                else
+                                                    nGood.plusEquals(1);
+                                            }
+                                            count.plusEquals(1);
+                                            return true;
+                                        }
+                                    }
+                                );
+                                PRINT(finished);
+                                PRINT(count);
+                                if (finished)
+                                {
+                                    PRINT(nGood);
+                                    PRINT(nBad);
+                                }
+                                assert(finished); // since we now don't even try if we're not going to succeed
                             }
                         }
                         break;
