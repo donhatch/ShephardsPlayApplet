@@ -1365,12 +1365,20 @@ final public class MeshUtils
             if (verboseLevel >= 3) OUT(repeat(" ", recursionDepth)+"          v2e = "+Arrays.toStringCompact(v2e));
             if (verboseLevel >= 3) OUT(repeat(" ", recursionDepth)+"          e2v = "+Arrays.toStringCompact(e2v));
             assert(iNet.signum() >= 0);
-            assert(iNet.compareTo(nNets) < 0);
+            assert(nNets.equals(java.math.BigInteger.valueOf(-1)) || iNet.compareTo(nNets) < 0);
 
             if (e2v.length == 0)
             {
-                assert(v2e.length == 1);
-                return new int[] {};
+                assert(v2e.length >= 1);
+                // CBB: when blind, sometimes we get rid of all edges but there are still more vertices.
+                // so for now, can only assert the following if not blind.  (MAYBE.  let's see how other bugs pans out)
+                if (v2e.length == 1)
+                    return new int[] {};
+                else
+                {
+                    assert(nNets.signum() < 0); // this only happens when blind
+                    return null;
+                }
             }
 
             int iEdge = 0; // or could use last edge, doesn't matter much
@@ -1458,44 +1466,100 @@ final public class MeshUtils
             SimplerMeshDataStructure.sanityCheck(v2e_edgeDeleted, e2v_edgeDeleted);
 
             boolean withAnalysis = (verboseLevel >= 3);
-            java.math.BigInteger countContracted = i0==i1 ? java.math.BigInteger.ZERO : countSpanningTrees(v2e_edgeContracted.length, e2v_edgeContracted, withAnalysis);
-            java.math.BigInteger countDeleted = countSpanningTrees(v2e_edgeDeleted.length, e2v_edgeDeleted, withAnalysis);
-            if (verboseLevel >= 3) OUT(repeat(" ", recursionDepth)+"          countContracted = "+countContracted);
-            if (verboseLevel >= 3) OUT(repeat(" ", recursionDepth)+"          countDeleted = "+countDeleted);
-            if (verboseLevel >= 3) OUT(repeat(" ", recursionDepth)+"          countContracted+countDeleted = "+countContracted.add(countDeleted));
-            if (verboseLevel >= 3) OUT(repeat(" ", recursionDepth)+"          nNets = "+nNets);
+            java.math.BigInteger countContracted = java.math.BigInteger.valueOf(-1);
+            java.math.BigInteger countDeleted = java.math.BigInteger.valueOf(-1);
+            if (nNets.signum() >= 0
+             || v2e.length <= 2) // be normal when things get small, just to avoid confusion
+            {
+                countContracted = i0==i1 ? java.math.BigInteger.ZERO : countSpanningTrees(v2e_edgeContracted.length, e2v_edgeContracted, withAnalysis);
+                countDeleted = countSpanningTrees(v2e_edgeDeleted.length, e2v_edgeDeleted, withAnalysis);
+                if (verboseLevel >= 3) OUT(repeat(" ", recursionDepth)+"          countContracted = "+countContracted);
+                if (verboseLevel >= 3) OUT(repeat(" ", recursionDepth)+"          countDeleted = "+countDeleted);
+                if (verboseLevel >= 3) OUT(repeat(" ", recursionDepth)+"          countContracted+countDeleted = "+countContracted.add(countDeleted));
+                if (verboseLevel >= 3) OUT(repeat(" ", recursionDepth)+"          nNets = "+nNets);
 
-            assert(countContracted.add(countDeleted).equals(nNets));
+                if (nNets.signum() >= 0)
+                    assert(countContracted.add(countDeleted).equals(nNets));
+            }
+            else
+            {
+                // still check whether i0==i1, to prevent going down into insanity
+                if (i0==i1)
+                    countContracted = java.math.BigInteger.ZERO;
+            }
+
+            /*
+               How does the decision logic go?
+                   if we don't know nNets
+                       try going into v2e_edgeContracted.
+                       if it worked,
+                           return it.
+                       else
+                           compute countContracted  (CBB: redundant since the call must have known it! I think)
+                           use it to go into v2e_edgeDeleted.
+                           never really need to compute countDeleted, I don't think, except for sanity checking.
+            */
 
             int answer[];
-            if (iNet.compareTo(countContracted) < 0)
+            if (countContracted.signum() < 0 || iNet.compareTo(countContracted) < 0)
             {
-                v2e_edgeDeleted = null;
-                e2v_edgeDeleted = null;
+                if (countContracted.signum() >= 0)
+                {
+                    // contraction guaranteed to succeed, so don't need deleted part any more (CBB: compute it more lazily then! sheesh
+                    v2e_edgeDeleted = null;
+                    e2v_edgeDeleted = null;
+                }
+                if (verboseLevel >= 2) OUT(repeat(" ", recursionDepth)+"         trying contracting edge...");
                 answer = selectSpanningTreeRecurse(v2e_edgeContracted,
                                                    e2v_edgeContracted,
                                                    iNet,
                                                    countContracted,
                                                    recursionDepth+1,
                                                    verboseLevel);
-                FORI (i, answer.length) // before we add anything
-                    if (answer[i] >= iEdge)
-                        answer[i] += 2;
-                answer = (int[])Arrays.prepend(answer, iEdge); // prepend instead of append, to match dumb version
+                if (verboseLevel >= 2) OUT(repeat(" ", recursionDepth)+"         "+(answer!=null?"succeeded.":"failed."));
+                assert(nNets.signum()<0 || answer!=null);
+                if (answer != null)
+                {
+                    FORI (i, answer.length) // before we add anything
+                        if (answer[i] >= iEdge)
+                            answer[i] += 2;
+                    answer = (int[])Arrays.prepend(answer, iEdge); // prepend instead of append, to match dumb version
+                    if (verboseLevel >= 2) OUT(repeat(" ", recursionDepth)+"        out selectSpanningTreeRecurse(iNet="+iNet+"/"+nNets+", nVerts="+v2e.length+", nEdges="+e2v.length+", recursionDepth="+recursionDepth+"), returning "+Arrays.toStringCompact(answer));
+                    return answer;
+                }
+                assert(countContracted.signum() < 0);
+                countContracted = i0==i1 ? java.math.BigInteger.ZERO : countSpanningTrees(v2e_edgeContracted.length, e2v_edgeContracted, withAnalysis);
             }
-            else
+
+            // we computed it either preemptively or lazily
+            assert(countContracted.signum() >= 0);
+            assert(countContracted.compareTo(iNet) <= 0);
+
+
+            // XXX not sure what the logic should be here... think more about it.
+            // does it help to compute countDeleted here or not?  Or does it defeat the whole blind thing?
+            // Conjecture: when going blind, it's still important not to go down contraction paths that don't lead anywhere.   So, I think I need to keep a MergeFind after all.
+            if (countDeleted.signum() < 0)
+                countDeleted = countSpanningTrees(v2e_edgeDeleted.length, e2v_edgeDeleted, withAnalysis);
+
             {
                 v2e_edgeContracted = null;
                 e2v_edgeContracted = null;
+                if (verboseLevel >= 2) OUT(repeat(" ", recursionDepth)+"         trying deleting edge...");
                 answer = selectSpanningTreeRecurse(v2e_edgeDeleted,
                                                    e2v_edgeDeleted,
                                                    iNet.subtract(countContracted),
-                                                   nNets.subtract(countContracted),
+                                                   nNets.signum()<0?nNets:nNets.subtract(countContracted),
                                                    recursionDepth+1,
                                                    verboseLevel);
-                FORI (i, answer.length)
-                    if (answer[i] >= iEdge)
-                        answer[i] += 2;
+                if (verboseLevel >= 2) OUT(repeat(" ", recursionDepth)+"         "+(answer!=null?"succeeded.":"failed."));
+                assert(nNets.signum()<0 || answer!=null);
+                if (answer != null)
+                {
+                    FORI (i, answer.length)
+                        if (answer[i] >= iEdge)
+                            answer[i] += 2;
+                }
             }
             if (verboseLevel >= 2) OUT(repeat(" ", recursionDepth)+"        out selectSpanningTreeRecurse(iNet="+iNet+"/"+nNets+", nVerts="+v2e.length+", nEdges="+e2v.length+", recursionDepth="+recursionDepth+"), returning "+Arrays.toStringCompact(answer));
             return answer;
@@ -1516,10 +1580,12 @@ final public class MeshUtils
         SimplerMeshDataStructure s = new SimplerMeshDataStructure(mesh, false);
         int v2e[][] = s.v2e;
         int e2v[][] = s.e2v;
-        boolean withAnalysis = (verboseLevel >= 2);
-        java.math.BigInteger nNets = countSpanningTrees(v2e.length, e2v, withAnalysis);
+        boolean withAnalysis = (verboseLevel >= 3);
+        boolean knowNNets = true;
+        java.math.BigInteger nNets = knowNNets ? countSpanningTrees(v2e.length, e2v, withAnalysis)
+                                               : java.math.BigInteger.valueOf(-1);
         OUT("      okay, so selecting net "+iNet+"/"+nNets);
-        if (iNet.compareTo(nNets) >= 0)
+        if (nNets.signum() >= 0 && iNet.compareTo(nNets) >= 0)
         {
             OUT("    out selectSpanningTreeOrNull(iNet="+iNet+"/"+nNets+"), returning null (out of bounds)");
             return null;
