@@ -128,7 +128,7 @@ final public class MeshUtils
         return null;
     } // findPrimalFaceFromDualVert
 
-    private static double detDouble(int n, BigInt M[/*n*/][/*n*/])
+    private static double detDouble(int n, java.math.BigInteger M[/*n*/][/*n*/])
     {
         int verboseLevel = 1;
         if (verboseLevel >= 1) OUT("in detDouble(n="+n+")");
@@ -136,7 +136,7 @@ final public class MeshUtils
         double Mdouble[][] = new double[n][n];
         for (int i = 0; i < n; ++i)
         for (int j = 0; j < n; ++j)
-            Mdouble[i][j] = M[i][j].i.doubleValue();
+            Mdouble[i][j] = M[i][j].doubleValue();
         double answer = VecMath.detDestructive(Mdouble);
         long t1millis = System.currentTimeMillis();
         if (verboseLevel >= 1) OUT("out detDouble(n="+n+"), returning "+answer+" in "+(t1millis-t0millis)/1000.+" secs.");
@@ -195,29 +195,34 @@ final public class MeshUtils
         if (verboseLevel >= 1) OUT("  maxBitLength = "+maxBitLength);
         if (verboseLevel >= 1) OUT("out bareissDetDestructive(n="+n+"), returning "+answer+" in "+(t1millis-t0millis)/1000.+" secs.");
         return answer;
-    } // bareissDetDestructive
-    private static BigInt det(int n, BigInt M[][])
+    } // detDestructive
+
+    private static java.math.BigInteger[][] copymat(int nRows, int nCols, java.math.BigInteger M[][])
     {
-        java.math.BigInteger Mcopy[][] = new java.math.BigInteger[n][n];
-        FORI (i, n)
-        FORI (j, n)
-            Mcopy[i][j] = M[i][j].i;
-        return new BigInt(detDestructive(n, Mcopy));
+        java.math.BigInteger answer[][] = new java.math.BigInteger[nRows][nCols];
+        FORI (iRow, nRows)
+        FORI (iCol, nCols)
+            answer[iRow][iCol] = M[iRow][iCol];
+        return answer;
+    }
+    private static java.math.BigInteger det(int n, java.math.BigInteger M[][])
+    {
+        return detDestructive(n, copymat(n, n, M));
     } // bareissDet
 
 
-    // Uses Kirchoff's theorem. https://en.wikipedia.org/wiki/Kirchhoff%27s_theorem.
-    // Kinda sucks since it's either inexact or uses bigints whose intermediate values blow up super big :-(
-    public static BigInt countSpanningTrees(Mesh mesh)
+    // Uses Kirchoff's theorem. https://en.wikipedia.org/wiki/Kirchhoff%27s_theorem,
+    // with Bareiss's algorithm for exact integer determinant.
+    public static java.math.BigInteger countSpanningTrees(Mesh mesh)
     {
         OUT("    in countSpanningTrees");
         int nVerts = mesh.verts.size();
         if (nVerts == 0)
-            return new BigInt(0);
-        BigInt laplacian[][] = new BigInt[nVerts+1][nVerts+1];
+            return java.math.BigInteger.ZERO;
+        java.math.BigInteger laplacian[][] = new java.math.BigInteger[nVerts+1][nVerts+1];
         for (int i = 0; i < laplacian.length; ++i)
         for (int j = 0; j < laplacian[0].length; ++j)
-            laplacian[i][j] = new BigInt(0);
+            laplacian[i][j] = java.math.BigInteger.ZERO;
 
         int nEdges = mesh.edges.size();
         for (int iEdge = 0; iEdge < nEdges; ++iEdge)
@@ -229,20 +234,19 @@ final public class MeshUtils
             int i1 = v1==null ? nVerts : v1.myIndex();
             if (i0 != i1) // self-loops are irrelevant
             {
-                laplacian[i0][i0].plusEquals(1);
-                laplacian[i0][i1].minusEquals(1);
+                laplacian[i0][i0] = laplacian[i0][i0].add(java.math.BigInteger.ONE);
+                laplacian[i0][i1] = laplacian[i0][i1].subtract(java.math.BigInteger.ONE);
             }
         }
         PRINTMAT(laplacian);
-        boolean hasEdgesToNowhere = laplacian[nVerts][nVerts].i.signum() != 0;
+        boolean hasEdgesToNowhere = laplacian[nVerts][nVerts].signum() != 0;
         PRINT(hasEdgesToNowhere);
 
-        double detDouble = detDouble(hasEdgesToNowhere ? nVerts : nVerts-1,
-                                     laplacian); // all but last nontrivial row&column
+        double detDouble = detDouble(hasEdgesToNowhere ? nVerts : nVerts-1, laplacian); // all but last nontrivial row&column
         PRINT(detDouble);
         assert_ge(detDouble, 0);
 
-        BigInt detBigInt = det(hasEdgesToNowhere ? nVerts : nVerts-1, laplacian); // all but last nontrivial row&column
+        java.math.BigInteger detBigInt = det(hasEdgesToNowhere ? nVerts : nVerts-1, laplacian); // all but last nontrivial row&column
         PRINT(detBigInt);
         PRINT(detBigInt.doubleValue());
 
