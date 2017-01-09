@@ -1361,9 +1361,9 @@ final public class MeshUtils
             int recursionDepth,
             int verboseLevel)
         {
-            if (verboseLevel >= 2) OUT(repeat("    ", recursionDepth)+"        in selectSpanningTreeRecurse(iNet="+iNet+"/"+nNets+", recursionDepth="+recursionDepth+")");
-            if (verboseLevel >= 2) OUT(repeat("    ", recursionDepth)+"          v2e = "+Arrays.toStringCompact(v2e));
-            if (verboseLevel >= 2) OUT(repeat("    ", recursionDepth)+"          e2v = "+Arrays.toStringCompact(e2v));
+            if (verboseLevel >= 2) OUT(repeat(" ", recursionDepth)+"        in selectSpanningTreeRecurse(iNet="+iNet+"/"+nNets+", nVerts="+v2e.length+", nEdges="+e2v.length+", recursionDepth="+recursionDepth+")");
+            if (verboseLevel >= 3) OUT(repeat(" ", recursionDepth)+"          v2e = "+Arrays.toStringCompact(v2e));
+            if (verboseLevel >= 3) OUT(repeat(" ", recursionDepth)+"          e2v = "+Arrays.toStringCompact(e2v));
             assert(iNet.signum() >= 0);
             assert(iNet.compareTo(nNets) < 0);
 
@@ -1389,13 +1389,7 @@ final public class MeshUtils
                 v2e_edgeContracted = (int[][])Arrays.copy(v2e_edgeContracted, 2);
                 e2v_edgeContracted = (int[][])Arrays.copy(e2v_edgeContracted, 2);
 
-                PRINTARRAY(v2e_edgeContracted);
-                PRINTARRAY(e2v_edgeContracted);
-                PRINT(i0);
-                PRINT(i1);
-
                 int i0new = (i0<i1 ? i0 : i0-1);
-                PRINT(i0new);
                 // Dump both i0's and i1's edge lists, except for the edge in question (either direction), into i0new's.
                 // Don't reindex yet.
                 v2e_edgeContracted[i0new] = new int[v2e[i0].length-1 + v2e[i1].length-1];
@@ -1409,77 +1403,67 @@ final public class MeshUtils
                         if (v2e[i1][j] != (iEdge^1))
                             v2e_edgeContracted[i0new][index++] = v2e[i1][j];
                 }
-                PRINTARRAY(v2e_edgeContracted);
                 // Reindex v2e_edgeContracted to account for deletion of iEdge and iEdge^1.
                 FORI (i, v2e_edgeContracted.length)
-                    FORI (j, v2e_edgeContracted[i].length)
-                    {
-                        int iEdgeOld = v2e_edgeContracted[i][j];
-                        assert(iEdgeOld != iEdge && iEdgeOld != (iEdge^1));
-                        int iEdgeNew = (iEdgeOld > iEdge ? iEdgeOld-2 : iEdgeOld);
-                        v2e_edgeContracted[i][j] = iEdgeNew;
-                    }
-                PRINTARRAY(v2e_edgeContracted);
+                FORI (j, v2e_edgeContracted[i].length)
+                {
+                    int iEdgeOld = v2e_edgeContracted[i][j];
+                    assert(iEdgeOld != iEdge && iEdgeOld != (iEdge^1));
+                    int iEdgeNew = (iEdgeOld > iEdge ? iEdgeOld-2 : iEdgeOld);
+                    v2e_edgeContracted[i][j] = iEdgeNew;
+                }
                 // Reindex e2v_edgeContracted to account for deletion of i1--
                 // change references to it to i0, and decrement references to things >i1.
                 FORI (i, e2v_edgeContracted.length)
-                    FORI (j, 2)
-                    {
-                        int iVertOld = e2v_edgeContracted[i][j];
-                        int iVertNew = iVertOld==i1 ? i0new : iVertOld>i1 ? iVertOld-1 : iVertOld;
-                        OUT("CCC changing e2v_edgeContracted["+i+"]["+j+"] from "+iVertOld+" to "+iVertNew);
-                        e2v_edgeContracted[i][j] = iVertNew;
-                    }
+                FORI (j, 2)
+                {
+                    int iVertOld = e2v_edgeContracted[i][j];
+                    int iVertNew = iVertOld==i1 ? i0new : iVertOld>i1 ? iVertOld-1 : iVertOld;
+                    e2v_edgeContracted[i][j] = iVertNew;
+                }
             }
             int v2e_edgeDeleted[][];
             int e2v_edgeDeleted[][];
             {
                 v2e_edgeDeleted = v2e; // for starters
-                PRINTARRAY(e2v);
-                PRINT(iEdge);
-                PRINT(iEdge+1);
                 e2v_edgeDeleted = (int[][])Arrays.concat(Arrays.subarray(e2v, 0, iEdge),
                                                          Arrays.subarray(e2v, iEdge+2, e2v.length-(iEdge+2)));
                 // Make sure we deep copied everything, so that we don't mess with e2v's entries
                 v2e_edgeDeleted = (int[][])Arrays.copy(v2e_edgeDeleted, 2);
                 e2v_edgeDeleted = (int[][])Arrays.copy(e2v_edgeDeleted, 2);
-                PRINTARRAY(e2v_edgeDeleted);
 
                 // Remove iEdge from i0's edge list, and iEdge^1 from i1's edge list.
-                PRINTARRAY(v2e_edgeDeleted);
                 v2e_edgeDeleted[i0] = Arrays.delete(v2e_edgeDeleted[i0], Arrays.indexOf(v2e_edgeDeleted[i0], iEdge));
                 v2e_edgeDeleted[i1] = Arrays.delete(v2e_edgeDeleted[i1], Arrays.indexOf(v2e_edgeDeleted[i1], iEdge^1));
-                PRINTARRAY(v2e_edgeDeleted);
                 // XXX DUP CODE ALERT
                 // Reindex v2e_edgeDeleted to account for deletion of iEdge and iEdge^1.
                 FORI (i, v2e_edgeDeleted.length)
-                    FORI (j, v2e_edgeDeleted[i].length)
-                    {
-                        int iEdgeOld = v2e_edgeDeleted[i][j];
-                        assert_ne_ne(iEdge, iEdgeOld, iEdge^1);
-                        int iEdgeNew = (iEdgeOld > iEdge ? iEdgeOld-2 : iEdgeOld);
-                        OUT("DDD changing v2e_edgeDeleted["+i+"]["+j+"] from "+iEdgeOld+" to "+iEdgeNew);
-                        v2e_edgeDeleted[i][j] = iEdgeNew;
-                    }
+                FORI (j, v2e_edgeDeleted[i].length)
+                {
+                    int iEdgeOld = v2e_edgeDeleted[i][j];
+                    assert_ne_ne(iEdge, iEdgeOld, iEdge^1);
+                    int iEdgeNew = (iEdgeOld > iEdge ? iEdgeOld-2 : iEdgeOld);
+                    v2e_edgeDeleted[i][j] = iEdgeNew;
+                }
                 // No vertices got removed, so no need to reindex e2v_edgeDeleted.
             }
 
-            if (verboseLevel >= 2) OUT(repeat("    ", recursionDepth)+"          v2e_edgeContracted = "+Arrays.toStringCompact(v2e_edgeContracted));
-            if (verboseLevel >= 2) OUT(repeat("    ", recursionDepth)+"          e2v_edgeContracted = "+Arrays.toStringCompact(e2v_edgeContracted));
-            if (verboseLevel >= 2) OUT(repeat("    ", recursionDepth)+"          v2e_edgeDeleted = "+Arrays.toStringCompact(v2e_edgeDeleted));
-            if (verboseLevel >= 2) OUT(repeat("    ", recursionDepth)+"          e2v_edgeDeleted = "+Arrays.toStringCompact(e2v_edgeDeleted));
+            if (verboseLevel >= 3) OUT(repeat(" ", recursionDepth)+"          v2e_edgeContracted = "+Arrays.toStringCompact(v2e_edgeContracted));
+            if (verboseLevel >= 3) OUT(repeat(" ", recursionDepth)+"          e2v_edgeContracted = "+Arrays.toStringCompact(e2v_edgeContracted));
+            if (verboseLevel >= 3) OUT(repeat(" ", recursionDepth)+"          v2e_edgeDeleted = "+Arrays.toStringCompact(v2e_edgeDeleted));
+            if (verboseLevel >= 3) OUT(repeat(" ", recursionDepth)+"          e2v_edgeDeleted = "+Arrays.toStringCompact(e2v_edgeDeleted));
             SimplerMeshDataStructure.sanityCheck(v2e, e2v);
             if (i0 != i1)
                 SimplerMeshDataStructure.sanityCheck(v2e_edgeContracted, e2v_edgeContracted);
             SimplerMeshDataStructure.sanityCheck(v2e_edgeDeleted, e2v_edgeDeleted);
 
-            boolean withAnalysis = (verboseLevel >= 2);
+            boolean withAnalysis = (verboseLevel >= 3);
             java.math.BigInteger countContracted = i0==i1 ? java.math.BigInteger.ZERO : countSpanningTrees(v2e_edgeContracted.length, e2v_edgeContracted, withAnalysis);
             java.math.BigInteger countDeleted = countSpanningTrees(v2e_edgeDeleted.length, e2v_edgeDeleted, withAnalysis);
-            if (verboseLevel >= 2) OUT(repeat("    ", recursionDepth)+"          countContracted = "+countContracted);
-            if (verboseLevel >= 2) OUT(repeat("    ", recursionDepth)+"          countDeleted = "+countDeleted);
-            if (verboseLevel >= 2) OUT(repeat("    ", recursionDepth)+"          countContracted+countDeleted = "+countContracted.add(countDeleted));
-            if (verboseLevel >= 2) OUT(repeat("    ", recursionDepth)+"          nNets = "+nNets);
+            if (verboseLevel >= 3) OUT(repeat(" ", recursionDepth)+"          countContracted = "+countContracted);
+            if (verboseLevel >= 3) OUT(repeat(" ", recursionDepth)+"          countDeleted = "+countDeleted);
+            if (verboseLevel >= 3) OUT(repeat(" ", recursionDepth)+"          countContracted+countDeleted = "+countContracted.add(countDeleted));
+            if (verboseLevel >= 3) OUT(repeat(" ", recursionDepth)+"          nNets = "+nNets);
 
             assert(countContracted.add(countDeleted).equals(nNets));
 
@@ -1513,7 +1497,7 @@ final public class MeshUtils
                     if (answer[i] >= iEdge)
                         answer[i] += 2;
             }
-            if (verboseLevel >= 2) OUT(repeat("    ",recursionDepth)+"        out selectSpanningTreeRecurse(iNet="+iNet+"/"+nNets+", recursionDepth="+recursionDepth+"), returning "+Arrays.toStringCompact(answer));
+            if (verboseLevel >= 2) OUT(repeat(" ", recursionDepth)+"        out selectSpanningTreeRecurse(iNet="+iNet+"/"+nNets+", nVerts="+v2e.length+", nEdges="+e2v.length+", recursionDepth="+recursionDepth+"), returning "+Arrays.toStringCompact(answer));
             return answer;
         }
     // returns the selected spanning tree as a list of edge indices, i.e. cuts, all even
