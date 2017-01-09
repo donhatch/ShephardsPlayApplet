@@ -807,6 +807,7 @@ final public class MeshUtils
             }
         } // SimplerMeshDataStructure ctor
 
+        // CBB: also have isConnected() above... silly, maybe.
         public boolean isConnectedExceptMaybeForIsolatedVerts()
         {
             // DFS is actually faster supposedly but whatever
@@ -818,6 +819,7 @@ final public class MeshUtils
                 int iVert = e2v[iEdge][0];
                 int jVert = e2v[iEdge][1];
                 mergeFind.merge(iVert, jVert);
+                // CBB: if we use a SizeTrackingMergeFind, can notice as soon as there's a single component, and return true.  but would have to count number of non-isolated verts first
             }
             int found = -1;
             FORI (iVert, nVerts)
@@ -1354,6 +1356,34 @@ final public class MeshUtils
         return finished;
     } // enumerateAllSpanningTreesDumb
 
+        private static boolean isConnected(int v2e[][], int e2v[][])
+        {
+            // can be done in O(n), but whatever, this is simpler
+            int nVerts = v2e.length;
+            int nEdges = e2v.length; // twice number of undirected edges
+            boolean doomed = false;
+            boolean blessed = false;
+            if (nEdges < (nVerts-1)*2)
+            {
+                //assert(false); // coverage
+                return false;
+            }
+            // note, can't make same kind of shortcut for too many edges,
+            // because this might be a multigraph (multiple edges between a given pair of vertices).
+            SizeTrackingMergeFind mf = new SizeTrackingMergeFind(v2e.length);
+            FORI (iEdge, e2v.length)
+            {
+                int iVert = e2v[iEdge][0];
+                int jVert = e2v[iEdge][1];
+                mf.merge(iVert, jVert);
+                if (mf.size(iVert) == nVerts)
+                {
+                    return true;
+                }
+            }
+            return false;
+        } // isConnected
+
         private static int[] selectSpanningTreeRecurse(
             int v2e[][], int e2v[][],
             java.math.BigInteger iNet,
@@ -1385,6 +1415,7 @@ final public class MeshUtils
             int i0 = e2v[iEdge][0]; // we'll retain this vertex
             int i1 = e2v[iEdge][1]; // we'll delete this vertex
 
+            // TODO: make the contraction and deletion into ops on SimplerMeshDataStructure, or at least functions that return a SimplerMeshDataStructure
             int v2e_edgeContracted[][] = null;
             int e2v_edgeContracted[][] = null;
             if (i0 != i1) // can only be contracted if unequal
@@ -1500,7 +1531,7 @@ final public class MeshUtils
                            never really need to compute countDeleted, I don't think, except for sanity checking.
             */
 
-            int answer[];
+            int answer[] = null;
             if (countContracted.signum() < 0 || iNet.compareTo(countContracted) < 0)
             {
                 if (countContracted.signum() >= 0)
@@ -1525,6 +1556,7 @@ final public class MeshUtils
                             answer[i] += 2;
                     answer = (int[])Arrays.prepend(answer, iEdge); // prepend instead of append, to match dumb version
                     if (verboseLevel >= 2) OUT(repeat(" ", recursionDepth)+"        out selectSpanningTreeRecurse(iNet="+iNet+"/"+nNets+", nVerts="+v2e.length+", nEdges="+e2v.length+", recursionDepth="+recursionDepth+"), returning "+Arrays.toStringCompact(answer));
+                    // CBB: in this case we didn't need to compute the deleted part!
                     return answer;
                 }
                 assert(countContracted.signum() < 0);
@@ -1535,21 +1567,45 @@ final public class MeshUtils
             assert(countContracted.signum() >= 0);
             assert(countContracted.compareTo(iNet) <= 0);
 
+            java.math.BigInteger iNetMinusCountContracted = iNet.subtract(countContracted);
+            java.math.BigInteger nNetsMinusCountContracted = nNets.signum()<0?nNets:nNets.subtract(countContracted);
 
-            // XXX not sure what the logic should be here... think more about it.
-            // does it help to compute countDeleted here or not?  Or does it defeat the whole blind thing?
-            // Conjecture: when going blind, it's still important not to go down contraction paths that don't lead anywhere.   So, I think I need to keep a MergeFind after all.
-            if (countDeleted.signum() < 0)
-                countDeleted = countSpanningTrees(v2e_edgeDeleted.length, e2v_edgeDeleted, withAnalysis);
 
+            if (true)
+            {
+                // See analysis in the caller.
+                // Partially defeats the whole blind thing, but does help somewhat.
+                if (countDeleted.signum() < 0)
+                {
+                    countDeleted = countSpanningTrees(v2e_edgeDeleted.length, e2v_edgeDeleted, withAnalysis);
+                }
+            }
+
+            if (true) // this only makes a difference if the above is false (and didn't save the day, even then)
+            {
+                if (countDeleted.signum() < 0)
+                {
+                    // We're not going to compute countDeleted explicitly,
+                    // unless it's zero (which is more easily computed than the entire determinant).
+                    // I think this is important because it keeps us from doing lots of exploring
+                    // down large computation subtrees that don't have any content.
+                    if (!isConnected(v2e_edgeDeleted, e2v_edgeDeleted))
+                    {
+                        countDeleted = java.math.BigInteger.ZERO;
+                    }
+                }
+            }
+
+
+            if (countDeleted.signum() < 0 || iNetMinusCountContracted.compareTo(countDeleted) < 0)
             {
                 v2e_edgeContracted = null;
                 e2v_edgeContracted = null;
                 if (verboseLevel >= 2) OUT(repeat(" ", recursionDepth)+"         trying deleting edge...");
                 answer = selectSpanningTreeRecurse(v2e_edgeDeleted,
                                                    e2v_edgeDeleted,
-                                                   iNet.subtract(countContracted),
-                                                   nNets.signum()<0?nNets:nNets.subtract(countContracted),
+                                                   iNetMinusCountContracted,
+                                                   nNetsMinusCountContracted,
                                                    recursionDepth+1,
                                                    verboseLevel);
                 if (verboseLevel >= 2) OUT(repeat(" ", recursionDepth)+"         "+(answer!=null?"succeeded.":"failed."));
@@ -1572,6 +1628,7 @@ final public class MeshUtils
     {
         int verboseLevel = 2;
         if (verboseLevel >= 1) OUT("    in selectSpanningTreeOrNull(iNet="+iNet+")");
+        long t0millis = System.currentTimeMillis();
         if (iNet.signum() < 0)
         {
             OUT("    out selectSpanningTreeOrNull(iNet="+iNet+"), returning null (out of bounds)");
@@ -1581,7 +1638,25 @@ final public class MeshUtils
         int v2e[][] = s.v2e;
         int e2v[][] = s.e2v;
         boolean withAnalysis = (verboseLevel >= 3);
-        boolean knowNNets = true;
+        // Trying to find a smart way to guide recursion without ever computing full determinant
+        // of the whole graph.  No success so far.
+        // Experimenting with the following setting:
+        //     - knowNNets=true: compute full determinants at all levels.  deterministic, consistent for all iNet, but slow for large nNets
+        //                        (so simple recurse becomes much faster as long as iNet not too big)
+        //     - knowNNets=false but compute deleted determinant if going down that path (hard coded true or false above, set it to true):
+        //              - much faster than knowNNets=true on small
+        //              - slower than pure knowNNets=false on small
+        //              - consistent (same for small as large)
+        //              - so still much faster than knownNNets=true on large
+        //              - and much faster than knownNNets=false on large, even better then simple recurse if large enough.  yay!
+        //     - knowNNets=false:  pure blind, only compute det of contract part, only *after* it fails.
+        //              much faster for small iNet, but super slow for large iNet
+        //              (so maybe it's sort of equivalent to simple recurse, but with lots more overhead? bleah)
+        //              (seems silly-- if we know contract failed, then we've implicitly
+        //              computed the determinant inside it so we don't need to compute it again,
+        //              so this can't be right)
+        // Oh wait!  try knowNNets=false but turn on computing the deleted determinant when needed!  I think it's fast!
+        boolean knowNNets = false;
         java.math.BigInteger nNets = knowNNets ? countSpanningTrees(v2e.length, e2v, withAnalysis)
                                                : java.math.BigInteger.valueOf(-1);
         OUT("      okay, so selecting net "+iNet+"/"+nNets);
@@ -1591,7 +1666,8 @@ final public class MeshUtils
             return null;
         }
         int answer[] = selectSpanningTreeRecurse(v2e, e2v, iNet, nNets, 0, verboseLevel);
-        if (verboseLevel >= 1) OUT("    out selectSpanningTreeOrNull(iNet="+iNet+"/"+nNets+"), returning "+Arrays.toStringCompact(answer));
+        long t1millis = System.currentTimeMillis();
+        if (verboseLevel >= 1) OUT("    out selectSpanningTreeOrNull(iNet="+iNet+"/"+nNets+"), returning "+Arrays.toStringCompact(answer)+" in "+(t1millis-t0millis)/1000.+" secs.");
         return answer;
     } // selectSpanningTreeOrNull
 
