@@ -208,45 +208,51 @@ final public class MeshUtils
     private static java.math.BigInteger det(int n, java.math.BigInteger M[][])
     {
         return detDestructive(n, copymat(n, n, M));
-    } // bareissDet
+    } // det
 
+
+    public static java.math.BigInteger countSpanningTrees(int nVerts, int e2v[][])
+    {
+        return null; // TODO: transfer part of other countSpanningTrees to here
+    } // countSpanningTrees
 
     // Uses Kirchoff's theorem. https://en.wikipedia.org/wiki/Kirchhoff%27s_theorem,
     // with Bareiss's algorithm for exact integer determinant.
     public static java.math.BigInteger countSpanningTrees(Mesh mesh)
     {
         OUT("    in countSpanningTrees");
-        int nVerts = mesh.verts.size();
+
+        SimplerMeshDataStructure simplerMeshDataStructure = new SimplerMeshDataStructure(mesh, false);
+        int v2e[][] = simplerMeshDataStructure.v2e;
+        int e2v[][] = simplerMeshDataStructure.e2v;
+
+        int nVerts = v2e.length;
         if (nVerts == 0)
             return java.math.BigInteger.ZERO;
-        java.math.BigInteger laplacian[][] = new java.math.BigInteger[nVerts+1][nVerts+1];
+        java.math.BigInteger laplacian[][] = new java.math.BigInteger[nVerts][nVerts];
         for (int i = 0; i < laplacian.length; ++i)
         for (int j = 0; j < laplacian[0].length; ++j)
             laplacian[i][j] = java.math.BigInteger.ZERO;
 
-        int nEdges = mesh.edges.size();
+        int nEdges = e2v.length;
         for (int iEdge = 0; iEdge < nEdges; ++iEdge)
         {
-            Mesh.Edge edge = mesh.getEdge(iEdge);
-            Mesh.Vertex v0 = edge.initialVertex();
-            Mesh.Vertex v1 = edge.finalVertex();
-            int i0 = v0==null ? nVerts : v0.myIndex();
-            int i1 = v1==null ? nVerts : v1.myIndex();
+            int i0 = e2v[iEdge][0];
+            int i1 = e2v[iEdge][1];
             if (i0 != i1) // self-loops are irrelevant
             {
                 laplacian[i0][i0] = laplacian[i0][i0].add(java.math.BigInteger.ONE);
                 laplacian[i0][i1] = laplacian[i0][i1].subtract(java.math.BigInteger.ONE);
             }
         }
-        PRINTMAT(laplacian);
-        boolean hasEdgesToNowhere = laplacian[nVerts][nVerts].signum() != 0;
-        PRINT(hasEdgesToNowhere);
 
-        double detDouble = detDouble(hasEdgesToNowhere ? nVerts : nVerts-1, laplacian); // all but last nontrivial row&column
+        PRINTMAT(laplacian);
+
+        double detDouble = detDouble(nVerts-1, laplacian); // all but last row&column
         PRINT(detDouble);
         assert_ge(detDouble, 0);
 
-        java.math.BigInteger detBigInt = det(hasEdgesToNowhere ? nVerts : nVerts-1, laplacian); // all but last nontrivial row&column
+        java.math.BigInteger detBigInt = det(nVerts-1, laplacian); // all row&column
         PRINT(detBigInt);
         PRINT(detBigInt.doubleValue());
 
@@ -520,10 +526,30 @@ final public class MeshUtils
     // Subtleties:
     //     - Depending on how original mesh was constructed,
     //       it might have edges leading nowhere or coming from nowhere.
-    //       The "nowhere" gets made into a vertex (the "infinite vertex").
+    //       In this case, the "nowhere" gets made into an extra vertex (the "infinite vertex").
     //     - We might or might not want to consider all inside-out vertices
     //       (i.e. those with weight < 0) to be part of the infinite vertex.
     //       This is a param to the constructor.
+    //       If true, such vertices get merged into the infinite vertex (which gets created if necessary),
+    //       and the original entries of v2e end up empty.
+
+    // CBB: tell me again why I need the param?  doesn't true always work?  I'm confused.
+    // Let's get it straight:
+    // Calc underside = false (the usual case I work with):
+    //      - primal mesh (mostly triangulated) has standard topology, nVerts is unambiguous, all verts rightside out
+    //          mergeInsideOutVertsIntoInfiniteVert=false: gives the mesh, unambiguous
+    //          mergeInsideOutVertsIntoInfiniteVert=true: gives the mesh, unambiguous
+    //      - dual has some edges to nowhere, so converting to standard topology requires adding a vert. all other verts rightside out
+    //          mergeInsideOutVertsIntoInfiniteVert=false: gives the mesh with one vertex added
+    //          mergeInsideOutVertsIntoInfiniteVert=true: gives the mesh with one vertex added
+    // Calc underside = true:
+    //      - primal mesh straightforward, as before (except fully triangulated)
+    //      - dual mesh has standard topology, but some verts are inside out.
+    //          mergeInsideOutVertsIntoInfiniteVert=false: gives the mesh
+    //          mergeInsideOutVertsIntoInfiniteVert=true: adds a vertex (since there was at least one inside out), transfers all edges incident
+    //              on inside out verts to the added vertex instead, leaving empty entries in v2e
+    // TL;DR: mergeInsideOutVertsIntoInfiniteVert is never relevant for primal,
+    // it's only relevant for dual, and then only when "calc underside" is on.
     public static class SimplerMeshDataStructure
     {
         public int e2v[/*nEdges*/][/*2*/]; // edge to verts
@@ -917,13 +943,13 @@ final public class MeshUtils
               by Igor Pak, Alexander Postnikov
 
     */
+
+#ifdef NOTYET
     /*
-        I'm going to use Algorithm 2 in Kapoor/Ramesh's paper,
+        I'm going to try to use Algorithm 2 in Kapoor/Ramesh's paper,
         and I can use the following simplifying assumptions:
           - the graph is biconnected (i.e. no cut vertices), so decomposition into biconnected components is unnecessary
     */
-
-#ifdef NOTYET
     private static void enumerateAllSpanningTreesSmartWorkInProgress(int v2e[/*nVerts*/][/*2*/], int e2v[/*nEdges*/][])
     {
         // "The data structure will store the current spanning tree in the form of a parent pointer
@@ -1173,6 +1199,19 @@ final public class MeshUtils
         if (verboseLevel >= 1) OUT("    out enumerateAllSpanningTreesDumb, returning finished="+finished+" in "+(t1millis-t0millis)/1000.+" secs");
         return finished;
     } // enumerateAllSpanningTreesDumb
+
+    public int[] selectSpanningTreeDumbHelper()
+    {
+        return null;
+    }
+    // returns the list of spanning tree edge indices, i.e. cuts, all even
+    public int[] selectSpanningTreeDumb(
+        Mesh mesh, Mesh dualMesh,  // typically backwards from caller... although it doesn't really matter, this algorithm is self dual
+        java.math.BigInteger iNet)
+    {
+        // convert to e2v I think
+        return null;
+    } // selectSpanningTreeDumb
 
 
     // I seem to have set the bar too high on using VecMath for this... make private utility function instead
