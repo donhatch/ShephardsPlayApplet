@@ -148,7 +148,9 @@ final public class MeshUtils
     // http://cs.nyu.edu/exact/core/download/core_v1.4/core_v1.4/progs/bareiss/bareiss.cpp
     // Crazy good and simple!  I was previously reducing to upper-triangular form using egcd at each step,
     // but it was way more complicated and blew up unless I did strange heuristics.
-    // XXX does this really do pivoting?? the comment in the source code says yes, but the code seems too simple.
+    // Hmm, it claims to do pivoting, but doesn't, and suffers from zero-divides.
+    // there's some analysis here:
+    //   http://www.math.usm.edu/perry/Research/Thesis_DRL.pdf
     /*
         double Matrix::determinant() const {
            Matrix A = *this;
@@ -168,7 +170,7 @@ final public class MeshUtils
     */
     private static java.math.BigInteger detDestructive(int n, java.math.BigInteger M[][])
     {
-        int verboseLevel = 1;
+        int verboseLevel = 0;
         if (verboseLevel >= 1) OUT("            in detDestructive(n="+n+")");
         long t0millis = System.currentTimeMillis();
         int maxBitLength = 0;
@@ -177,8 +179,28 @@ final public class MeshUtils
             answer = java.math.BigInteger.ONE;
         else
         {
+            int sign = 1;
             FORI (i, n-1)
             {
+                if (M[i][i].signum() == 0)
+                {
+                    // "standard workaround" for zero-divide in bareiss's algorithm, according to thesis.
+                    // algorithm is on p.26, this comment is on p.34.
+                    // Swap with any row that will make this entry nonzero.
+                    int jPivot = -1;
+                    for (int j = i+1; j < n; ++j)
+                        if (M[j][i].signum() != 0)
+                        {
+                            jPivot = j;
+                            break;
+                        }
+                    if (jPivot == -1)
+                        return java.math.BigInteger.ZERO;
+                    OUT("HEY! working around bareiss problem");
+                    java.math.BigInteger temp[];
+                    SWAP(M[i], M[jPivot], temp);
+                    sign *= -1;
+                }
                 //assert(M[i][i].signum() == 0); XXX what is this?? it fails
                 for (int j = i+1; j < n; ++j)
                 for (int k = i+1; k < n; ++k)
@@ -196,6 +218,8 @@ final public class MeshUtils
                 }
             }
             answer = M[n-1][n-1];
+            if (sign < 0)
+                answer = answer.negate();
         }
         long t1millis = System.currentTimeMillis();
         if (verboseLevel >= 1) OUT("              maxBitLength = "+maxBitLength);
@@ -216,6 +240,91 @@ final public class MeshUtils
         return detDestructive(n, copymat(n, n, M));
     } // det
 
+    private static java.math.BigInteger det(int n, long M[][])
+    {
+        java.math.BigInteger bigM[][] = new java.math.BigInteger[n][n];
+        FORI (i, n)
+        FORI (j, n)
+            bigM[i][j] = java.math.BigInteger.valueOf(M[i][j]);
+        return detDestructive(n, bigM);
+    }
+    private static double detDouble(int n, long M[][])
+    {
+        double Mdouble[][] = new double[n][n];
+        FORI (i, n)
+        FORI (j, n)
+            Mdouble[i][j] = (double)M[i][j];
+        return VecMath.detDestructive(Mdouble);
+    }
+    private static java.math.BigInteger det(long M[][])
+    {
+        return det(M.length, M);
+    }
+    public static int detConfidenceTest1(long M[][])
+    {
+        java.math.BigInteger detBig = det(M);
+        double detDouble = detDouble(M.length, M);
+        boolean same = EQ(detBig.doubleValue(), detDouble, 1e-12);
+        OUT("    det("+Arrays.toStringCompact(M)+") = "+detBig+" "+(same?"==":"!=")+" "+detDouble+" "+(same?"yay!":"    OH NO!!!!!!!!!!!!!"));
+        int nFailures = same ? 0 : 1;
+        return nFailures;
+    }
+    public static void detConfidenceTest()
+    {
+        int nFailures = 0;
+        // Nonzero determinant
+        nFailures += detConfidenceTest1(new long[][]{});
+        nFailures += detConfidenceTest1(new long[][]{{1}});
+        nFailures += detConfidenceTest1(new long[][]{{2}});
+        nFailures += detConfidenceTest1(new long[][]{{-1}});
+        nFailures += detConfidenceTest1(new long[][]{{1,0},{0,1}});
+        nFailures += detConfidenceTest1(new long[][]{{1,2},{3,4}});
+        nFailures += detConfidenceTest1(new long[][]{{0,1},{1,0}});
+        nFailures += detConfidenceTest1(new long[][]{{1,0,0},{0,1,0},{0,0,1}});
+        nFailures += detConfidenceTest1(new long[][]{{1,0,0},{0,0,1},{0,1,0}});
+
+	// Example from the thesis cited above, where bareiss leads to zero-divide. answer is 245.
+        nFailures += detConfidenceTest1(new long[][]{
+	    {1,-4,1,2},
+	    {-1,4,4,1},
+	    {3,3,3,4},
+	    {2,5,2,-1},
+        });
+
+        // Nonzero determinant, messes up without pivoting
+        nFailures += detConfidenceTest1(new long[][]{{0,1,0},{0,0,1},{1,0,0}}); // messes up!
+        nFailures += detConfidenceTest1(new long[][]{{0,1,0},{1,0,0},{0,0,1}});
+        nFailures += detConfidenceTest1(new long[][]{{0,0,1},{1,0,0},{0,1,0}});
+        nFailures += detConfidenceTest1(new long[][]{{0,0,1},{0,1,0},{1,0,0}});
+
+        // Zero determinant
+        nFailures += detConfidenceTest1(new long[][]{{0}});
+        nFailures += detConfidenceTest1(new long[][]{{0,0},{0,0}});
+        nFailures += detConfidenceTest1(new long[][]{{1,0},{0,0}});
+        nFailures += detConfidenceTest1(new long[][]{{0,1},{0,0}});
+        nFailures += detConfidenceTest1(new long[][]{{0,0},{1,0}});
+        nFailures += detConfidenceTest1(new long[][]{{0,0},{0,1}});
+        nFailures += detConfidenceTest1(new long[][]{{0,0,0},{0,0,0},{0,0,0}});
+        nFailures += detConfidenceTest1(new long[][]{{1,2,3},{4,5,6},{0,0,0}});
+        nFailures += detConfidenceTest1(new long[][]{{1,1,1},{2,2,2},{3,3,3}});
+
+        if (true)
+        {
+            for (int n = 1; n <= 4; ++n)
+            {
+                FORI (i, 1<<(n*n))
+                {
+                    long M[][] = new long[n][n];
+                    FORI (j, n*n)
+                        M[j/n][j%n] = BIT(i, j);
+                    nFailures += detConfidenceTest1(M);
+                }
+            }
+        }
+
+        assert_eq(nFailures, 0);
+        OUT("detConfidenceTest PASSED! hooray!");
+    }
 
     // Uses Kirchoff's theorem. https://en.wikipedia.org/wiki/Kirchhoff%27s_theorem,
     // with Bareiss's algorithm for exact integer determinant.
@@ -1275,9 +1384,20 @@ final public class MeshUtils
                 v2e_edgeContracted = (int[][])Arrays.delete(v2e, i1);
                 e2v_edgeContracted = (int[][])Arrays.concat(Arrays.subarray(e2v, 0, iEdge),
                                                             Arrays.subarray(e2v, iEdge+2, e2v.length-(iEdge+2)));
-                e2v_edgeContracted = VecMath.copymat(e2v_edgeContracted); // has to be deep copy, so we don't mess with e2v
+
+                // Make sure we deep copied everything, so that we don't mess with e2v's entries
+                v2e_edgeContracted = (int[][])Arrays.copy(v2e_edgeContracted, 2);
+                e2v_edgeContracted = (int[][])Arrays.copy(e2v_edgeContracted, 2);
+
+                PRINTARRAY(v2e_edgeContracted);
+                PRINTARRAY(e2v_edgeContracted);
+                PRINT(i0);
+                PRINT(i1);
+
                 int i0new = (i0<i1 ? i0 : i0-1);
+                PRINT(i0new);
                 // Dump both i0's and i1's edge lists, except for the edge in question (either direction), into i0new's.
+                // Don't reindex yet.
                 v2e_edgeContracted[i0new] = new int[v2e[i0].length-1 + v2e[i1].length-1];
                 {
                     // CBB: get them in the right order
@@ -1289,6 +1409,7 @@ final public class MeshUtils
                         if (v2e[i1][j] != (iEdge^1))
                             v2e_edgeContracted[i0new][index++] = v2e[i1][j];
                 }
+                PRINTARRAY(v2e_edgeContracted);
                 // Reindex v2e_edgeContracted to account for deletion of iEdge and iEdge^1.
                 FORI (i, v2e_edgeContracted.length)
                     FORI (j, v2e_edgeContracted[i].length)
@@ -1298,7 +1419,9 @@ final public class MeshUtils
                         int iEdgeNew = (iEdgeOld > iEdge ? iEdgeOld-2 : iEdgeOld);
                         v2e_edgeContracted[i][j] = iEdgeNew;
                     }
-                // Reindex e2v_edgeContracted to account for deletion of i1.
+                PRINTARRAY(v2e_edgeContracted);
+                // Reindex e2v_edgeContracted to account for deletion of i1--
+                // change references to it to i0, and decrement references to things >i1.
                 FORI (i, e2v_edgeContracted.length)
                     FORI (j, 2)
                     {
@@ -1311,24 +1434,29 @@ final public class MeshUtils
             int v2e_edgeDeleted[][];
             int e2v_edgeDeleted[][];
             {
-                v2e_edgeDeleted = VecMath.copymat(v2e); // for starters
-                PRINTVEC(e2v);
+                v2e_edgeDeleted = v2e; // for starters
+                PRINTARRAY(e2v);
                 PRINT(iEdge);
                 PRINT(iEdge+1);
                 e2v_edgeDeleted = (int[][])Arrays.concat(Arrays.subarray(e2v, 0, iEdge),
                                                          Arrays.subarray(e2v, iEdge+2, e2v.length-(iEdge+2)));
-                e2v_edgeDeleted = VecMath.copymat(e2v_edgeDeleted); // has to be deep copy, so we don't mess with e2v
-                PRINTVEC(e2v_edgeDeleted);
+                // Make sure we deep copied everything, so that we don't mess with e2v's entries
+                v2e_edgeDeleted = (int[][])Arrays.copy(v2e_edgeDeleted, 2);
+                e2v_edgeDeleted = (int[][])Arrays.copy(e2v_edgeDeleted, 2);
+                PRINTARRAY(e2v_edgeDeleted);
+
                 // Remove iEdge from i0's edge list, and iEdge^1 from i1's edge list.
+                PRINTARRAY(v2e_edgeDeleted);
                 v2e_edgeDeleted[i0] = Arrays.delete(v2e_edgeDeleted[i0], Arrays.indexOf(v2e_edgeDeleted[i0], iEdge));
                 v2e_edgeDeleted[i1] = Arrays.delete(v2e_edgeDeleted[i1], Arrays.indexOf(v2e_edgeDeleted[i1], iEdge^1));
+                PRINTARRAY(v2e_edgeDeleted);
                 // XXX DUP CODE ALERT
                 // Reindex v2e_edgeDeleted to account for deletion of iEdge and iEdge^1.
                 FORI (i, v2e_edgeDeleted.length)
                     FORI (j, v2e_edgeDeleted[i].length)
                     {
                         int iEdgeOld = v2e_edgeDeleted[i][j];
-                        assert(iEdgeOld != iEdge && iEdgeOld != (iEdge^1));
+                        assert_ne_ne(iEdge, iEdgeOld, iEdge^1);
                         int iEdgeNew = (iEdgeOld > iEdge ? iEdgeOld-2 : iEdgeOld);
                         OUT("DDD changing v2e_edgeDeleted["+i+"]["+j+"] from "+iEdgeOld+" to "+iEdgeNew);
                         v2e_edgeDeleted[i][j] = iEdgeNew;
@@ -1366,16 +1494,10 @@ final public class MeshUtils
                                                    countContracted,
                                                    recursionDepth+1,
                                                    verboseLevel);
-                answer = (int[])Arrays.append(answer, iEdge);
-                OUT("BEFORE: answer="+Arrays.toStringCompact(answer));
-                FORI (i, answer.length-1)
-                {
-                    assert_ne(answer[i], iEdge);
-                    assert_ne(answer[i], iEdge^1);
-                    if (answer[i] > iEdge)
+                FORI (i, answer.length) // before we add anything
+                    if (answer[i] >= iEdge)
                         answer[i] += 2;
-                }
-                OUT("AFTER: answer="+Arrays.toStringCompact(answer));
+                answer = (int[])Arrays.prepend(answer, iEdge); // prepend instead of append, to match dumb version
             }
             else
             {
@@ -1415,11 +1537,11 @@ final public class MeshUtils
         OUT("      okay, so selecting net "+iNet+"/"+nNets);
         if (iNet.compareTo(nNets) >= 0)
         {
-            OUT("    out selectSpanningTreeOrNull(iNet="+iNet+"), returning null (out of bounds)");
+            OUT("    out selectSpanningTreeOrNull(iNet="+iNet+"/"+nNets+"), returning null (out of bounds)");
             return null;
         }
         int answer[] = selectSpanningTreeRecurse(v2e, e2v, iNet, nNets, 0, verboseLevel);
-        if (verboseLevel >= 1) OUT("    out selectSpanningTreeOrNull(iNet="+iNet+"), returning "+Arrays.toStringCompact(answer));
+        if (verboseLevel >= 1) OUT("    out selectSpanningTreeOrNull(iNet="+iNet+"/"+nNets+"), returning "+Arrays.toStringCompact(answer));
         return answer;
     } // selectSpanningTreeOrNull
 

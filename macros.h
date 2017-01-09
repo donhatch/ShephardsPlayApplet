@@ -25,6 +25,7 @@
 #define assert_le_lt(a,b,c) assert_op_op(a,<=,b,<,c)
 #define assert_lt_le(a,b,c) assert_op_op(a,<,b,<=,c)
 #define assert_lt_lt(a,b,c) assert_op_op(a,<,b,<,c)
+#define assert_ne_ne(a,b,c) assert_op_op(a,!=,b,!=,c)
 
 #define assert_nan(x) do { if (!Double.isNaN(x)) throw new Error("Assertion failed at "+__FILE__+"("+__LINE__+"): " + #x + " is "+(x)+", expected NaN"); } while (false)
 // Note: the additional "(a)==(b)||" is to make it work correctly for infinities...
