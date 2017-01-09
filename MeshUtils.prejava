@@ -228,7 +228,6 @@ final public class MeshUtils
         for (int i = 0; i < laplacianCofactor.length; ++i)
         for (int j = 0; j < laplacianCofactor[0].length; ++j)
             laplacianCofactor[i][j] = java.math.BigInteger.ZERO;
-
         int nEdges = e2v.length;
         for (int iEdge = 0; iEdge < nEdges; ++iEdge)
         {
@@ -236,10 +235,10 @@ final public class MeshUtils
             int i1 = e2v[iEdge][1];
             if (i0 != i1) // self-loops are irrelevant
             {
-                if (i0 != nVerts-1)
+                if (i0 != nVerts-1) // if in range
                 {
                     laplacianCofactor[i0][i0] = laplacianCofactor[i0][i0].add(java.math.BigInteger.ONE);
-                    if (i1 != nVerts-1)
+                    if (i1 != nVerts-1) // if in range
                         laplacianCofactor[i0][i1] = laplacianCofactor[i0][i1].subtract(java.math.BigInteger.ONE);
                 }
             }
@@ -554,7 +553,8 @@ final public class MeshUtils
     //      - dual mesh has standard topology, but some verts are inside out.
     //          mergeInsideOutVertsIntoInfiniteVert=false: gives the mesh
     //          mergeInsideOutVertsIntoInfiniteVert=true: adds a vertex (since there was at least one inside out), transfers all edges incident
-    //              on inside out verts to the added vertex instead, leaving empty entries in v2e
+    //              on inside out verts to the added vertex instead, leaving empty entries in v2e.
+    //              Note that the resulting structure is not dual to that for the primal mesh!
     // TL;DR: mergeInsideOutVertsIntoInfiniteVert is never relevant for primal,
     // it's only relevant for dual, and then only when "calc underside" is on.
     public static class SimplerMeshDataStructure
@@ -788,7 +788,7 @@ final public class MeshUtils
             return;
         }
 
-        SimplerMeshDataStructure simplerMeshDataStructure = new SimplerMeshDataStructure(mesh, true);
+        SimplerMeshDataStructure simplerMeshDataStructure = new SimplerMeshDataStructure(mesh, false);
         if (!simplerMeshDataStructure.isConnectedExceptMaybeForIsolatedVerts())
         {
             System.out.println("      graph is disconnected; bailing");
@@ -1176,8 +1176,8 @@ final public class MeshUtils
         if (verboseLevel >= 1) OUT("    in enumerateAllSpanningTreesDumb");
         long t0millis = System.currentTimeMillis();
 
-        int e2v[][] = new SimplerMeshDataStructure(mesh, true).e2v; // assumes infinite vert was omitted
-        int e2f[][] = new SimplerMeshDataStructure(dualMesh, false).e2v; // assumes there's no missing inside out face
+        int e2v[][] = new SimplerMeshDataStructure(mesh, false).e2v;
+        int e2f[][] = new SimplerMeshDataStructure(dualMesh, false).e2v;
         int nEdges = e2v.length;
         assert_eq(nEdges, e2f.length);
         assert_eq(nEdges%2, 0); // directed edges
@@ -1207,18 +1207,132 @@ final public class MeshUtils
         return finished;
     } // enumerateAllSpanningTreesDumb
 
-    public int[] selectSpanningTreeDumbHelper()
-    {
-        return null;
-    }
-    // returns the list of spanning tree edge indices, i.e. cuts, all even
-    public int[] selectSpanningTreeDumb(
-        Mesh mesh, Mesh dualMesh,  // typically backwards from caller... although it doesn't really matter, this algorithm is self dual
+        private int[] selectSpanningTreeHelper(
+            int v2e[][], int e2v[][],
+            java.math.BigInteger iNet,
+            java.math.BigInteger nNets) // caller should compute as countSpanningTrees(v2e.length, e2v)
+        {
+            assert(iNet.signum() >= 0);
+            assert(iNet.compareTo(nNets) < 0);
+
+            if (e2v.length == 0)
+            {
+                assert(v2e.length == 1);
+                return new int[] {};
+            }
+
+            int iEdge = 0; // or could use last edge, doesn't matter much
+
+            int v2e_edgeContracted[][];
+            int e2v_edgeContracted[][];
+            {
+                int i0 = v2e[iEdge][0]; // we'll retain this vertex
+                int i1 = v2e[iEdge][1]; // we'll delete this vertex
+
+                v2e_edgeContracted = (int[][])Arrays.delete(v2e, i1);
+                e2v_edgeContracted = (int[][])Arrays.concat(Arrays.subarray(e2v, 0, iEdge),
+                                                           Arrays.subarray(e2v, iEdge+2, e2v.length-(iEdge+2)));
+                assert(i0 != i1);
+                int i0new = (i0<i1 ? i0 : i0-1);
+                // Dump both i0's and i1's edge lists, except for the edge in question (either direction), into i0new's.
+                v2e_edgeContracted[i0new] = new int[v2e[i0].length-1 + v2e[i1].length-1];
+                {
+                    // CBB: get them in the right order
+                    int index = 0;
+                    FORI (j, v2e[i0].length)
+                        if (v2e[i0][j] != iEdge)
+                            v2e_edgeContracted[i0new][index++] = v2e[i0][j];
+                    FORI (j, v2e[i1].length)
+                        if (v2e[i1][j] != (iEdge^1))
+                            v2e_edgeContracted[i0new][index++] = v2e[i1][j];
+                }
+                // Reindex v2e_edgeContracted to account for deletion of iEdge and iEdge^1.
+                FORI (i, v2e_edgeContracted.length)
+                    FORI (j, v2e_edgeContracted[i].length)
+                    {
+                        int iOld = v2e_edgeContracted[i][j];
+                        assert(iOld != iEdge && iOld != (iEdge^1));
+                        int iNew = (iOld > iEdge ? iOld-2 : iOld);
+                        v2e_edgeContracted[i][j] = iNew;
+                    }
+                // Reindex e2v_edgeContracted to account for deletion of i1.
+                FORI (i, e2v_edgeContracted.length)
+                    FORI (j, 2)
+                    {
+                        int iOld = e2v_edgeContracted[i][j];
+                        int iNew = iOld==i1 ? i0new : iOld>i1 ? iOld-1 : iOld;
+                        e2v_edgeContracted[i][j] = iNew;
+                    }
+            }
+            int v2e_edgeDeleted[][];
+            int e2v_edgeDeleted[][];
+            {
+                v2e_edgeDeleted = VecMath.copymat(v2e); // for starters
+                e2v_edgeDeleted = (int[][])Arrays.concat(Arrays.subarray(e2v, 0, iEdge),
+                                                         Arrays.subarray(e2v, iEdge+2, e2v.length-(iEdge+2)));
+                int i0 = v2e[iEdge][0];
+                int i1 = v2e[iEdge][1];
+                assert(i0 != i1);
+                // Remove iEdge from i0's edge list, and iEdge^1 from i1's edge list.
+                v2e_edgeDeleted[i0] = Arrays.delete(v2e_edgeDeleted[i0], iEdge);
+                v2e_edgeDeleted[i1] = Arrays.delete(v2e_edgeDeleted[i1], iEdge^1);
+                // XXX DUP CODE ALERT
+                // Reindex v2e_edgeDeleted to account for deletion of iEdge and iEdge^1.
+                FORI (i, v2e_edgeDeleted.length)
+                    FORI (j, v2e_edgeDeleted[i].length)
+                    {
+                        int iOld = v2e_edgeDeleted[i][j];
+                        assert(iOld != iEdge && iOld != (iEdge^1));
+                        int iNew = (iOld > iEdge ? iOld-2 : iOld);
+                        v2e_edgeDeleted[i][j] = iNew;
+                    }
+            }
+
+            java.math.BigInteger countContracted = countSpanningTrees(v2e_edgeContracted.length, e2v_edgeContracted, false);
+            java.math.BigInteger countDeleted = countSpanningTrees(v2e_edgeDeleted.length, e2v_edgeDeleted, false);
+            assert(countContracted.add(countDeleted).equals(nNets));
+            if (iNet.compareTo(countContracted) < 0)
+            {
+                v2e_edgeDeleted = null;
+                e2v_edgeDeleted = null;
+                int answer[] = selectSpanningTreeHelper(v2e_edgeContracted,
+                                                        e2v_edgeContracted,
+                                                        iNet,
+                                                        countContracted);
+                answer = (int[])Arrays.append(answer, iEdge);
+                FORI (i, answer.length)
+                    if (answer[i] > iEdge) // so we don't change the iEdge we just added
+                        answer[i] += 2;
+                return answer;
+            }
+            else
+            {
+                v2e_edgeContracted = null;
+                e2v_edgeContracted = null;
+                int answer[] = selectSpanningTreeHelper(v2e_edgeDeleted,
+                                                        e2v_edgeDeleted,
+                                                        iNet.subtract(countDeleted),
+                                                        nNets.subtract(countDeleted));
+                FORI (i, answer.length)
+                    if (answer[i] > iEdge)
+                        answer[i] += 2;
+                return answer;
+            }
+        }
+    // returns the selected spanning tree as a list of edge indices, i.e. cuts, all even
+
+    public int[] selectSpanningTreeOrNull(
+        Mesh mesh, Mesh dualMeshUnused,  // typically backwards from caller... although it doesn't really matter, this algorithm is self dual
         java.math.BigInteger iNet)
     {
-        // convert to e2v I think
-        return null;
-    } // selectSpanningTreeDumb
+        SimplerMeshDataStructure s = new SimplerMeshDataStructure(mesh, false);
+        int v2e[][] = s.v2e;
+        int e2v[][] = s.e2v;
+        java.math.BigInteger nNets = countSpanningTrees(v2e.length, e2v, false);
+        if (iNet.signum() < 0) return null;
+        if (iNet.compareTo(nNets) >= 0) return null;
+        return selectSpanningTreeHelper(v2e, e2v, iNet, nNets);
+    } // selectSpanningTreeOrNull
 
 
     // I seem to have set the bar too high on using VecMath for this... make private utility function instead
