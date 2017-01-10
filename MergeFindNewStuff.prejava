@@ -1,0 +1,272 @@
+/* vim: set filetype=java: */
+#include "macros.h" // necessary for assert
+//package com.donhatchsw.util;
+
+import com.donhatchsw.compat.IntArrayList;
+import com.donhatchsw.compat.ArrayList;
+import com.donhatchsw.util.VecMath;
+
+// TODO: merge all this stuff back into donhatchsw, I think?
+public class MergeFindNewStuff
+{
+    public interface MergeFindInterface
+    {
+        public int find(int i);
+        public void merge(int i, int j);
+    }
+    public interface MergeFindWithUndoInterface extends MergeFindInterface
+    {
+        public void pushState(); // duplicates top state
+        public void popState();
+    }
+
+    /**
+    * Union-find using path compression and weighted decisions, i.e. the right way.
+    * <a href="http://www.cs.cmu.edu/afs/cs.cmu.edu/academic/class/15451-f00/www/lectures/lect1024">http://www.cs.cmu.edu/afs/cs.cmu.edu/academic/class/15451-f00/www/lectures/lect1024</a>
+    */
+    public static class MergeFind implements MergeFindInterface
+    {
+        protected int parent[];
+        protected int rank[]; // rank[i] is number of fair fights i has won
+        public MergeFind(int n)
+        {
+            parent = new int[n];
+            rank = new int[n]; // zeros
+            for (int i = 0; i < n; ++i)
+                parent[i] = i;
+        }
+        OVERRIDE public int find(int i)
+        {
+            if (parent[i] != parent[parent[i]])
+                parent[i] = find(parent[i]);
+            return parent[i];
+        }
+        OVERRIDE public void merge(int i, int j)
+        {
+            i = find(i);
+            j = find(j);
+            if (i == j)
+                return;
+            if (rank[i] > rank[j])
+                parent[j] = i;
+            else if (rank[i] < rank[j])
+                parent[i] = j;
+            else
+            {
+                // Pick i as the winner arbitrarily, and increment its rank.
+                rank[i]++;
+                parent[j] = i;
+            }
+        }
+    } // MergeFind
+
+    public static class MergeFindWithUndoBrainDead extends MergeFind implements MergeFindWithUndoInterface
+    {
+        private ArrayList parentStack;
+        private ArrayList rankStack;
+        public MergeFindWithUndoBrainDead(int n)
+        {
+            super(n);
+            parentStack = new ArrayList();
+            rankStack = new ArrayList();
+        }
+        OVERRIDE public void pushState()
+        {
+            parentStack.add(parent.clone());
+            rankStack.add(rank.clone());
+        }
+        OVERRIDE public void popState()
+        {
+            parent = (int[])parentStack.get(parentStack.size()-1);
+            parentStack.remove(parentStack.size()-1);
+            rank = (int[])rankStack.get(rankStack.size()-1);
+            rankStack.remove(rankStack.size()-1);
+        }
+    } // MergeFindWithUndoBrainDead
+
+    public static class MergeFindWithUndoSmart extends MergeFind implements MergeFindWithUndoInterface
+    {
+        // item in 0..n*n-1 means parent[item/n] should be restored to parent[item%n].
+        // item in n*n..n*n+n-1 means rank[item-n*n] should be decremented.
+        // item = -1 means mark
+        private IntArrayList undoStack;
+
+        public MergeFindWithUndoSmart(int n)
+        {
+            super(n);
+            undoStack = new IntArrayList();
+        }
+        OVERRIDE public void pushState()
+        {
+            undoStack.add(-1); // marker
+        }
+        OVERRIDE public void popState()
+        {
+            int n = parent.length;
+            while (true)
+            {
+                int item = undoStack.get(undoStack.size()-1);
+                undoStack.removeIndex(undoStack.size()-1);
+                assert_le_le(-1, item, n*n+n-1);
+                if (item == -1)
+                    break;
+                if (item >= n*n)
+                    --rank[item-n*n];
+                else
+                    parent[item/n] = item%n;
+            }
+        }
+        OVERRIDE public int find(int i)
+        {
+            if (parent[i] != parent[parent[i]])
+            {
+                int n = parent.length;
+                undoStack.add(i*n+parent[i]);
+                parent[i] = find(parent[i]);
+            }
+            return parent[i];
+        }
+        OVERRIDE public void merge(int i, int j)
+        {
+            i = find(i);
+            j = find(j);
+            if (i == j)
+                return;
+            int n = parent.length;
+            if (rank[i] > rank[j])
+            {
+                undoStack.add(j*n+parent[j]);
+                parent[j] = i;
+            }
+            else if (rank[i] < rank[j])
+            {
+                undoStack.add(i*n+parent[i]);
+                parent[i] = j;
+            }
+            else
+            {
+                // Pick i as the winner arbitrarily, and increment its rank.
+                undoStack.add(n*n+i);
+                rank[i]++;
+                undoStack.add(j*n+parent[j]);
+                parent[j] = i;
+            }
+        }
+    } // MergeFindWithUndoSmart
+
+    public static void main(String args[])
+    {
+        {
+            System.out.println("Testing plain");
+            int n = 10;
+            MergeFindInterface mf = new MergeFind(n);
+            mf.merge(1,4);
+            mf.merge(2,5);
+            mf.merge(5,1);
+            for (int i = 0; i < n; ++i)
+            {
+                System.out.println("    "+i+" -> "+mf.find(i));
+                if (i==1 || i==2 || i==4 || i==5)
+                    assert_eq(mf.find(i), mf.find(1));
+                else
+                    assert_eq(mf.find(i), i);
+            }
+            System.out.println();
+        }
+
+        {
+            System.out.println("Testing MergeFindWithUndo");
+            int n = 10;
+            MergeFindWithUndoInterface mfs[] = {
+                new MergeFindWithUndoBrainDead(n),
+                new MergeFindWithUndoSmart(n),
+            };
+
+            FORI (imf, 2) {
+                MergeFindWithUndoInterface mf = mfs[imf];
+                System.out.println("  Testing "+mf.getClass());
+
+                mf.merge(1,4);
+                mf.pushState();
+                mf.merge(2,5);
+                mf.merge(5,1);
+                for (int i = 0; i < n; ++i)
+                {
+                    System.out.println("    "+i+" -> "+mf.find(i));
+                    if (i==1 || i==2 || i==4 || i==5)
+                        assert_eq(mf.find(i), mf.find(1));
+                    else
+                        assert_eq(mf.find(i), i);
+                }
+                System.out.println();
+                mf.popState();
+                for (int i = 0; i < n; ++i)
+                {
+                    System.out.println("    "+i+" -> "+mf.find(i));
+                    if (i==1 || i==4)
+                        assert_eq(mf.find(i), mf.find(1));
+                    else
+                        assert_eq(mf.find(i), i);
+                }
+                System.out.println();
+            }
+        }
+
+        {
+            System.out.println("Testing MergeFindWithUndoBrainDead");
+            int n = 10;
+            MergeFindWithUndoInterface mf = new MergeFindWithUndoBrainDead(n);
+            mf.merge(1,4);
+            mf.pushState();
+            mf.merge(2,5);
+            mf.merge(5,1);
+            for (int i = 0; i < n; ++i)
+            {
+                System.out.println("    "+i+" -> "+mf.find(i));
+                if (i==1 || i==2 || i==4 || i==5)
+                    assert_eq(mf.find(i), mf.find(1));
+                else
+                    assert_eq(mf.find(i), i);
+            }
+            System.out.println();
+            mf.popState();
+            for (int i = 0; i < n; ++i)
+            {
+                System.out.println("    "+i+" -> "+mf.find(i));
+                if (i==1 || i==4)
+                    assert_eq(mf.find(i), mf.find(1));
+                else
+                    assert_eq(mf.find(i), i);
+            }
+            System.out.println();
+        }
+        {
+            System.out.println("Testing MergeFindWithUndoSmart");
+            int n = 10;
+            MergeFindWithUndoInterface mf = new MergeFindWithUndoSmart(n);
+            mf.merge(1,4);
+            mf.pushState();
+            mf.merge(2,5);
+            mf.merge(5,1);
+            for (int i = 0; i < n; ++i)
+            {
+                System.out.println("    "+i+" -> "+mf.find(i));
+                if (i==1 || i==2 || i==4 || i==5)
+                    assert_eq(mf.find(i), mf.find(1));
+                else
+                    assert_eq(mf.find(i), i);
+            }
+            System.out.println();
+            mf.popState();
+            for (int i = 0; i < n; ++i)
+            {
+                System.out.println("    "+i+" -> "+mf.find(i));
+                if (i==1 || i==4)
+                    assert_eq(mf.find(i), mf.find(1));
+                else
+                    assert_eq(mf.find(i), i);
+            }
+            System.out.println();
+        }
+    } // main
+} // class MergeFindNewStuff

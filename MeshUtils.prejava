@@ -1227,8 +1227,8 @@ final public class MeshUtils
             private int nFaces;
             private int e2f[][];
             enumerateAllSpanningTreesDumbCallback callback;
-            ArrayList vertMergeFindStack;
-            ArrayList faceMergeFindStack;
+            MergeFindNewStuff.MergeFindWithUndoInterface vertMergeFind;
+            MergeFindNewStuff.MergeFindWithUndoInterface faceMergeFind;
             IntArrayList edgeIndices;
             int verboseLevel;
 
@@ -1236,8 +1236,8 @@ final public class MeshUtils
                 int nVerts, int e2v[][],
                 int nFaces, int e2f[][],
                 enumerateAllSpanningTreesDumbCallback callback,
-                ArrayList vertMergeFindStack,
-                ArrayList faceMergeFindStack,
+                MergeFindNewStuff.MergeFindWithUndoInterface vertMergeFind,
+                MergeFindNewStuff.MergeFindWithUndoInterface faceMergeFind,
                 IntArrayList edgeIndices,
                 int verboseLevel)
             {
@@ -1247,8 +1247,8 @@ final public class MeshUtils
                 this.nFaces = nFaces;
                 this.e2f = e2f;
                 this.callback = callback;
-                this.vertMergeFindStack = vertMergeFindStack;
-                this.faceMergeFindStack = faceMergeFindStack;
+                this.vertMergeFind = vertMergeFind;
+                this.faceMergeFind = faceMergeFind;
                 this.edgeIndices = edgeIndices;
                 this.verboseLevel = verboseLevel;
             }
@@ -1275,8 +1275,6 @@ final public class MeshUtils
                     assert_eq(edgeIndices.size(), nVerts-1);
                     return callback.run(edgeIndices);
                 }
-                MergeFind vertMergeFind = (MergeFind)vertMergeFindStack.get(vertMergeFindStack.size()-1);
-                MergeFind faceMergeFind = (MergeFind)faceMergeFindStack.get(faceMergeFindStack.size()-1);
                 int iVert = e2v[iEdge][0];
                 int jVert = e2v[iEdge][1];
                 int iFace = e2f[iEdge][0];
@@ -1285,30 +1283,28 @@ final public class MeshUtils
                 if (vertMergeFind.find(iVert) != vertMergeFind.find(jVert))
                 {
                     // It's cuttable.
-                    MergeFind newVertMergeFind = new MergeFind(vertMergeFind);
-                    newVertMergeFind.merge(iVert, jVert);
-                    vertMergeFindStack.add(newVertMergeFind); // push
+                    vertMergeFind.pushState();
+                    vertMergeFind.merge(iVert, jVert);
                     edgeIndices.add(iEdge); // push
                     if (!recurse(iEdge+2)) // we only look at one direction of each edge
                     {
                         if (verboseLevel >= 2) OUT(repeat("    ",iEdge/2)+"        out recurse(iEdge="+iEdge+"/"+nEdges+"), returning false");
-                        return false;
+                        return false; // note, we didn't pop anything! so unsuitable for further computation
                     }
                     edgeIndices.removeIndex(edgeIndices.size()-1); // pop
-                    vertMergeFindStack.remove(vertMergeFindStack.size()-1); // pop
+                    vertMergeFind.popState();
                 }
                 if (faceMergeFind.find(iFace) != faceMergeFind.find(jFace))
                 {
                     // It's foldable.
-                    MergeFind newFaceMergeFind = new MergeFind(faceMergeFind);
-                    newFaceMergeFind.merge(iFace, jFace);
-                    faceMergeFindStack.add(newFaceMergeFind); // push
+                    faceMergeFind.pushState();
+                    faceMergeFind.merge(iFace, jFace);
                     if (!recurse(iEdge+2)) // we only look at one direction of each edge
                     {
                         if (verboseLevel >= 2) OUT(repeat("    ",iEdge/2)+"        out recurse(iEdge="+iEdge+"/"+nEdges+"), returning false");
-                        return false;
+                        return false; // note, we didn't pop anything! so unsuitable for further computation
                     }
-                    faceMergeFindStack.remove(faceMergeFindStack.size()-1); // pop
+                    faceMergeFind.popState();
                 }
                 if (verboseLevel >= 2) OUT(repeat("    ",iEdge/2)+"        out recurse(iEdge="+iEdge+"/"+nEdges+"), returning true");
                 return true;
@@ -1343,16 +1339,16 @@ final public class MeshUtils
             return true;
         }
 
+        MergeFindNewStuff.MergeFindWithUndoInterface vertMergeFind = new MergeFindNewStuff.MergeFindWithUndoSmart(nVerts);
+        MergeFindNewStuff.MergeFindWithUndoInterface faceMergeFind = new MergeFindNewStuff.MergeFindWithUndoSmart(nFaces);
 
-        ArrayList/*<MergeFind>*/ vertMergeFindStack = new ArrayList(); vertMergeFindStack.add(new MergeFind(nVerts));
-        ArrayList/*<MergeFind>*/ faceMergeFindStack = new ArrayList(); faceMergeFindStack.add(new MergeFind(nFaces));
         IntArrayList edgeIndices = new IntArrayList();
         enumerateAllSpanningTreesDumbHelper helper = new enumerateAllSpanningTreesDumbHelper(
             nVerts, e2v,
             nFaces, e2f,
             callback,
-            vertMergeFindStack,
-            faceMergeFindStack,
+            vertMergeFind,
+            faceMergeFind,
             edgeIndices,
             verboseLevel);
         boolean finished = helper.recurse(0);
