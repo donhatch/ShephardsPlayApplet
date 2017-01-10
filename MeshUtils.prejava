@@ -1286,25 +1286,27 @@ final public class MeshUtils
                     vertMergeFind.pushState();
                     vertMergeFind.merge(iVert, jVert);
                     edgeIndices.add(iEdge); // push
-                    if (!recurse(iEdge+2)) // we only look at one direction of each edge
-                    {
-                        if (verboseLevel >= 2) OUT(repeat("    ",iEdge/2)+"        out recurse(iEdge="+iEdge+"/"+nEdges+"), returning false");
-                        return false; // note, we didn't pop anything! so unsuitable for further computation
-                    }
+                    boolean shouldContinue = recurse(iEdge+2); // we only look at one direction of each edge
                     edgeIndices.removeIndex(edgeIndices.size()-1); // pop
                     vertMergeFind.popState();
+                    if (!shouldContinue)
+                    {
+                        if (verboseLevel >= 2) OUT(repeat("    ",iEdge/2)+"        out recurse(iEdge="+iEdge+"/"+nEdges+"), returning false");
+                        return false;
+                    }
                 }
                 if (faceMergeFind.find(iFace) != faceMergeFind.find(jFace))
                 {
                     // It's foldable.
                     faceMergeFind.pushState();
                     faceMergeFind.merge(iFace, jFace);
-                    if (!recurse(iEdge+2)) // we only look at one direction of each edge
+                    boolean shouldContinue = recurse(iEdge+2); // we only look at one direction of each edge
+                    faceMergeFind.popState();
+                    if (!shouldContinue)
                     {
                         if (verboseLevel >= 2) OUT(repeat("    ",iEdge/2)+"        out recurse(iEdge="+iEdge+"/"+nEdges+"), returning false");
-                        return false; // note, we didn't pop anything! so unsuitable for further computation
+                        return false;
                     }
-                    faceMergeFind.popState();
                 }
                 if (verboseLevel >= 2) OUT(repeat("    ",iEdge/2)+"        out recurse(iEdge="+iEdge+"/"+nEdges+"), returning true");
                 return true;
@@ -1339,8 +1341,8 @@ final public class MeshUtils
             return true;
         }
 
-        MergeFindNewStuff.MergeFindWithUndoInterface vertMergeFind = new MergeFindNewStuff.MergeFindWithUndoSmart(nVerts);
-        MergeFindNewStuff.MergeFindWithUndoInterface faceMergeFind = new MergeFindNewStuff.MergeFindWithUndoSmart(nFaces);
+        MergeFindNewStuff.MergeFindWithUndoSmart vertMergeFind = new MergeFindNewStuff.MergeFindWithUndoSmart(nVerts);
+        MergeFindNewStuff.MergeFindWithUndoSmart faceMergeFind = new MergeFindNewStuff.MergeFindWithUndoSmart(nFaces);
 
         IntArrayList edgeIndices = new IntArrayList();
         enumerateAllSpanningTreesDumbHelper helper = new enumerateAllSpanningTreesDumbHelper(
@@ -1353,6 +1355,8 @@ final public class MeshUtils
             verboseLevel);
         boolean finished = helper.recurse(0);
         long t1millis = System.currentTimeMillis();
+        if (verboseLevel >= 1) OUT("      vertMergeFind.maxNItemsPoppedEver = "+vertMergeFind.maxNItemsPoppedEver);
+        if (verboseLevel >= 1) OUT("      faceMergeFind.maxNItemsPoppedEver = "+faceMergeFind.maxNItemsPoppedEver);
         if (verboseLevel >= 1) OUT("    out enumerateAllSpanningTreesDumb, returning finished="+finished+" in "+(t1millis-t0millis)/1000.+" secs");
         return finished;
     } // enumerateAllSpanningTreesDumb
