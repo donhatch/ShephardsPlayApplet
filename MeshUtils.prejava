@@ -402,49 +402,49 @@ final public class MeshUtils
     // Oh wait!  Check out http://www.wikiwand.com/en/Steinitz's_theorem .
     // It says any convex polyhedron can be transformed to a tetrahedron
     // by delta-Y and Y-deltas?
-    public static void messAroundWithDeltaWye(Mesh originalMesh)
+    public static void messAroundWithDeltaWye(Mesh mesh)
     {
         int verboseLevel = 2;
         if (verboseLevel >= 1) OUT("    in messAroundWithDeltaWye");
-        if (verboseLevel >= 3) OUT("      originalMesh = "+originalMesh);
-        if (false) originalMesh.sanityCheckTopology(); // XXX woops! dual mesh flunks because of the null endpoints!
-        Mesh mesh = new Mesh(originalMesh);
         if (verboseLevel >= 3) OUT("      mesh = "+mesh);
         if (false) mesh.sanityCheckTopology(); // XXX woops! dual mesh flunks because of the null endpoints!
+        Mesh scratchMesh = new Mesh(mesh);
+        if (verboseLevel >= 3) OUT("      scratchMesh = "+scratchMesh);
+        if (false) scratchMesh.sanityCheckTopology(); // XXX woops! dual mesh flunks because of the null endpoints!
 
         // Hack-- get rid of that nonexistent vertex.
         // (CBB: should something like this be in Mesh?)
         {
-            int nEdges = mesh.edges.size();
+            int nEdges = scratchMesh.edges.size();
             boolean hasInfiniteVertex = false;
             FORI (iEdge, nEdges)
-                if (mesh.getEdge(iEdge).initialVertex() == null)
+                if (scratchMesh.getEdge(iEdge).initialVertex() == null)
                 {
                     hasInfiniteVertex = true;
                     break;
                 }
             if (hasInfiniteVertex)
             {
-                Mesh.Vertex vert = mesh.newVertex(0.,0.,0.,0.); // meaningless
+                Mesh.Vertex vert = scratchMesh.newVertex(0.,0.,0.,0.); // meaningless
                 FORI (iEdge, nEdges)
                 {
-                    Mesh.Edge edge = mesh.getEdge(iEdge);
+                    Mesh.Edge edge = scratchMesh.getEdge(iEdge);
                     if (edge.initialVertex() == null)
                         edge.setInitialVertex(vert);
                 }
-                if (verboseLevel >= 3) OUT("      after fixing: mesh = "+mesh);
+                if (verboseLevel >= 3) OUT("      after fixing: scratchMesh = "+scratchMesh);
             }
             FORI (iEdge, nEdges)
             {
-                assert_ne(mesh.getEdge(iEdge).initialVertex(), null);
-                assert_ne(mesh.getEdge(iEdge).next(), null);
+                assert_ne(scratchMesh.getEdge(iEdge).initialVertex(), null);
+                assert_ne(scratchMesh.getEdge(iEdge).next(), null);
             }
         }
-        mesh.sanityCheckTopology(); // finally it's sane
+        scratchMesh.sanityCheckTopology(); // finally it's sane
 
         while (true)
         {
-            if (verboseLevel >= 2) OUT("      top of loop: nVerts="+mesh.verts.size()+" nEdges="+mesh.edges.size());
+            if (verboseLevel >= 2) OUT("      top of loop: nVerts="+scratchMesh.verts.size()+" nEdges="+scratchMesh.edges.size());
             // Always go from simpler to more complicated,
             // so that we don't get confused, e.g. a pendant satisfies condition of a series
             // reduction.
@@ -454,10 +454,10 @@ final public class MeshUtils
                 if (verboseLevel >= 2) OUT("          checking for loops...");
                 Mesh.Edge loop = null;
                 {
-                    int nEdges = mesh.edges.size();
+                    int nEdges = scratchMesh.edges.size();
                     FORI (iEdge, nEdges)
                     {
-                        Mesh.Edge edge = mesh.getEdge(iEdge);
+                        Mesh.Edge edge = scratchMesh.getEdge(iEdge);
                         if (edge.initialVertex() == edge.finalVertex())
                         {
                             loop = edge;
@@ -468,7 +468,7 @@ final public class MeshUtils
                 if (loop != null)
                 {
                     if (verboseLevel >= 2) OUT("              found a loop! deleting it");
-                    mesh.deleteEdge(loop);
+                    scratchMesh.deleteEdge(loop);
                     continue;
                 }
             }
@@ -478,10 +478,10 @@ final public class MeshUtils
                 if (verboseLevel >= 2) OUT("          checking for pendants...");
                 Mesh.Edge pendant = null;
                 {
-                    int nEdges = mesh.edges.size();
+                    int nEdges = scratchMesh.edges.size();
                     FORI (iEdge, nEdges)
                     {
-                        Mesh.Edge edge = mesh.getEdge(iEdge);
+                        Mesh.Edge edge = scratchMesh.getEdge(iEdge);
                         Mesh.Edge nextEdge = edge.next();
                         assert_ne(nextEdge, edge); // since no loops
                         assert_eq(nextEdge==edge.opposite(),
@@ -500,9 +500,9 @@ final public class MeshUtils
                     // just deleting the vert would do it, but deleting the edge first
                     // is potentially more efficient
                     assert_eq(vert.arity, 1);
-                    mesh.deleteEdge(pendant);
+                    scratchMesh.deleteEdge(pendant);
                     assert_eq(vert.arity, 0);
-                    mesh.deleteVertex(vert, null, null);
+                    scratchMesh.deleteVertex(vert, null, null);
                     continue;
                 }
             }
@@ -511,10 +511,10 @@ final public class MeshUtils
                 if (verboseLevel >= 2) OUT("          checking for parallels...");
                 Mesh.Edge parallel = null;
                 {
-                    int nEdges = mesh.edges.size();
+                    int nEdges = scratchMesh.edges.size();
                     FORI (iEdge, nEdges)
                     {
-                        Mesh.Edge edge = mesh.getEdge(iEdge);
+                        Mesh.Edge edge = scratchMesh.getEdge(iEdge);
                         Mesh.Edge nextEdge = edge.next();
                         assert_ne(nextEdge, edge); // since no loops
                         assert_ne(nextEdge, edge.opposite()); // since no pendants
@@ -528,7 +528,7 @@ final public class MeshUtils
                 if (parallel != null)
                 {
                     if (verboseLevel >= 2) OUT("              found a parallel! "+parallel+" deleting it");
-                    mesh.deleteEdge(parallel);
+                    scratchMesh.deleteEdge(parallel);
                     continue;
                 }
             }
@@ -537,10 +537,10 @@ final public class MeshUtils
                 if (verboseLevel >= 2) OUT("          checking for serieses...");
                 Mesh.Edge seriesStart = null;
                 {
-                    int nEdges = mesh.edges.size();
+                    int nEdges = scratchMesh.edges.size();
                     FORI (iEdge, nEdges)
                     {
-                        Mesh.Edge edge = mesh.getEdge(iEdge);
+                        Mesh.Edge edge = scratchMesh.getEdge(iEdge);
                         Mesh.Edge nextEdge = edge.next();
                         assert_ne(nextEdge, edge); // since no loops
                         assert_ne(nextEdge, edge.opposite()); // since no pendants
@@ -558,30 +558,30 @@ final public class MeshUtils
                 {
                     if (verboseLevel >= 2) OUT("              found a series! deleting it");
 
-                    if (verboseLevel >= 3) OUT("                  before: "+mesh);
+                    if (verboseLevel >= 3) OUT("                  before: "+scratchMesh);
 
                     // create a replacement edge,
                     // then delete the two originals and the vertex.
-                    mesh.sanityCheckTopology();
-                    Mesh.Edge shortCut = mesh.newEdge(true);
+                    scratchMesh.sanityCheckTopology();
+                    Mesh.Edge shortCut = scratchMesh.newEdge(true);
                     // can't call sanityCheckTopology again until after connected both endpoints
                     // see picture at insertEdgeBefore
                     assert_eq(shortCut.prev(), shortCut.opposite());
-                    mesh.insertEdgeBefore(shortCut, seriesStart);
+                    scratchMesh.insertEdgeBefore(shortCut, seriesStart);
                     assert_ne(shortCut.prev(), shortCut.opposite());
                     assert_eq(shortCut.opposite().prev(), shortCut);
-                    mesh.insertEdgeBefore(shortCut.opposite(), seriesStart.next().next());
-                    mesh.sanityCheckTopology();
+                    scratchMesh.insertEdgeBefore(shortCut.opposite(), seriesStart.next().next());
+                    scratchMesh.sanityCheckTopology();
                     Mesh.Vertex vert = seriesStart.finalVertex();
                     assert_eq(vert.arity, 2);
-                    mesh.deleteEdge(seriesStart.next());
+                    scratchMesh.deleteEdge(seriesStart.next());
                     assert_eq(vert.arity, 1);
-                    mesh.deleteEdge(seriesStart);
+                    scratchMesh.deleteEdge(seriesStart);
                     assert_eq(vert.arity, 0);
-                    mesh.deleteVertex(vert, null, null);
-                    mesh.sanityCheckTopology();
+                    scratchMesh.deleteVertex(vert, null, null);
+                    scratchMesh.sanityCheckTopology();
 
-                    if (verboseLevel >= 3) OUT("                  after: "+mesh);
+                    if (verboseLevel >= 3) OUT("                  after: "+scratchMesh);
                     continue;
                 }
             }
@@ -590,10 +590,10 @@ final public class MeshUtils
                 if (verboseLevel >= 2) OUT("          checking for wyes...");
                 Mesh.Edge towardsWye = null;
                 {
-                    int nEdges = mesh.edges.size();
+                    int nEdges = scratchMesh.edges.size();
                     FORI (iEdge, nEdges)
                     {
-                        Mesh.Edge edge = mesh.getEdge(iEdge);
+                        Mesh.Edge edge = scratchMesh.getEdge(iEdge);
                         assert_eq(edge.next().opposite().next().opposite().next().opposite()==edge,
                                   edge.finalVertex().arity == 3);
                         if (edge.finalVertex().arity == 3)
@@ -610,27 +610,27 @@ final public class MeshUtils
                     Mesh.Edge B = A.next().opposite();
                     Mesh.Edge C = B.next().opposite();
                     assert_eq(A, C.next().opposite());
-                    Mesh.Edge AB = mesh.newEdge(true);
-                    Mesh.Edge BC = mesh.newEdge(true);
-                    Mesh.Edge CA = mesh.newEdge(true);
-                    mesh.insertEdgeBefore(AB, A);
-                    mesh.insertEdgeBefore(BC, B);
-                    mesh.insertEdgeBefore(CA, C);
-                    mesh.insertEdgeBefore(AB.opposite(), B.opposite().next());
-                    mesh.insertEdgeBefore(BC.opposite(), C.opposite().next());
-                    mesh.insertEdgeBefore(CA.opposite(), A.opposite().next());
+                    Mesh.Edge AB = scratchMesh.newEdge(true);
+                    Mesh.Edge BC = scratchMesh.newEdge(true);
+                    Mesh.Edge CA = scratchMesh.newEdge(true);
+                    scratchMesh.insertEdgeBefore(AB, A);
+                    scratchMesh.insertEdgeBefore(BC, B);
+                    scratchMesh.insertEdgeBefore(CA, C);
+                    scratchMesh.insertEdgeBefore(AB.opposite(), B.opposite().next());
+                    scratchMesh.insertEdgeBefore(BC.opposite(), C.opposite().next());
+                    scratchMesh.insertEdgeBefore(CA.opposite(), A.opposite().next());
 
-                    mesh.sanityCheckTopology();
+                    scratchMesh.sanityCheckTopology();
                     Mesh.Vertex vert = A.finalVertex();
                     assert_eq(vert.arity, 3);
-                    mesh.deleteEdge(A);
+                    scratchMesh.deleteEdge(A);
                     assert_eq(vert.arity, 2);
-                    mesh.deleteEdge(B);
+                    scratchMesh.deleteEdge(B);
                     assert_eq(vert.arity, 1);
-                    mesh.deleteEdge(C);
+                    scratchMesh.deleteEdge(C);
                     assert_eq(vert.arity, 0);
-                    mesh.deleteVertex(vert, null, null);
-                    mesh.sanityCheckTopology();
+                    scratchMesh.deleteVertex(vert, null, null);
+                    scratchMesh.sanityCheckTopology();
 
                     continue;
                 }
@@ -1377,7 +1377,7 @@ final public class MeshUtils
     } // enumerateAllSpanningTreesDumb
 
     public static int[] selectSpanningTreeOrNullDumb(
-        Mesh originalMesh, Mesh originalDualMesh, // generally reversed from the calling app's notion.   XXX why am I calling these "original"?
+        Mesh mesh, Mesh dualMesh, // generally reversed from the calling app's notion.
         BigInt iNet)
     {
         if (iNet.lt(0))
@@ -1385,7 +1385,7 @@ final public class MeshUtils
 
         final int cutsPtr[][] = {null};
         final BigInt count = new BigInt(0);
-        boolean finished = enumerateAllSpanningTreesDumb(originalMesh, originalDualMesh,
+        boolean finished = enumerateAllSpanningTreesDumb(mesh, dualMesh,
             new MeshUtils.enumerateAllSpanningTreesDumbCallback() {
                 public boolean run(IntArrayList cuts)
                 {
