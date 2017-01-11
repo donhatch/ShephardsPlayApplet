@@ -1341,8 +1341,20 @@ final public class MeshUtils
             return true;
         }
 
-        MergeFindNewStuff.MergeFindWithUndoSmart vertMergeFind = new MergeFindNewStuff.MergeFindWithUndoSmart(nVerts);
-        MergeFindNewStuff.MergeFindWithUndoSmart faceMergeFind = new MergeFindNewStuff.MergeFindWithUndoSmart(nFaces);
+        MergeFindNewStuff.MergeFindWithUndoInterface vertMergeFind;
+        MergeFindNewStuff.MergeFindWithUndoInterface faceMergeFind;
+        if (true)
+        {
+            vertMergeFind = new MergeFindNewStuff.MergeFindWithUndoSmart(nVerts);
+            faceMergeFind = new MergeFindNewStuff.MergeFindWithUndoSmart(nFaces);
+        }
+        else
+        {
+            // takes more than three times as long (no surprise)
+            vertMergeFind = new MergeFindNewStuff.MergeFindWithUndoBrainDead(nVerts);
+            faceMergeFind = new MergeFindNewStuff.MergeFindWithUndoBrainDead(nFaces);
+        }
+
 
         IntArrayList edgeIndices = new IntArrayList();
         enumerateAllSpanningTreesDumbHelper helper = new enumerateAllSpanningTreesDumbHelper(
@@ -1355,11 +1367,42 @@ final public class MeshUtils
             verboseLevel);
         boolean finished = helper.recurse(0);
         long t1millis = System.currentTimeMillis();
-        if (verboseLevel >= 1) OUT("      vertMergeFind.maxNItemsPoppedEver = "+vertMergeFind.maxNItemsPoppedEver);
-        if (verboseLevel >= 1) OUT("      faceMergeFind.maxNItemsPoppedEver = "+faceMergeFind.maxNItemsPoppedEver);
+        if (vertMergeFind.getClass() == MergeFindNewStuff.MergeFindWithUndoSmart.class)
+        {
+            if (verboseLevel >= 1) OUT("      vertMergeFind.maxNItemsPoppedEver = "+((MergeFindNewStuff.MergeFindWithUndoSmart)vertMergeFind).maxNItemsPoppedEver);
+            if (verboseLevel >= 1) OUT("      faceMergeFind.maxNItemsPoppedEver = "+((MergeFindNewStuff.MergeFindWithUndoSmart)faceMergeFind).maxNItemsPoppedEver);
+        }
         if (verboseLevel >= 1) OUT("    out enumerateAllSpanningTreesDumb, returning finished="+finished+" in "+(t1millis-t0millis)/1000.+" secs");
         return finished;
     } // enumerateAllSpanningTreesDumb
+
+    public static int[] selectSpanningTreeOrNullDumb(
+        Mesh originalMesh, Mesh originalDualMesh, // generally reversed from the calling app's notion.   XXX why am I calling these "original"?
+        BigInt iNet)
+    {
+        if (iNet.lt(0))
+            return null;
+
+        final int cutsPtr[][] = {null};
+        final BigInt count = new BigInt(0);
+        boolean finished = enumerateAllSpanningTreesDumb(originalMesh, originalDualMesh,
+            new MeshUtils.enumerateAllSpanningTreesDumbCallback() {
+                public boolean run(IntArrayList cuts)
+                {
+                    if (count.eq(iNet)) {
+                        cutsPtr[0] = cuts.toArray();
+                        return false;
+                    }
+                    count.plusEquals(1);
+                    return true;
+                }
+            });
+        PRINT(finished);
+        PRINT(count);
+        int cuts[] = cutsPtr[0];
+        return cuts;
+    } // selectSpanningTreeOrNullDumb
+
 
         private static boolean isConnected(int v2e[][], int e2v[][])
         {
@@ -1678,33 +1721,6 @@ final public class MeshUtils
         return answer;
     } // selectSpanningTreeOrNull
 
-
-    public static int[] selectSpanningTreeOrNullDumb(
-        Mesh originalMesh, Mesh originalDualMesh, // generally reversed from the calling app's notion.   XXX why am I calling these "original"?
-        BigInt iNet)
-    {
-        if (iNet.lt(0))
-            return null;
-
-        final int cutsPtr[][] = {null};
-        final BigInt count = new BigInt(0);
-        boolean finished = MeshUtils.enumerateAllSpanningTreesDumb(originalMesh, originalDualMesh,
-            new MeshUtils.enumerateAllSpanningTreesDumbCallback() {
-                public boolean run(IntArrayList cuts)
-                {
-                    if (count.eq(iNet)) {
-                        cutsPtr[0] = cuts.toArray();
-                        return false;
-                    }
-                    count.plusEquals(1);
-                    return true;
-                }
-            });
-        PRINT(finished);
-        PRINT(count);
-        int cuts[] = cutsPtr[0];
-        return cuts;
-    } // selectSpanningTreeOrNullDumb
 
     // I seem to have set the bar too high on using VecMath for this... make private utility function instead
     private static double[] v3xm44(double v[/*3*/], double m[/*4*/][/*4*/])
