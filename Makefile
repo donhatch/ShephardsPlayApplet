@@ -121,8 +121,11 @@ ${JARFILE}.is_renumbered: $(JAR_DEPENDS_ON)
 .PHONY: renumber
 renumber: $(JARFILE).is_renumbered
 
-# CBB: make a way to temporarily disable this on command line, for when developing Makefile or donhatchsw and there's only 1 affected source file here
-#${CLASSES}: macros.h Makefile donhatchsw.jar
+# When tweaking Makefile or donhatchsw, and only 1 or a small number of source files are affected,
+# it's sometimes helpful to run `make deps=no`.
+ifneq ($(deps),no)
+  ${CLASSES}: macros.h Makefile donhatchsw.jar
+endif
 
 SENDFILES = index.php $(JARFILE)
 .PHONY: send
