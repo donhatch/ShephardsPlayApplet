@@ -1,0 +1,385 @@
+#include "macros.h"
+
+import com.donhatchsw.util.Arrays;
+import com.donhatchsw.util.ConvexHull;
+import com.donhatchsw.util.IndexBinaryHeapKeyed;
+import com.donhatchsw.util.VecMath;
+
+// Helper class for incrementally making convex noise.
+public class ConvexNoiseMaker
+{
+    // TODO: move this into GeomUtils
+    private static void random2insideConvexPolygon(double answer[], double verts[][], java.util.Random rng)
+    {
+        int nVerts = verts.length;
+        int nTris = nVerts - 2;
+        double areaPartialSums[] = new double[nTris];
+        {
+            double partialSum = 0.;
+            FORI (iTri, nTris)
+            {
+                double triArea = GeomUtils.twiceTriangleArea(verts[nVerts-1],
+                                                             verts[iTri],
+                                                             verts[iTri+1]);
+                assert_ge(triArea, 0.);
+                partialSum += triArea;
+                areaPartialSums[iTri] = partialSum;
+            }
+        }
+        int whichTri = -1;
+        {
+            double t = rng.nextDouble() * areaPartialSums[nTris-1];
+            FORI (iTri, nTris)
+            {
+                if (t <= areaPartialSums[iTri])
+                {
+                    whichTri = iTri;
+                    break;
+                }
+            }
+        }
+        double u = rng.nextDouble();
+        double v = rng.nextDouble();
+        if (u+v > 1.)
+        {
+            u = 1. - u;
+            v = 1. - v;
+        }
+        VecMath.bary(answer,
+                     verts[nVerts-1],
+                     verts[whichTri], u,
+                     verts[whichTri+1], v);
+    } // random2insideConvexPolygon
+
+    private int nInitialVerts;
+    private double initialVerts3d[][];
+    private double verts3d[][];
+    private double maxHeight;
+    Mesh scratchMesh;
+    IndexBinaryHeapKeyed horizon; // scratch for loop
+    public ConvexNoiseMaker(
+        int nInitialVerts, // 3 or 4
+        int maxVerts)
+    {
+        assert_le_le(3, nInitialVerts, 4);
+        assert_le(nInitialVerts, maxVerts);
+        int initialFaces[][];
+        if (nInitialVerts == 4)
+        {
+          // square
+          double r = .25;
+          this.initialVerts3d = new double[][]{
+            {-r,-r,0},
+            {r,-r,0},
+            {r,r,0},
+            {-r,r,0},
+          };
+          initialFaces = new int[][]{{0,1,2},{0,2,3},{0,3,1},{3,2,1}};
+          this.maxHeight = r / 2.; // if it's too big, dual will be too big. if it's too small, primal will look too flat to be interesting
+        }
+        else if (nInitialVerts == 3)
+        {
+          // triangle, tuned so 3 outer faces are cube faces (but then fudged so they're not, oh well)
+          this.initialVerts3d = new double[][]{
+            { Math.sqrt(1.5), Math.sqrt(.5)},
+            {-Math.sqrt(1.5), Math.sqrt(.5)},
+            {0,-Math.sqrt(2.)},
+          };
+          double scale = 1./2.;
+          VecMath.mxs(initialVerts3d, initialVerts3d, scale);
+          initialFaces = new int[][]{{0,1,2},{2,1,0}};
+          this.maxHeight = 1./8; // fudged til dual tends to be in window mostly
+        }
+        else
+        {
+            assert(false); // can't happen, we checked at the beginning
+        }
+        // WEIRD: there's confusion about XYH vs. XYZ.
+        // initialVerts3d are interpreted as XYH when passed to Mesh ctor,
+        // but then they, and all of verts3d, are interpreted as XYZ.
+        // I think the effect is that the initial verts end up downward a bit from where they should be.
+        // I think this is a bug, but it's pretty much benign.
+        verts3d = new double[maxVerts][3];
+        VecMath.copymat(verts3d, initialVerts3d);
+        this.nInitialVerts = nInitialVerts;
+        this.scratchMesh = new Mesh(initialVerts3d, initialFaces);
+        int maxPossibleDirectedEdges = 3*verts3d.length * 2; // I think that's an upper bound... *2 for directed edges
+        this.horizon = new IndexBinaryHeapKeyed(maxPossibleDirectedEdges); // scratch for loop. size is max size we'll encounter.
+    } // ConvexNoiseMaker ctor
+    public void pushRandomVert(java.util.Random rng, int verboseLevel)
+    {
+        int iVert = scratchMesh.verts.size();
+        if (verboseLevel >= 3) OUT("          choosing vert "+iVert+"/"+verts3d.length);
+        assert_lt(iVert, verts3d.length);
+
+        if (false) // might want to do it with direct convex hull, not sure.  seems lots simpler than using mesh and delaunayize.
+        {
+            double tol = 0.; // don't know of any failures, see other use of convexHull
+            int hullStuff[/*3*/][/*nFacets*/][/*d=3*/] = ConvexHull.convexHull((double[][])Arrays.subarray(verts3d, 0, iVert), tol);
+            int hull[/*nFacets*/][/*d=3*/] = hullStuff[0];
+
+            PRINTMAT(MeshUtils.getMeshFaces(scratchMesh, true));
+            PRINTMAT(hull);
+        }
+
+        while (true)
+        {
+            if (iVert == initialVerts3d.length)
+            {
+                VecMath.zerovec(2, verts3d[iVert]);
+            }
+            else
+                random2insideConvexPolygon(verts3d[iVert], // put it here
+                                           initialVerts3d,
+                                           rng);
+
+            // Figure out what height to put it at.
+
+            double zMin = -1.;
+            double zMax = maxHeight;
+
+            // First, locate the triangle the point is in.
+            // zMin will be its face plane z,
+            // and zMax will be the min of all the other face plane z's.
+            Mesh.Edge someEdgeOnFaceVertIsIn = MeshUtils.findSomeEdgeOnFaceVertIsIn(scratchMesh, verts3d[iVert][0], verts3d[iVert][1]);
+            if (true)
+            {
+                // Non-brute-force way.
+
+                {
+                    int i = someEdgeOnFaceVertIsIn.initialVertex().myIndex();
+                    int j = someEdgeOnFaceVertIsIn.next().initialVertex().myIndex();
+                    int k = someEdgeOnFaceVertIsIn.prev().initialVertex().myIndex();
+                    double zIntercept = GeomUtils.computeZIntercept(verts3d[i],
+                                                                    verts3d[j],
+                                                                    verts3d[k],
+                                                                    verts3d[iVert]);
+                    zMin = zIntercept;
+                    // CBB: original brute-force code discarded this vertex if something was within 1e-9 of an existing edge.  should do that.
+                }
+
+                // Now rise z, which walks the horizon outwards,
+                // as far as we can without losing another vertex.
+                // The horizon is represented by a heap (priority queue),
+                // which is initially the triangle.
+                // Process the queue, taking away an edge and adding the other two of the increment triangle instead.
+                // Stop when we some edge we add to the horizon is the opposite of some other edge on the horizon.
+                assert(horizon.isEmpty());
+                {
+                    Mesh.Edge initialHorizonEdge = someEdgeOnFaceVertIsIn;
+                    FORI (iEdgeThisTri, 3)
+                    {
+                        Mesh.Edge opp = initialHorizonEdge.opposite();
+                        int i = opp.initialVertex().myIndex();
+                        int j = opp.finalVertex().myIndex();
+                        int k = opp.prev().initialVertex().myIndex();
+                        if (!(i<=2 && j<=2 && k<=2)) // if not the original triangle inside out
+                        {
+                            double zIntercept = GeomUtils.computeZIntercept(verts3d[i],
+                                                                            verts3d[j],
+                                                                            verts3d[k],
+                                                                            verts3d[iVert]);
+                            if (verboseLevel >= 3) OUT("              adding initial horizon edge "+initialHorizonEdge+" at zIntercept="+zIntercept);
+                            horizon.add(initialHorizonEdge.myIndex(), zIntercept);
+                        }
+                        initialHorizonEdge = initialHorizonEdge.next();
+                    }
+                    assert_eq(initialHorizonEdge, someEdgeOnFaceVertIsIn);
+                }
+
+                while (!horizon.isEmpty())
+                {
+                    if (verboseLevel >= 3) OUT("          top of horizon loop");
+                    // extractMin, but get the value first
+                    int iOldHorizonEdge = horizon.min();
+                    double zInterceptOld = horizon.getValue(iOldHorizonEdge);
+                    assert(!Double.isNaN(zInterceptOld));
+                    horizon.remove(iOldHorizonEdge);
+                    zMax = MIN(zMax, zInterceptOld);
+
+                    Mesh.Edge oldHorizonEdge = scratchMesh.getEdge(iOldHorizonEdge);
+                    Mesh.Edge newHorizonEdge = oldHorizonEdge.opposite().next();
+                    if (verboseLevel >= 3) OUT("              removed old horizon edge "+oldHorizonEdge+", maybe adding new horizon edges "+newHorizonEdge+", "+newHorizonEdge.next());
+
+
+                    boolean broke = false;
+                    FORI (iNewHorizonEdge, 2) // two new horizon edges
+                    {
+                        // CBB: should there be an "isInHeap" method?
+                        boolean oppositeIsPartOfHorizon = !Double.isNaN(horizon.getValue(newHorizonEdge.opposite().myIndex()));
+                        if (oppositeIsPartOfHorizon)
+                        {
+                            // Adding this triangle obscures the vertex (barely); this is where we stop.
+                            // It's fine if horizon is a bit insane at this point; we're just going to clear it.
+                            broke = true;
+                            break;
+                        }
+                        Mesh.Edge opp = newHorizonEdge.opposite();
+                        int i = opp.initialVertex().myIndex();
+                        int j = opp.finalVertex().myIndex();
+                        int k = opp.prev().initialVertex().myIndex();
+                        if (!(i<=2 && j<=2 && k<=2)) // if not the original triangle inside out
+                        {
+                            double zIntercept = GeomUtils.computeZIntercept(verts3d[i],
+                                                                            verts3d[j],
+                                                                            verts3d[k],
+                                                                            verts3d[iVert]);
+                            if (verboseLevel >= 3) OUT("              adding new horizon edge "+newHorizonEdge+" at zIntercept="+zIntercept);
+                            horizon.add(newHorizonEdge.myIndex(), zIntercept);
+                        }
+                        newHorizonEdge = newHorizonEdge.next();
+                    }
+                    if (broke) break; // double break
+                    assert_eq(newHorizonEdge, oldHorizonEdge.opposite());
+                }
+
+                // clear horizon for next iteration
+                while (!horizon.isEmpty())
+                {
+                    horizon.extractMin();
+                }
+            }
+            else
+            {
+                // brute force way: examine all triangles.
+                // TODO: salvage the 1e-9 part and then remove this
+                int nEdges = scratchMesh.edges.size();
+                FORI (iEdge, nEdges)
+                {
+                    Mesh.Edge edgeI = scratchMesh.getEdge(iEdge);
+                    assert_eq(edgeI.next().next().next(), edgeI);
+                    int i = edgeI.initialVertex().myIndex();
+                    int j = edgeI.next().initialVertex().myIndex();
+                    int k = edgeI.prev().initialVertex().myIndex();
+
+                    double a[] = verts3d[i];
+                    double b[] = verts3d[j];
+                    double c[] = verts3d[k];
+                    double abcArea = GeomUtils.twiceTriangleArea(a,b,c);
+                    if (abcArea < 0.)
+                    {
+                        if (verboseLevel >= 3) OUT("              skipping tri v"+i+",v"+j+",v"+k+" because inside out");
+                        continue;
+                    }
+                    if (verboseLevel >= 3) OUT("              not skipping tri v"+i+",v"+j+",v"+k+" because not inside out");
+
+                    double d[] = verts3d[iVert]; // with z not set yet
+                    double abdArea = GeomUtils.twiceTriangleArea(a,b,d);
+                    double bcdArea = GeomUtils.twiceTriangleArea(b,c,d);
+                    double cadArea = GeomUtils.twiceTriangleArea(c,a,d);
+
+                    if (!(initialVerts3d.length == 4 && iVert == 4)) // allow that special case
+                    {
+                        if (EQ(abdArea, 0., 1e-9)
+                         || EQ(bcdArea, 0., 1e-9)
+                         || EQ(cadArea, 0., 1e-9))
+                        {
+                            // set to impossible so we kill this x,y
+                            zMin = 1.;
+                            zMax = -1.;
+                            //assert(false); // yeah it finally happened once
+                            break;
+                        }
+                    }
+
+                    boolean dIsInMiddle = (abdArea >= 0. && bcdArea >= 0 && cadArea >= 0); // CBB: we end up doing this 3 times, oh well
+                    boolean cIsInMiddle = (abdArea >= 0. && bcdArea <= 0. && cadArea <= 0.); // or maybe on the verge
+                    if (verboseLevel >= 3) OUT("                  dIsInMiddle = "+dIsInMiddle+(dIsInMiddle?"!!!!!!!!!!!!!!!!!":""));
+                    if (verboseLevel >= 3) OUT("                  cIsInMiddle = "+cIsInMiddle);
+                    if (dIsInMiddle || cIsInMiddle)
+                    {
+                        #define BARY(a, b, s, c, t) ((1.-(s)-(t))*(a) + (b)*(s) + (t)*(c))
+                        // Extrapolation in plane of a triangle can be done
+                        // by barycentric averaging (same as interpolation)
+                        double zIntercept = BARY(a[2],
+                                                 b[2], cadArea/abcArea,
+                                                 c[2], abdArea/abcArea);
+                        if (dIsInMiddle)
+                        {
+                            // d is in middle. Make sure z isn't so low that it disappears below this triangle.
+                            zMin = MAX(zMin, zIntercept);
+                        }
+                        else
+                        {
+                            // c is in middle. Make sure z isn't so high that it makes c disappear from convex hull.
+                            zMax = MIN(zMax, zIntercept);
+                        }
+                    }
+                }
+            }
+
+            if (zMin > zMax)
+            {
+                // Someone hit the 1e-9 thing
+                System.out.print("!");
+                System.out.flush();
+                //assert(false); // coverage
+                continue; // bad; try again
+            }
+            if (verboseLevel >= 3) PRINT(zMin);
+            if (verboseLevel >= 3) PRINT(zMax);
+            if (iVert == initialVerts3d.length)
+            {
+                assert_eq(zMin, 0.);
+                assert_eq(zMax, maxHeight);
+            }
+            else
+            {
+                assert_gt(zMin, 0.);
+                assert_lt(zMin, maxHeight);
+            }
+            double t;
+            if (iVert == initialVerts3d.length)
+                t = 1.;
+            else
+                t = rng.nextDouble();
+            double z = LERP(zMin, zMax, t);
+
+            verts3d[iVert][2] = z;
+
+            // Add the new vertex to scratchMesh.
+            {
+                assert_eq(scratchMesh.verts.size(), iVert);
+                scratchMesh.addIsolatedVertex(verts3d[iVert][0],
+                                              verts3d[iVert][1],
+                                              verts3d[iVert][2],
+                                              1.);
+                scratchMesh.kisIsolatedVertex(scratchMesh.getVert(scratchMesh.verts.size()-1),
+                                              someEdgeOnFaceVertIsIn);
+                assert_eq(scratchMesh.verts.size(), iVert+1);
+                {
+                    // Assert no isolated verts.  can do that by counting edges and tris, and using euler's formula:
+                    //     v+f = e+2
+                    //       -> f = e+2-v
+                    //     2e = 3f (for triangulated)
+                    //        = 3(e+2-v)
+                    //     2e = 3e+6-3v
+                    //     -e = 6-3v
+                    //      e = 3v-6
+                    //     except this e is our edges.size()/2.
+                    // Note: appearance of isolated verts, currently, may be due to "and flat edges"
+                    assert_eq(scratchMesh.edges.size(), 2*(3*scratchMesh.verts.size()-6));
+                }
+
+                // TODO: assert that there are exactly two inside out tris,
+                // same as when we started (if started with a square)
+            }
+            break; // succeeded in adding the vertex, so break out of the while (true) loop
+        } // while (true)
+
+        if (verboseLevel == 2) System.out.print(".");
+        if (verboseLevel == 2) System.out.flush();
+    } // pushRandomVert
+    public void popVert()
+    {
+    } // popVert
+
+    // Caller should not modify the returned value.
+    // Invalidated by next call to pushRandomVertex() or popVertex().
+    // Note that the internal mesh is fully triangulated, as if "calc underside when delaunayizing" was true,
+    // so caller should re-delaunayize if desired.
+    public Mesh getInternalMesh()
+    {
+        return this.scratchMesh;
+    } // getInternalMesh
+} // class ConvexNoiseMaker

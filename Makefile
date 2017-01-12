@@ -61,6 +61,7 @@ CLASSES = \
         SizeTrackingMergeFind.class \
         SymmetryUtils.class \
         Mesh.class \
+        ConvexNoiseMaker.class \
         BigInt.class \
         MeshUtils.class \
         MeshSweepOrderUtils.class \
@@ -68,6 +69,7 @@ CLASSES = \
         MyAlgorithmMaybe.class \
         Surface.class \
         ShephardsPlayApplet.class \
+        CounterexampleSearch.class \
         PoincareDiskIsometry.class \
         PoincareHalfSpaceIdealCenter.class \
         ${NULL}
@@ -119,7 +121,8 @@ ${JARFILE}.is_renumbered: $(JAR_DEPENDS_ON)
 .PHONY: renumber
 renumber: $(JARFILE).is_renumbered
 
-${CLASSES}: macros.h Makefile donhatchsw.jar
+# CBB: make a way to temporarily disable this on command line, for when developing Makefile or donhatchsw and there's only 1 affected source file here
+#${CLASSES}: macros.h Makefile donhatchsw.jar
 
 SENDFILES = index.php $(JARFILE)
 .PHONY: send
