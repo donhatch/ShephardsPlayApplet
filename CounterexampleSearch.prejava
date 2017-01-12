@@ -23,19 +23,23 @@ public class CounterexampleSearch
         int maxVerts = 100; // we'll never get that high
 
         ConvexNoiseMaker convexNoiseMaker = new ConvexNoiseMaker(nInitialVerts, maxVerts);
-        convexNoiseMaker.pushRandomVert(rng, verboseLevel); // always the one in the middle
+        convexNoiseMaker.pushRandomVertex(rng, verboseLevel); // always the one in the middle
 
         while (true)
         {
             OUT("      top of loop");
             // add lookahead more verts, in each of nSamples ways
             double worstGoodFrac = Double.POSITIVE_INFINITY;
+            double worstLookahead[][] = new double[lookahead][3];
             FORI (iSample, nSamples)
             {
-                OUT("          pushing "+lookahead+" random verts");
+                OUT("          iSample="+iSample+"/"+nSamples+":");
+                int nVerts = convexNoiseMaker.getInternalMesh().verts.size();
+                OUT("              pushing "+lookahead+" random verts: "+nVerts+" -> "+(nVerts+lookahead));
                 FORI (iLookahead, lookahead)
                 {
-                    convexNoiseMaker.pushRandomVert(rng, verboseLevel);
+                    // note, verboseLevel=2 makes it print "." each time, currently
+                    convexNoiseMaker.pushRandomVertex(rng, verboseLevel);
                 }
 
                 // Extract the mesh
@@ -63,25 +67,46 @@ public class CounterexampleSearch
                                        max,
                                        nGood, nBad, nTotal,
                                        0); // verboseLevel
+                double goodFrac = nGood.doubleValue()/nTotal.doubleValue();
+                double badFrac = nBad.doubleValue()/nTotal.doubleValue();
                 {
-                    double goodPercent = nGood.doubleValue()/nTotal.doubleValue()*100.;
-                    double badPercent = nBad.doubleValue()/nTotal.doubleValue()*100.;
+                    double goodPercent = goodFrac * 100.;
+                    double badPercent = badFrac * 100.;
                     String goodPercentString = Format.sprintf("%.5g", goodPercent);
                     String badPercentString = Format.sprintf("%.5g", badPercent);
-                    OUT("    (good:bad)/total = ("+nGood+":"+nBad+")/"+nTotal+" = "+goodPercentString+"%:"+badPercentString+"%");
+                    OUT("                  (good:bad)/total = ("+nGood+":"+nBad+")/"+nTotal+" = "+goodPercentString+"%:"+badPercentString+"%");
                     if (nGood.eq(0))
                     {
                         OUT(repeat("!", 1000));
                         assert(false); // XXX what should I do here? notify the press?
                     }
                 }
+                if (goodFrac < worstGoodFrac)
+                {
+                    worstGoodFrac = goodFrac;
+                    FORI (iLookahead, lookahead)
+                    {
+                        int iVert = triangulatedMesh.verts.size() - lookahead + iLookahead;
+                        Mesh.Vertex v = triangulatedMesh.getVert(iVert);
+                        worstLookahead[iLookahead][0] = v.x();
+                        worstLookahead[iLookahead][1] = v.y();
+                        worstLookahead[iLookahead][2] = v.z();
+                    }
+                }
 
-                OUT("          popping "+lookahead+" verts.");
+                OUT("              popping "+lookahead+" verts.");
                 FORI (iLookahead, lookahead)
                 {
-                    convexNoiseMaker.popVert();
+                    convexNoiseMaker.popVertex();
                 }
+                OUT("              worstGoodPercent = "+worstGoodFrac*100.);
             } // for iSample
+            assert_le(worstGoodFrac, 1.);
+            convexNoiseMaker.pushSpecificVertex(
+                worstLookahead[0][0],
+                worstLookahead[0][1],
+                worstLookahead[0][2],
+                null);
         } // while true
     }
 } // class CounterexampleSearch

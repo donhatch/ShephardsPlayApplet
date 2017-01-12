@@ -62,7 +62,7 @@ public class ConvexNoiseMaker
         int maxPossibleDirectedEdges = 3*verts3d.length * 2; // I think that's an upper bound... *2 for directed edges
         this.horizon = new IndexBinaryHeapKeyed(maxPossibleDirectedEdges); // scratch for loop. size is max size we'll encounter.
     } // ConvexNoiseMaker ctor
-    public void pushRandomVert(java.util.Random rng, int verboseLevel)
+    public void pushRandomVertex(java.util.Random rng, int verboseLevel)
     {
         int iVert = scratchMesh.verts.size();
         if (verboseLevel >= 3) OUT("          choosing vert "+iVert+"/"+verts3d.length);
@@ -281,46 +281,63 @@ public class ConvexNoiseMaker
                 t = rng.nextDouble();
             double z = LERP(zMin, zMax, t);
 
-            verts3d[iVert][2] = z;
-
             // Add the new vertex to scratchMesh.
-            {
-                assert_eq(scratchMesh.verts.size(), iVert);
-                scratchMesh.addIsolatedVertex(verts3d[iVert][0],
-                                              verts3d[iVert][1],
-                                              verts3d[iVert][2],
-                                              1.);
-                scratchMesh.kisIsolatedVertex(scratchMesh.getVert(scratchMesh.verts.size()-1),
-                                              someEdgeOnFaceVertIsIn);
-                assert_eq(scratchMesh.verts.size(), iVert+1);
-                {
-                    // Assert no isolated verts.  can do that by counting edges and tris, and using euler's formula:
-                    //     v+f = e+2
-                    //       -> f = e+2-v
-                    //     2e = 3f (for triangulated)
-                    //        = 3(e+2-v)
-                    //     2e = 3e+6-3v
-                    //     -e = 6-3v
-                    //      e = 3v-6
-                    //     except this e is our edges.size()/2.
-                    // Note: appearance of isolated verts, currently, may be due to "and flat edges"
-                    assert_eq(scratchMesh.edges.size(), 2*(3*scratchMesh.verts.size()-6));
-                }
 
-                // TODO: assert that there are exactly two inside out tris,
-                // same as when we started (if started with a square)
-            }
+            // a little weird since we've been using verts3d as scratch
+            pushSpecificVertex(verts3d[iVert][0],
+                               verts3d[iVert][1],
+                               z,
+                               someEdgeOnFaceVertIsIn);
             break; // succeeded in adding the vertex, so break out of the while (true) loop
+
         } // while (true)
 
         if (verboseLevel == 2) System.out.print(".");
         if (verboseLevel == 2) System.out.flush();
-    } // pushRandomVert
-    public void popVert()
+    } // pushRandomVertex
+
+    void pushSpecificVertex(
+        double x, double y, double z,
+        Mesh.Edge someEdgeOnFaceVertIsIn) // may be null if caller doesn't know it
+    {
+          if (someEdgeOnFaceVertIsIn == null)
+              someEdgeOnFaceVertIsIn = MeshUtils.findSomeEdgeOnFaceVertIsIn(scratchMesh, x, y);
+
+          int iVert = scratchMesh.verts.size();
+          verts3d[iVert][0] = x;
+          verts3d[iVert][1] = y;
+          verts3d[iVert][2] = z;
+
+          assert_eq(scratchMesh.verts.size(), iVert);
+          scratchMesh.addIsolatedVertex(verts3d[iVert][0],
+                                        verts3d[iVert][1],
+                                        verts3d[iVert][2],
+                                        1.);
+          scratchMesh.kisIsolatedVertex(scratchMesh.getVert(scratchMesh.verts.size()-1),
+                                        someEdgeOnFaceVertIsIn);
+          assert_eq(scratchMesh.verts.size(), iVert+1);
+          {
+              // Assert no isolated verts.  can do that by counting edges and tris, and using euler's formula:
+              //     v+f = e+2
+              //       -> f = e+2-v
+              //     2e = 3f (for triangulated)
+              //        = 3(e+2-v)
+              //     2e = 3e+6-3v
+              //     -e = 6-3v
+              //      e = 3v-6
+              //     except this e is our edges.size()/2.
+              // Note: appearance of isolated verts, currently, may be due to "and flat edges"
+              assert_eq(scratchMesh.edges.size(), 2*(3*scratchMesh.verts.size()-6));
+          }
+
+          // TODO: assert that there are exactly two inside out tris,
+          // same as when we started (if started with a square)
+      } // pushSpecificVertex
+    public void popVertex()
     {
         assert_gt(scratchMesh.verts.size(), nInitialVerts);
         scratchMesh.deleteVertex(scratchMesh.getVert(scratchMesh.verts.size()-1), null, null);
-    } // popVert
+    } // popVertex
 
     // Caller should not modify the returned value.
     // Invalidated by next call to pushRandomVertex() or popVertex().
