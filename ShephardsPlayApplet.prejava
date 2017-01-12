@@ -11224,33 +11224,46 @@ public class ShephardsPlayApplet
                 nFixagesSinceLastNoise = 0;
             } // doJustNoiseThing
 
-            // Polygon theoretically doesn't need to contain the origin,
-            // but this will be inefficient if it doesn't (or if polygon is needle shaped).
             private static void random2insideConvexPolygon(double answer[], double verts[][], java.util.Random rng)
             {
-                double maxCircumRadiusSquared = 0.;
-                FORI (i, verts.length)
-                    maxCircumRadiusSquared = SQR(verts[i][0]) + SQR(verts[i][1]);
-                double maxXorY = Math.sqrt(maxCircumRadiusSquared);
-                while (true)
+                int nVerts = verts.length;
+                int nTris = nVerts - 2;
+                double areaPartialSums[] = new double[nTris];
                 {
-                    answer[0] = (2*rng.nextDouble()-1) * maxXorY;
-                    answer[1] = (2*rng.nextDouble()-1) * maxXorY;
-                    boolean bad = false;
-                    FORI (i, verts.length)
+                    double partialSum = 0.;
+                    FORI (iTri, nTris)
                     {
-                        if (GeomUtils.twiceTriangleArea(verts[i], verts[(i+1)%verts.length], answer) <= 0.)
-                        {
-                            //OUT("    bad because non-positive area: "+Arrays.toStringCompact(verts[i])+" "+Arrays.toStringCompact(verts[(i+1)%verts.length])+" "+Arrays.toStringCompact(answer));
-                            bad = true;
-                        }
-                    }
-                    if (!bad)
-                    {
-                        //OUT("good!");
-                        return;
+                        double triArea = GeomUtils.twiceTriangleArea(verts[nVerts-1],
+                                                                     verts[iTri],
+                                                                     verts[iTri+1]);
+                        assert_ge(triArea, 0.);
+                        partialSum += triArea;
+                        areaPartialSums[iTri] = partialSum;
                     }
                 }
+                int whichTri = -1;
+                {
+                    double t = rng.nextDouble() * areaPartialSums[nTris-1];
+                    FORI (iTri, nTris)
+                    {
+                        if (t <= areaPartialSums[iTri])
+                        {
+                            whichTri = iTri;
+                            break;
+                        }
+                    }
+                }
+                double u = rng.nextDouble();
+                double v = rng.nextDouble();
+                if (u+v > 1.)
+                {
+                    u = 1. - u;
+                    v = 1. - v;
+                }
+                VecMath.bary(answer,
+                             verts[nVerts-1],
+                             verts[whichTri], u,
+                             verts[whichTri+1], v);
             } // random2insideConvexPolygon
 
             private void doConvexNoiseThing(int n)
