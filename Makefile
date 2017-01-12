@@ -62,10 +62,10 @@ CLASSES = \
         SymmetryUtils.class \
         Mesh.class \
         BigInt.class \
+        Net.class \
         MeshUtils.class \
         ConvexNoiseMaker.class \
         MeshSweepOrderUtils.class \
-        Net.class \
         MyAlgorithmMaybe.class \
         Surface.class \
         ShephardsPlayApplet.class \
