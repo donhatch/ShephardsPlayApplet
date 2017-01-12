@@ -1405,6 +1405,54 @@ final public class MeshUtils
         return cuts;
     } // selectSpanningTreeOrNullDumb
 
+    public static double estimateGoodFrac(Mesh mesh, Mesh dualMesh, // generally reversed from applet
+                                          int maxMin, // stop when min(nGood, nBad) is this
+                                          int maxTotal, // stop when total is this
+                                          java.util.Random rng)
+    {
+        OUT("        in estimateGoodFrac");
+        SimplerMeshDataStructure simpler = new SimplerMeshDataStructure(mesh, false);
+        int nEdges = simpler.e2v.length;
+        int nGood = 0;
+        int nBad = 0;
+        int nTotal = 0;
+        while (MIN(nGood, nBad) < maxMin
+            && nTotal < maxTotal)
+        {
+            boolean spanningTree[/*nEdges/2*/] = simpler.randomSpanningTree(rng);
+            assert_eq(spanningTree.length, nEdges/2);
+            int edgeStatuses[] = new int[nEdges];
+            FORI (iWholeEdge, nEdges/2)
+            {
+                int status = spanningTree[iWholeEdge] ? Net.CUT : Net.FOLD;
+                edgeStatuses[iWholeEdge*2+0] = status;
+                edgeStatuses[iWholeEdge*2+1] = status;
+            }
+            Net net = new Net(mesh, dualMesh, edgeStatuses);
+            // TODO: dup code. move this into a helper
+            double momentAndWeightStrictlyBelowEachVertex[][] = net.computeMomentAndWeightStrictlyBelowEachVertexInitially();
+            boolean edgeIsOffBalanceCut[] = new boolean[nEdges];
+            int offBalanceCuts[] = new int[nEdges];
+            int nOffBalanceCuts = net.figureOutWhatsOffBalanceInitially(
+                momentAndWeightStrictlyBelowEachVertex,
+                edgeIsOffBalanceCut,
+                offBalanceCuts);
+            if (nOffBalanceCuts > 0)
+                nBad++;
+            else
+                nGood++;
+            nTotal++;
+        }
+        assert_eq(nGood+nBad, nTotal);
+        // not sure...
+        //double goodFrac = (nGood+1.)/(nTotal+2.);
+        double goodFrac = (double)nGood/(double)nTotal;
+        OUT("            nGood="+nGood);
+        OUT("            nBad="+nBad);
+        OUT("            nTotal="+nTotal);
+        OUT("        out estimateGoodFrac, returning "+goodFrac);
+        return goodFrac;
+    } // estimateGoodFrac
     public static boolean countGoodBad(Mesh mesh, Mesh dualMesh, // generally reversed from applet
                                        int max,
                                        BigInt nGood, BigInt nBad, BigInt count, // output
