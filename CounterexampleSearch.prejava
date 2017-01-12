@@ -8,13 +8,13 @@ public class CounterexampleSearch
 
     public static void main(String args[])
     {
-        if (args.length != 3)
+        if (args.length != 2)
         {
-            System.err.println("Usage: "+args[0]+" <lookahead> <nSamples>");
+            System.err.println("Usage: CounterexampleSearch <lookahead> <nSamples>");
             System.exit(1);
         }
-        int lookahead = Integer.parseInt(args[1]); // e.g. 5
-        int nSamples = Integer.parseInt(args[2]); // e.g. 1000
+        int lookahead = Integer.parseInt(args[0]); // e.g. 5
+        int nSamples = Integer.parseInt(args[1]); // e.g. 1000
 
         int verboseLevel = 1;
         long seed = 0;
@@ -27,10 +27,12 @@ public class CounterexampleSearch
 
         while (true)
         {
+            OUT("      top of loop");
             // add lookahead more verts, in each of nSamples ways
             double worstGoodFrac = Double.POSITIVE_INFINITY;
             FORI (iSample, nSamples)
             {
+                OUT("          pushing "+lookahead+" random verts");
                 FORI (iLookahead, lookahead)
                 {
                     convexNoiseMaker.pushRandomVert(rng, verboseLevel);
@@ -41,8 +43,8 @@ public class CounterexampleSearch
                 // XXX wait, what? do I need this, since inside out is just a triangle?  think about this
                 Mesh triangulatedMesh = MeshUtils.delaunayized(convexNoiseMaker.getInternalMesh(),
                                                                false,  // wrapAroundSphereFlagValue,
-                                                               0.,     // wrapSphereCurvatureValue,
-                                                               false,  // centerSphereFlagValue,
+                                                               1.,     // wrapSphereCurvatureValue,
+                                                               true,  // centerSphereFlagValue,
                                                                false,  // calcInsideOutDualVertsFlagValue (this is the important one)
                                                                false); // slightlyVerbose
                 Mesh trivalentMesh = Mesh.makeDualMesh(triangulatedMesh,
@@ -51,13 +53,16 @@ public class CounterexampleSearch
                                                        false, // wrapAroundSphereFlag
                                                        false, // centerSphereFlag
                                                        0.);   // wrapSphereCurvature)
+                //PRINT(triangulatedMesh);
+                //PRINT(trivalentMesh);
                 BigInt nGood = new BigInt(-1);
                 BigInt nBad = new BigInt(-1);
                 BigInt nTotal = new BigInt(-1);
                 int max = 1000*1000*1000;
                 MeshUtils.countGoodBad(trivalentMesh, triangulatedMesh, 
                                        max,
-                                       nGood, nBad, nTotal);
+                                       nGood, nBad, nTotal,
+                                       0); // verboseLevel
                 {
                     double goodPercent = nGood.doubleValue()/nTotal.doubleValue()*100.;
                     double badPercent = nBad.doubleValue()/nTotal.doubleValue()*100.;
@@ -71,6 +76,7 @@ public class CounterexampleSearch
                     }
                 }
 
+                OUT("          popping "+lookahead+" verts.");
                 FORI (iLookahead, lookahead)
                 {
                     convexNoiseMaker.popVert();
