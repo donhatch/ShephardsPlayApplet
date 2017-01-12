@@ -1,56 +1,12 @@
 #include "macros.h"
 
 import com.donhatchsw.util.Arrays;
-import com.donhatchsw.util.ConvexHull;
 import com.donhatchsw.util.IndexBinaryHeapKeyed;
 import com.donhatchsw.util.VecMath;
 
 // Helper class for incrementally making convex noise.
 public class ConvexNoiseMaker
 {
-    // TODO: move this into GeomUtils
-    private static void random2insideConvexPolygon(double answer[], double verts[][], java.util.Random rng)
-    {
-        int nVerts = verts.length;
-        int nTris = nVerts - 2;
-        double areaPartialSums[] = new double[nTris];
-        {
-            double partialSum = 0.;
-            FORI (iTri, nTris)
-            {
-                double triArea = GeomUtils.twiceTriangleArea(verts[nVerts-1],
-                                                             verts[iTri],
-                                                             verts[iTri+1]);
-                assert_ge(triArea, 0.);
-                partialSum += triArea;
-                areaPartialSums[iTri] = partialSum;
-            }
-        }
-        int whichTri = -1;
-        {
-            double t = rng.nextDouble() * areaPartialSums[nTris-1];
-            FORI (iTri, nTris)
-            {
-                if (t <= areaPartialSums[iTri])
-                {
-                    whichTri = iTri;
-                    break;
-                }
-            }
-        }
-        double u = rng.nextDouble();
-        double v = rng.nextDouble();
-        if (u+v > 1.)
-        {
-            u = 1. - u;
-            v = 1. - v;
-        }
-        VecMath.bary(answer,
-                     verts[nVerts-1],
-                     verts[whichTri], u,
-                     verts[whichTri+1], v);
-    } // random2insideConvexPolygon
-
     private int nInitialVerts;
     private double initialVerts3d[][];
     private double verts3d[][];
@@ -112,16 +68,6 @@ public class ConvexNoiseMaker
         if (verboseLevel >= 3) OUT("          choosing vert "+iVert+"/"+verts3d.length);
         assert_lt(iVert, verts3d.length);
 
-        if (false) // might want to do it with direct convex hull, not sure.  seems lots simpler than using mesh and delaunayize.
-        {
-            double tol = 0.; // don't know of any failures, see other use of convexHull
-            int hullStuff[/*3*/][/*nFacets*/][/*d=3*/] = ConvexHull.convexHull((double[][])Arrays.subarray(verts3d, 0, iVert), tol);
-            int hull[/*nFacets*/][/*d=3*/] = hullStuff[0];
-
-            PRINTMAT(MeshUtils.getMeshFaces(scratchMesh, true));
-            PRINTMAT(hull);
-        }
-
         while (true)
         {
             if (iVert == initialVerts3d.length)
@@ -129,9 +75,9 @@ public class ConvexNoiseMaker
                 VecMath.zerovec(2, verts3d[iVert]);
             }
             else
-                random2insideConvexPolygon(verts3d[iVert], // put it here
-                                           initialVerts3d,
-                                           rng);
+                GeomUtils.random2insideConvexPolygon(verts3d[iVert], // put it here
+                                                     initialVerts3d,
+                                                     rng);
 
             // Figure out what height to put it at.
 

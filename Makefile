@@ -61,9 +61,9 @@ CLASSES = \
         SizeTrackingMergeFind.class \
         SymmetryUtils.class \
         Mesh.class \
-        ConvexNoiseMaker.class \
         BigInt.class \
         MeshUtils.class \
+        ConvexNoiseMaker.class \
         MeshSweepOrderUtils.class \
         Net.class \
         MyAlgorithmMaybe.class \
