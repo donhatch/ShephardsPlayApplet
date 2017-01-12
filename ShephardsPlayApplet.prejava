@@ -354,6 +354,7 @@ TO DO:
 import com.donhatchsw.util.Arrays;
 import com.donhatchsw.util.BlueNoise;
 import com.donhatchsw.util.Complex;
+import com.donhatchsw.util.IndexBinaryHeapKeyed;
 import com.donhatchsw.util.MyMath;
 import com.donhatchsw.util.VecMath;
 import com.donhatchsw.util.SortStuff;
@@ -11313,6 +11314,8 @@ public class ShephardsPlayApplet
                     if (verts3d.length >= initialVerts.length)
                     {
                         Mesh scratchMesh = new Mesh(initialVerts, initialFaces);
+                        int maxPossibleEdges = 3*verts3d.length * 2; // I think that's an upper bound... *2 for directed edges
+                        IndexBinaryHeapKeyed horizon = new IndexBinaryHeapKeyed(maxPossibleEdges); // scratch for loop. size is max size we'll encounter.
                         for (int iVert = initialVerts.length; iVert < verts3d.length; ++iVert)
                         {
                             if (verboseLevel >= 3) OUT("          choosing vert "+iVert+"/"+verts3d.length);
@@ -11339,74 +11342,188 @@ public class ShephardsPlayApplet
                                                                randomNumberGenerator);
                                 // Figure out what height to put it at.
                                 // TODO: think about this more. do we really need to examine the whole convex hull? from thinking about what's happening in the dual: want truncating plane that's deep enough to meet the polyhedron, but not so deep that it obscures some other face completely.
+                                // (It doesn't suffice to consider only faces containing the highest existing vertex, though.)
+                                // So, in the primal: we need it to be high enough so it's out of the polyhedron (i.e. just make it above
+                                // the face plane of the containing triangle), but not so high that it obscures some other vertex completely.
+                                // (And it doesn't suffice to consider only the three vertices of the given face.)
+                                // Idea: grow the shadow.
+
                                 double zMin = -1.;
                                 double zMax = maxHeight;
 
-                                int nEdges = scratchMesh.edges.size();
-                                FORI (iEdge, nEdges)
+                                if (true)
                                 {
-                                    Mesh.Edge edgeI = scratchMesh.getEdge(iEdge);
-                                    assert_eq(edgeI.next().next().next(), edgeI);
-                                    int i = edgeI.initialVertex().myIndex();
-                                    int j = edgeI.next().initialVertex().myIndex();
-                                    int k = edgeI.prev().initialVertex().myIndex();
+                                    // Non-brute-force way.
 
-                                    double a[] = verts3d[i];
-                                    double b[] = verts3d[j];
-                                    double c[] = verts3d[k];
-                                    double abcArea = GeomUtils.twiceTriangleArea(a,b,c);
-                                    if (abcArea < 0.)
+                                    // First, locate the triangle the point is in.
+                                    // zMin will be its face plane z,
+                                    // and zMax will be the min of all the other face plane z's.
+                                    Mesh.Edge someEdgeOnFaceVertIsIn = MeshUtils.findSomeEdgeOnFaceVertIsIn(scratchMesh, verts3d[iVert][0], verts3d[iVert][1]);
                                     {
-                                        if (verboseLevel >= 3) OUT("              skipping tri v"+i+",v"+j+",v"+k+" because inside out");
-                                        continue;
-                                    }
-                                    if (verboseLevel >= 3) OUT("              not skipping tri v"+i+",v"+j+",v"+k+" because not inside out");
-
-                                    double d[] = verts3d[iVert]; // with z not set yet
-                                    double abdArea = GeomUtils.twiceTriangleArea(a,b,d);
-                                    double bcdArea = GeomUtils.twiceTriangleArea(b,c,d);
-                                    double cadArea = GeomUtils.twiceTriangleArea(c,a,d);
-
-                                    if (!(initialVerts.length == 4 && iVert == 4)) // allow that special case
-                                    {
-                                        if (EQ(abdArea, 0., 1e-9)
-                                         || EQ(bcdArea, 0., 1e-9)
-                                         || EQ(cadArea, 0., 1e-9))
-                                        {
-                                            // set to impossible so we kill this x,y
-                                            zMin = 1.;
-                                            zMax = -1.;
-                                            //assert(false); // yeah it finally happened once
-                                            break;
-                                        }
+                                        int i = someEdgeOnFaceVertIsIn.initialVertex().myIndex();
+                                        int j = someEdgeOnFaceVertIsIn.next().initialVertex().myIndex();
+                                        int k = someEdgeOnFaceVertIsIn.prev().initialVertex().myIndex();
+                                        double zIntercept = GeomUtils.computeZIntercept(verts3d[i],
+                                                                                        verts3d[j],
+                                                                                        verts3d[k],
+                                                                                        verts3d[iVert]);
+                                        zMin = zIntercept;
+                                        // CBB: original brute-force code discarded this vertex if something was within 1e-9 of an existing edge.  should do that.
                                     }
 
-                                    boolean dIsInMiddle = (abdArea >= 0. && bcdArea >= 0 && cadArea >= 0); // CBB: we end up doing this 3 times, oh well
-                                    boolean cIsInMiddle = (abdArea >= 0. && bcdArea <= 0. && cadArea <= 0.); // or maybe on the verge
-                                    if (verboseLevel >= 3) OUT("                  dIsInMiddle = "+dIsInMiddle+(dIsInMiddle?"!!!!!!!!!!!!!!!!!":""));
-                                    if (verboseLevel >= 3) OUT("                  cIsInMiddle = "+cIsInMiddle);
-                                    if (dIsInMiddle || cIsInMiddle)
+                                    // Now rise z, which walks the horizon outwards,
+                                    // as far as we can without losing another vertex.
+                                    // The horizon is represented by a heap (priority queue),
+                                    // which is initially the triangle.
+                                    // Process the queue, taking away an edge and adding the other two of a triangle instead.
+                                    // Stop when we some edge we add to the horizon is the opposite of some other edge on the horizon.
+                                    assert(horizon.isEmpty());
                                     {
-                                        #define BARY(a, b, s, c, t) ((1.-(s)-(t))*(a) + (b)*(s) + (t)*(c))
-                                        // Extrapolation in plane of a triangle can be done
-                                        // by barycentric averaging (same as interpolation)
-                                        double zIntercept = BARY(a[2],
-                                                                 b[2], cadArea/abcArea,
-                                                                 c[2], abdArea/abcArea);
-                                        if (dIsInMiddle)
+                                        Mesh.Edge initialHorizonEdge = someEdgeOnFaceVertIsIn;
+                                        FORI (iEdgeThisTri, 3)
                                         {
-                                            // d is in middle. Make sure z isn't so low that it disappears below this triangle.
-                                            zMin = MAX(zMin, zIntercept);
+                                            Mesh.Edge opp = initialHorizonEdge.opposite();
+                                            int i = opp.initialVertex().myIndex();
+                                            int j = opp.finalVertex().myIndex();
+                                            int k = opp.prev().initialVertex().myIndex();
+                                            if (!(i<=2 && j<=2 && k<=2)) // if not the original triangle inside out
+                                            {
+                                                double zIntercept = GeomUtils.computeZIntercept(verts3d[i],
+                                                                                                verts3d[j],
+                                                                                                verts3d[k],
+                                                                                                verts3d[iVert]);
+                                                if (verboseLevel >= 3) OUT("              adding initial horizon edge "+initialHorizonEdge+" at zIntercept="+zIntercept);
+                                                horizon.add(initialHorizonEdge.myIndex(), zIntercept);
+                                            }
+                                            initialHorizonEdge = initialHorizonEdge.next();
                                         }
-                                        else
+                                        assert_eq(initialHorizonEdge, someEdgeOnFaceVertIsIn);
+                                    }
+
+                                    while (!horizon.isEmpty())
+                                    {
+                                        if (verboseLevel >= 3) OUT("          top of horizon loop");
+                                        // extractMin, but get the value first
+                                        int iOldHorizonEdge = horizon.min();
+                                        double zInterceptOld = horizon.getValue(iOldHorizonEdge);
+                                        assert(!Double.isNaN(zInterceptOld));
+                                        horizon.remove(iOldHorizonEdge);
+                                        zMax = MIN(zMax, zInterceptOld);
+
+                                        Mesh.Edge oldHorizonEdge = scratchMesh.getEdge(iOldHorizonEdge);
+                                        Mesh.Edge newHorizonEdge = oldHorizonEdge.opposite().next();
+                                        if (verboseLevel >= 3) OUT("              removed old horizon edge "+oldHorizonEdge+", maybe adding new horizon edges "+newHorizonEdge+", "+newHorizonEdge.next());
+
+
+                                        boolean broke = false;
+                                        FORI (iNewHorizonEdge, 2) // two new horizon edges
                                         {
-                                            // c is in middle. Make sure z isn't so high that it makes c disappear from convex hull.
-                                            zMax = MIN(zMax, zIntercept);
+                                            // CBB: should there be an "isInHeap" method?
+                                            boolean oppositeIsPartOfHorizon = !Double.isNaN(horizon.getValue(newHorizonEdge.opposite().myIndex()));
+                                            if (oppositeIsPartOfHorizon)
+                                            {
+                                                // Adding this triangle obscures the vertex (barely);
+                                                // this is where we stop.
+                                                broke = true;
+                                                break;
+                                            }
+                                            Mesh.Edge opp = newHorizonEdge.opposite();
+                                            int i = opp.initialVertex().myIndex();
+                                            int j = opp.finalVertex().myIndex();
+                                            int k = opp.prev().initialVertex().myIndex();
+                                            if (!(i<=2 && j<=2 && k<=2)) // if not the original triangle inside out
+                                            {
+                                                double zIntercept = GeomUtils.computeZIntercept(verts3d[i],
+                                                                                                verts3d[j],
+                                                                                                verts3d[k],
+                                                                                                verts3d[iVert]);
+                                                if (verboseLevel >= 3) OUT("              adding new horizon edge "+newHorizonEdge+" at zIntercept="+zIntercept);
+                                                horizon.add(newHorizonEdge.myIndex(), zIntercept);
+                                            }
+                                            newHorizonEdge = newHorizonEdge.next();
+                                        }
+                                        if (broke) break; // double break
+                                        assert_eq(newHorizonEdge, oldHorizonEdge.opposite());
+                                    }
+
+                                    // clear horizon for next iteration
+                                    while (!horizon.isEmpty())
+                                    {
+                                        horizon.extractMin();
+                                    }
+                                }
+                                else
+                                {
+                                    // brute force way: examine all triangles.
+                                    // TODO: salvage the 1e-9 part and then remove this
+                                    int nEdges = scratchMesh.edges.size();
+                                    FORI (iEdge, nEdges)
+                                    {
+                                        Mesh.Edge edgeI = scratchMesh.getEdge(iEdge);
+                                        assert_eq(edgeI.next().next().next(), edgeI);
+                                        int i = edgeI.initialVertex().myIndex();
+                                        int j = edgeI.next().initialVertex().myIndex();
+                                        int k = edgeI.prev().initialVertex().myIndex();
+
+                                        double a[] = verts3d[i];
+                                        double b[] = verts3d[j];
+                                        double c[] = verts3d[k];
+                                        double abcArea = GeomUtils.twiceTriangleArea(a,b,c);
+                                        if (abcArea < 0.)
+                                        {
+                                            if (verboseLevel >= 3) OUT("              skipping tri v"+i+",v"+j+",v"+k+" because inside out");
+                                            continue;
+                                        }
+                                        if (verboseLevel >= 3) OUT("              not skipping tri v"+i+",v"+j+",v"+k+" because not inside out");
+
+                                        double d[] = verts3d[iVert]; // with z not set yet
+                                        double abdArea = GeomUtils.twiceTriangleArea(a,b,d);
+                                        double bcdArea = GeomUtils.twiceTriangleArea(b,c,d);
+                                        double cadArea = GeomUtils.twiceTriangleArea(c,a,d);
+
+                                        if (!(initialVerts.length == 4 && iVert == 4)) // allow that special case
+                                        {
+                                            if (EQ(abdArea, 0., 1e-9)
+                                             || EQ(bcdArea, 0., 1e-9)
+                                             || EQ(cadArea, 0., 1e-9))
+                                            {
+                                                // set to impossible so we kill this x,y
+                                                zMin = 1.;
+                                                zMax = -1.;
+                                                //assert(false); // yeah it finally happened once
+                                                break;
+                                            }
+                                        }
+
+                                        boolean dIsInMiddle = (abdArea >= 0. && bcdArea >= 0 && cadArea >= 0); // CBB: we end up doing this 3 times, oh well
+                                        boolean cIsInMiddle = (abdArea >= 0. && bcdArea <= 0. && cadArea <= 0.); // or maybe on the verge
+                                        if (verboseLevel >= 3) OUT("                  dIsInMiddle = "+dIsInMiddle+(dIsInMiddle?"!!!!!!!!!!!!!!!!!":""));
+                                        if (verboseLevel >= 3) OUT("                  cIsInMiddle = "+cIsInMiddle);
+                                        if (dIsInMiddle || cIsInMiddle)
+                                        {
+                                            #define BARY(a, b, s, c, t) ((1.-(s)-(t))*(a) + (b)*(s) + (t)*(c))
+                                            // Extrapolation in plane of a triangle can be done
+                                            // by barycentric averaging (same as interpolation)
+                                            double zIntercept = BARY(a[2],
+                                                                     b[2], cadArea/abcArea,
+                                                                     c[2], abdArea/abcArea);
+                                            if (dIsInMiddle)
+                                            {
+                                                // d is in middle. Make sure z isn't so low that it disappears below this triangle.
+                                                zMin = MAX(zMin, zIntercept);
+                                            }
+                                            else
+                                            {
+                                                // c is in middle. Make sure z isn't so high that it makes c disappear from convex hull.
+                                                zMax = MIN(zMax, zIntercept);
+                                            }
                                         }
                                     }
                                 }
+
                                 if (zMin > zMax)
                                 {
+                                    // Someone hit the 1e-9 thing
                                     System.out.print("!");
                                     System.out.flush();
                                     //assert(false); // coverage
@@ -11433,7 +11550,7 @@ public class ShephardsPlayApplet
 
                                 verts3d[iVert][2] = z;
 
-                                // XXX wtf is this? delaunayizing on every added vertex? was I just debugging or what?
+                                // XXX wtf is this? delaunayizing on every added vertex? was I just debugging or what? oh! no, this was necessary in order to create the topology.  so, TODO: need to kis instead
                                 {
                                     double verts[][] = VecMath.copymat(iVert+1, 3, verts3d);
                                     FORI (i, iVert+1) verts[i][2] += .5 * (SQR(verts[i][0]) + SQR(verts[i][1]));
