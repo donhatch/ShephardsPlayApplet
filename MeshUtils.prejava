@@ -3,6 +3,7 @@
 import com.donhatchsw.compat.ArrayList;
 import com.donhatchsw.compat.IntArrayList;
 import com.donhatchsw.util.Arrays;
+import com.donhatchsw.util.ConvexHull;
 import com.donhatchsw.util.FuzzyPointHashTable;
 import com.donhatchsw.util.MergeFind;
 import com.donhatchsw.util.MyMath;
@@ -2981,5 +2982,135 @@ final public class MeshUtils
         }
         OUT("    out maybeMakeMoreDifficultByTruncatingDual");
     } // maybeMakeMoreDifficultByTruncating
+
+    public static Mesh delaunayized(Mesh mesh,
+                                    boolean wrapAroundSphereFlagValue,
+                                    double wrapSphereCurvatureValue,
+                                    boolean centerSphereFlagValue,
+                                    boolean calcInsideOutDualVertsFlagValue,
+                                    boolean slightlyVerbose)
+    {
+        //
+        // Discard the mesh edges and replace it with
+        // the Delaunay triangulation of the vertex set,
+        // using 3d convex hull.
+
+        int nVerts = mesh.verts.size();
+
+        double verts[][] = new double[nVerts][/*4*/];
+        double vertsForHull[][] = new double[nVerts][/*3*/];
+        double scratchVert4in[] = new double[4];
+        double scratchVert4out[] = new double[4];
+        // XXX should we be using the flags?? this is weird, maybe should just use 1 and something?
+        double wrapMat[][] = wrapAroundSphereFlagValue ? null : GeomUtils.getWrapAroundSphereMatrix(wrapSphereCurvatureValue, centerSphereFlagValue);
+        FORI (iVert, nVerts)
+        {
+            Mesh.Vertex v = mesh.getVert(iVert);
+            verts[iVert] = new double[]{v.X(), v.Y(), v.Z(), v.W()};
+            if (wrapAroundSphereFlagValue)
+                vertsForHull[iVert] = new double[]{v.x(), v.y(), v.z()};
+            else
+            {
+                // could keep related to paraboloid,
+                // but it's more stable to project to the sphere
+                // (especially if there are verts at or near infinity
+                // on the paraboloid)
+                scratchVert4in[0] = v.X();
+                scratchVert4in[1] = v.Y();
+                scratchVert4in[2] = v.Z();
+                scratchVert4in[3] = v.W();
+                VecMath.vxm(scratchVert4out,
+                            scratchVert4in, wrapMat);
+                vertsForHull[iVert] = new double[]{scratchVert4out[0]/scratchVert4out[3],
+                                                   scratchVert4out[1]/scratchVert4out[3],
+                                                   scratchVert4out[2]/scratchVert4out[3]};
+            }
+        }
+
+        //PRINTARRAY(verts);
+        //PRINTARRAY(vertsForHull);
+        // normalize to range -1..1 in all three dimensions
+        double bbox[][] = VecMath.bbox(vertsForHull);
+        if (bbox != null)
+        {
+            FORI (iDim, 3)
+            {
+                double bboxCenter = .5*(bbox[1][iDim]+bbox[0][iDim]);
+                double bboxRadius = .5*(bbox[1][iDim]-bbox[0][iDim]);
+                if (bboxRadius == 0.)
+                    bboxRadius = 1.;
+                FORI (iVert, nVerts)
+                    vertsForHull[iVert][iDim] = (vertsForHull[iVert][iDim] - bboxCenter) / bboxRadius;
+            }
+        }
+        //System.out.println("    computing convex hull");
+
+        //ConvexHull.debugLevel = 3;
+
+        long t0millis = System.currentTimeMillis();
+
+        // Notes on tolerance bounds:
+        //  - <=1e-11 works, >=1e-10 gives bad geom on finest part of CrackGoesInSpiral.
+        //  - at one time (f41abb7 2012/10/09) there was a comment here "1e-12 was too small, created inconsistencies" and tol was set to 1e-11, and test cases were added to ConvexHull, but ConvexHull was later made more robust, supposedly (be5def5 2012/10/17)
+        // Currently I actually don't know of any bad cases in <=3d with tol=0,
+        // so use it until proven otherwise.
+        double tol = 0.;
+        int hullStuff[/*3*/][/*nFacets*/][/*d=3*/] = ConvexHull.convexHull(vertsForHull, tol);
+
+        int hull[/*nFacets*/][/*d=3*/] = hullStuff[0];
+        long t1millis = System.currentTimeMillis();
+        double calcSeconds = (t1millis-t0millis)*1e-3;
+        boolean sanityCheckFlag = false; // hard coded
+        if (sanityCheckFlag)
+        {
+            System.out.print("    convex hull calc+check took "+calcSeconds+" + ");
+            System.out.flush();
+            ConvexHull.sanityCheckConvexHull(3, vertsForHull, hull, 1e-8);
+            long t2millis = System.currentTimeMillis();
+            double checkSeconds = (t2millis-t1millis)*1e-3;
+            System.out.println(checkSeconds+" seconds");
+        }
+        else
+        {
+            if (slightlyVerbose) System.out.println("     calc convex hull took "+calcSeconds+" seconds");
+        }
+
+
+        // correct it, if 2 verts
+        if (nVerts == 2)
+            hull = new int[][]{{0,1},{0,1}};
+
+        mesh = new Mesh(verts, hull);
+
+        //
+        // Now get rid of each edge
+        // that separates two non-positive-area faces.
+        // Analyze all the edges first before deleting any,
+        // so that we are only looking at triangle areas.
+        //
+        if (!calcInsideOutDualVertsFlagValue)
+        {
+            ArrayList edgesToDelete = new ArrayList();
+            int nEdges = mesh.edges.size();
+            for (int iEdge = 0; iEdge < nEdges; iEdge += 2) // only one of an edge and its opposite
+            {
+                Mesh.Edge edge = mesh.getEdge(iEdge);
+                if (mesh.twiceFaceArea(edge) <= SQR(1e-6)
+                 && mesh.twiceFaceArea(edge.opposite()) <= SQR(1e-6))
+                    edgesToDelete.add(edge);
+            }
+            int nEdgesToDelete = edgesToDelete.size();
+            //System.out.println("    removing "+nEdgesToDelete+" backside edges");
+            FORI (iEdgeToDelete, nEdgesToDelete)
+            {
+                Mesh.Edge edge = (Mesh.Edge)edgesToDelete.get(iEdgeToDelete);
+                mesh.deleteEdge(edge);
+            }
+        }
+        return mesh;
+
+        // XXX should get rid of unreferenced vertices? NO! But should get rid of dups maybe
+    } // delaunayized
+
 
 }  // class MeshUtils

@@ -1,14 +1,51 @@
 #include "macros.h"
+
 public class CounterexampleSearch
 {
     public void main(String args[])
     {
-        if (args.length != 2)
+        if (args.length != 3)
         {
-            System.err.println("Usage: "+args[0]+" <lookahead>");
+            System.err.println("Usage: "+args[0]+" <lookahead> <nSamples>");
             System.exit(1);
         }
-        int lookahead = Integer.parseInt(args[1]);
-        PRINT(lookahead);
+        int lookahead = Integer.parseInt(args[1]); // e.g. 5
+        int nSamples = Integer.parseInt(args[2]); // e.g. 1000
+
+        int verboseLevel = 1;
+        long seed = 0;
+        java.util.Random rng = new java.util.Random(seed);
+        int nInitialVerts = 3; // must be 3 or 4, not sure if 4 even works
+        int maxVerts = 100; // we'll never get that high
+
+        ConvexNoiseMaker convexNoiseMaker = new ConvexNoiseMaker(nInitialVerts, maxVerts);
+        convexNoiseMaker.pushRandomVert(rng, verboseLevel); // always the one in the middle
+
+        while (true)
+        {
+            // add lookahead more verts, in each of nSamples ways
+            double worstGoodFrac = Double.POSITIVE_INFINITY;
+            FORI (iSample, nSamples)
+            {
+                FORI (iLookahead, lookahead)
+                {
+                    convexNoiseMaker.pushRandomVert(rng, verboseLevel);
+                }
+
+                // Extract the mesh
+                // and delaunayize it "the right way".
+                Mesh mesh = MeshUtils.delaunayized(convexNoiseMaker.getInternalMesh(),
+                                                   false,  // wrapAroundSphereFlagValue,
+                                                   0.,     // wrapSphereCurvatureValue,
+                                                   false,  // centerSphereFlagValue,
+                                                   false,  // calcInsideOutDualVertsFlagValue (this is the important one)
+                                                   false); // slightlyVerbose
+
+                FORI (iLookahead, lookahead)
+                {
+                    convexNoiseMaker.popVert();
+                }
+            } // for iSample
+        } // while true
     }
 } // class CounterexampleSearch
