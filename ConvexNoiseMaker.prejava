@@ -104,7 +104,12 @@ public class ConvexNoiseMaker
                                                                     verts3d[j],
                                                                     verts3d[k],
                                                                     verts3d[iVert]);
+                            PRINTVEC(verts3d[i]);
+                            PRINTVEC(verts3d[j]);
+                            PRINTVEC(verts3d[k]);
                     zMin = zIntercept;
+                    if (verboseLevel >= 3) OUT("              zMin = "+zMin+" from verts "+i+" "+j+" "+k+" at x="+verts3d[iVert][0]+" y="+verts3d[iVert][1]+"");
+
                     // CBB: original brute-force code discarded this vertex if something was within 1e-9 of an existing edge.  should do that.
                 }
 
@@ -145,11 +150,14 @@ public class ConvexNoiseMaker
                     double zInterceptOld = horizon.getValue(iOldHorizonEdge);
                     assert(!Double.isNaN(zInterceptOld));
                     horizon.remove(iOldHorizonEdge);
+
+                    // XXX BUG: no! don't do this unless one of the other vertices is in the middle (i.e. the cIsInMiddle of the brute-force way)
+                    // XXX still, even with this bug, I don't understand why zMax is getting < zMin on the following vertex!
                     zMax = MIN(zMax, zInterceptOld);
 
                     Mesh.Edge oldHorizonEdge = scratchMesh.getEdge(iOldHorizonEdge);
                     Mesh.Edge newHorizonEdge = oldHorizonEdge.opposite().next();
-                    if (verboseLevel >= 3) OUT("                      removed old horizon edge "+oldHorizonEdge+", maybe adding new horizon edges "+newHorizonEdge+", "+newHorizonEdge.next());
+                    if (verboseLevel >= 3) OUT("                      removed old horizon edge "+oldHorizonEdge+" at zIntercept="+zInterceptOld+", maybe adding new horizon edges "+newHorizonEdge+", "+newHorizonEdge.next());
 
 
                     boolean broke = false;
@@ -255,16 +263,23 @@ public class ConvexNoiseMaker
                         {
                             // d is in middle. Make sure z isn't so low that it disappears below this triangle.
                             zMin = MAX(zMin, zIntercept);
+                            if (verboseLevel >= 3) OUT("                      so contributing zIntercept="+zIntercept+" to zMin from "+i+" "+j+" "+k+" at x="+verts3d[iVert][0]+" y="+verts3d[iVert][1]+"");
+                            PRINTVEC(a);
+                            PRINTVEC(b);
+                            PRINTVEC(c);
                         }
                         else
                         {
                             // c is in middle. Make sure z isn't so high that it makes c disappear from convex hull.
                             zMax = MIN(zMax, zIntercept);
+                            if (verboseLevel >= 3) OUT("                      so contributing zIntercept="+zIntercept+" to zMax");
                         }
                     }
                 }
-            }
+            } // brute force
 
+            if (verboseLevel >= 3) PRINT(zMin);
+            if (verboseLevel >= 3) PRINT(zMax);
             if (zMin > zMax)
             {
                 // Someone hit the 1e-9 thing.  Or something.
@@ -282,8 +297,6 @@ public class ConvexNoiseMaker
                     //continue; // bad; try again
                 }
             }
-            if (verboseLevel >= 3) PRINT(zMin);
-            if (verboseLevel >= 3) PRINT(zMax);
             if (iVert == initialVerts3d.length)
             {
                 assert_eq(zMin, 0.);
@@ -300,6 +313,8 @@ public class ConvexNoiseMaker
             else
                 t = rng.nextDouble();
             double z = LERP(zMin, zMax, t);
+            PRINT(t);
+            PRINT(z);
 
             // Add the new vertex to scratchMesh.
 
