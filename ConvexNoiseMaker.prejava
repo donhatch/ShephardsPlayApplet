@@ -50,17 +50,13 @@ public class ConvexNoiseMaker
         {
             assert(false); // can't happen, we checked at the beginning
         }
-        // WEIRD: there's confusion about XYH vs. XYZ.
-        // initialVerts3d are interpreted as XYH when passed to Mesh ctor,
-        // but then they, and all of verts3d, are interpreted as XYZ.
-        // I think the effect is that the initial verts end up downward a bit from where they should be.
-        // I think this is a bug, but it's pretty much benign.
         verts3d = new double[maxVerts][3];
         VecMath.copymat(verts3d, initialVerts3d); // if initialVerts3d verts had length 2, [2] will be 0
         this.nInitialVerts = nInitialVerts;
-        if (false)
+        if (true)
         {
-            // When mesh ctor sees vert coords of length 3, it interprets them as XYH. That's not what we want.
+            // When mesh ctor sees vert coords of length 2 or 3, it interprets them as XYH.
+            // That's not what we want, we want XYZ instead.  So go through this contortion...
             double initialVertsXYZW[][] = new double[nInitialVerts][4];
             FORI (i, nInitialVerts)
             {
@@ -69,19 +65,6 @@ public class ConvexNoiseMaker
                 VecMath.copyvec(initialVerts3d[i].length, initialVertsXYZW[i], initialVerts3d[i]);
             }
             this.scratchMesh = new Mesh(initialVertsXYZW, initialFaces);
-        }
-        else
-        {
-            // XXX why is this making weird error?  assertion failure trying to add iVert=6 because getting unexpectedly low z intercept?  I thought it should just interpret the initial coords as XYH, which will put them lower in the Mesh than in our calculations, which should be harmless??  I'm confused. and at any rate, it shouldn't matter!   oh but wait, we re-delaunayize every step based on the exagerrated... could this be causing a problem?   NO! exaggerating the initial verts downward shouldn't cause topology change in the convex hull!  I am totally confused!
-            // ANSWER: the convex hull formed by the mesh verts can be non-convex when interpreted in verts3d!
-            this.scratchMesh = new Mesh(initialVerts3d, initialFaces);
-            FORI (iVert, nInitialVerts)
-            {
-                assert_eq(this.scratchMesh.getVert(iVert).x(), initialVerts3d[iVert].length<=0?0.:initialVerts3d[iVert][0]);
-                assert_eq(this.scratchMesh.getVert(iVert).y(), initialVerts3d[iVert].length<=1?0.:initialVerts3d[iVert][1]);
-                assert_eq(this.scratchMesh.getVert(iVert).h(), initialVerts3d[iVert].length<=2?0.:initialVerts3d[iVert][2]);
-                assert_lt(this.scratchMesh.getVert(iVert).z(), initialVerts3d[iVert].length<=2?0.:initialVerts3d[iVert][2]);
-            }
         }
         int maxPossibleDirectedEdges = 3*verts3d.length * 2; // I think that's an upper bound... *2 for directed edges
         this.horizon = new IndexBinaryHeapKeyed(maxPossibleDirectedEdges); // scratch for loop. size is max size we'll encounter.
@@ -117,9 +100,9 @@ public class ConvexNoiseMaker
             Mesh.Edge someEdgeOnFaceVertIsIn = MeshUtils.findSomeEdgeOnFaceVertIsIn(scratchMesh, verts3d[iVert][0], verts3d[iVert][1]);
             if (verboseLevel >= 3) OUT("              someEdgeOnFaceVertIsIn = "+someEdgeOnFaceVertIsIn);
 
-            // at least one of these must be set. if both set, we compare
+            // at least one of these must be set. if both set, we compare.
             boolean nonBruteForceFlag = true;
-            boolean bruteForceFlag = false;
+            boolean bruteForceFlag = true;
 
             if (nonBruteForceFlag)
             {
