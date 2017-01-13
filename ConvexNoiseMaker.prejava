@@ -50,15 +50,22 @@ public class ConvexNoiseMaker
         {
             assert(false); // can't happen, we checked at the beginning
         }
-        // WEIRD: there's confusion about XYH vs. XYZ.
-        // initialVerts3d are interpreted as XYH when passed to Mesh ctor,
-        // but then they, and all of verts3d, are interpreted as XYZ.
-        // I think the effect is that the initial verts end up downward a bit from where they should be.
-        // I think this is a bug, but it's pretty much benign.
         verts3d = new double[maxVerts][3];
-        VecMath.copymat(verts3d, initialVerts3d);
+        VecMath.copymat(verts3d, initialVerts3d); // if initialVerts3d verts had length 2, [2] will be 0
         this.nInitialVerts = nInitialVerts;
-        this.scratchMesh = new Mesh(initialVerts3d, initialFaces);
+        if (true)
+        {
+            // When mesh ctor sees vert coords of length 2 or 3, it interprets them as XYH.
+            // That's not what we want, we want XYZ instead.  So go through this contortion...
+            double initialVertsXYZW[][] = new double[nInitialVerts][4];
+            FORI (i, nInitialVerts)
+            {
+                initialVertsXYZW[i][2] = 0.;
+                initialVertsXYZW[i][3] = 1.;
+                VecMath.copyvec(initialVerts3d[i].length, initialVertsXYZW[i], initialVerts3d[i]);
+            }
+            this.scratchMesh = new Mesh(initialVertsXYZW, initialFaces);
+        }
         int maxPossibleDirectedEdges = 3*verts3d.length * 2; // I think that's an upper bound... *2 for directed edges
         this.horizon = new IndexBinaryHeapKeyed(maxPossibleDirectedEdges); // scratch for loop. size is max size we'll encounter.
     } // ConvexNoiseMaker ctor
@@ -81,26 +88,40 @@ public class ConvexNoiseMaker
 
             // Figure out what height to put it at.
 
-            double zMin = -1.;
-            double zMax = maxHeight;
+            double zMinNonBruteForce = Double.NaN;
+            double zMaxNonBruteForce = Double.NaN;
+            double zMinBruteForce = Double.NaN;
+            double zMaxBruteForce = Double.NaN;
+
 
             // First, locate the triangle the point is in.
             // zMin will be its face plane z,
             // and zMax will be the min of all the other face plane z's.
             Mesh.Edge someEdgeOnFaceVertIsIn = MeshUtils.findSomeEdgeOnFaceVertIsIn(scratchMesh, verts3d[iVert][0], verts3d[iVert][1]);
-            if (true)
+            if (verboseLevel >= 3) OUT("              someEdgeOnFaceVertIsIn = "+someEdgeOnFaceVertIsIn);
+
+            // At least one of these must be set. If both set, we compare.
+            boolean nonBruteForceFlag = true;
+            boolean bruteForceFlag = false;
+
+            if (nonBruteForceFlag)
             {
                 // Non-brute-force way.
 
+                zMaxNonBruteForce = maxHeight; // in case we don't run into any other ceiling
+
                 {
                     int i = someEdgeOnFaceVertIsIn.initialVertex().myIndex();
-                    int j = someEdgeOnFaceVertIsIn.next().initialVertex().myIndex();
+                    //int j = someEdgeOnFaceVertIsIn.next().initialVertex().myIndex();
+                    int j = someEdgeOnFaceVertIsIn.finalVertex().myIndex();
                     int k = someEdgeOnFaceVertIsIn.prev().initialVertex().myIndex();
                     double zIntercept = GeomUtils.computeZIntercept(verts3d[i],
                                                                     verts3d[j],
                                                                     verts3d[k],
                                                                     verts3d[iVert]);
-                    zMin = zIntercept;
+                    zMinNonBruteForce = zIntercept;
+                    if (verboseLevel >= 3) OUT("              zMinNonBruteForce = "+zMinNonBruteForce+" from verts "+i+" "+j+" "+k+" at x="+verts3d[iVert][0]+" y="+verts3d[iVert][1]+"");
+
                     // CBB: original brute-force code discarded this vertex if something was within 1e-9 of an existing edge.  should do that.
                 }
 
@@ -119,13 +140,16 @@ public class ConvexNoiseMaker
                         int i = opp.initialVertex().myIndex();
                         int j = opp.finalVertex().myIndex();
                         int k = opp.prev().initialVertex().myIndex();
-                        if (!(i<=2 && j<=2 && k<=2)) // if not the original triangle inside out
+                        if (!(i<nInitialVerts && j<nInitialVerts && k<nInitialVerts)) // if not the original triangle inside out
                         {
                             double zIntercept = GeomUtils.computeZIntercept(verts3d[i],
                                                                             verts3d[j],
                                                                             verts3d[k],
                                                                             verts3d[iVert]);
-                            if (verboseLevel >= 3) OUT("              adding initial horizon edge "+initialHorizonEdge+" at zIntercept="+zIntercept);
+                            if (verboseLevel >= 3) OUT("              adding initial horizon edge "+initialHorizonEdge+" at zIntercept="+zIntercept+" from verts "+i+" "+j+" "+k+"");
+                            // Every (non-inside-out) triangle plane should have a z intercept
+                            // strictly greater than that of the face it's hovering over.
+                            assert_gt(zIntercept, zMinNonBruteForce);
                             horizon.add(initialHorizonEdge.myIndex(), zIntercept);
                         }
                         initialHorizonEdge = initialHorizonEdge.next();
@@ -135,17 +159,25 @@ public class ConvexNoiseMaker
 
                 while (!horizon.isEmpty())
                 {
-                    if (verboseLevel >= 3) OUT("          top of horizon loop");
+                    if (verboseLevel >= 3) OUT("                  top of horizon loop");
                     // extractMin, but get the value first
                     int iOldHorizonEdge = horizon.min();
                     double zInterceptOld = horizon.getValue(iOldHorizonEdge);
                     assert(!Double.isNaN(zInterceptOld));
                     horizon.remove(iOldHorizonEdge);
-                    zMax = MIN(zMax, zInterceptOld);
+
+                    // This is just a re-assert of when we added it.
+                    assert_gt(zInterceptOld, zMinNonBruteForce);
+
+                    if (zInterceptOld >= maxHeight)
+                    {
+                        zMaxNonBruteForce = maxHeight;
+                        break;
+                    }
 
                     Mesh.Edge oldHorizonEdge = scratchMesh.getEdge(iOldHorizonEdge);
                     Mesh.Edge newHorizonEdge = oldHorizonEdge.opposite().next();
-                    if (verboseLevel >= 3) OUT("              removed old horizon edge "+oldHorizonEdge+", maybe adding new horizon edges "+newHorizonEdge+", "+newHorizonEdge.next());
+                    if (verboseLevel >= 3) OUT("                      removed old horizon edge "+oldHorizonEdge+" at zIntercept="+zInterceptOld+", maybe adding new horizon edges "+newHorizonEdge+", "+newHorizonEdge.next());
 
 
                     boolean broke = false;
@@ -157,6 +189,9 @@ public class ConvexNoiseMaker
                         {
                             // Adding this triangle obscures the vertex (barely); this is where we stop.
                             // It's fine if horizon is a bit insane at this point; we're just going to clear it.
+                            if (verboseLevel >= 3) OUT("                          aha! was about to add "+newHorizonEdge+" but its opposite "+newHorizonEdge.opposite()+" is already on horizon! done! (and I think maybe I should set zMaxNonBruteForce to "+zInterceptOld+")");
+                            zMaxNonBruteForce = zInterceptOld;
+
                             broke = true;
                             break;
                         }
@@ -164,14 +199,21 @@ public class ConvexNoiseMaker
                         int i = opp.initialVertex().myIndex();
                         int j = opp.finalVertex().myIndex();
                         int k = opp.prev().initialVertex().myIndex();
-                        if (!(i<=2 && j<=2 && k<=2)) // if not the original triangle inside out
+                        if (!(i<nInitialVerts && j<nInitialVerts && k<nInitialVerts)) // if not the original triangle inside out
                         {
                             double zIntercept = GeomUtils.computeZIntercept(verts3d[i],
                                                                             verts3d[j],
                                                                             verts3d[k],
                                                                             verts3d[iVert]);
-                            if (verboseLevel >= 3) OUT("              adding new horizon edge "+newHorizonEdge+" at zIntercept="+zIntercept);
+                            if (verboseLevel >= 3) OUT("                          adding new horizon edge "+newHorizonEdge+" at zIntercept="+zIntercept);
+                            // Every (non-inside-out) triangle plane should have a z intercept
+                            // strictly greater than that of the face it's hovering over.
+                            assert_gt(zInterceptOld, zMinNonBruteForce);
                             horizon.add(newHorizonEdge.myIndex(), zIntercept);
+                        }
+                        else
+                        {
+                            if (verboseLevel >= 3) OUT("                          (not adding new horizon edge "+newHorizonEdge+" because original boundary)");
                         }
                         newHorizonEdge = newHorizonEdge.next();
                     }
@@ -184,11 +226,18 @@ public class ConvexNoiseMaker
                 {
                     horizon.extractMin();
                 }
-            }
-            else
+
+                assert(!Double.isNaN(zMinNonBruteForce));
+                assert(!Double.isNaN(zMaxNonBruteForce));
+            } // nonBruteForceFlag
+            if (bruteForceFlag)
             {
                 // brute force way: examine all triangles.
                 // TODO: salvage the 1e-9 part and then remove this
+
+                zMinBruteForce = -1.;
+                zMaxBruteForce = maxHeight;
+
                 int nEdges = scratchMesh.edges.size();
                 FORI (iEdge, nEdges)
                 {
@@ -221,8 +270,10 @@ public class ConvexNoiseMaker
                          || EQ(cadArea, 0., 1e-9))
                         {
                             // set to impossible so we kill this x,y
-                            zMin = 1.;
-                            zMax = -1.;
+                            zMinBruteForce = 1.;
+                            zMaxBruteForce = -1.;
+                            System.out.print("?");
+                            System.out.flush();
                             //assert(false); // yeah it finally happened once
                             break;
                         }
@@ -243,27 +294,44 @@ public class ConvexNoiseMaker
                         if (dIsInMiddle)
                         {
                             // d is in middle. Make sure z isn't so low that it disappears below this triangle.
-                            zMin = MAX(zMin, zIntercept);
+                            zMinBruteForce = MAX(zMinBruteForce, zIntercept);
+                            if (verboseLevel >= 3) OUT("                      so contributing zIntercept="+zIntercept+" to zMinBruteForce from "+i+" "+j+" "+k+" at x="+verts3d[iVert][0]+" y="+verts3d[iVert][1]+"");
                         }
                         else
                         {
                             // c is in middle. Make sure z isn't so high that it makes c disappear from convex hull.
-                            zMax = MIN(zMax, zIntercept);
+                            zMaxBruteForce = MIN(zMaxBruteForce, zIntercept);
+                            if (verboseLevel >= 3) OUT("                      so contributing zIntercept="+zIntercept+" to zMaxBruteForce");
                         }
                     }
                 }
+                assert(!Double.isNaN(zMinBruteForce));
+                assert(!Double.isNaN(zMaxBruteForce));
+            } // brute force
+
+            double zMin = Double.isNaN(zMinNonBruteForce) ? zMinBruteForce : zMinNonBruteForce;
+            double zMax = Double.isNaN(zMaxNonBruteForce) ? zMaxBruteForce : zMaxNonBruteForce;
+            assert(!Double.isNaN(zMin));
+            assert(!Double.isNaN(zMax));
+            if (!Double.isNaN(zMinNonBruteForce) && !Double.isNaN(zMinBruteForce))
+            {
+                assert_almost_eq(zMinNonBruteForce, zMinBruteForce, 1e-9);
+            }
+            if (!Double.isNaN(zMaxNonBruteForce) && !Double.isNaN(zMaxBruteForce))
+            {
+                assert_almost_eq(zMaxNonBruteForce, zMaxBruteForce, 1e-9);
             }
 
-            if (zMin > zMax)
-            {
-                // Someone hit the 1e-9 thing
-                System.out.print("!");
-                System.out.flush();
-                //assert(false); // coverage
-                continue; // bad; try again
-            }
             if (verboseLevel >= 3) PRINT(zMin);
             if (verboseLevel >= 3) PRINT(zMax);
+            if (zMin > zMax)
+            {
+                // Someone hit the 1e-9 thing.  Or something.
+                System.out.print("!");
+                System.out.flush();
+                assert(false); // coverage.  yeah, it happens once in a blue moon.
+                continue; // bad; try again
+            }
             if (iVert == initialVerts3d.length)
             {
                 assert_eq(zMin, 0.);
@@ -316,6 +384,7 @@ public class ConvexNoiseMaker
           scratchMesh.kisIsolatedVertex(scratchMesh.getVert(scratchMesh.verts.size()-1),
                                         someEdgeOnFaceVertIsIn);
           assert_eq(scratchMesh.verts.size(), iVert+1);
+          if (false)
           {
               // Assert no isolated verts.  can do that by counting edges and tris, and using euler's formula:
               //     v+f = e+2
@@ -327,7 +396,23 @@ public class ConvexNoiseMaker
               //      e = 3v-6
               //     except this e is our edges.size()/2.
               // Note: appearance of isolated verts, currently, may be due to "and flat edges"
-              assert_eq(scratchMesh.edges.size(), 2*(3*scratchMesh.verts.size()-6));
+              if (nInitialVerts==3) // XXX what do I do in case nInitialVerts==4?
+              {
+                  assert_eq(scratchMesh.edges.size(), 2*(3*scratchMesh.verts.size()-6)); // XXX hmm, sometimes fails even if nInitialVerts==3? maybe same bug that's causing the "!"s
+              }
+          }
+
+          // Yes, need to re-delaunayize! Because it's not necessarily just the kis.
+          // CBB: but could do an incremental delaunayization polishing instead
+          if (true)
+          {
+              scratchMesh = MeshUtils.delaunayized(scratchMesh,
+                                                   false,
+                                                   1.,
+                                                   true,
+                                                   //true, // calcInsideOutDualVertsFlag=true for now. must be set to false at the end.
+                                                   false, // or maybe not. false means remove edges between pairs of non-positive-area (or very small) faces, true means leave it as is.  shouldn't make a difference if nInitialVerts==3 since there's only one such face, right? unless something tiny.  in any case, false seems right, at least for nInitialVerts=3.
+                                                   false);
           }
 
           // TODO: assert that there are exactly two inside out tris,
