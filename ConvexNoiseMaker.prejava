@@ -88,6 +88,10 @@ public class ConvexNoiseMaker
             // zMin will be its face plane z,
             // and zMax will be the min of all the other face plane z's.
             Mesh.Edge someEdgeOnFaceVertIsIn = MeshUtils.findSomeEdgeOnFaceVertIsIn(scratchMesh, verts3d[iVert][0], verts3d[iVert][1]);
+            if (verboseLevel >= 3) OUT("              someEdgeOnFaceVertIsIn = "+someEdgeOnFaceVertIsIn);
+
+            // BUG: brute force >=9 verts (and even rarely with >=8 verts), I see "!"s, i.e. something must be wrong with the zMin/zMax logic
+
             if (true)
             {
                 // Non-brute-force way.
@@ -119,7 +123,7 @@ public class ConvexNoiseMaker
                         int i = opp.initialVertex().myIndex();
                         int j = opp.finalVertex().myIndex();
                         int k = opp.prev().initialVertex().myIndex();
-                        if (!(i<=2 && j<=2 && k<=2)) // if not the original triangle inside out
+                        if (!(i<nInitialVerts && j<nInitialVerts && k<nInitialVerts)) // if not the original triangle inside out
                         {
                             double zIntercept = GeomUtils.computeZIntercept(verts3d[i],
                                                                             verts3d[j],
@@ -135,7 +139,7 @@ public class ConvexNoiseMaker
 
                 while (!horizon.isEmpty())
                 {
-                    if (verboseLevel >= 3) OUT("          top of horizon loop");
+                    if (verboseLevel >= 3) OUT("                  top of horizon loop");
                     // extractMin, but get the value first
                     int iOldHorizonEdge = horizon.min();
                     double zInterceptOld = horizon.getValue(iOldHorizonEdge);
@@ -145,7 +149,7 @@ public class ConvexNoiseMaker
 
                     Mesh.Edge oldHorizonEdge = scratchMesh.getEdge(iOldHorizonEdge);
                     Mesh.Edge newHorizonEdge = oldHorizonEdge.opposite().next();
-                    if (verboseLevel >= 3) OUT("              removed old horizon edge "+oldHorizonEdge+", maybe adding new horizon edges "+newHorizonEdge+", "+newHorizonEdge.next());
+                    if (verboseLevel >= 3) OUT("                      removed old horizon edge "+oldHorizonEdge+", maybe adding new horizon edges "+newHorizonEdge+", "+newHorizonEdge.next());
 
 
                     boolean broke = false;
@@ -157,6 +161,7 @@ public class ConvexNoiseMaker
                         {
                             // Adding this triangle obscures the vertex (barely); this is where we stop.
                             // It's fine if horizon is a bit insane at this point; we're just going to clear it.
+                            if (verboseLevel >= 3) OUT("                          aha! was about to add "+newHorizonEdge+" but its opposite "+newHorizonEdge.opposite()+" is already on horizon! done!");
                             broke = true;
                             break;
                         }
@@ -164,14 +169,18 @@ public class ConvexNoiseMaker
                         int i = opp.initialVertex().myIndex();
                         int j = opp.finalVertex().myIndex();
                         int k = opp.prev().initialVertex().myIndex();
-                        if (!(i<=2 && j<=2 && k<=2)) // if not the original triangle inside out
+                        if (!(i<nInitialVerts && j<nInitialVerts && k<nInitialVerts)) // if not the original triangle inside out
                         {
                             double zIntercept = GeomUtils.computeZIntercept(verts3d[i],
                                                                             verts3d[j],
                                                                             verts3d[k],
                                                                             verts3d[iVert]);
-                            if (verboseLevel >= 3) OUT("              adding new horizon edge "+newHorizonEdge+" at zIntercept="+zIntercept);
+                            if (verboseLevel >= 3) OUT("                          adding new horizon edge "+newHorizonEdge+" at zIntercept="+zIntercept);
                             horizon.add(newHorizonEdge.myIndex(), zIntercept);
+                        }
+                        else
+                        {
+                            if (verboseLevel >= 3) OUT("                          (not adding new horizon edge "+newHorizonEdge+" because original boundary)");
                         }
                         newHorizonEdge = newHorizonEdge.next();
                     }
@@ -223,6 +232,8 @@ public class ConvexNoiseMaker
                             // set to impossible so we kill this x,y
                             zMin = 1.;
                             zMax = -1.;
+                            System.out.print("?");
+                            System.out.flush();
                             //assert(false); // yeah it finally happened once
                             break;
                         }
@@ -256,11 +267,20 @@ public class ConvexNoiseMaker
 
             if (zMin > zMax)
             {
-                // Someone hit the 1e-9 thing
+                // Someone hit the 1e-9 thing.  Or something.
+                // XXX no actually it probably means I have a bug.
                 System.out.print("!");
                 System.out.flush();
                 //assert(false); // coverage
-                continue; // bad; try again
+                if (true) // XXX debug for now
+                {
+                    zMin = 0.1;
+                    zMax = 0.101;
+                }
+                else
+                {
+                    //continue; // bad; try again
+                }
             }
             if (verboseLevel >= 3) PRINT(zMin);
             if (verboseLevel >= 3) PRINT(zMax);
@@ -316,6 +336,7 @@ public class ConvexNoiseMaker
           scratchMesh.kisIsolatedVertex(scratchMesh.getVert(scratchMesh.verts.size()-1),
                                         someEdgeOnFaceVertIsIn);
           assert_eq(scratchMesh.verts.size(), iVert+1);
+          if (false)
           {
               // Assert no isolated verts.  can do that by counting edges and tris, and using euler's formula:
               //     v+f = e+2
@@ -327,7 +348,23 @@ public class ConvexNoiseMaker
               //      e = 3v-6
               //     except this e is our edges.size()/2.
               // Note: appearance of isolated verts, currently, may be due to "and flat edges"
-              assert_eq(scratchMesh.edges.size(), 2*(3*scratchMesh.verts.size()-6));
+              if (nInitialVerts==3) // XXX what do I do in case nInitialVerts==4?
+              {
+                  assert_eq(scratchMesh.edges.size(), 2*(3*scratchMesh.verts.size()-6)); // XXX hmm, sometimes fails even if nInitialVerts==3? maybe same bug that's causing the "!"s
+              }
+          }
+
+          // Yes, need to re-delaunayize! Because it's not necessarily just the kis.
+          // CBB: but could do an incremental delaunayization polishing instead
+          if (true)
+          {
+              scratchMesh = MeshUtils.delaunayized(scratchMesh,
+                                                   false,
+                                                   1.,
+                                                   true,
+                                                   //true, // calcInsideOutDualVertsFlag=true for now. must be set to false at the end.
+                                                   false, // or maybe not. false means remove edges between pairs of non-positive-area (or very small) faces, true means leave it as is.  shouldn't make a difference if nInitialVerts==3 since there's only one such face, right? unless something tiny.  in any case, false seems right, at least for nInitialVerts=3.
+                                                   false);
           }
 
           // TODO: assert that there are exactly two inside out tris,
