@@ -4438,10 +4438,13 @@ public class ShephardsPlayApplet
             saveToOFF(mesh, theNet, fileName, saveHomo);
         } // save
 
-        public void load(String fileName)
+        public static Mesh loadFromOFF(String fileName,
+                                       int edgeStatusesPtr[/*1*/][],
+                                       boolean firstVertexExistedAndWasHomoPtr[/*1*/])
         {
             System.out.print("Loading from "+fileName+"... ");
             System.out.flush();
+            Mesh mesh = null;
             try {
                 java.io.LineNumberReader reader = new java.io.LineNumberReader(new java.io.FileReader(fileName)); // LineNumberReader is already a buffered reader
                 String line;
@@ -4492,6 +4495,7 @@ public class ShephardsPlayApplet
                     FORI (i, tokens.length)
                         verts[iVert][i] = Double.parseDouble(tokens[i]);
                 }
+                firstVertexExistedAndWasHomoPtr[0] = (verts.length>=1 && verts[0].length==4);
                 FORI (iFace, nFaces)
                 {
                     if ((line = reader.readLine()) == null)
@@ -4557,37 +4561,60 @@ public class ShephardsPlayApplet
 
                 reader.close();
 
-
-                {
-                    // Guess what wrapAroundSphere should be based on first vertex (although theoretically they can be mixed).
-                    boolean desiredWrapAroundSphereFlag = verts.length==0 ? false : verts[0].length==4;
-
-                    if (true)
-                    {
-                        desiredWrapAroundSphereFlag = false; // XXX HACK
-                    }
-
-                    // Have to suppress transforming when setting wrap flag.
-                    boolean savedTransformFlag = transformWhenChangingWrapOrCenterFlag.get();
-                    transformWhenChangingWrapOrCenterFlag.set(false);
-                    wrapAroundSphereFlagIntent.set(desiredWrapAroundSphereFlag);
-                    transformWhenChangingWrapOrCenterFlag.set(savedTransformFlag);
-                }
-
                 mesh = new Mesh(verts, faces);
-
                 assert_eq(mesh.edges.size(), nEdgesExpected);
-
-                if (edgeStatuses != null) // if there was Cut and/or Fold info at the end...
-                    theNet = new Net(getDualMesh(), mesh, edgeStatuses);
-
-                if (continuouslyDelaunayizeFlag.get()) delaunayize();
+                if (edgeStatusesPtr != null)
+                    edgeStatusesPtr[0] = edgeStatuses;
             }
             catch (Exception exc)
             {
                 exc.printStackTrace();
-                System.out.println("load from file "+fileName+" failed:" + exc);            }
+                System.out.println("load from file "+fileName+" failed:" + exc);
+            }
             System.out.println("done.");
+            return mesh;
+        } // loadFromOFF
+
+        public void load(String fileName)
+        {
+            try {
+                int edgeStatusesPtr[/*1*/][] = {null};
+                boolean firstVertexExistedAndWasHomoPtr[/*1*/] = {false}; // bleah, ugly
+                Mesh loadedMesh = loadFromOFF(fileName, edgeStatusesPtr, firstVertexExistedAndWasHomoPtr);
+                if (loadedMesh != null)
+                {
+                    mesh = loadedMesh;
+                    {
+                        // Guess what wrapAroundSphere should be based on first vertex (although theoretically they can be mixed).
+
+                        boolean desiredWrapAroundSphereFlag = firstVertexExistedAndWasHomoPtr[0];
+
+                        if (true)
+                        {
+                            desiredWrapAroundSphereFlag = false; // XXX HACK
+                        }
+
+                        // Have to suppress transforming when setting wrap flag.
+                        boolean savedTransformFlag = transformWhenChangingWrapOrCenterFlag.get();
+                        transformWhenChangingWrapOrCenterFlag.set(false);
+                        wrapAroundSphereFlagIntent.set(desiredWrapAroundSphereFlag);
+                        transformWhenChangingWrapOrCenterFlag.set(savedTransformFlag);
+                    }
+
+                    int edgeStatuses[] = edgeStatusesPtr[0];
+                    if (edgeStatuses != null) // if there was Cut and/or Fold info at the end...
+                        theNet = new Net(getDualMesh(), loadedMesh, edgeStatuses);
+
+                    if (continuouslyDelaunayizeFlag.get()) delaunayize();
+
+                }
+            }
+            catch (Exception exc)
+            {
+                exc.printStackTrace();
+                System.out.println("load from file "+fileName+" or something afterwards failed:" + exc);
+                mesh = null;
+            }
         } // load
 
         public void pan(double dx, double dy)
