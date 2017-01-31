@@ -309,18 +309,18 @@ public class MyAlgorithmMaybe
         return v2eSweepward;
     } // compute_v2eSweepward
 
-    public static int[][] compute_f2lightSides_from_dual(
+    public static int[][] compute_f2lightSides_from_dual_and_priority2f(
       Mesh dualMesh, // generally reversed from the calling app's notion.
-      double sweepOriginHomo[/*3*/]) // if [2] is 0, the vertex is infinitely far from origin
+      double sweepOriginHomo[/*3*/], // if [2] is 0, the vertex is infinitely far from origin
+      int priority2f[])
     {
         int verboseLevel = 0; // 1: constant, 2: linear
-        if (verboseLevel >= 1) OUT("            in MyAlgorithmMaybe.compute_f2lightSides_from_dual");
+        if (verboseLevel >= 1) OUT("            in MyAlgorithmMaybe.compute_f2lightSides_from_dual_and_priority2f");
         int nEdges = dualMesh.edges.size();
         int nFaces = dualMesh.verts.size();
         if (verboseLevel >= 1) OUT("              nEdges = "+nEdges);
         if (verboseLevel >= 1) OUT("              nFaces = "+nFaces);
 
-        int priority2f[] = MeshSweepOrderUtils.compute_priority2f_from_dual(sweepOriginHomo, dualMesh);
         if (verboseLevel >= 2) OUT("              priority2f = "+VecMath.toString(priority2f));
         assert_eq(priority2f.length, nFaces);
         int f2priority[] = VecMath.invertperm(priority2f);
@@ -360,9 +360,9 @@ public class MyAlgorithmMaybe
         }
 
         if (verboseLevel >= 2) OUT("              f2lightSides = "+VecMath.toString(f2lightSides));
-        if (verboseLevel >= 1) OUT("            out MyAlgorithmMaybe.compute_f2lightSides_from_dual");
+        if (verboseLevel >= 1) OUT("            out MyAlgorithmMaybe.compute_f2lightSides_from_dual_and_priority2f");
         return f2lightSides;
-    } // compute_f2lightSides_from_dual
+    } // compute_f2lightSides_from_dual_and_priority2f
 
     public static BigInt countVertSweeps_from_v2eSweepward(int v2eSweepward[][])
     {
@@ -419,16 +419,19 @@ public class MyAlgorithmMaybe
         return net;
     } // selectVertSweep_from_v2eSweepward
 
-    public static Net selectFaceSweep_from_f2lightSides(
+    public static Net selectFaceSweep_from_priority2f_and_f2lightSides(
         Mesh mesh, Mesh dualMesh, // generally reversed from the calling app's notion.
+        int priority2f[],
         int f2lightSides[][],
         BigInt iNet)
     {
         assert(iNet.ge(0));
+        assert_eq(priority2f.length, f2lightSides.length);
         BigInt scratch = iNet.copy();
         Net net = new Net(mesh, dualMesh);
-        FORI (iFace, f2lightSides.length)
+        FORIDOWN (iiFace, priority2f.length)
         {
+            int iFace = priority2f[iiFace];
             if (f2lightSides[iFace].length > 0)
             {
                 int remainder = scratch.divEqualsReturningRemainder(f2lightSides[iFace].length);
@@ -459,11 +462,12 @@ public class MyAlgorithmMaybe
         BigInt iNet)
     {
         if (iNet.lt(0)) return null;
-        int f2lightSides[][] = compute_f2lightSides_from_dual(dualMesh, sweepOriginHomo);
+        int priority2f[] = MeshSweepOrderUtils.compute_priority2f_from_dual(sweepOriginHomo, dualMesh);
+        int f2lightSides[][] = compute_f2lightSides_from_dual_and_priority2f(dualMesh, sweepOriginHomo, priority2f);
         BigInt nNets = countFaceSweeps_from_f2lightSides(f2lightSides);
         if (iNet.ge(nNets)) return null;
         OUT("Face sweep "+iNet+"/"+nNets); // XXX need to do this somewhere more graceful, in caller. but then caller needs to get n. think about it.
-        return selectFaceSweep_from_f2lightSides(mesh, dualMesh, f2lightSides, iNet);
+        return selectFaceSweep_from_priority2f_and_f2lightSides(mesh, dualMesh, priority2f, f2lightSides, iNet);
     } // selectFaceSweepOrNull
 
     public static Net selectNetOrNull(
