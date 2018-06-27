@@ -1,5 +1,5 @@
 
-# Uncomment one of the following pairs.
+# Uncomment one of the following JAVAC,JAR pairs.
 
 #JAVAROOT=/usr/java/jdk1.5.0
 #JAVAC=${JAVAROOT}/bin/javac
