@@ -3746,7 +3746,7 @@ public class ShephardsPlayApplet
                     setVisible(false);
                     add(new JLabel("        ")); // indent a bit
                     add(new JCol() {{
-                        add(new JCheckBoxForBoolean("show topo region when dragging vert", applet.showTopologicalRegionWhenDraggingVertexFlag));
+                        add(new JCheckBoxForBoolean("show topo region of dragged vert", applet.showTopologicalRegionWhenDraggingVertexFlag));
                     }});
                 }}));
                 contentPane.add(new JSeparator(), stretchx);
@@ -5369,6 +5369,7 @@ public class ShephardsPlayApplet
                         // Select closest vertex
                         //
                         beingDraggedVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1], mostRecentGraphics);
+                        mostRecentlyBeingDraggedVertIndex = beingDraggedVertIndex;
                         Mesh.Vertex vert = mesh.getVert(beingDraggedVertIndex);
 
                         // figure out whether it's on the front or back of its offset surface.
@@ -5450,6 +5451,7 @@ public class ShephardsPlayApplet
                             if (closestVertIndex != -1) // if it wasn't too far
                             {
                                 beingDraggedVertIndex = closestVertIndex;
+                                mostRecentlyBeingDraggedVertIndex = beingDraggedVertIndex;
                                 System.out.println("Dragging vertex "+beingDraggedVertIndex);
                                 Mesh.Vertex beingDraggedVert = mesh.getVert(beingDraggedVertIndex);
                                 // figure out whether it's on the front or back of its offset surface.
@@ -5633,6 +5635,7 @@ public class ShephardsPlayApplet
                                     mesh.sanityCheckTopology();
 
                                     beingDraggedVertIndex = verts.size()-1; // start dragging the one we just added
+                                    mostRecentlyBeingDraggedVertIndex = beingDraggedVertIndex;
                                     // XXX not sure the following is right, since it's already been snapped, right? or has it?
                                     beingDraggedVertUnsnappedXY = new double[]{vertsToAdd[0][0],
                                                                                vertsToAdd[0][1]};
@@ -5654,6 +5657,7 @@ public class ShephardsPlayApplet
                     {
                         // Drag all verts (XXX need different way of expressing this I think, now that middle button being used for rotate)
                         beingDraggedVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1],mostRecentGraphics);
+                        mostRecentlyBeingDraggedVertIndex = beingDraggedVertIndex;
                         if (beingDraggedVertIndex == -1)
                             System.out.println("Dragging vertex "+beingDraggedVertIndex);
                         else
@@ -5708,6 +5712,7 @@ public class ShephardsPlayApplet
                             // and all its reflections and rotations in the symmetry group
                             //
                             beingDraggedVertIndex = mesh.indexOfClosestVert(thisP[0],thisP[1],mostRecentGraphics);
+                            mostRecentlyBeingDraggedVertIndex = -1;
                             PRINT(beingDraggedVertIndex);
                             int oldToNew[] = VecMath.identityperm(mesh.verts.size());
                             int newToOld[] = VecMath.identityperm(mesh.verts.size());
@@ -5721,6 +5726,7 @@ public class ShephardsPlayApplet
                                     mesh.deleteVertex(vertsToDelete[iVertToDelete], oldToNew, newToOld);
                             }
                             beingDraggedVertIndex = -1;
+                            mostRecentlyBeingDraggedVertIndex = -1;  // yes, clear it, it's disappearing
 
                             // re-index selectedTris and invalidate selectedDualVertIndices
                             if (!allDualVertsAreSelected)
@@ -5822,6 +5828,7 @@ public class ShephardsPlayApplet
                     }
 
                     beingDraggedVertIndex = -1;
+                    // do *not* clear mostRecentlyBeingDraggedVertIndex
                     beingDraggedNetEdgeIndex = -1;
 
 
@@ -5839,6 +5846,7 @@ public class ShephardsPlayApplet
                 else if (whichButton == java_awt_event_MouseEvent_BUTTON2)
                 {
                     beingDraggedVertIndex = -1;
+                    // do *not* clear mostRecentlyBeingDraggedVertIndex
                     beingDraggedNetEdgeIndex = -1;
                     if (eventVerbose >= 1) System.out.println("setting draggingRotation=false on BUTTON2 up");
                     draggingRotation = false;
@@ -9915,9 +9923,10 @@ public class ShephardsPlayApplet
                 // Draw topological region.
                 // Currently drawing this close to last, but should think about when to do it.
                 //
-                if (beingDraggedVertIndex != -1 && showTopologicalRegionWhenDraggingVertexFlag.get())
+                if (mostRecentlyBeingDraggedVertIndex != -1 && showTopologicalRegionWhenDraggingVertexFlag.get())
                 {
-                    Mesh.Vertex v0 = mesh.getVert(beingDraggedVertIndex);
+                    CHECK_LT(mostRecentlyBeingDraggedVertIndex, mesh.verts.size());
+                    Mesh.Vertex v0 = mesh.getVert(mostRecentlyBeingDraggedVertIndex);
                     ArrayList regionBoundaryArcSpecs = figureOutTopologicalRegion(mesh, dualMesh, v0);
                     if (regionBoundaryArcSpecs != null) {
                       int nArcs = regionBoundaryArcSpecs.size();
@@ -9949,7 +9958,7 @@ public class ShephardsPlayApplet
                         if (ABS(a) < 1e-2)  // we get something like 1e-15 sometimes
                         {
                           // It's too big; draw it in two pieces
-                          // CBB: would it make sense for smartDrawThickArc to treat negative end-start as this?  hmm, not sure.
+                          // CBB: would it make sense for smartDrawThickArc to treat negative end-start as this?  hmm, I don't think so, but there should probably be a different way to express this.  smartDrawThickArcComplement?  pass another param saying it's the complement?
                           double arcRayLength = 10.;
                           mg3d.smartDrawThickArc(
                               1., // thicknessInPixels
@@ -15338,8 +15347,9 @@ OFF
                 public int selectedTris[][];
                 public int selectedDualVertIndices[];
                 public boolean allDualVertsAreSelected;
+                public int mostRecentlyBeingDraggedVertIndex;
                 public int netEdgeStatuses[];
-                public State(Mesh mesh, boolean continuouslyDelaunayizeFlag, boolean optimizeFlag, int optimizationTypeIndex, int selectedTris[][], int selectedDualVertIndices[], boolean allDualVertsAreSelected, Net net)
+                public State(Mesh mesh, boolean continuouslyDelaunayizeFlag, boolean optimizeFlag, int optimizationTypeIndex, int selectedTris[][], int selectedDualVertIndices[], boolean allDualVertsAreSelected, int mostRecentlyBeingDraggedVertIndex, Net net)
                 {
                     this.mesh = new Mesh(mesh);
                     this.continuouslyDelaunayizeFlag = continuouslyDelaunayizeFlag;
@@ -15348,6 +15358,7 @@ OFF
                     this.selectedTris = (int[][])Arrays.copy(selectedTris, 2);
                     this.selectedDualVertIndices = VecMath.copyvec(selectedDualVertIndices);
                     this.allDualVertsAreSelected = allDualVertsAreSelected;
+                    this.mostRecentlyBeingDraggedVertIndex = mostRecentlyBeingDraggedVertIndex;
                     this.netEdgeStatuses = (net==null ? null : VecMath.copyvec(net.getEdgeStatuses()));
                 }
             }
@@ -15369,6 +15380,7 @@ OFF
                                       this.selectedTris,
                                       this.selectedDualVertIndices,
                                       this.allDualVertsAreSelected,
+                                      this.mostRecentlyBeingDraggedVertIndex,
                                       this.theNet);
         } // newUndoItemState
 
@@ -15383,6 +15395,7 @@ OFF
             this.selectedTris = (int[][])Arrays.copy(state.selectedTris, 2);
             this.selectedDualVertIndices = VecMath.copyvec(state.selectedDualVertIndices);
             this.allDualVertsAreSelected = state.allDualVertsAreSelected;
+            this.mostRecentlyBeingDraggedVertIndex = state.mostRecentlyBeingDraggedVertIndex;
             this.dirtyDualMesh(); // *before* we restore theNet
             this.theNet = (state.netEdgeStatuses==null ? null : new Net(this.getDualMesh(), mesh, state.netEdgeStatuses));
         } // applyUndoItemState
@@ -15551,6 +15564,7 @@ OFF
         private java.util.Random randomNumberGenerator = new java.util.Random(randomSeed.get());
 
         private int beingDraggedVertIndex = -1;
+        private int mostRecentlyBeingDraggedVertIndex = -1;
         private double[] beingDraggedVertUnsnappedXY = null;
         private int beingDraggedNetEdgeIndex = -1;
         private double[] beingDraggedNetEdgeDelta = null;
