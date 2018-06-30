@@ -441,7 +441,7 @@ public class MyGraphics
     {
         int x0 = (int)Math.round(x * scaleX + translateX - .5*nPixels);
         int y0 = (int)Math.round(y * scaleY + translateY - .5*nPixels);
-        if (verbose >= 2) System.out.println("in drawPoint("+x+","+y+","+nPixels+") -> "+x0+","+y0);
+        if (verbose >= 3) System.out.println("in drawPoint("+x+","+y+","+nPixels+") -> "+x0+","+y0);
         // have to check, otherwise java fillRect does weird wraparound stuff
         // XXX should check in floating-point
         if (x0 < -nPixels
@@ -803,7 +803,30 @@ public class MyGraphics
         double slack)
     {
         if (verbose >= 2) System.out.println("            in smartDrawArcClipped");
-        CHECK(Double.isFinite(c)); // CBB: handle infinity? that's a point
+        if (verbose >= 2) System.out.println("              focusX="+focusX);
+        if (verbose >= 2) System.out.println("              focusY="+focusY);
+        if (verbose >= 2) System.out.println("              focusAngleRadians="+focusAngleRadians);
+        if (verbose >= 2) System.out.println("              c="+c);
+        if (verbose >= 2) System.out.println("              start="+start);
+        if (verbose >= 2) System.out.println("              end="+end);
+        if (verbose >= 2) System.out.println("              antiAlias="+antiAlias);
+        if (verbose >= 2) System.out.println("              clipX0="+clipX0);
+        if (verbose >= 2) System.out.println("              clipX1="+clipX1);
+        if (verbose >= 2) System.out.println("              clipY0="+clipY0);
+        if (verbose >= 2) System.out.println("              clipY1="+clipY1);
+        if (verbose >= 2) System.out.println("              slack="+slack);
+        CHECK(Double.isFinite(focusX));
+        CHECK(Double.isFinite(focusY));
+        CHECK(Double.isFinite(focusAngleRadians));
+        CHECK(Double.isFinite(focusAngleRadians));
+        CHECK(Double.isFinite(c)); // CBB: handle infinity? that means the circle is a point
+        CHECK(Double.isFinite(start));
+        CHECK(Double.isFinite(end));
+        CHECK(Double.isFinite(clipX0));
+        CHECK(Double.isFinite(clipX1));
+        CHECK(Double.isFinite(clipY0));
+        CHECK(Double.isFinite(clipY1));
+        CHECK(Double.isFinite(slack));
         // I don't know how to clip analytically yet,
         // so do the following instead:
         // while an endpoint is outside the clip area,
@@ -835,35 +858,43 @@ public class MyGraphics
         double point[] = new double[2];
         double scratch[] = new double[2];
 
-        //System.out.println("clipMinX = "+clipMinX);
-        //System.out.println("clipMaxX = "+clipMaxX);
-        //System.out.println("clipMinY = "+clipMinY);
-        //System.out.println("clipMaxY = "+clipMaxY);
-        //System.out.println("slack = "+slack);
-        while (true)
+        if (verbose >= 2) System.out.println("              clipMinX = "+clipMinX);
+        if (verbose >= 2) System.out.println("              clipMaxX = "+clipMaxX);
+        if (verbose >= 2) System.out.println("              clipMinY = "+clipMinY);
+        if (verbose >= 2) System.out.println("              clipMaxY = "+clipMaxY);
+        if (verbose >= 2) System.out.println("              slack = "+slack);
+        if (verbose >= 2) System.out.println("              doing first loop...");
+        int max = 100;  // off-the-rails detection
+        for (int i = 0; ; i++)
         {
-            //System.out.println("start="+start);
-            //System.out.println("end="+end);
+            CHECK_LT(i, max);
+            if (verbose >= 2) System.out.println("                  top of loop");
+            if (verbose >= 2) System.out.println("                      start="+start);
+            if (verbose >= 2) System.out.println("                      end="+end);
+            CHECK(!Double.isNaN(start));
+            CHECK(!Double.isNaN(end));
             findPointOnArc(start, focusX, focusY, c, normalAndTangent, scratch, point);
             double startX = point[0];
             double startY = point[1];
-            //System.out.println("startX = "+startX);
-            //System.out.println("startY = "+startY);
+            if (verbose >= 2) System.out.println("                      startX="+startX);
+            if (verbose >= 2) System.out.println("                      startY="+startY);
             double dist = MAX4(startX-clipMaxX,
                                clipMinX-startX,
                                startY-clipMaxY,
                                clipMinY-startY);
-            //System.out.println("dist = "+dist);
+            if (verbose >= 2) System.out.println("                      dist="+dist);
             if (dist <= slack)
                 break;
             start += dir * dist;
-            //System.out.println("new start="+start);
+            if (verbose >= 2) System.out.println("                      new start="+start);
             if (dir * (end-start) < 0)
             {
-                //System.out.println("        out smartDrawArcClipped (without drawing)");
+                if (verbose >= 2) System.out.println("            out smartDrawArcClipped (without drawing)");
                 return;
             }
         }
+        if (verbose >= 2) System.out.println("              done with first loop.");
+        if (verbose >= 2) System.out.println("              doing second loop...");
         while (true)
         {
             //System.out.println("start="+start);
@@ -887,6 +918,7 @@ public class MyGraphics
                 return;
             }
         }
+        if (verbose >= 2) System.out.println("              done with second loop.");
 
         // Prevent huge circles that start and end in the clip rectangle.
         // Note this doesn't clip away all arc segments
@@ -917,8 +949,10 @@ public class MyGraphics
             }
         }
 
+        if (verbose >= 2) System.out.println("              calling smartDrawArcNonClipped...");
         smartDrawArcNonClipped(focusX,focusY, focusAngleRadians, c, start,end,
                                antiAlias);
+        if (verbose >= 2) System.out.println("              returned from smartDrawArcNonClipped.");
         if (verbose >= 2) System.out.println("            out smartDrawArcClipped (bottom)");
     } // smartDrawArcClipped
 
@@ -930,9 +964,12 @@ public class MyGraphics
         boolean antiAlias)
     {
         if (verbose >= 2) System.out.println("        in smartDrawArc_");
-        //System.out.println("scaleX="+scaleX);
-        //System.out.println("scaleY="+scaleY);
-        //System.out.println("    in smartDrawArc");
+        if (verbose >= 2) System.out.println("          focusX="+focusX);
+        if (verbose >= 2) System.out.println("          focusY="+focusY);
+        if (verbose >= 2) System.out.println("          focusAngleRadians="+focusAngleRadians);
+        if (verbose >= 2) System.out.println("          c="+c);
+        if (verbose >= 2) System.out.println("          start="+start);
+        if (verbose >= 2) System.out.println("          end="+end);
 
         double clipX0 = (0-translateX)/scaleX;
         double clipX1 = (gsize.width-translateX)/scaleX;
@@ -948,10 +985,12 @@ public class MyGraphics
             clipY1 *= .95;
         }
 
+        if (verbose >= 2) System.out.println("          calling smartDrawArcClipped...");
         smartDrawArcClipped(focusX, focusY, focusAngleRadians, c, start, end,
                             antiAlias,
                             clipX0, clipX1, clipY0, clipY1,
                             2./((Math.abs(scaleX)+Math.abs(scaleY))*.5));   // 2 pixels
+        if (verbose >= 2) System.out.println("          returned from smartDrawArcClipped...");
         if (verbose >= 2) System.out.println("        out smartDrawArc_");
     } // smartDrawArc_
 

@@ -9921,33 +9921,66 @@ public class ShephardsPlayApplet
                     ArrayList regionBoundaryArcSpecs = figureOutTopologicalRegion(mesh, dualMesh, v0);
                     if (regionBoundaryArcSpecs != null) {
                       int nArcs = regionBoundaryArcSpecs.size();
+                      System.out.println("  drawing region of "+nArcs+" arcs");
                       FORI (iArc, nArcs) {
-                        Mesh.Vertex v1v2center[] = (Mesh.Vertex[])regionBoundaryArcSpecs.get(iArc);
-                        Mesh.Vertex v1 = v1v2center[0];
-                        Mesh.Vertex v2 = v1v2center[1];
-                        Mesh.Vertex arcCenter = v1v2center[2];
-                        mg3d.setColor(new java.awt.Color(128,128,128)); // gray
+                        System.out.println("      arc "+iArc+"/"+nArcs+":");
+                        Object v1v2center[] = (Object[])regionBoundaryArcSpecs.get(iArc);
+                        Mesh.Vertex v1 = (Mesh.Vertex)v1v2center[0];
+                        Mesh.Vertex v2 = (Mesh.Vertex)v1v2center[1];
+                        double triMomentAndArea[/*4*/] = (double[])v1v2center[2];
+                        System.out.println("          v1 = "+v1);
+                        System.out.println("          v2 = "+v2);
+                        System.out.println("          triMomentAndArea = "+Arrays.toStringCompact(triMomentAndArea));
+                        double xa = triMomentAndArea[0];
+                        double ya = triMomentAndArea[1];
+                        double haa = triMomentAndArea[2];
+                        double a = triMomentAndArea[3];
+
                         double focusX = v1.x();
                         double focusY = v1.y();
-                        double focusAngleRadians1 = Math.atan2(v1.y()-arcCenter.y(),
-                                                               v1.x()-arcCenter.x());
-                        double curvature = 1./Math.hypot(v1.y()-arcCenter.y(),
-                                                         v1.x()-arcCenter.x());
-                        double focusAngleRadians2 = Math.atan2(v2.y()-arcCenter.y(),
-                                                               v2.x()-arcCenter.x());
+                        double focusAngleRadians1 = Math.atan2(v1.y()*a-ya,
+                                                               v1.x()*a-xa);
+                        double focusAngleRadians2 = Math.atan2(v2.y()*a-ya,
+                                                               v2.x()*a-xa);
+                        //double curvature = 1./Math.hypot(v1.y()-ya/a, v1.x()-xa/a);
+                        double curvature = a/Math.hypot(v1.y()*a-ya, v1.x()*a-xa);
                         double start = 0.;
-                        double arcLengthAngle = focusAngleRadians2 - focusAngleRadians1;
-                        if (arcLengthAngle < 0.) arcLengthAngle += 2*Math.PI;
-                        double end = arcLengthAngle / curvature;
-
-                        mg3d.smartDrawThickArc(
-                            1., // thicknessInPixels
-                            focusX, focusY,   // a point on the arc
-                            focusAngleRadians1, // from center to focus
-                            curvature,         // 1/radius
-                            start, end, // arc goes from focusAngle+start to focusAngle+end in arc length
-                            false); // antiAlias-- supposed to be always false according to function doc
+                        mg3d.setColor(new java.awt.Color(128,128,128)); // gray
+                        if (ABS(a) < 1e-2)  // we get something like 1e-15 sometimes
+                        {
+                          // It's too big; draw it in two pieces
+                          // CBB: would it make sense for smartDrawThickArc to treat negative end-start as this?  hmm, not sure.
+                          double arcRayLength = 10.;
+                          mg3d.smartDrawThickArc(
+                              1., // thicknessInPixels
+                              v1.x(), v1.y(),   // a point on the arc
+                              focusAngleRadians1, // from center to focus
+                              curvature,         // 1/radius
+                              0, arcRayLength, // arc goes from focusAngle+start to focusAngle+end in arc length
+                              false); // antiAlias-- supposed to be always false according to function doc
+                          mg3d.smartDrawThickArc(
+                              1., // thicknessInPixels
+                              v2.x(), v2.y(),   // a point on the arc
+                              focusAngleRadians2, // from center to focus
+                              curvature,         // 1/radius
+                              -arcRayLength, 0., // arc goes from focusAngle+start to focusAngle+end in arc length
+                              false); // antiAlias-- supposed to be always false according to function doc
+                        } else {
+                          double arcLengthAngle = focusAngleRadians2 - focusAngleRadians1;
+                          if (arcLengthAngle < 0.) arcLengthAngle += 2*Math.PI;
+                          double end = arcLengthAngle / curvature;
+                          System.out.println("        calling smartDrawThickArc");
+                          mg3d.smartDrawThickArc(
+                              1., // thicknessInPixels
+                              focusX, focusY,   // a point on the arc
+                              focusAngleRadians1, // from center to focus
+                              curvature,         // 1/radius
+                              start, end, // arc goes from focusAngle+start to focusAngle+end in arc length
+                              false); // antiAlias-- supposed to be always false according to function doc
+                          System.out.println("        returned from smartDrawThickArc");
+                        }
                       }
+                      System.out.println("  done drawing region of "+nArcs+" arcs");
                     }
                 }
 
@@ -10439,10 +10472,15 @@ public class ShephardsPlayApplet
                       //     v0
                       // Bound by the arc from v1 to v2 of circle that passes through v3.
                       // Center will be the dual vertex of the triangle v1v3v2.
-                      //System.out.println("            e13 dual edge = "+dualMesh.getEdge(e13.myIndex()));
-                      Mesh.Vertex f132 = dualMesh.getEdge(e13.myIndex()).finalVertex();  // primal to dual edge is a CCW turn (apparently)
-                      //System.out.println("            f132 = "+f132);
-                      regionBoundaryArcSpecs.add(new Mesh.Vertex[]{v2,v1,f132});
+                      double triMomentAndArea[] = new double[4];
+                      GeomUtils.SolveForDualMomentAndArea(v1.x(), v1.y(), v1.h(),
+                                                          v3.x(), v3.y(), v3.h(),
+                                                          v2.x(), v2.y(), v2.h(),
+                                                          triMomentAndArea,
+                                                          /*wrapAroundSphereFlagValue=*/false,
+                                                          /*centerSphereFlagValue=*/false,
+                                                          /*wrapSphereCurvatureValue=*/1.);
+                      regionBoundaryArcSpecs.add(new Object[]{v2,v1,triMomentAndArea});
                   }
                   {
                     Mesh.Edge e23 = e02.next();
@@ -10467,13 +10505,7 @@ public class ShephardsPlayApplet
                                                         /*wrapAroundSphereFlagValue=*/false,
                                                         /*centerSphereFlagValue=*/false,
                                                         /*wrapSphereCurvatureValue=*/1.);
-                    double xa = triMomentAndArea[0];
-                    double ya = triMomentAndArea[1];
-                    double haa = triMomentAndArea[2];
-                    double a = triMomentAndArea[3];
-                    fakeMesh.addIsolatedVertex(xa/a, ya/a, haa/(a*a));
-                    Mesh.Vertex f231 = fakeMesh.getVert(fakeMesh.verts.size()-1);
-                    regionBoundaryArcSpecs.add(new Mesh.Vertex[]{v3,v1,f231});
+                    regionBoundaryArcSpecs.add(new Object[]{v3,v1,triMomentAndArea});
                   }
 
                   if (nextEdgeOutOfV0 == someEdgeStartingAtV0)
@@ -15569,7 +15601,7 @@ OFF
         private Listenable.Listener myAlgorithmMaxItersListener = null;
         private Listenable.Listener myAlgorithmSweepOriginHomoSpecListener = null;
 
-        private Listenable.Boolean continuouslyDelaunayizeFlag = new Listenable.Boolean(false); // has to be false, or it may alter stuff on load
+        private Listenable.Boolean continuouslyDelaunayizeFlag = new Listenable.Boolean(true);// YYY // has to be false, or it may alter stuff on load
         private Listenable.Boolean optimizeFlag = new Listenable.Boolean(false);
         private Listenable.Int optimizationTypeIndex = new Listenable.Int(0, Mesh.availableOptimizationTypes.length-1, Mesh.OPTIMIZE_LENGTHS_MAX_MIN); // min, max, default
         int optimizationType = Mesh.availableOptimizationTypes[optimizationTypeIndex.get()];
@@ -15641,7 +15673,7 @@ OFF
         private Listenable.Boolean showInsideOutDualVertsFlag = new Listenable.Boolean(false);
 
         private Listenable.Boolean showFlatPrimalEdgesFlag = new Listenable.Boolean(false);
-        private Listenable.Boolean showTopologicalRegionWhenDraggingVertexFlag = new Listenable.Boolean(false);
+        private Listenable.Boolean showTopologicalRegionWhenDraggingVertexFlag = new Listenable.Boolean(true); // YYY
 
         private boolean showPositiveOrthantnessVisualizationFlag = false; // XXX total hack-- it's cool but put it somewhere else!!
         private Listenable.Boolean showPrimalVertsFlag = new Listenable.Boolean(true);
