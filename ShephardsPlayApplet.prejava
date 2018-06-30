@@ -3742,6 +3742,14 @@ public class ShephardsPlayApplet
                     }}, stretchx);
                 }}));
                 contentPane.add(new JSeparator(), stretchx);
+                contentPane.add(MakeCollapsibleSection("Experimental work in progress", applet.theControlPanelWindow, new JRow() {{
+                    setVisible(false);
+                    add(new JLabel("        ")); // indent a bit
+                    add(new JCol() {{
+                        add(new JCheckBoxForBoolean("show topo region when dragging vert", applet.showTopologicalRegionWhenDraggingVertexFlag));
+                    }});
+                }}));
+                contentPane.add(new JSeparator(), stretchx);
 
                 //randomlyColorize(this, applet.randomNumberGenerator);
                 //dumpComponentHierarchy(this, 0, 0, 1);
@@ -4140,6 +4148,13 @@ public class ShephardsPlayApplet
                     theCanvas.repaint();
                 }
             });
+            showTopologicalRegionWhenDraggingVertexFlag.addListener(showTopologicalRegionWhenDraggingVertexFlagListener = new Listenable.Listener() {
+                @Override public void valueChanged()
+                {
+                    System.out.println("showTopologicalRegionWhenDraggingVertexFlag -> "+showTopologicalRegionWhenDraggingVertexFlag.get());
+                    theCanvas.repaint();
+                }
+            });
             primalDualVisFlag.addListener(primalDualVisFlagListener = new Listenable.Listener() {
                 @Override public void valueChanged()
                 {
@@ -4206,7 +4221,7 @@ public class ShephardsPlayApplet
             "    'W' - select *all* dual verts for weighting (positive weight, of arity 3), or deselect all if selected all previously",
             "    'O' - toggle optimizeFlag",
             "    'l' - toggle showLabels",
-            "    '0' - toggle showOrigin",
+            //"    '0' - toggle showOrigin",
             "    'g' - toggle showGrid",
             "    'M'/'m' - increase/decrease magnification focus region",
             "    'P'/'p' - increase/decrease magnified pixel size",
@@ -9897,6 +9912,46 @@ public class ShephardsPlayApplet
                 }
 
                 //
+                // Draw topological region.
+                // Currently drawing this close to last, but should think about when to do it.
+                //
+                if (beingDraggedVertIndex != -1 && showTopologicalRegionWhenDraggingVertexFlag.get())
+                {
+                    Mesh.Vertex v0 = mesh.getVert(beingDraggedVertIndex);
+                    ArrayList regionBoundaryArcSpecs = figureOutTopologicalRegion(mesh, dualMesh, v0);
+                    if (regionBoundaryArcSpecs != null) {
+                      int nArcs = regionBoundaryArcSpecs.size();
+                      FORI (iArc, nArcs) {
+                        Mesh.Vertex v1v2center[] = (Mesh.Vertex[])regionBoundaryArcSpecs.get(iArc);
+                        Mesh.Vertex v1 = v1v2center[0];
+                        Mesh.Vertex v2 = v1v2center[1];
+                        Mesh.Vertex arcCenter = v1v2center[2];
+                        mg3d.setColor(new java.awt.Color(128,128,128)); // gray
+                        double focusX = v1.x();
+                        double focusY = v1.y();
+                        double focusAngleRadians1 = Math.atan2(v1.y()-arcCenter.y(),
+                                                               v1.x()-arcCenter.x());
+                        double curvature = 1./Math.hypot(v1.y()-arcCenter.y(),
+                                                         v1.x()-arcCenter.x());
+                        double focusAngleRadians2 = Math.atan2(v2.y()-arcCenter.y(),
+                                                               v2.x()-arcCenter.x());
+                        double start = 0.;
+                        double arcLengthAngle = focusAngleRadians2 - focusAngleRadians1;
+                        if (arcLengthAngle < 0.) arcLengthAngle += 2*Math.PI;
+                        double end = arcLengthAngle / curvature;
+
+                        mg3d.smartDrawThickArc(
+                            1., // thicknessInPixels
+                            focusX, focusY,   // a point on the arc
+                            focusAngleRadians1, // from center to focus
+                            curvature,         // 1/radius
+                            start, end, // arc goes from focusAngle+start to focusAngle+end in arc length
+                            false); // antiAlias-- supposed to be always false according to function doc
+                      }
+                    }
+                }
+
+                //
                 // Draw the labels last...
                 //
                 if ((showPrimalVertsFlag.get()&&labelPrimalVertsFlag.get())
@@ -10311,6 +10366,122 @@ public class ShephardsPlayApplet
                     backBufferImage = null;
             } // makeSureBackBufferIsRight
         } // class TheCanvas
+
+            private static ArrayList figureOutTopologicalRegion(Mesh mesh, Mesh dualMesh, Mesh.Vertex v0) {
+                System.out.println("    in figureOutTopologicalRegion");
+                // Figure out "topological region" of v0.
+                // That is, the region in which v0 can move without changing the topology of the picture.
+                // Q: does this make sense if not "keep delaunayized"?  Maybe just assume "keep delaunayized"?
+                // Topological region will be bound by arcs.
+                // How to store the arcs?
+                // Well, let's try:
+                //   - verts, in x,y,h space
+                //   - arc center cX,cX,cW  (actual position cX/cW, cY/cW, but can be infinitely far away)
+
+                Mesh.Edge someEdgeStartingAtV0 = null;
+                int nEdges = mesh.edges.size();
+                FORI (iEdge, nEdges)
+                {
+                    Mesh.Edge e = mesh.getEdge(iEdge);
+                    if (e.initialVertex() == v0)
+                    {
+                        someEdgeStartingAtV0 = e;
+                        break;
+                    }
+                }
+                if (someEdgeStartingAtV0 == null)
+                {
+                    System.out.println("    out figureOutTopologicalRegion, returning null (no edges here)");
+                    return null;  // no edges here
+                }
+                //System.out.println("      someEdgeStartingAtV0 = "+someEdgeStartingAtV0);
+                ArrayList regionBoundaryArcSpecs = new ArrayList();
+                Mesh fakeMesh = new Mesh();  // mesh for making fake verts
+
+                Mesh.Edge nextEdgeOutOfV0 = null;
+                for (Mesh.Edge thisEdgeOutOfV0 = someEdgeStartingAtV0; ; thisEdgeOutOfV0 = nextEdgeOutOfV0)
+                {
+                  //System.out.println("        thisEdgeOutOfV0 = "+thisEdgeOutOfV0);
+                  nextEdgeOutOfV0 = thisEdgeOutOfV0.prev().opposite();
+
+                  Mesh.Edge e02 = nextEdgeOutOfV0;
+                  Mesh.Vertex v2 = e02.finalVertex();
+
+                  Mesh.Edge e01 = thisEdgeOutOfV0;
+                  Mesh.Edge e12 = e01.next();
+                  if (e12.finalVertex() != v2) {
+                    System.out.println("    out figureOutTopologicalRegion, returning null (some 012 is not a triangle)");
+                    return null;  // 012 is not a triangle
+                  }
+                  //System.out.println("            e01 = "+e01);
+                  //System.out.println("            e12 = "+e12);
+                  //  v2 -- v1
+                  //    \  /
+                  //     v0
+                  Mesh.Edge e21 = e12.opposite();
+                  Mesh.Vertex v1 = e01.finalVertex();
+
+                  {
+                      Mesh.Edge e13 = e21.next();
+                      //System.out.println("            e21 = "+e21);
+                      //System.out.println("            e13 = "+e13);
+                      Mesh.Vertex v3 = e13.finalVertex();
+                      Mesh.Edge e32 = e13.next();
+                      //System.out.println("            e32 = "+e32);
+                      if (e32.finalVertex() != v2) {
+                        System.out.println("    out figureOutTopologicalRegion, returning null (some 132 is not a triangle)");
+                        return null;  // 132 is not a triangle
+                      }
+                      //     v3
+                      //    /  \        // (comment can't end in backslash)
+                      //  v2 -- v1
+                      //    \  /
+                      //     v0
+                      // Bound by the arc from v1 to v2 of circle that passes through v3.
+                      // Center will be the dual vertex of the triangle v1v3v2.
+                      //System.out.println("            e13 dual edge = "+dualMesh.getEdge(e13.myIndex()));
+                      Mesh.Vertex f132 = dualMesh.getEdge(e13.myIndex()).finalVertex();  // primal to dual edge is a CCW turn (apparently)
+                      //System.out.println("            f132 = "+f132);
+                      regionBoundaryArcSpecs.add(new Mesh.Vertex[]{v2,v1,f132});
+                  }
+                  {
+                    Mesh.Edge e23 = e02.next();
+                    Mesh.Vertex v3 = e23.finalVertex();
+                    Mesh.Edge e30 = e23.next();
+                    if (e30.finalVertex() != v0)
+                    {
+                      System.out.println("    out figureOutTopologicalRegion, returning null (some 023 is not a triangle)");
+                      return null;  // 023 is not a triangle
+                    }
+                    //    v2 -- v1
+                    //   /  \  /
+                    // v3 -- v0
+
+                    // There's no dual vertex there at the moment; synthesize one.
+                    // Same math as in Mesh.makeDualMesh().
+                    double triMomentAndArea[] = new double[4];
+                    GeomUtils.SolveForDualMomentAndArea(v1.x(), v1.y(), v1.h(),
+                                                        v2.x(), v2.y(), v2.h(),
+                                                        v3.x(), v3.y(), v3.h(),
+                                                        triMomentAndArea,
+                                                        /*wrapAroundSphereFlagValue=*/false,
+                                                        /*centerSphereFlagValue=*/false,
+                                                        /*wrapSphereCurvatureValue=*/1.);
+                    double xa = triMomentAndArea[0];
+                    double ya = triMomentAndArea[1];
+                    double haa = triMomentAndArea[2];
+                    double a = triMomentAndArea[3];
+                    fakeMesh.addIsolatedVertex(xa/a, ya/a, haa/(a*a));
+                    Mesh.Vertex f231 = fakeMesh.getVert(fakeMesh.verts.size()-1);
+                    regionBoundaryArcSpecs.add(new Mesh.Vertex[]{v3,v1,f231});
+                  }
+
+                  if (nextEdgeOutOfV0 == someEdgeStartingAtV0)
+                      break;
+                }
+                System.out.println("    out figureOutTopologicalRegion, returning "+regionBoundaryArcSpecs.size()+" arcs");
+                return regionBoundaryArcSpecs;
+            }  // figureOutTopologicalRegion
 
             private void delaunayize()
             {
@@ -15391,6 +15562,7 @@ OFF
         private Listenable.Listener labelPrimalEdgesFlagListener = null;
         private Listenable.Listener labelDualVertsFlagListener = null;
         private Listenable.Listener labelDualEdgesFlagListener = null;
+        private Listenable.Listener showTopologicalRegionWhenDraggingVertexFlagListener = null;
         private Listenable.Listener primalDualVisFlagListener = null;
         private Listenable.Listener naiveDualEdgesFlagListener = null;
         private Listenable.Listener windowTitleListener = null;
@@ -15469,6 +15641,7 @@ OFF
         private Listenable.Boolean showInsideOutDualVertsFlag = new Listenable.Boolean(false);
 
         private Listenable.Boolean showFlatPrimalEdgesFlag = new Listenable.Boolean(false);
+        private Listenable.Boolean showTopologicalRegionWhenDraggingVertexFlag = new Listenable.Boolean(false);
 
         private boolean showPositiveOrthantnessVisualizationFlag = false; // XXX total hack-- it's cool but put it somewhere else!!
         private Listenable.Boolean showPrimalVertsFlag = new Listenable.Boolean(true);
