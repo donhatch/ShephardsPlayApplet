@@ -4,7 +4,7 @@ import com.donhatchsw.compat.ArrayList;
 import com.donhatchsw.compat.IntArrayList;
 import com.donhatchsw.util.Arrays;
 import com.donhatchsw.util.ConvexHull;
-import com.donhatchsw.util.FuzzyPointHashTable;
+import com.donhatchsw.util.FuzzyPointHashSet;
 import com.donhatchsw.util.MergeFind;
 import com.donhatchsw.util.MyMath;
 import com.donhatchsw.util.SortStuff;
@@ -1916,13 +1916,12 @@ final public class MeshUtils
         }
 
         // as recommended in FuzzyPointHashTable doc...
-        FuzzyPointHashTable fuzzyTable = new FuzzyPointHashTable(1e-12, 1e-10, 1/1024.);
-        Object dummy = new Object(); // we really want a hash set, not hash table, so need a dummy object, distinct from null
+        FuzzyPointHashSet fuzzySet = new FuzzyPointHashSet(1e-12, 1e-10, 1/1024.);
 
         // Initial pass adding originals, since those are the preferred images
         FORI (iVert, nVerts)
         {
-            if (fuzzyTable.put(homoNormalize(vertsHomo[iVert]),dummy) == null) // i.e. if it wasn't already there
+            if (fuzzySet.add(homoNormalize(vertsHomo[iVert]))) // i.e. if it wasn't already there
             {
                 // nothing. we don't dedup here (although maybe we should).
             }
@@ -1940,7 +1939,7 @@ final public class MeshUtils
                 {
                     VecMath.vxm(scratchHomo, vertsHomo[iVert], group[iSymmetry]);
                     homoNormalize(scratchHomoNormalized, scratchHomo);
-                    if (fuzzyTable.get(scratchHomoNormalized) == null)
+                    if (!fuzzySet.contains(scratchHomoNormalized))
                     {
                         bad[iVert] = true;
                         nBad++;
@@ -2001,15 +2000,14 @@ final public class MeshUtils
         }
 
         // as recommended in FuzzyPointHashTable doc...
-        FuzzyPointHashTable fuzzyTable = new FuzzyPointHashTable(1e-12, 1e-10, 1/1024.);
-        Object dummy = new Object(); // we really want a hash set, not hash table, so need a dummy object, distinct from null
+        FuzzyPointHashSet fuzzySet = new FuzzyPointHashSet(1e-12, 1e-10, 1/1024.);
 
         ArrayList/*<double[]>*/ finalVertsArrayList = new ArrayList();
 
         // Initial pass adding originals, since those are the preferred images
         FORI (iVert, nVerts)
         {
-            if (fuzzyTable.put(homoNormalize(vertsHomo[iVert]),dummy) == null) // i.e. if it wasn't already there
+            if (fuzzySet.add(homoNormalize(vertsHomo[iVert]))) // i.e. if it wasn't already there
                 finalVertsArrayList.add(vertsHomo[iVert]);
         }
         double scratchHomo[] = new double[4];
@@ -2018,7 +2016,7 @@ final public class MeshUtils
             for (int iSymmetry = 1; iSymmetry < group.length; ++iSymmetry) // skip 0 since we did it already
             {
                 VecMath.vxm(scratchHomo, vertsHomo[iVert], group[iSymmetry]);
-                if (fuzzyTable.put(homoNormalize(scratchHomo),dummy) == null) // i.e. if it wasn't already there
+                if (fuzzySet.add(homoNormalize(scratchHomo))) // i.e. if it wasn't already there
                     finalVertsArrayList.add(VecMath.copyvec(scratchHomo));
             }
         }
@@ -2071,11 +2069,9 @@ final public class MeshUtils
             double littleTol = 1e-12 * workAreaSize;
             double bigTol = 1e-10 * workAreaSize;
             double bucketSize = 1/1024. * workAreaSize;
-            FuzzyPointHashTable newVertsTable = new FuzzyPointHashTable(littleTol,
-                                                                        bigTol,
-                                                                        bucketSize);
-            Object dummy = new Object(); // we really want a hash set, not hash table, so need a dummy object, distinct from null
-
+            FuzzyPointHashSet newVertsSet = new FuzzyPointHashSet(littleTol,
+                                                                  bigTol,
+                                                                  bucketSize);
             FORI (iOldVert, nOldVerts)
             {
                 double oldVert[] = oldVerts[iOldVert];
@@ -2099,7 +2095,7 @@ final public class MeshUtils
                         magnitude * Math.cos(newAngle),
                         magnitude * Math.sin(newAngle),
                     };
-                    if (newVertsTable.put(newVert,dummy) == null) // i.e. if it wasn't already there
+                    if (newVertsSet.add(newVert)) // i.e. if it wasn't already there
                     {
                         newVertsArrayList.add(new double[] {
                             newVert[0],
@@ -2190,18 +2186,21 @@ final public class MeshUtils
                 {
                     // TODO: make a FuzzyPointHashSet that does this?
 
-                    Object dummy = new Object(); // we really want a hash set, not hash table, so need a dummy object, distinct from null
                     // as recommended in FuzzyPointHashTable doc...
                     double littleTol = 1e-12 * workAreaSize;
                     double bigTol = 1e-10 * workAreaSize;
                     double bucketSize = 1/1024. * workAreaSize;
-                    FuzzyPointHashTable newVertsTable = new FuzzyPointHashTable(littleTol,
-                                                                                bigTol,
-                                                                                bucketSize);
-                    FuzzyPointHashTable fuzzyPointHashTable = new FuzzyPointHashTable(littleTol, bigTol, bucketSize);
+                    FuzzyPointHashSet newVertsSet = new FuzzyPointHashSet(littleTol,
+                                                                          bigTol,
+                                                                          bucketSize);
+                    FuzzyPointHashSet fuzzyPointHashSet = new FuzzyPointHashSet(littleTol, bigTol, bucketSize);
                     FORI (iOldVert, nOldVerts)
-                        if (newVertsTable.put(oldImages[iOldVert],dummy) == null) // i.e. if it wasn't already there
+                    {
+                        if (newVertsSet.add(oldImages[iOldVert])) // i.e. if it wasn't already there
+                        {
                             VecMath.copyvec(oldImages[nDeDuped++], oldImages[iOldVert]);
+                        }
+                  }
                 }
                 System.out.println("          old images deduped "+oldImages.length+" -> "+nDeDuped);
                 oldImages = (double[][])Arrays.subarray(oldImages, 0, nDeDuped);
@@ -2251,14 +2250,13 @@ final public class MeshUtils
                 false); // repeat work-in-progress not taken into account here, yet
             System.out.println("          "+newGroup.length+" new symmetries");
             {
-                Object dummy = new Object(); // we really want a hash set, not hash table, so need a dummy object, distinct from null
                 // as recommended in FuzzyPointHashTable doc...
                 double littleTol = 1e-12 * workAreaSize;
                 double bigTol = 1e-10 * workAreaSize;
                 double bucketSize = 1/1024. * workAreaSize;
-                FuzzyPointHashTable newVertsTable = new FuzzyPointHashTable(littleTol,
-                                                                            bigTol,
-                                                                            bucketSize);
+                FuzzyPointHashSet newVertsSet = new FuzzyPointHashSet(littleTol,
+                                                                      bigTol,
+                                                                      bucketSize);
                 double newVert[] = new double[3]; // scratch for loop
                 // CBB: probably theres a more efficient algorithm; whatever
                 FORI (iImage, newImages.length)
@@ -2266,8 +2264,10 @@ final public class MeshUtils
                     FORI (iNewSymmetry, newGroup.length)
                     {
                         VecMath.vxm(newVert, newImages[iImage], newGroup[iNewSymmetry]);
-                        if (newVertsTable.put(newVert,dummy) == null) // i.e. if it wasn't already there
+                        if (newVertsSet.add(newVert)) // i.e. if it wasn't already there
+                        {
                             newVertsArrayList.add(Arrays.append(newVert, 1.)); // xyzw (otherwise would be interpreted as xyh)
+                        }
                     }
                 }
                 System.out.println("          new verts deduped "+(newImages.length*newGroup.length)+" -> "+newVertsArrayList.size());
