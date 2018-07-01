@@ -365,6 +365,7 @@ import com.donhatchsw.util.MiniBall;
 import com.donhatchsw.util.Minimizer;
 import com.donhatchsw.util.NewtonSolver;
 import com.donhatchsw.util.Listenable;
+import com.donhatchsw.util.FuzzyPointHashTable;
 import com.donhatchsw.compat.ArrayList;
 import com.donhatchsw.compat.Format;
 import com.donhatchsw.compat.IntArrayList;
@@ -9935,29 +9936,55 @@ public class ShephardsPlayApplet
                 {
                     CHECK_LT(mostRecentlyBeingDraggedVertIndex, mesh.verts.size());
                     Mesh.Vertex v0 = mesh.getVert(mostRecentlyBeingDraggedVertIndex);
-                    ArrayList regionBoundaryArcSpecs = figureOutTopologicalRegion(mesh, dualMesh, v0);
+                    //ArrayList regionBoundaryArcSpecs = figureOutTopologicalRegion(mesh, v0);  // XXX probably get rid
+                    ArrayList regionBoundaryArcSpecs = figureOutAllTopologicalRegions(mesh, v0);
                     if (regionBoundaryArcSpecs != null) {
+
+                      IntArrayList counts = null;
+                      if (true) {
+                        // We're actually doing circles, not arcs XXX clean that up.
+                        // Combine duplicate circles into thicker circles.
+                        ArrayList merged = new ArrayList();
+                        counts = new IntArrayList();
+                        FuzzyPointHashTable fuzzyTable = new FuzzyPointHashTable(1e-12, 1e-10, 1/1024.);
+                        int nArcs = regionBoundaryArcSpecs.size();
+                        FORI (iArc, nArcs) {
+                          double[/*3*/][/*4*/] v1v2center = (double[][])regionBoundaryArcSpecs.get(iArc);
+                          double triMomentAndArea[/*4*/] = v1v2center[2];
+                          double xa = triMomentAndArea[0];
+                          double ya = triMomentAndArea[1];
+                          double haa = triMomentAndArea[2];
+                          double a = triMomentAndArea[3];
+                          double x = xa/a;
+                          double y = ya/a;
+                          double h = haa/SQR(a);
+                          double[] key = {x,y,h};
+                          int[] indexHolder = (int[])fuzzyTable.get(key);
+                          if (indexHolder == null) {
+                            indexHolder = new int[]{merged.size()};
+                            fuzzyTable.put(key, indexHolder);
+                            merged.add(v1v2center);
+                            counts.add(1);
+                          } else {
+                            counts.set(indexHolder[0], counts.get(indexHolder[0])+1);
+                          }
+                        }
+                        regionBoundaryArcSpecs = merged;
+                      }
+
                       int nArcs = regionBoundaryArcSpecs.size();
                       System.out.println("  drawing region of "+nArcs+" arcs");
 
-                      // HACK to see what thick arcs will look like.  Plan: set thickness according to multiplicity.
-                      double greatestHAA = 0.;
                       FORI (iArc, nArcs) {
-                        double[/*3*/][/*4*/] v1v2center = (double[][])regionBoundaryArcSpecs.get(iArc);
-                        double triMomentAndArea[/*4*/] = v1v2center[2];
-                        double haa = triMomentAndArea[2];
-                        greatestHAA = Math.max(greatestHAA, Math.abs(haa));
-                      }
-
-                      FORI (iArc, nArcs) {
-                        System.out.println("      arc "+iArc+"/"+nArcs+":");
+                        //System.out.println("      arc "+iArc+"/"+nArcs+":");
+                        int count = counts.get(iArc);
                         double[/*3*/][/*4*/] v1v2center = (double[][])regionBoundaryArcSpecs.get(iArc);
                         double[/*4*/] v1 = v1v2center[0];
                         double[/*4*/] v2 = v1v2center[1];
                         double triMomentAndArea[/*4*/] = v1v2center[2];
-                        System.out.println("          v1 = "+Arrays.toStringCompact(v1));
-                        System.out.println("          v2 = "+Arrays.toStringCompact(v2));
-                        System.out.println("          triMomentAndArea = "+Arrays.toStringCompact(triMomentAndArea));
+                        //System.out.println("          v1 = "+Arrays.toStringCompact(v1));
+                        //System.out.println("          v2 = "+Arrays.toStringCompact(v2));
+                        //System.out.println("          triMomentAndArea = "+Arrays.toStringCompact(triMomentAndArea));
                         double xa = triMomentAndArea[0];
                         double ya = triMomentAndArea[1];
                         double haa = triMomentAndArea[2];
@@ -10035,8 +10062,8 @@ public class ShephardsPlayApplet
                             end = 10.;
                           }
 
-                          System.out.println("        calling smartDrawThickArc");
-                          double thicknessInPixels = Math.abs(triMomentAndArea[2]) == greatestHAA ? 4. : 1.;
+                          //System.out.println("        calling smartDrawThickArc");
+                          double thicknessInPixels = (double)count;
                           mg3d.smartDrawThickArc(
                               thicknessInPixels, // thicknessInPixels
                               focusX, focusY,   // a point on the arc
@@ -10044,7 +10071,7 @@ public class ShephardsPlayApplet
                               curvature,         // 1/radius
                               start, end, // arc goes from focusAngle+start to focusAngle+end in arc length
                               false); // antiAlias-- supposed to be always false according to function doc
-                          System.out.println("        returned from smartDrawThickArc");
+                          //System.out.println("        returned from smartDrawThickArc");
                         }
                       }
                       System.out.println("  done drawing region of "+nArcs+" arcs");
@@ -10467,7 +10494,38 @@ public class ShephardsPlayApplet
             } // makeSureBackBufferIsRight
         } // class TheCanvas
 
-            private static ArrayList figureOutTopologicalRegion(Mesh mesh, Mesh dualMesh, Mesh.Vertex v0) {
+            // non-static so can get at wrap sphere related flags
+            private ArrayList figureOutAllTopologicalRegions(Mesh mesh, Mesh.Vertex v0)
+            {
+                // Make a dual mesh, with all but the vertex in question.
+                Mesh clone = new Mesh(mesh);
+                clone.deleteVertex(clone.getVert(v0.myIndex()), null, null);
+                clone = MeshUtils.delaunayized(clone,
+                                               wrapAroundSphereFlag.get(),
+                                               wrapSphereCurvature.get(),
+                                               centerSphereFlag.get(),
+                                               calcInsideOutDualVertsFlag.get(),
+                                               true);  // slightlyVerbose
+                Mesh cloneDual = Mesh.makeDualMesh(clone,
+                                                   false,  // includeNonArity3,
+                                                   calcInsideOutDualVertsFlag.get(), // includeInsideOut
+                                                   wrapAroundSphereFlag.get(),
+                                                   centerSphereFlag.get(),
+                                                   wrapSphereCurvature.get());
+                ArrayList answer = new ArrayList();
+                int nDualVerts = cloneDual.verts.size();
+                for (int iDualVert = 0; iDualVert < nDualVerts; ++iDualVert) {
+                  Mesh.Vertex dualVert = cloneDual.getVert(iDualVert);
+                  answer.add(new double[][] {
+                    {dualVert.X() + 1., dualVert.Y(), 0., dualVert.W()},
+                    {dualVert.X(), dualVert.Y() + 1., 0., dualVert.W()},
+                    {dualVert.X(), dualVert.Y(), dualVert.H(), dualVert.W()},
+                  });
+                }
+                return answer;
+            }  // figureOutAllTopologicalRegions
+
+            private static ArrayList figureOutTopologicalRegion(Mesh mesh, Mesh.Vertex v0) {
                 final int verboseLevel = 0;  // 0 for prod, 2 to debug
                 if (verboseLevel >= 1) System.out.println("    in figureOutTopologicalRegion");
                 // Figure out "topological region" of v0.
