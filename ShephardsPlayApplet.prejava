@@ -99,6 +99,7 @@ BUGS:
       when flat paraboloid
 
   Symmetry-related:
+    - BUG: make a 3-symmetry grid, change symmetry to 3,3, turn on remap-when-change-sym, change symmetry to 3,4, then 3,5 ... there's a glitch.  doesn't happen when going straight from 3,3 to 3,5  (actually more subtle glitches happen there)
     - wouldn't hurt to allow {4,4}, {6,3}, {3,6}, to make quilts... just show a few layers, or actually support the toroidal space?
         actually hmm, is there a projection from 4d torus that makes
         this actually work?  hmm I'm thinking no.
@@ -360,7 +361,6 @@ import com.donhatchsw.util.LinearProgramming;
 import com.donhatchsw.util.MergeFind;
 import com.donhatchsw.util.UndoTreeSquirrel;
 import com.donhatchsw.util.TriangulationOptimizer;
-import com.donhatchsw.util.FuzzyPointHashTable;
 import com.donhatchsw.util.MiniBall;
 import com.donhatchsw.util.Minimizer;
 import com.donhatchsw.util.NewtonSolver;
@@ -5167,7 +5167,7 @@ public class ShephardsPlayApplet
             eventVerbose = getParameterInt("EventVerbose", eventVerbose);
             if (eventVerbose >= 1) System.out.println("in init");
 
-            // These (and eventVerbose) can be specified on the command line as, e.g. showLabelsFlag=true
+            // These (and eventVerbose) can be specified on the command line as, e.g. showLabelsFlag=true (except that one doesn't exist)
             // TODO: just automatically get any public member
             continuouslyDelaunayizeFlag.set(getParameterBoolean("continuouslyDelaunayizeFlag", continuouslyDelaunayizeFlag.get()));
             optimizeFlag.set(getParameterBoolean("optimizeFlag", optimizeFlag.get()));
@@ -7087,7 +7087,7 @@ public class ShephardsPlayApplet
                         break;
                     }
 
-                    case CTRL('D'): // swap primal and dual
+                    case CTRL('D'): // swap primal and dual.  often makes a mess.
                     {
                         UndoItem.State before = newUndoItemState();
 
@@ -9939,6 +9939,16 @@ public class ShephardsPlayApplet
                     if (regionBoundaryArcSpecs != null) {
                       int nArcs = regionBoundaryArcSpecs.size();
                       System.out.println("  drawing region of "+nArcs+" arcs");
+
+                      // HACK to see what thick arcs will look like.  Plan: set thickness according to multiplicity.
+                      double greatestHAA = 0.;
+                      FORI (iArc, nArcs) {
+                        double[/*3*/][/*4*/] v1v2center = (double[][])regionBoundaryArcSpecs.get(iArc);
+                        double triMomentAndArea[/*4*/] = v1v2center[2];
+                        double haa = triMomentAndArea[2];
+                        greatestHAA = Math.max(greatestHAA, Math.abs(haa));
+                      }
+
                       FORI (iArc, nArcs) {
                         System.out.println("      arc "+iArc+"/"+nArcs+":");
                         double[/*3*/][/*4*/] v1v2center = (double[][])regionBoundaryArcSpecs.get(iArc);
@@ -9957,6 +9967,7 @@ public class ShephardsPlayApplet
                         {
                             // Adjust for v0's height, by pretending v0 is at 0 and everyone else got adjusted by minus its original height.
                             haa += v0.h()*a*a;
+                            if (haa <= 0) continue;
                         }
 
                         // radius is sqrt(h*2), so...
@@ -10015,13 +10026,23 @@ public class ShephardsPlayApplet
                           double arcLengthAngle = focusAngleRadians2 - focusAngleRadians1;
                           if (arcLengthAngle < 0.) arcLengthAngle += 2*Math.PI;
                           double arcLength = arcLengthAngle / curvature;
+                          double start = 0.;
+                          double end = arcLength;
+
+                          if (true) {
+                            // draw full circles instead of these arcs that I don't really know the full meaning of
+                            start = -10.;
+                            end = 10.;
+                          }
+
                           System.out.println("        calling smartDrawThickArc");
+                          double thicknessInPixels = Math.abs(triMomentAndArea[2]) == greatestHAA ? 4. : 1.;
                           mg3d.smartDrawThickArc(
-                              1., // thicknessInPixels
+                              thicknessInPixels, // thicknessInPixels
                               focusX, focusY,   // a point on the arc
                               focusAngleRadians1, // from center to focus
                               curvature,         // 1/radius
-                              0., arcLength, // arc goes from focusAngle+start to focusAngle+end in arc length
+                              start, end, // arc goes from focusAngle+start to focusAngle+end in arc length
                               false); // antiAlias-- supposed to be always false according to function doc
                           System.out.println("        returned from smartDrawThickArc");
                         }
@@ -15733,7 +15754,7 @@ OFF
         private Listenable.Boolean showInsideOutDualVertsFlag = new Listenable.Boolean(false);
 
         private Listenable.Boolean showFlatPrimalEdgesFlag = new Listenable.Boolean(false);
-        private Listenable.Boolean showTopologicalRegionWhenDraggingVertexFlag = new Listenable.Boolean(false);
+        private Listenable.Boolean showTopologicalRegionWhenDraggingVertexFlag = new Listenable.Boolean(true); // YYY
 
         private boolean showPositiveOrthantnessVisualizationFlag = false; // XXX total hack-- it's cool but put it somewhere else!!
         private Listenable.Boolean showPrimalVertsFlag = new Listenable.Boolean(true);
