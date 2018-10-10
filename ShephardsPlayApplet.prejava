@@ -10009,23 +10009,28 @@ public class ShephardsPlayApplet
                 //
                 if (showTopologicalRegionWhenDraggingVertexFlag.get())
                 {
+                    final int verboseLevel = 1;
                     CHECK_LT(mostRecentlyBeingDraggedVertIndex, mesh.verts.size());
                     Mesh.Vertex v0 = beingDraggedVertIndex==-1 ? null : mesh.getVert(beingDraggedVertIndex);
-                    //ArrayList regionBoundaryArcSpecs = figureOutTopologicalRegion(mesh, v0);  // XXX probably get rid
+
+                    if (false) { // XXX
+                      // CBB: need additional debugging mode where it shows without v0 *and* with v0.  Hmm.
+                      System.out.println("  (including being-dragged vert, for debugging)");
+                      v0 = null;
+                    }
                     ArrayList regionBoundaryArcSpecs = figureOutAllTopologicalRegions(mesh, dualMesh, v0);
                     if (regionBoundaryArcSpecs != null) {
 
                       IntArrayList counts = null;
                       if (true) {
                         // We're actually doing circles, not arcs XXX clean that up.
-                        // Combine duplicate circles into thicker circles.
+                        // Combine duplicate circles into thicker circles, where thickness is multiplicity.
                         ArrayList merged = new ArrayList();
                         counts = new IntArrayList();
                         FuzzyPointHashTable fuzzyTable = new FuzzyPointHashTable(1e-12, 1e-10, 1/1024.);
                         int nArcs = regionBoundaryArcSpecs.size();
                         FORI (iArc, nArcs) {
-                          double[/*3*/][/*4*/] v1v2center = (double[][])regionBoundaryArcSpecs.get(iArc);
-                          double triMomentAndArea[/*4*/] = v1v2center[2];
+                          double[/*4*/] triMomentAndArea = (double[])regionBoundaryArcSpecs.get(iArc);
                           double xa = triMomentAndArea[0];
                           double ya = triMomentAndArea[1];
                           double haa = triMomentAndArea[2];
@@ -10039,7 +10044,7 @@ public class ShephardsPlayApplet
                           if (indexHolder == null) {
                             indexHolder = new int[]{merged.size()};
                             fuzzyTable.put(key, indexHolder);
-                            merged.add(v1v2center);
+                            merged.add(triMomentAndArea);
                             counts.add(1);
                           } else {
                             counts.set(indexHolder[0], counts.get(indexHolder[0])+1);
@@ -10048,114 +10053,90 @@ public class ShephardsPlayApplet
                         regionBoundaryArcSpecs = merged;
                       }
 
-                      final int verboseLevel = 1;
                       int nArcs = regionBoundaryArcSpecs.size();
                       if (verboseLevel >= 1) System.out.println("  drawing region of "+nArcs+" arcs");
 
                       FORI (iArc, nArcs) {
                         if (verboseLevel >= 2) System.out.println("      arc "+iArc+"/"+nArcs+":");
                         int count = counts.get(iArc);
-                        double[/*3*/][/*4*/] v1v2center = (double[][])regionBoundaryArcSpecs.get(iArc);
-                        double[/*4*/] v1 = v1v2center[0];
-                        double[/*4*/] v2 = v1v2center[1];
-                        double triMomentAndArea[/*4*/] = v1v2center[2];
-                        if (verboseLevel >= 2) System.out.println("          v1 = "+Arrays.toStringCompact(v1));
-                        if (verboseLevel >= 2) System.out.println("          v2 = "+Arrays.toStringCompact(v2));
+                        double[/*4*/] triMomentAndArea = (double[])regionBoundaryArcSpecs.get(iArc);
                         if (verboseLevel >= 2) System.out.println("          triMomentAndArea = "+Arrays.toStringCompact(triMomentAndArea));
                         double xa = triMomentAndArea[0];
                         double ya = triMomentAndArea[1];
                         double haa = triMomentAndArea[2];
                         double a = triMomentAndArea[3];
+                        if (verboseLevel >= 2) System.out.println("          h = "+haa/(a*a));
 
                         if (v0 != null)
                         {
                             // Adjust for v0's height, by pretending v0 is at 0 and everyone else got adjusted by minus its original height.
+                            // CBB: this is disorienting; it seems like a bug because the picture changes when I release
+                            // the vert being dragged.   But it makes sense, since, when not dragging,
+                            // the only sensible thing to draw is the circles for a vertex at height 0.
                             haa += v0.h()*a*a;
                         }
                         if (haa <= 0) continue;
 
                         // radius is sqrt(h*2), so...
-                        double curvature = a/Math.sqrt(haa*2); // XXX wait, what? can't haa be zero?  right, when radius is 0.  hmm.
+                        double curvature = a/Math.sqrt(haa*2); // XXX wait, what? can't haa be zero?  right, when radius is 0.  hmm.  but wait, can't h be zero even when a isn't?  yes, e.g. when all three face planes are pushed in so far that the vertex is below 0; then a new vertex can't even interact with it at all
                         if (verboseLevel >= 2) System.out.println("          curvature = "+curvature);
                         double radius = 1./curvature;
                         if (verboseLevel >= 2) System.out.println("          radius = "+radius);
-
 
                         // XXX TODO: make this robust: get rid of center and radius, use only focus and curvature
                         double centerX = xa/a;
                         double centerY = ya/a;
 
-                        double focusAngleRadians1 = Math.atan2(v1[1]*a-ya,
-                                                               v1[0]*a-xa);
-                        double focusAngleRadians2 = Math.atan2(v2[1]*a-ya,
-                                                               v2[0]*a-xa);
-                        if (verboseLevel >= 2) System.out.println("          focusAngleRadians1 = "+focusAngleRadians1);
-                        if (verboseLevel >= 2) System.out.println("          focusAngleRadians2 = "+focusAngleRadians2);
-
-
                         // What's the focus?
-                        // Well, if all the original verts had height 0, then the circle passes through v1 and v2,
-                        // and we can take the focus to be v1.
-                        // Otherwise we need to adjust-- that is, start at v1,
-                        // and expand outwards from center by radius - (dist from center to v1),
+                        // Start with an arbitrary finite preFocus
+                        // and expand outwards from center by radius - (dist from center to preFocus),
                         // except we must never express those explicitly since they may be infinite.
+                        double preFocusX = 0.;
+                        double preFocusY = 0.;
+                        double focusAngleRadians = Math.atan2(preFocusX*a-ya,
+                                                              preFocusY*a-xa);
+                        if (verboseLevel >= 2) System.out.println("          focusAngleRadians = "+focusAngleRadians);
 
-                        //double expansion = radius - Math.hypot(centerX-v1[0], centerY-v1[1]);
-                        //double expansion = 1./(a/Math.sqrt(haa*2)) - Math.sqrt(SQR(centerX-v1[0]) + SQR(centerY-v1[1]));
-                        //double expansion = Math.sqrt(haa*2)/a - Math.sqrt(SQR(xa/a-v1[0]) + SQR(ya/a-v1[1]));
-                        double expansion = (Math.sqrt(haa*2) - Math.sqrt(SQR(xa-a*v1[0]) + SQR(ya-a*v1[1]))) / a;
+                        //double expansion = radius - Math.hypot(centerX-preFocusX, centerY-preFocusY);
+                        //double expansion = 1./(a/Math.sqrt(haa*2)) - Math.sqrt(SQR(centerX-preFocusX) + SQR(centerY-preFocusY));
+                        //double expansion = Math.sqrt(haa*2)/a - Math.sqrt(SQR(xa/a-preFocusX) + SQR(ya/a-preFocusY));
+                        double expansion = (Math.sqrt(haa*2) - Math.sqrt(SQR(xa-a*preFocusX) + SQR(ya-a*preFocusY))) / a;
                         if (verboseLevel >= 2) System.out.println("          expansion = "+expansion);
 
-                        double focusX = v1[0] + expansion * Math.cos(focusAngleRadians1);
-                        double focusY = v1[1] + expansion * Math.sin(focusAngleRadians1);
+                        double focusX = preFocusX + expansion * Math.cos(focusAngleRadians);
+                        double focusY = preFocusY + expansion * Math.sin(focusAngleRadians);
                         if (verboseLevel >= 2) System.out.println("          focusX = "+focusX);
                         if (verboseLevel >= 2) System.out.println("          focusY = "+focusY);
 
+                        if (false) {
+                          mg3d.setColor(new java.awt.Color(255,0,0)); // red
+                          mg3d.drawPoint(focusX, focusY, 0., 5);
+                          mg3d.setColor(new java.awt.Color(0,255,0)); // green
+                          mg3d.drawPoint(centerX, centerY, 0., 5);
+                          mg3d.setColor(new java.awt.Color(0,255,255)); // cyan
+                          mg3d.drawPoint(preFocusX, preFocusY, 0., 5);
+                        }
 
                         mg3d.setColor(new java.awt.Color(128,128,128)); // gray
-                        if (ABS(a) < 1e-2)  // we get something like 1e-15 sometimes
-                        {
-                          // It's too big; draw it in two pieces
-                          // CBB: would it make sense for smartDrawThickArc to treat negative end-start as this?  hmm, I don't think so, but there should probably be a different way to express this.  smartDrawThickArcComplement?  pass another param saying it's the complement?
-                          double arcRayLength = 10.;
-                          mg3d.smartDrawThickArc(
-                              1., // thicknessInPixels
-                              v1[0], v1[1],   // a point on the arc
-                              focusAngleRadians1, // from center to focus
-                              curvature,         // 1/radius
-                              0, arcRayLength, // arc goes from focusAngle+start to focusAngle+end in arc length
-                              false); // antiAlias-- supposed to be always false according to function doc
-                          mg3d.smartDrawThickArc(
-                              1., // thicknessInPixels
-                              v2[0], v2[1],   // a point on the arc
-                              focusAngleRadians2, // from center to focus
-                              curvature,         // 1/radius
-                              -arcRayLength, 0., // arc goes from focusAngle+start to focusAngle+end in arc length
-                              false); // antiAlias-- supposed to be always false according to function doc
-                        } else {
-                          double arcLengthAngle = focusAngleRadians2 - focusAngleRadians1;
-                          if (arcLengthAngle < 0.) arcLengthAngle += 2*Math.PI;
-                          double arcLength = arcLengthAngle / curvature;
-                          double start = 0.;
-                          double end = arcLength;
+                        double thicknessInPixels = (double)count;
+                        double start = -4.;  // CBB: be more principled
+                        double end = 4.; // CBB: be more principled
 
-                          if (true) {
-                            // draw full circles instead of these arcs that I don't really know the full meaning of
-                            start = -10.;
-                            end = 10.;
-                          }
-
-                          //System.out.println("        calling smartDrawThickArc");
-                          double thicknessInPixels = (double)count;
-                          mg3d.smartDrawThickArc(
-                              thicknessInPixels, // thicknessInPixels
-                              focusX, focusY,   // a point on the arc
-                              focusAngleRadians1, // from center to focus
-                              curvature,         // 1/radius
-                              start, end, // arc goes from focusAngle+start to focusAngle+end in arc length
-                              false); // antiAlias-- supposed to be always false according to function doc
-                          //System.out.println("        returned from smartDrawThickArc");
+                        if (true) {
+                          // draw full circles instead of these arcs that I don't really know the full meaning of
+                          start = -10.;
+                          end = 10.;
                         }
+
+                        if (verboseLevel >= 2) System.out.println("        calling smartDrawThickArc");
+                        mg3d.smartDrawThickArc(
+                            thicknessInPixels, // thicknessInPixels
+                            focusX, focusY,   // a point on the arc
+                            focusAngleRadians, // from center to focus
+                            curvature,         // 1/radius
+                            start, end, // arc goes from focusAngle+start to focusAngle+end in arc length
+                            false); // antiAlias-- supposed to be always false according to function doc
+                        if (verboseLevel >= 2) System.out.println("        returned from smartDrawThickArc");
                       }
                       if (verboseLevel >= 1) System.out.println("  done drawing region of "+nArcs+" arcs");
                     }
@@ -10577,8 +10558,22 @@ public class ShephardsPlayApplet
             } // makeSureBackBufferIsRight
         } // class TheCanvas
 
-            // non-static so can get at wrap sphere related flags
-            private ArrayList figureOutAllTopologicalRegions(Mesh mesh, Mesh dualMesh, Mesh.Vertex vertexToIgnore)
+            // Figure out "topological region" of v0.
+            // That is, the region in which v0 can move without changing the topology of the picture.
+            // Q: does this make sense if not "keep delaunayized"?  Maybe just assume "keep delaunayized"?
+            // Topological region will be bound by arcs.
+            // How to store the arcs?
+            // Well, let's try:
+            //   - verts, in x,y,h space
+            //   - arc center cX,cX,cW  (actual position cX/cW, cY/cW, but can be infinitely far away)
+            // Actually, trying something less ambitious: just return all circles formed by intersections of face planes with the sphere.
+            // Returns an array of {v1,v1,center} triples.
+            // non-static so can get at wrap sphere related flags.
+            // XXXTODO: actually only using the center.... as x,y,h,w, where w is tri area.
+            private ArrayList figureOutAllTopologicalRegions(
+                Mesh mesh,  // the primary mesh, i.e. the mostly triangulated white/yellow one that the user edits
+                Mesh dualMesh,  // the dual mesh, i.e. the mostly trivalent blue one
+                Mesh.Vertex vertexToIgnore)
             {
                 Mesh dualMeshToUse;
                 if (vertexToIgnore == null)
@@ -10587,7 +10582,7 @@ public class ShephardsPlayApplet
                 }
                 else
                 {
-                    // Make a dual mesh, with the vertex in question removed.
+                    // Make a dual mesh, out of the mesh with the vertex in question removed.
                     Mesh clone = new Mesh(mesh);
                     clone.deleteVertex(clone.getVert(vertexToIgnore.myIndex()), null, null);
                     clone = MeshUtils.delaunayized(clone,
@@ -10607,136 +10602,11 @@ public class ShephardsPlayApplet
                 int nDualVerts = dualMeshToUse.verts.size();
                 for (int iDualVert = 0; iDualVert < nDualVerts; ++iDualVert) {
                   Mesh.Vertex dualVert = dualMeshToUse.getVert(iDualVert);
-                  answer.add(new double[][] {
-                    {dualVert.X() + 1., dualVert.Y(), 0., dualVert.W()},
-                    {dualVert.X(), dualVert.Y() + 1., 0., dualVert.W()},
-                    {dualVert.X(), dualVert.Y(), dualVert.H(), dualVert.W()},
-                  });
+                  // Can think of this as: {centerX*area, centerY*area, height*area^2, area}
+                  answer.add(new double[] {dualVert.X(), dualVert.Y(), dualVert.H(), dualVert.W()});
                 }
                 return answer;
             }  // figureOutAllTopologicalRegions
-
-            private static ArrayList figureOutTopologicalRegion(Mesh mesh, Mesh.Vertex v0) {
-                final int verboseLevel = 0;  // 0 for prod, 2 to debug
-                if (verboseLevel >= 1) System.out.println("    in figureOutTopologicalRegion");
-                // Figure out "topological region" of v0.
-                // That is, the region in which v0 can move without changing the topology of the picture.
-                // Q: does this make sense if not "keep delaunayized"?  Maybe just assume "keep delaunayized"?
-                // Topological region will be bound by arcs.
-                // How to store the arcs?
-                // Well, let's try:
-                //   - verts, in x,y,h space
-                //   - arc center cX,cX,cW  (actual position cX/cW, cY/cW, but can be infinitely far away)
-
-                Mesh.Edge someEdgeStartingAtV0 = null;
-                int nEdges = mesh.edges.size();
-                FORI (iEdge, nEdges)
-                {
-                    Mesh.Edge e = mesh.getEdge(iEdge);
-                    if (e.initialVertex() == v0)
-                    {
-                        someEdgeStartingAtV0 = e;
-                        break;
-                    }
-                }
-                if (someEdgeStartingAtV0 == null)
-                {
-                    if (verboseLevel >= 1) System.out.println("    out figureOutTopologicalRegion, returning null (no edges here)");
-                    return null;  // no edges here
-                }
-                if (verboseLevel >= 2) System.out.println("      someEdgeStartingAtV0 = "+someEdgeStartingAtV0);
-                ArrayList regionBoundaryArcSpecs = new ArrayList();
-                Mesh fakeMesh = new Mesh();  // mesh for making fake verts
-
-                Mesh.Edge nextEdgeOutOfV0 = null;
-                for (Mesh.Edge thisEdgeOutOfV0 = someEdgeStartingAtV0; ; thisEdgeOutOfV0 = nextEdgeOutOfV0)
-                {
-                  if (verboseLevel >= 2) System.out.println("        thisEdgeOutOfV0 = "+thisEdgeOutOfV0);
-                  nextEdgeOutOfV0 = thisEdgeOutOfV0.prev().opposite();
-
-                  Mesh.Edge e02 = nextEdgeOutOfV0;
-                  Mesh.Vertex v2 = e02.finalVertex();
-
-                  Mesh.Edge e01 = thisEdgeOutOfV0;
-                  Mesh.Edge e12 = e01.next();
-                  if (e12.finalVertex() == v2)
-                  {
-                      //System.out.println("            e01 = "+e01);
-                      //System.out.println("            e12 = "+e12);
-                      //  v2 -- v1
-                      //    \  /
-                      //     v0
-                      Mesh.Edge e21 = e12.opposite();
-                      Mesh.Vertex v1 = e01.finalVertex();
-
-                      if (true)
-                      {
-                          Mesh.Edge e13 = e21.next();
-                          if (verboseLevel >= 2) System.out.println("            e21 = "+e21);
-                          if (verboseLevel >= 2) System.out.println("            e13 = "+e13);
-                          Mesh.Vertex v3 = e13.finalVertex();
-                          Mesh.Edge e32 = e13.next();
-                          if (verboseLevel >= 2) System.out.println("            e32 = "+e32);
-                          if (e32.finalVertex() == v2 && v3 != v0)
-                          {
-                              //     v3
-                              //    /  \        // (comment can't end in backslash)
-                              //  v2 -- v1
-                              //    \  /
-                              //     v0
-                              // Bound by the arc from v1 to v2 of circle that passes through v3.
-                              // Center will be the dual vertex of the triangle v1v3v2.
-                              double triMomentAndArea[] = new double[4];  // xa,ya,haa,a
-                              GeomUtils.SolveForDualMomentAndArea(v1.x(), v1.y(), v1.h(),
-                                                                  v3.x(), v3.y(), v3.h(),
-                                                                  v2.x(), v2.y(), v2.h(),
-                                                                  triMomentAndArea,
-                                                                  /*wrapAroundSphereFlagValue=*/false,
-                                                                  /*centerSphereFlagValue=*/false,
-                                                                  /*wrapSphereCurvatureValue=*/1.);
-                              regionBoundaryArcSpecs.add(new double[][] {
-                                  {v2.x(), v2.y(), v2.h(), 1.},
-                                  {v1.x(), v1.y(), v1.h(), 1.},
-                                  triMomentAndArea,
-                              });
-                          }
-                      }
-                      if (true)
-                      {
-                          Mesh.Edge e23 = e02.next();
-                          Mesh.Vertex v3 = e23.finalVertex();
-                          Mesh.Edge e30 = e23.next();
-                          if (e30.finalVertex() == v0 && v3 != v1)
-                          {
-                              //    v2 -- v1
-                              //   /  \  /
-                              // v3 -- v0
-
-                              // There's no dual vertex there at the moment; synthesize one.
-                              // Same math as in Mesh.makeDualMesh().
-                              double triMomentAndArea[] = new double[4];  // xa,ya,haa,a
-                              GeomUtils.SolveForDualMomentAndArea(v1.x(), v1.y(), v1.h(),
-                                                                  v2.x(), v2.y(), v2.h(),
-                                                                  v3.x(), v3.y(), v3.h(),
-                                                                  triMomentAndArea,
-                                                                  /*wrapAroundSphereFlagValue=*/false,
-                                                                  /*centerSphereFlagValue=*/false,
-                                                                  /*wrapSphereCurvatureValue=*/1.);
-                              regionBoundaryArcSpecs.add(new double[][] {
-                                  {v3.x(), v3.y(), v3.h(), 1.},
-                                  {v1.x(), v1.y(), v1.h(), 1.},
-                                  triMomentAndArea,
-                              });
-                          }
-                      }
-
-                  }
-                  if (nextEdgeOutOfV0 == someEdgeStartingAtV0)
-                      break;
-                }
-                if (verboseLevel >= 1) System.out.println("    out figureOutTopologicalRegion, returning "+regionBoundaryArcSpecs.size()+" arcs");
-                return regionBoundaryArcSpecs;
-            }  // figureOutTopologicalRegion
 
             private void delaunayize()
             {
