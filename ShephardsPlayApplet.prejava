@@ -10009,7 +10009,7 @@ public class ShephardsPlayApplet
                 //
                 if (showTopologicalRegionWhenDraggingVertexFlag.get())
                 {
-                    final int verboseLevel = 1;
+                    final int verboseLevel = 0;
                     CHECK_LT(mostRecentlyBeingDraggedVertIndex, mesh.verts.size());
                     Mesh.Vertex v0 = beingDraggedVertIndex==-1 ? null : mesh.getVert(beingDraggedVertIndex);
 
@@ -10023,14 +10023,15 @@ public class ShephardsPlayApplet
 
                       IntArrayList counts = null;
                       if (true) {
-                        // We're actually doing circles, not arcs XXX clean that up.
+                        // We're actually doing circles, not arcs.
                         // Combine duplicate circles into thicker circles, where thickness is multiplicity.
                         ArrayList merged = new ArrayList();
                         counts = new IntArrayList();
                         FuzzyPointHashTable fuzzyTable = new FuzzyPointHashTable(1e-12, 1e-10, 1/1024.);
                         int nArcs = regionBoundaryArcSpecs.size();
                         FORI (iArc, nArcs) {
-                          double[/*4*/] triMomentAndArea = (double[])regionBoundaryArcSpecs.get(iArc);
+                          double[/*2*/][] topoRegion = (double[][])regionBoundaryArcSpecs.get(iArc);
+                          double[/*4*/] triMomentAndArea = topoRegion[0];
                           double xa = triMomentAndArea[0];
                           double ya = triMomentAndArea[1];
                           double haa = triMomentAndArea[2];
@@ -10044,7 +10045,7 @@ public class ShephardsPlayApplet
                           if (index == null) {
                             index = new Integer(merged.size());
                             fuzzyTable.put(key, index);
-                            merged.add(triMomentAndArea);
+                            merged.add(topoRegion);
                             counts.add(1);
                           } else {
                             counts.set(index.intValue(), counts.get(index.intValue())+1);
@@ -10059,7 +10060,8 @@ public class ShephardsPlayApplet
                       FORI (iArc, nArcs) {
                         if (verboseLevel >= 2) System.out.println("      arc "+iArc+"/"+nArcs+":");
                         int count = counts.get(iArc);
-                        double[/*4*/] triMomentAndArea = (double[])regionBoundaryArcSpecs.get(iArc);
+                        double[/*2*/][] topoRegion = (double[][])regionBoundaryArcSpecs.get(iArc);
+                        double[/*4*/] triMomentAndArea = topoRegion[0];
                         if (verboseLevel >= 2) System.out.println("          triMomentAndArea = "+Arrays.toStringCompact(triMomentAndArea));
                         double xa = triMomentAndArea[0];
                         double ya = triMomentAndArea[1];
@@ -10080,43 +10082,66 @@ public class ShephardsPlayApplet
                         // radius is sqrt(h*2), so...
                         double curvature = a/Math.sqrt(haa*2); // XXX wait, what? can't haa be zero?  right, when radius is 0.  hmm.  but wait, can't h be zero even when a isn't?  yes, e.g. when all three face planes are pushed in so far that the vertex is below 0; then a new vertex can't even interact with it at all
                         if (verboseLevel >= 2) System.out.println("          curvature = "+curvature);
-                        double radius = 1./curvature;
-                        if (verboseLevel >= 2) System.out.println("          radius = "+radius);
 
-                        // XXX TODO: make this robust: get rid of center and radius, use only focus and curvature
-                        double centerX = xa/a;
-                        double centerY = ya/a;
 
                         // What's the focus?
                         // Start with an arbitrary finite preFocus
                         // and expand outwards from center by radius - (dist from center to preFocus),
                         // except we must never express those explicitly since they may be infinite.
-                        double preFocusX = 0.;
-                        double preFocusY = 0.;
-                        double focusAngleRadians = Math.atan2(preFocusX*a-ya,
-                                                              preFocusY*a-xa);
-                        if (verboseLevel >= 2) System.out.println("          focusAngleRadians = "+focusAngleRadians);
 
-                        //double expansion = radius - Math.hypot(centerX-preFocusX, centerY-preFocusY);
-                        //double expansion = 1./(a/Math.sqrt(haa*2)) - Math.sqrt(SQR(centerX-preFocusX) + SQR(centerY-preFocusY));
-                        //double expansion = Math.sqrt(haa*2)/a - Math.sqrt(SQR(xa/a-preFocusX) + SQR(ya/a-preFocusY));
-                        double expansion = (Math.sqrt(haa*2) - Math.sqrt(SQR(xa-a*preFocusX) + SQR(ya-a*preFocusY))) / a;
-                        // TODO: that wasn't robust.  Need something that works even if a is zero, i.e. center is at infinity and radius is infinite!
-                        if (verboseLevel >= 2) System.out.println("          expansion = "+expansion);
+                        // Bleah!  Haven't figured out robust math that degrades gracefully when a goes to 0, so make that a special case.
+                        double focusX;
+                        double focusY;
+                        double focusAngleRadians;
+                        //if (ABS(a) < .1)  // works fine when all heights are zero (in fact when the arbitrarily chosen primal vert's height is zero), but doesn't degrade gracefully
+                        if (a == 0)
+                        {
+                          // Fortunately, when a=0,
+                          // perturbations in the contributing heights don't move the cline (generalized circle),
+                          // so that means the cline passes through the primal vertex, so we can use that as the focus.
+                          // CBB: this doesn't degrade gracefully, though.  It would be good to get something that degrades gracefully.
+                          // CBB: hmm, I don't really know how to exercise this case
+                          double[] primalVertCoords = topoRegion[1];
+                          if (verboseLevel >= 2) System.out.println("          HEY!  Doing the a=0 case");
+                          if (verboseLevel >= 2) System.out.println("          primalVertCoords = "+Arrays.toStringCompact(primalVertCoords));
+                          focusX = primalVertCoords[0]/primalVertCoords[3];
+                          focusY = primalVertCoords[1]/primalVertCoords[3];
+                          focusAngleRadians = Math.atan2(focusY*a-ya,
+                                                         focusX*a-xa);
+                        }
+                        else
+                        {
+                          double preFocusX = 0.;
+                          double preFocusY = 0.;
+                          focusAngleRadians = Math.atan2(preFocusX*a-ya,
+                                                         preFocusY*a-xa);
+                          if (verboseLevel >= 2) System.out.println("          focusAngleRadians = "+focusAngleRadians);
 
-                        double focusX = preFocusX + expansion * Math.cos(focusAngleRadians);
-                        double focusY = preFocusY + expansion * Math.sin(focusAngleRadians);
+                          //double radius = 1./curvature;
+                          //if (verboseLevel >= 2) System.out.println("          radius = "+radius);
+                          //double centerX = xa/a;
+                          //double centerY = ya/a;
+                          //double expansion = radius - Math.hypot(centerX-preFocusX, centerY-preFocusY);
+                          //double expansion = 1./(a/Math.sqrt(haa*2)) - Math.sqrt(SQR(centerX-preFocusX) + SQR(centerY-preFocusY));
+                          //double expansion = Math.sqrt(haa*2)/a - Math.sqrt(SQR(xa/a-preFocusX) + SQR(ya/a-preFocusY));
+                          double expansion = (Math.sqrt(haa*2) - Math.sqrt(SQR(xa-a*preFocusX) + SQR(ya-a*preFocusY))) / a;
+                          // TODO: that wasn't robust.  Need something that works even if a is zero or close to it, i.e. center is at infinity and radius is infinite!
+                          if (verboseLevel >= 2) System.out.println("          expansion = "+expansion);
+
+                          focusX = preFocusX + expansion * Math.cos(focusAngleRadians);
+                          focusY = preFocusY + expansion * Math.sin(focusAngleRadians);
+
+                          if (false) {
+                            mg3d.setColor(new java.awt.Color(255,0,0)); // red
+                            mg3d.drawPoint(focusX, focusY, 0., 5);
+                            //mg3d.setColor(new java.awt.Color(0,255,0)); // green
+                            //mg3d.drawPoint(centerX, centerY, 0., 5);
+                            mg3d.setColor(new java.awt.Color(0,255,255)); // cyan
+                            mg3d.drawPoint(preFocusX, preFocusY, 0., 5);
+                          }
+                        }
                         if (verboseLevel >= 2) System.out.println("          focusX = "+focusX);
                         if (verboseLevel >= 2) System.out.println("          focusY = "+focusY);
-
-                        if (false) {
-                          mg3d.setColor(new java.awt.Color(255,0,0)); // red
-                          mg3d.drawPoint(focusX, focusY, 0., 5);
-                          mg3d.setColor(new java.awt.Color(0,255,0)); // green
-                          mg3d.drawPoint(centerX, centerY, 0., 5);
-                          mg3d.setColor(new java.awt.Color(0,255,255)); // cyan
-                          mg3d.drawPoint(preFocusX, preFocusY, 0., 5);
-                        }
 
                         mg3d.setColor(new java.awt.Color(128,128,128)); // gray
                         double thicknessInPixels = (double)count;
@@ -10559,26 +10584,29 @@ public class ShephardsPlayApplet
             } // makeSureBackBufferIsRight
         } // class TheCanvas
 
-            // Figure out "topological region" of v0.
-            // That is, the region in which v0 can move without changing the topology of the picture.
+            // Figure out the partitioning of the plane into "topological regions" for v0.
+            // That is, the regions such that, if v0 moves around inside one of these regions,
+            // it doesn't change the topology of the picture.
             // Q: does this make sense if not "keep delaunayized"?  Maybe just assume "keep delaunayized"?
-            // Topological region will be bound by arcs.
-            // How to store the arcs?
-            // Well, let's try:
-            //   - verts, in x,y,h space
-            //   - arc center cX,cX,cW  (actual position cX/cW, cY/cW, but can be infinitely far away)
-            // Actually, trying something less ambitious: just return all circles formed by intersections of face planes with the sphere.
-            // Returns an array of {v1,v1,center} triples.
-            // non-static so can get at wrap sphere related flags.
-            // XXXTODO: actually only using the center.... as x,y,h,w, where w is tri area.
+            // The topological regions are bounded by circular arcs;
+            // in fact the picture of all the regions can be formed by simply
+            // drawing the circles where the primal face planes meet the hyperboloid.
+            // So we return specs of those circles.
+            // For a finite circle, the dual vertex of that primal face suffices:
+            // its position is the circle center,
+            // and  the circle curvature or radius is some function of its height and w.
+            // For circles with infinite center and radius, we also need a reference point on the circle,
+            // to disambiguate; for that case, we return an incident primal vert.
             private ArrayList figureOutAllTopologicalRegions(
                 Mesh mesh,  // the primary mesh, i.e. the mostly triangulated white/yellow one that the user edits
                 Mesh dualMesh,  // the dual mesh, i.e. the mostly trivalent blue one
                 Mesh.Vertex vertexToIgnore)
             {
+                Mesh meshToUse;
                 Mesh dualMeshToUse;
                 if (vertexToIgnore == null)
                 {
+                    meshToUse = mesh;
                     dualMeshToUse = dualMesh;
                 }
                 else
@@ -10598,13 +10626,43 @@ public class ShephardsPlayApplet
                                                       wrapAroundSphereFlag.get(),
                                                       centerSphereFlag.get(),
                                                       wrapSphereCurvature.get());
+                    meshToUse = clone;
                 }
-                ArrayList answer = new ArrayList();
+
                 int nDualVerts = dualMeshToUse.verts.size();
+
+                // For each dual vert, we also return one incident primal vert.
+                // This is necessary for disambiguation in the case that the circle center
+                // and radius are invinite.
+                int[] dualVert2someIncidentPrimalVert = VecMath.fillvec(nDualVerts, -1);
+                {
+                  int nEdges = meshToUse.edges.size();
+                  CHECK_EQ(nEdges, dualMeshToUse.edges.size());
+                  for (int iEdge = 0; iEdge < nEdges; ++iEdge) {
+                    Mesh.Edge primalEdge = meshToUse.getEdge(iEdge);
+                    Mesh.Vertex primalVert0 = primalEdge.initialVertex();
+                    Mesh.Vertex primalVert1 = primalEdge.finalVertex();
+                    int iPrimalVert = primalVert0!=null ? primalVert0.myIndex() : primalVert1.myIndex();
+                    Mesh.Edge dualEdge = dualMeshToUse.getEdge(iEdge);
+                    Mesh.Vertex dualVert0 = dualEdge.initialVertex();
+                    Mesh.Vertex dualVert1 = dualEdge.finalVertex();
+                    if (dualVert0 != null) dualVert2someIncidentPrimalVert[dualVert0.myIndex()] = iPrimalVert;
+                    if (dualVert1 != null) dualVert2someIncidentPrimalVert[dualVert1.myIndex()] = iPrimalVert;
+                  }
+                }
+
+                ArrayList answer = new ArrayList();
                 for (int iDualVert = 0; iDualVert < nDualVerts; ++iDualVert) {
                   Mesh.Vertex dualVert = dualMeshToUse.getVert(iDualVert);
                   // Can think of this as: {centerX*area, centerY*area, height*area^2, area}
-                  answer.add(new double[] {dualVert.X(), dualVert.Y(), dualVert.H(), dualVert.W()});
+                  double[/*4*/] center = {dualVert.X(), dualVert.Y(), dualVert.H(), dualVert.W()};
+                  int someIncidentPrimalVertIndex = dualVert2someIncidentPrimalVert[iDualVert];
+                  CHECK_NE(someIncidentPrimalVertIndex, -1);
+                  Mesh.Vertex someIncidentPrimalVert = meshToUse.getVert(someIncidentPrimalVertIndex);
+                  answer.add(new double[][] {
+                      center,
+                      {someIncidentPrimalVert.X(), someIncidentPrimalVert.Y(), someIncidentPrimalVert.H(), someIncidentPrimalVert.W()},
+                  });
                 }
                 return answer;
             }  // figureOutAllTopologicalRegions
