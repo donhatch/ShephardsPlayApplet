@@ -32,8 +32,8 @@ CONJECTURES ABOUT SPECIFIC STRONGER UNFOLDINGS THAT FOLLOW A PATTERN:
 * Every trivalent convex polyhedron has an unfolding in which
   the dullest edge at every vertex is a fold.
   [false, easy counterexample: just take a regular pentagonal prism
-  (jittered slightly so trivalent),
-  or a slightlys squashed regular tetrahedron,
+  (jittered slightly so trivalent (XXX what did I mean here? it's already trivalent)),
+  or a slightly squashed regular tetrahedron,
   or a regular 7-gon in the plane with edges going straight out
   from the center-- those spokes can't all be folds.]
 
@@ -63,6 +63,7 @@ CONJECTURES ABOUT STRONGER UNFOLDINGS INVOLVING SWEEPS:
   in which the cut tree follows the sweep direction
   [false, counterexample: sweepKiller, or sweepKiller1, can force flow to
   arbitrarily close to 45 degrees away from the sweep direction,
+  (XXX what did I mean here? less than 45 degrees away doesn't make a counterexample)
   and in fact steepKiller can force the flow to be arbitrarily steep,
   however it's probably not possible to replicate that one.]
 
@@ -152,7 +153,7 @@ CONJECTURES ABOUT ALGORITHMS:
 * There is a nondeterministic polynomial time algorithm
   for proving there is no unfolding of a given trivalent convex polyhedron,
   when there isn't
-  [unknown, trivalent shephard's implies this trivially]
+  [unknown, implies previous, trivalent shephard's implies this trivially]
 
 
 * The problem of finding an unfolding of a trivalent convex polyhedron
@@ -164,13 +165,13 @@ CONJECTURES ABOUT ALGORITHMS:
   or "there exists an algorithm", however this one is backwards...
   maybe this conjecture should be replaced with its negation]
 
-* There is a planar algorithm that sweeps a circle outward from a center point,
+* There is a planar algorithm that sweeps a circle outward from any center point,
   such that, at any given time, the structure inside the circle is a good unfolding
   (although it might change)
   and the edges crossing the circle are either dry
   or flow from a vertex inside the circle to a vertex outside the circle.
 
-* There is a planar algorithm that sweeps a circle *inward* towards a center point,
+* There is a planar algorithm that sweeps a circle *inward* towards any center point,
   such that, at any given time, the edges crossing the circle are either dry
   or flow from a vertex inside the circle to a vertex outside the circle,
   and stats are kept that keep track of how paths can proceed inward.
@@ -647,7 +648,7 @@ they become evident from playing with planar tilings:
                 (counterexample: one edge, with a bad exit out of each endpoint)
         <=> false
          => every lagoon has at least two good exits  (MAIN CONJECTURE)
-         => every convex lagoon as at least two good exits
+         => every convex lagoon has at least two good exits
                 (where "convex" means it includes every vertex in its convex hull)
          => every lagoon that's a *subset* of the verts of one polygon has at least two good exits
          => every lagoon that's a *connected subset* of the verts of one polygon has at least two good exits
