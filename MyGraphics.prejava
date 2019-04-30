@@ -863,12 +863,16 @@ public class MyGraphics
         if (verbose >= 2) System.out.println("              clipMinY = "+clipMinY);
         if (verbose >= 2) System.out.println("              clipMaxY = "+clipMaxY);
         if (verbose >= 2) System.out.println("              slack = "+slack);
+
+
+        // Start by jumping start towards the clip area, so we don't start
+        // by doing a bunch of nothing.
         if (verbose >= 2) System.out.println("              doing first loop...");
         int max = 100;  // off-the-rails detection
         for (int i = 0; ; i++)
         {
             CHECK_LT(i, max);
-            if (verbose >= 2) System.out.println("                  top of loop");
+            if (verbose >= 2) System.out.println("                  top of loop (i="+i+")");
             if (verbose >= 2) System.out.println("                      start="+start);
             if (verbose >= 2) System.out.println("                      end="+end);
             CHECK(!Double.isNaN(start));
@@ -1088,7 +1092,7 @@ public class MyGraphics
     private double translateX = 0;
     private double translateY = 0;
     public boolean debugClip = false;
-    public int verbose = 0; // XXX interface to this?
+    public int verbose = 2; // caller can set this before making calls, to debug
 
     public double getScaleX() { return scaleX; }
     public double getScaleY() { return scaleY; }
@@ -1208,4 +1212,87 @@ public class MyGraphics
     public void flush()
     {
     }
+
+    // little test program
+    public static void main(String[] args)
+    {
+        if (false)
+        {
+          // Attempt to prevent the java window from stealing focus.
+          // Doesn't work; gives a HeadlessException :-(
+          System.setProperty("java.awt.headless", "true"); // Equivalent to -Djava.awt.headless=true
+        }
+
+        new javax.swing.JFrame() {{
+          this.add(new javax.swing.JPanel() {
+            @Override protected void paintComponent(java.awt.Graphics g) {
+              if (true)
+              {
+                // Something that failed:
+                //   - canned thing hexes spiral
+                //   - my algorithm 2
+                //   - my algorithm max iters = 295
+                //java.awt.Dimension size = new java.awt.Dimension(500, 500);
+                java.awt.Dimension size = getSize();
+                MyGraphics mg = new MyGraphics(g,
+                                               size,
+                                               /*left=*/-20,
+                                               /*right=*/20,
+                                               /*bottom=*/-20,
+                                               /*top=*/20
+                                               );
+                mg.verbose = 3;
+                mg.smartDrawArcClipped(
+                  ///*focusX=*/2.4065304826489604,  // EXCEPTION
+                  /*focusX=*/2,  // EXCEPTION
+                  ///*focusY=*/-1.016121680672899,  // EXCEPTION
+                  /*focusY=*/-1.02,  // EXCEPTION
+                  ///*focusY=*/-1,  // OK
+                  ///*focusAngleRadians=*/1.5707963267948966,  // EXCEPTION
+                  ///*focusAngleRadians=*/1.57,  // EXCEPTION
+                  /*focusAngleRadians=*/1.5672,  // EXCEPTION
+                  ///*focusAngleRadians=*/1.5671,  // OK
+                  ///*focusAngleRadians=*/0,  // OK
+                  /*c=*/0.0,
+                  ///*start=*/-10.0, // EXCEPTION
+                  /*start=*/1.5,  // EXCEPTION
+                  ///*end=*/10.0,  // EXCEPTION
+                  /*end=*/3.5,  // EXCEPTION
+                  /*antiAlias=*/false,
+
+                  // THESE CAUSE AN EXCEPTION
+                  /*clipX0=*/-1.096158027664877,
+                  /*clipX1=*/1.096158027664877,
+                  /*clipY0=*/1.0021413276231264,
+                  /*clipY1=*/-1.0021413276231264,
+
+                  // THESE ARE OK
+                  ///*clipX0=*/-10.96158027664877,
+                  ///*clipX1=*/10.96158027664877,
+                  ///*clipY0=*/10.021413276231264,
+                  ///*clipY1=*/-10.021413276231264,
+
+                  /*slack=*/0.008564522469325795
+                );
+              }
+            }  // paintComponent
+            {
+              this.setFocusable(true);
+              this.addKeyListener(new java.awt.event.KeyListener() {
+                @Override public void keyPressed(java.awt.event.KeyEvent e) {
+                  System.out.println("Bye!");
+                  System.exit(0);
+                }
+                @Override public void keyReleased(java.awt.event.KeyEvent e) {
+                }
+                @Override public void keyTyped(java.awt.event.KeyEvent e) {
+                }
+              });
+            }
+          });
+          this.setSize(/*width=*/100, /*height=*/100);
+          this.setVisible(true);
+          this.setDefaultCloseOperation(EXIT_ON_CLOSE);
+        }};
+    }  // main
 } // class MyGraphics
