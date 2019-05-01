@@ -12,6 +12,8 @@ import com.donhatchsw.util.VecMath;
 
 public class MyGraphics
 {
+    private static int maxItersEver = 0;
+
     public MyGraphics(java.awt.Graphics g,
                       java.awt.Dimension gsize,
                       double x0, double x1, double y0, double y1)
@@ -831,15 +833,11 @@ public class MyGraphics
         CHECK(Double.isFinite(clipY1));
         CHECK(Double.isFinite(slack));
 
-        // I don't know how to clip analytically yet,
-        // so do the following instead:
-        // while an endpoint is outside the clip area,
-        // cut off that length of the arc.
-        // This will exponentially approach the clip rectangle
-        // (or exponentially recede from it).
-        // Stop when our distance from the clip rectangle
-        // is <= slack (typically 2 pixels).
-        // XXX except it doesn't work, when arc direction is perpendicular to direction towards clip area
+        // Swap if necessary so start <= end; that's easier than keeping track.
+        if (start > end) {
+          double temp;
+          SWAP(start, end, temp);
+        }
 
         double clipMinX = Math.min(clipX0, clipX1);
         double clipMaxX = Math.max(clipX0, clipX1);
@@ -850,12 +848,9 @@ public class MyGraphics
         if (c * Math.abs(end-start) > 2*Math.PI)
         {
             start = 0.;
-            end = 2*Math.PI / c;  // safe because that test couldn't have passed if c were zero
+            end = 2*Math.PI / c;  // safe because that test above couldn't have passed if c were zero
             if (verbose >= 2) System.out.println("              MORE THAN FULL CIRCLE!  adjusting to start="+start+" end="+end);
         }
-
-        // TODO: explain what this is for.  If it accomplishes the same thing as simply swapping start and end, then should probably do that instead.
-        int dir = (start <= end ? 1 : -1);
 
         double normalX = Math.cos(focusAngleRadians);
         double normalY = Math.sin(focusAngleRadians);
@@ -872,505 +867,415 @@ public class MyGraphics
         if (verbose >= 2) System.out.println("              clipMaxY = "+clipMaxY);
         if (verbose >= 2) System.out.println("              slack = "+slack);
 
-        if (boldNewWayFlag) {
-          // Try new bold way.
-          // Swap if necessary so start <= end; that's easier than keeping track.
-          // CBB: I think this works, but it's horribly verbose; need to make it more concise.
-          if (start > end) {
-            double temp;
-            SWAP(start, end, temp);
+        // CBB: I think this works, but it's horribly verbose; need to make it more concise.
+
+        // Don't know how to clip analytically, so clip using binary search,
+        // to clip bounds give or take slack (typically 2 pixels).
+        // First, divide into quadrants, so that we're only working in a single quadrant at a time,
+        // for simplicity.
+
+        double startAngleRadians = focusAngleRadians + start*c;
+        double endAngleRadians = focusAngleRadians + end*c;
+        // CBB: should coerce the following to int, somehow, I think
+        long firstRelevantQuadrant = (long)(Math.floor(startAngleRadians / (Math.PI/2)));
+        long lastRelevantQuadrant = (long)(Math.ceil(endAngleRadians / (Math.PI/2)) - 1.0);
+        if (c == 0.) {
+          CHECK_GE(firstRelevantQuadrant, lastRelevantQuadrant);  // this prevents the zero divide below
+        }
+        if (lastRelevantQuadrant == firstRelevantQuadrant-1) {
+          // so horizontal and vertical lines don't disappear...
+          lastRelevantQuadrant = firstRelevantQuadrant;
+        }
+
+        if (verbose >= 2) System.out.println("              firstRelevantQuadrant = "+firstRelevantQuadrant);
+        if (verbose >= 2) System.out.println("              lastRelevantQuadrant = "+lastRelevantQuadrant);
+        CHECK_LE_LE(firstRelevantQuadrant-1, lastRelevantQuadrant, firstRelevantQuadrant+4);
+        double startPoint[] = new double[2];  // scratch for loop
+        double endPoint[] = new double[2];  // scratch for loop
+        double midPoint[] = new double[2];  // scratch for loop
+        for (long quadrant = firstRelevantQuadrant; quadrant <= lastRelevantQuadrant; quadrant++) {
+          if (verbose >= 2) System.out.println("                  quadrant = "+quadrant);
+          double partStart = quadrant==firstRelevantQuadrant ? start : ((Math.PI/2)*quadrant - focusAngleRadians) / c;  // we never divide by c=0, because in that case there's at most 1 relevant quadrant
+          double partEnd = quadrant==lastRelevantQuadrant ? end : ((Math.PI/2)*(quadrant+1.) - focusAngleRadians) / c;  // we never divide by c=0, because in that case there's at most 1 relevant quadrant
+          if (verbose >= 2) System.out.println("                      partStartAngleDegrees = "+RTOD(focusAngleRadians + partStart*c));
+          if (verbose >= 2) System.out.println("                      partEndAngleDegrees = "+RTOD(focusAngleRadians + partEnd*c));
+          CHECK(Double.isFinite(partStart));
+          CHECK(Double.isFinite(partEnd));
+
+          // CBB: if we would refrain from altering endPoint from previous iteration, we could reuse it
+          boolean oopsWeProbablyClobberedEndPoint = true;
+          if (oopsWeProbablyClobberedEndPoint || quadrant == firstRelevantQuadrant) {
+            findPointOnArc(partStart, focusX, focusY, c, normalAndTangent, scratch, startPoint);
+          } else {
+            VecMath.copyvec(startPoint, endPoint);  // reuse result from previous iteration
           }
-          double startAngleRadians = focusAngleRadians + start*c;
-          double endAngleRadians = focusAngleRadians + end*c;
-          // CBB: should coerce the following to int, somehow
-          long firstRelevantQuadrant = (long)(Math.floor(startAngleRadians / (Math.PI/2)));
-          long lastRelevantQuadrant = (long)(Math.ceil(endAngleRadians / (Math.PI/2)) - 1.0);
-          if (c == 0.) {
-            CHECK_GE(firstRelevantQuadrant, lastRelevantQuadrant);  // this prevents the zero divide below
-          }
-          if (lastRelevantQuadrant == firstRelevantQuadrant-1) {
-            // so horizontal and vertical lines don't disappear...
-            lastRelevantQuadrant = firstRelevantQuadrant;
-          }
+          findPointOnArc(partEnd, focusX, focusY, c, normalAndTangent, scratch, endPoint);
+          if (verbose >= 2) System.out.println("                      startPoint = "+VecMath.toString(startPoint));
+          if (verbose >= 2) System.out.println("                      endPoint = "+VecMath.toString(endPoint));
 
-          if (verbose >= 2) System.out.println("              firstRelevantQuadrant = "+firstRelevantQuadrant);
-          if (verbose >= 2) System.out.println("              lastRelevantQuadrant = "+lastRelevantQuadrant);
-          CHECK_LE_LE(firstRelevantQuadrant-1, lastRelevantQuadrant, firstRelevantQuadrant+4);
-          double startPoint[] = new double[2];  // scratch for loop
-          double endPoint[] = new double[2];  // scratch for loop
-          double midPoint[] = new double[2];  // scratch for loop
-          for (long quadrant = firstRelevantQuadrant; quadrant <= lastRelevantQuadrant; quadrant++) {
-            if (verbose >= 2) System.out.println("                  quadrant = "+quadrant);
-            double partStart = quadrant==firstRelevantQuadrant ? start : ((Math.PI/2)*quadrant - focusAngleRadians) / c;  // we never divide by c=0, because in that case there's at most 1 relevant quadrant
-            double partEnd = quadrant==lastRelevantQuadrant ? end : ((Math.PI/2)*(quadrant+1.) - focusAngleRadians) / c;  // we never divide by c=0, because in that case there's at most 1 relevant quadrant
-            if (verbose >= 2) System.out.println("                      partStartAngleDegrees = "+RTOD(focusAngleRadians + partStart*c));
-            if (verbose >= 2) System.out.println("                      partEndAngleDegrees = "+RTOD(focusAngleRadians + partEnd*c));
-            CHECK(Double.isFinite(partStart));
-            CHECK(Double.isFinite(partEnd));
-
-            // CBB: if we would refrain from altering endPoint from previous iteration, we could reuse it
-            boolean oopsWeProbablyClobberedEndPoint = true;
-            if (oopsWeProbablyClobberedEndPoint || quadrant == firstRelevantQuadrant) {
-              findPointOnArc(partStart, focusX, focusY, c, normalAndTangent, scratch, startPoint);
-            } else {
-              VecMath.copyvec(startPoint, endPoint);  // reuse result from previous iteration
-            }
-            findPointOnArc(partEnd, focusX, focusY, c, normalAndTangent, scratch, endPoint);
-            if (verbose >= 2) System.out.println("                      startPoint = "+VecMath.toString(startPoint));
-            if (verbose >= 2) System.out.println("                      endPoint = "+VecMath.toString(endPoint));
-
-            // Clip part against the four clip lines.
-            CHECK_LE_LE(0, (quadrant&3), 3);
-            if (true) {
-              if ((quadrant&3) == 0) {
-                // Moving NW.
-                if (startPoint[0] <= clipMinX+slack
-                 || endPoint[0] >= clipMaxX-slack
-                 || startPoint[1] >= clipMaxY-slack
-                 || endPoint[1] <= clipMinY+slack) {
-                  if (verbose >= 2) System.out.println("                      clipped away");
-                  continue;
-                }
-                // Clamp partStart to SE of clip region...
-                if (startPoint[0] > clipMaxX+slack
-                 || startPoint[1] < clipMinY-slack) {
-                  double lo = partStart;
-                  double hi = partEnd;
-                  int nItersDone = 0;
-                  while (true) {
-                    double mid = (lo+hi)*.5;
-                    findPointOnArc(mid, focusX, focusY, c, normalAndTangent, scratch, midPoint);
-                    if (midPoint[0] < clipMaxX-slack && midPoint[1] > clipMinY+slack) {
-                      // mid is too far inside
-                      hi = mid;
-                    } else if (midPoint[0] > clipMaxX+slack || midPoint[1] < clipMinY-slack) {
-                      // mid is too far outside
-                      lo = mid;
-                    } else {
-                      partStart = mid;
-                      VecMath.copyvec(startPoint, midPoint);
-                      break;
-                    }
-                    nItersDone++;
-                    if (nItersDone == 10000) {
-                      OUT("=========");
-                      System.out.println("ARGH! quadrant=0 (NW) clamping partStart");  // CBB: dump everything here
-                      CHECK(false);
-                      break;
-                    }
-                  }
-                  // Clipping to right may have left only stuff that's above top,
-                  // or clipping to bottom may have left only stuff that's left of left.
-                  if (startPoint[0] <= clipMinX+slack
-                   || startPoint[1] >= clipMaxY-slack) {
-                    continue;
-                  }
-                }
-                // Clamp partEnd to NW of clip region...
-                if (endPoint[0] < clipMinX-slack
-                 || endPoint[1] > clipMaxY+slack) {
-                  double lo = partStart;
-                  double hi = partEnd;
-                  int nItersDone = 0;
-                  while (true) {
-                    double mid = (lo+hi)*.5;
-                    findPointOnArc(mid, focusX, focusY, c, normalAndTangent, scratch, midPoint);
-                    if (midPoint[0] > clipMinX+slack && midPoint[1] < clipMaxY-slack) {
-                      // mid is too far inside
-                      lo = mid;
-                    } else if (midPoint[0] < clipMinX-slack || midPoint[1] > clipMaxY+slack) {
-                      // mid is too far outside
-                      hi = mid;
-                    } else {
-                      partEnd = mid;
-                      VecMath.copyvec(endPoint, midPoint);
-                      break;
-                    }
-                    nItersDone++;
-                    if (nItersDone == 10000) {
-                      OUT("=========");
-                      OUT("ARGH! quadrant=0 (NW) clamping partEnd");
-                      PRINT(focusX);
-                      PRINT(focusY);
-                      PRINT(focusAngleRadians);
-                      PRINT(RTOD(focusAngleRadians));
-                      PRINT(c);
-                      PRINT(start);
-                      PRINT(end);
-                      PRINT(partStart);
-                      PRINT(partEnd);
-                      PRINTVEC(startPoint);
-                      PRINTVEC(endPoint);
-                      PRINT(clipX0);
-                      PRINT(clipX1);
-                      PRINT(clipY0);
-                      PRINT(clipY1);
-                      PRINT(slack);
-                      PRINT(hi);
-                      PRINT(lo);
-                      PRINT(mid);
-                      PRINTVEC(midPoint);
-                      CHECK(false);
-                      this.setColor(java.awt.Color.RED);
-                      break;
-                    }
-                  }
-                  // Clipping to left may have left only stuff that's below bottom,
-                  // or clipping to top may have left only stuff that's right of right.
-                  if (endPoint[0] >= clipMaxX-slack
-                   || endPoint[1] <= clipMinY+slack) {
-                    continue;
-                  }
-                }
-
-              } else if ((quadrant&3) == 1) {
-                // Moving SW.
-                if (startPoint[0] <= clipMinX+slack
-                 || endPoint[0] >= clipMaxX-slack
-                 || startPoint[1] <= clipMinY+slack
-                 || endPoint[1] >= clipMaxY-slack) {
-                  if (verbose >= 2) System.out.println("                      clipped away");
-                  continue;
-                }
-                // Clamp partStart to NE of clip region...
-                if (startPoint[0] > clipMaxX+slack
-                 || startPoint[1] > clipMaxY+slack) {
-                  double lo = partStart;
-                  double hi = partEnd;
-                  int nItersDone = 0;
-                  while (true) {
-                    double mid = (lo+hi)*.5;
-                    findPointOnArc(mid, focusX, focusY, c, normalAndTangent, scratch, midPoint);
-                    if (midPoint[0] < clipMaxX-slack && midPoint[1] < clipMaxY-slack) {
-                      // mid is too far inside
-                      hi = mid;
-                    } else if (midPoint[0] > clipMaxX+slack || midPoint[1] > clipMaxY+slack) {
-                      // mid is too far outside
-                      lo = mid;
-                    } else {
-                      partStart = mid;
-                      VecMath.copyvec(startPoint, midPoint);
-                      break;
-                    }
-                    nItersDone++;
-                    if (nItersDone == 10000) {
-                      OUT("=========");
-                      OUT("ARGH! quadrant=1 (SW) clamping partStart");
-                      CHECK(false);
-                      break;
-                    }
-                  }
-                  // Clipping to right may have left only stuff that's below bottom,
-                  // or clipping to top may have left only stuff that's left of left.
-                  if (startPoint[0] <= clipMinX+slack
-                   || startPoint[1] <= clipMinY+slack) {
-                    continue;
-                  }
-                }
-                // Clamp partEnd to SW of clip region...
-                if (endPoint[0] < clipMinX-slack
-                 || endPoint[1] < clipMinY-slack) {
-                  double lo = partStart;
-                  double hi = partEnd;
-                  int nItersDone = 0;
-                  while (true) {
-                    double mid = (lo+hi)*.5;
-                    findPointOnArc(mid, focusX, focusY, c, normalAndTangent, scratch, midPoint);
-                    if (midPoint[0] > clipMinX+slack && midPoint[1] > clipMinY+slack) {
-                      // mid is too far inside
-                      lo = mid;
-                    } else if (midPoint[0] < clipMinX-slack || midPoint[1] < clipMinY-slack) {
-                      // mid is too far outside
-                      hi = mid;
-                    } else {
-                      partEnd = mid;
-                      VecMath.copyvec(endPoint, midPoint);
-                      break;
-                    }
-                    nItersDone++;
-                    if (nItersDone == 10000) {
-                      OUT("=========");
-                      OUT("ARGH! quadrant=1 (SW) clamping partEnd");
-                      CHECK(false);
-                      this.setColor(java.awt.Color.RED);
-                      break;
-                    }
-                  }
-                  // Clipping to left may have left only stuff that's above top,
-                  // or clipping to bottom may have left only stuff that's right of right.
-                  if (endPoint[0] >= clipMaxX-slack
-                   || endPoint[1] >= clipMaxY-slack) {
-                    continue;
-                  }
-                }
-              } else if ((quadrant&3) == 2) {
-                // Moving SE.
-                if (startPoint[0] >= clipMaxX-slack
-                 || endPoint[0] <= clipMinX+slack
-                 || startPoint[1] <= clipMinY+slack
-                 || endPoint[1] >= clipMaxY-slack) {
-                  if (verbose >= 2) System.out.println("                      clipped away");
-                  continue;
-                }
-                // Clamp partStart to NW of clip region...
-                if (startPoint[0] < clipMinX-slack
-                 || startPoint[1] > clipMaxY+slack) {
-                  double lo = partStart;
-                  double hi = partEnd;
-                  int nItersDone = 0;
-                  while (true) {
-                    double mid = (lo+hi)*.5;
-                    findPointOnArc(mid, focusX, focusY, c, normalAndTangent, scratch, midPoint);
-                    if (midPoint[0] > clipMinX+slack && midPoint[1] < clipMaxY-slack) {
-                      // mid is too far inside
-                      hi = mid;
-                    } else if (midPoint[0] < clipMinX-slack || midPoint[1] > clipMaxY+slack) {
-                      // mid is too far outside
-                      lo = mid;
-                    } else {
-                      partStart = mid;
-                      VecMath.copyvec(startPoint, midPoint);
-                      break;
-                    }
-                    nItersDone++;
-                    if (nItersDone == 10000) {
-                      OUT("=========");
-                      OUT("ARGH! quadrant=2 (SE) clamping partStart");
-                      CHECK(false);
-                      break;
-                    }
-                  }
-                  // Clipping to left may have left only stuff that's below bottom,
-                  // or clipping to top may have left only stuff that's right of right.
-                  if (startPoint[0] >= clipMaxX-slack
-                   || startPoint[1] <= clipMinY+slack) {
-                    continue;
-                  }
-                }
-                // Clamp partEnd to SE of clip region...
-                if (endPoint[0] > clipMaxX+slack
-                 || endPoint[1] < clipMinY-slack) {
-                  double lo = partStart;
-                  double hi = partEnd;
-                  int nItersDone = 0;
-                  while (true) {
-                    double mid = (lo+hi)*.5;
-                    findPointOnArc(mid, focusX, focusY, c, normalAndTangent, scratch, midPoint);
-                    if (midPoint[0] < clipMaxX-slack && midPoint[1] > clipMinY+slack) {
-                      // mid is too far inside
-                      lo = mid;
-                    } else if (midPoint[0] > clipMaxX+slack || midPoint[1] < clipMinY-slack) {
-                      // mid is too far outside
-                      hi = mid;
-                    } else {
-                      partEnd = mid;
-                      VecMath.copyvec(endPoint, midPoint);
-                      break;
-                    }
-                    nItersDone++;
-                    if (nItersDone == 10000) {
-                      OUT("=========");
-                      OUT("ARGH! quadrant=2 (SE) clamping partEnd");
-                      CHECK(false);
-                      this.setColor(java.awt.Color.RED);
-                      break;
-                    }
-                  }
-                  // Clipping to right may have left only stuff that's above top,
-                  // or clipping to bottom may have left only stuff that's left of left.
-                  if (endPoint[0] <= clipMinX+slack
-                   || endPoint[1] >= clipMaxY-slack) {
-                    continue;
-                  }
-                }
-              } else if ((quadrant&3) == 3) {
-                // Moving NE.
-                if (startPoint[0] >= clipMaxX-slack
-                 || endPoint[0] <= clipMinX+slack
-                 || startPoint[1] >= clipMaxY-slack
-                 || endPoint[1] <= clipMinY+slack) {
-                  if (verbose >= 2) System.out.println("                      clipped away");
-                  continue;
-                }
-                // Clamp partStart to SW of clip region...
-                if (startPoint[0] < clipMinX-slack
-                 || startPoint[1] < clipMinY-slack) {
-                  double lo = partStart;
-                  double hi = partEnd;
-                  int nItersDone = 0;
-                  while (true) {
-                    double mid = (lo+hi)*.5;
-                    findPointOnArc(mid, focusX, focusY, c, normalAndTangent, scratch, midPoint);
-                    if (midPoint[0] > clipMinX+slack && midPoint[1] > clipMinY+slack) {
-                      // mid is too far inside
-                      hi = mid;
-                    } else if (midPoint[0] < clipMinX-slack || midPoint[1] < clipMinY-slack) {
-                      // mid is too far outside
-                      lo = mid;
-                    } else {
-                      partStart = mid;
-                      VecMath.copyvec(startPoint, midPoint);
-                      break;
-                    }
-                    nItersDone++;
-                    if (nItersDone == 10000) {
-                      OUT("=========");
-                      OUT("ARGH! quadrant=3 (NE) clamping partStart");
-                      CHECK(false);
-                      break;
-                    }
-                  }
-                  // Clipping to left may have left only stuff that's above top,
-                  // or clipping to bottom may have left only stuff that's right of right.
-                  if (startPoint[0] >= clipMaxX-slack
-                   || startPoint[1] >= clipMaxY-slack) {
-                    continue;
-                  }
-                }
-                // Clamp partEnd to NE of clip region...
-                if (endPoint[0] > clipMaxX+slack
-                 || endPoint[1] > clipMaxY+slack) {
-                  double lo = partStart;
-                  double hi = partEnd;
-                  int nItersDone = 0;
-                  while (true) {
-                    double mid = (lo+hi)*.5;
-                    findPointOnArc(mid, focusX, focusY, c, normalAndTangent, scratch, midPoint);
-                    if (midPoint[0] < clipMaxX-slack && midPoint[1] < clipMaxY-slack) {
-                      // mid is too far inside
-                      lo = mid;
-                    } else if (midPoint[0] > clipMaxX+slack || midPoint[1] > clipMaxY+slack) {
-                      // mid is too far outside
-                      hi = mid;
-                    } else {
-                      partEnd = mid;
-                      VecMath.copyvec(endPoint, midPoint);
-                      break;
-                    }
-                    nItersDone++;
-                    if (nItersDone == 10000) {
-                      OUT("=========");
-                      OUT("ARGH! quadrant=3 (NE) clamping partEnd");
-                      CHECK(false);
-                      break;
-                    }
-                  }
-                  // Clipping to right may have left only stuff that's below bottom,
-                  // or clipping to top may have left only stuff that's left of left.
-                  if (endPoint[0] <= clipMinX+slack
-                   || endPoint[1] <= clipMinY+slack) {
-                    continue;
-                  }
-                }
-              } else {
-                CHECK(false);  // can't happen because already checked
+          // Clip part against the four clip lines.
+          CHECK_LE_LE(0, (quadrant&3), 3);
+          if (true) {
+            int tooManyIters = 100;
+            if ((quadrant&3) == 0) {
+              // Moving NW.
+              if (startPoint[0] <= clipMinX+slack
+               || endPoint[0] >= clipMaxX-slack
+               || startPoint[1] >= clipMaxY-slack
+               || endPoint[1] <= clipMinY+slack) {
+                if (verbose >= 2) System.out.println("                      clipped away easily");
+                continue;
               }
+              // Clamp partStart to SE of clip region...
+              if (startPoint[0] > clipMaxX+slack
+               || startPoint[1] < clipMinY-slack) {
+                double lo = partStart;
+                double hi = partEnd;
+                int nItersDone = 0;
+                while (true) {
+                  double mid = (lo+hi)*.5;
+                  findPointOnArc(mid, focusX, focusY, c, normalAndTangent, scratch, midPoint);
+                  if (midPoint[0] < clipMaxX-slack && midPoint[1] > clipMinY+slack) {
+                    // mid is too far inside
+                    hi = mid;
+                  } else if (midPoint[0] > clipMaxX+slack || midPoint[1] < clipMinY-slack) {
+                    // mid is too far outside
+                    lo = mid;
+                  } else {
+                    partStart = mid;
+                    VecMath.copyvec(startPoint, midPoint);
+                    break;
+                  }
+                  nItersDone++;
+                  if (nItersDone == tooManyIters) {
+                    OUT("=========");
+                    System.out.println("ARGH! quadrant=0 (NW) clamping partStart");  // CBB: dump everything here
+                    CHECK(false);
+                    break;
+                  }
+                }
+                maxItersEver = MAX(maxItersEver, nItersDone);
+                // Clipping to right may have left only stuff that's above top,
+                // or clipping to bottom may have left only stuff that's left of left.
+                if (startPoint[0] <= clipMinX+slack
+                 || startPoint[1] >= clipMaxY-slack) {
+                  continue;
+                }
+              }
+              // Clamp partEnd to NW of clip region...
+              if (endPoint[0] < clipMinX-slack
+               || endPoint[1] > clipMaxY+slack) {
+                double lo = partStart;
+                double hi = partEnd;
+                int nItersDone = 0;
+                while (true) {
+                  double mid = (lo+hi)*.5;
+                  findPointOnArc(mid, focusX, focusY, c, normalAndTangent, scratch, midPoint);
+                  if (midPoint[0] > clipMinX+slack && midPoint[1] < clipMaxY-slack) {
+                    // mid is too far inside
+                    lo = mid;
+                  } else if (midPoint[0] < clipMinX-slack || midPoint[1] > clipMaxY+slack) {
+                    // mid is too far outside
+                    hi = mid;
+                  } else {
+                    partEnd = mid;
+                    VecMath.copyvec(endPoint, midPoint);
+                    break;
+                  }
+                  nItersDone++;
+                  if (nItersDone == tooManyIters) {
+                    OUT("=========");
+                    OUT("ARGH! quadrant=0 (NW) clamping partEnd");
+                    PRINT(focusX);
+                    PRINT(focusY);
+                    PRINT(focusAngleRadians);
+                    PRINT(RTOD(focusAngleRadians));
+                    PRINT(c);
+                    PRINT(start);
+                    PRINT(end);
+                    PRINT(partStart);
+                    PRINT(partEnd);
+                    PRINTVEC(startPoint);
+                    PRINTVEC(endPoint);
+                    PRINT(clipX0);
+                    PRINT(clipX1);
+                    PRINT(clipY0);
+                    PRINT(clipY1);
+                    PRINT(slack);
+                    PRINT(hi);
+                    PRINT(lo);
+                    PRINT(mid);
+                    PRINTVEC(midPoint);
+                    CHECK(false);
+                    break;
+                  }
+                }
+                maxItersEver = MAX(maxItersEver, nItersDone);
+                // Clipping to left may have left only stuff that's below bottom,
+                // or clipping to top may have left only stuff that's right of right.
+                if (endPoint[0] >= clipMaxX-slack
+                 || endPoint[1] <= clipMinY+slack) {
+                  continue;
+                }
+              }
+
+            } else if ((quadrant&3) == 1) {
+              // Moving SW.
+              if (startPoint[0] <= clipMinX+slack
+               || endPoint[0] >= clipMaxX-slack
+               || startPoint[1] <= clipMinY+slack
+               || endPoint[1] >= clipMaxY-slack) {
+                if (verbose >= 2) System.out.println("                      clipped away easily");
+                continue;
+              }
+              // Clamp partStart to NE of clip region...
+              if (startPoint[0] > clipMaxX+slack
+               || startPoint[1] > clipMaxY+slack) {
+                double lo = partStart;
+                double hi = partEnd;
+                int nItersDone = 0;
+                while (true) {
+                  double mid = (lo+hi)*.5;
+                  findPointOnArc(mid, focusX, focusY, c, normalAndTangent, scratch, midPoint);
+                  if (midPoint[0] < clipMaxX-slack && midPoint[1] < clipMaxY-slack) {
+                    // mid is too far inside
+                    hi = mid;
+                  } else if (midPoint[0] > clipMaxX+slack || midPoint[1] > clipMaxY+slack) {
+                    // mid is too far outside
+                    lo = mid;
+                  } else {
+                    partStart = mid;
+                    VecMath.copyvec(startPoint, midPoint);
+                    break;
+                  }
+                  nItersDone++;
+                  if (nItersDone == tooManyIters) {
+                    OUT("=========");
+                    OUT("ARGH! quadrant=1 (SW) clamping partStart");
+                    CHECK(false);
+                    break;
+                  }
+                }
+                maxItersEver = MAX(maxItersEver, nItersDone);
+                // Clipping to right may have left only stuff that's below bottom,
+                // or clipping to top may have left only stuff that's left of left.
+                if (startPoint[0] <= clipMinX+slack
+                 || startPoint[1] <= clipMinY+slack) {
+                  continue;
+                }
+              }
+              // Clamp partEnd to SW of clip region...
+              if (endPoint[0] < clipMinX-slack
+               || endPoint[1] < clipMinY-slack) {
+                double lo = partStart;
+                double hi = partEnd;
+                int nItersDone = 0;
+                while (true) {
+                  double mid = (lo+hi)*.5;
+                  findPointOnArc(mid, focusX, focusY, c, normalAndTangent, scratch, midPoint);
+                  if (midPoint[0] > clipMinX+slack && midPoint[1] > clipMinY+slack) {
+                    // mid is too far inside
+                    lo = mid;
+                  } else if (midPoint[0] < clipMinX-slack || midPoint[1] < clipMinY-slack) {
+                    // mid is too far outside
+                    hi = mid;
+                  } else {
+                    partEnd = mid;
+                    VecMath.copyvec(endPoint, midPoint);
+                    break;
+                  }
+                  nItersDone++;
+                  if (nItersDone == tooManyIters) {
+                    OUT("=========");
+                    OUT("ARGH! quadrant=1 (SW) clamping partEnd");
+                    CHECK(false);
+                    this.setColor(java.awt.Color.RED);
+                    break;
+                  }
+                }
+                maxItersEver = MAX(maxItersEver, nItersDone);
+                // Clipping to left may have left only stuff that's above top,
+                // or clipping to bottom may have left only stuff that's right of right.
+                if (endPoint[0] >= clipMaxX-slack
+                 || endPoint[1] >= clipMaxY-slack) {
+                  continue;
+                }
+              }
+            } else if ((quadrant&3) == 2) {
+              // Moving SE.
+              if (startPoint[0] >= clipMaxX-slack
+               || endPoint[0] <= clipMinX+slack
+               || startPoint[1] <= clipMinY+slack
+               || endPoint[1] >= clipMaxY-slack) {
+                if (verbose >= 2) System.out.println("                      clipped away easily");
+                continue;
+              }
+              // Clamp partStart to NW of clip region...
+              if (startPoint[0] < clipMinX-slack
+               || startPoint[1] > clipMaxY+slack) {
+                double lo = partStart;
+                double hi = partEnd;
+                int nItersDone = 0;
+                while (true) {
+                  double mid = (lo+hi)*.5;
+                  findPointOnArc(mid, focusX, focusY, c, normalAndTangent, scratch, midPoint);
+                  if (midPoint[0] > clipMinX+slack && midPoint[1] < clipMaxY-slack) {
+                    // mid is too far inside
+                    hi = mid;
+                  } else if (midPoint[0] < clipMinX-slack || midPoint[1] > clipMaxY+slack) {
+                    // mid is too far outside
+                    lo = mid;
+                  } else {
+                    partStart = mid;
+                    VecMath.copyvec(startPoint, midPoint);
+                    break;
+                  }
+                  nItersDone++;
+                  if (nItersDone == tooManyIters) {
+                    OUT("=========");
+                    OUT("ARGH! quadrant=2 (SE) clamping partStart");
+                    CHECK(false);
+                    break;
+                  }
+                }
+                maxItersEver = MAX(maxItersEver, nItersDone);
+                // Clipping to left may have left only stuff that's below bottom,
+                // or clipping to top may have left only stuff that's right of right.
+                if (startPoint[0] >= clipMaxX-slack
+                 || startPoint[1] <= clipMinY+slack) {
+                  continue;
+                }
+              }
+              // Clamp partEnd to SE of clip region...
+              if (endPoint[0] > clipMaxX+slack
+               || endPoint[1] < clipMinY-slack) {
+                double lo = partStart;
+                double hi = partEnd;
+                int nItersDone = 0;
+                while (true) {
+                  double mid = (lo+hi)*.5;
+                  findPointOnArc(mid, focusX, focusY, c, normalAndTangent, scratch, midPoint);
+                  if (midPoint[0] < clipMaxX-slack && midPoint[1] > clipMinY+slack) {
+                    // mid is too far inside
+                    lo = mid;
+                  } else if (midPoint[0] > clipMaxX+slack || midPoint[1] < clipMinY-slack) {
+                    // mid is too far outside
+                    hi = mid;
+                  } else {
+                    partEnd = mid;
+                    VecMath.copyvec(endPoint, midPoint);
+                    break;
+                  }
+                  nItersDone++;
+                  if (nItersDone == tooManyIters) {
+                    OUT("=========");
+                    OUT("ARGH! quadrant=2 (SE) clamping partEnd");
+                    CHECK(false);
+                    this.setColor(java.awt.Color.RED);
+                    break;
+                  }
+                }
+                maxItersEver = MAX(maxItersEver, nItersDone);
+                // Clipping to right may have left only stuff that's above top,
+                // or clipping to bottom may have left only stuff that's left of left.
+                if (endPoint[0] <= clipMinX+slack
+                 || endPoint[1] >= clipMaxY-slack) {
+                  continue;
+                }
+              }
+            } else if ((quadrant&3) == 3) {
+              // Moving NE.
+              if (startPoint[0] >= clipMaxX-slack
+               || endPoint[0] <= clipMinX+slack
+               || startPoint[1] >= clipMaxY-slack
+               || endPoint[1] <= clipMinY+slack) {
+                if (verbose >= 2) System.out.println("                      clipped away easily");
+                continue;
+              }
+              // Clamp partStart to SW of clip region...
+              if (startPoint[0] < clipMinX-slack
+               || startPoint[1] < clipMinY-slack) {
+                double lo = partStart;
+                double hi = partEnd;
+                int nItersDone = 0;
+                while (true) {
+                  double mid = (lo+hi)*.5;
+                  findPointOnArc(mid, focusX, focusY, c, normalAndTangent, scratch, midPoint);
+                  if (midPoint[0] > clipMinX+slack && midPoint[1] > clipMinY+slack) {
+                    // mid is too far inside
+                    hi = mid;
+                  } else if (midPoint[0] < clipMinX-slack || midPoint[1] < clipMinY-slack) {
+                    // mid is too far outside
+                    lo = mid;
+                  } else {
+                    partStart = mid;
+                    VecMath.copyvec(startPoint, midPoint);
+                    break;
+                  }
+                  nItersDone++;
+                  if (nItersDone == tooManyIters) {
+                    OUT("=========");
+                    OUT("ARGH! quadrant=3 (NE) clamping partStart");
+                    CHECK(false);
+                    break;
+                  }
+                }
+                maxItersEver = MAX(maxItersEver, nItersDone);
+                // Clipping to left may have left only stuff that's above top,
+                // or clipping to bottom may have left only stuff that's right of right.
+                if (startPoint[0] >= clipMaxX-slack
+                 || startPoint[1] >= clipMaxY-slack) {
+                  continue;
+                }
+              }
+              // Clamp partEnd to NE of clip region...
+              if (endPoint[0] > clipMaxX+slack
+               || endPoint[1] > clipMaxY+slack) {
+                double lo = partStart;
+                double hi = partEnd;
+                int nItersDone = 0;
+                while (true) {
+                  double mid = (lo+hi)*.5;
+                  findPointOnArc(mid, focusX, focusY, c, normalAndTangent, scratch, midPoint);
+                  if (midPoint[0] < clipMaxX-slack && midPoint[1] < clipMaxY-slack) {
+                    // mid is too far inside
+                    lo = mid;
+                  } else if (midPoint[0] > clipMaxX+slack || midPoint[1] > clipMaxY+slack) {
+                    // mid is too far outside
+                    hi = mid;
+                  } else {
+                    partEnd = mid;
+                    VecMath.copyvec(endPoint, midPoint);
+                    break;
+                  }
+                  nItersDone++;
+                  if (nItersDone == tooManyIters) {
+                    OUT("=========");
+                    OUT("ARGH! quadrant=3 (NE) clamping partEnd");
+                    CHECK(false);
+                    break;
+                  }
+                }
+                maxItersEver = MAX(maxItersEver, nItersDone);
+                // Clipping to right may have left only stuff that's below bottom,
+                // or clipping to top may have left only stuff that's left of left.
+                if (endPoint[0] <= clipMinX+slack
+                 || endPoint[1] <= clipMinY+slack) {
+                  continue;
+                }
+              }
+            } else {
+              CHECK(false);  // can't happen because already checked
             }
-            CHECK_LE(partStart, partEnd);
-            if (verbose >= 2) System.out.println("              calling smartDrawArcNonClipped...");
-            smartDrawArcNonClipped(focusX,focusY, focusAngleRadians, c, partStart,partEnd,
-                                   antiAlias);
-            if (verbose >= 2) System.out.println("              returned from smartDrawArcNonClipped.");
           }
-          if (verbose >= 2) System.out.println("            out smartDrawArcClipped (after better clipping)");
-          return;
-        }  // bold new way
-
-
-
-        // Start by jumping start towards the clip area, so we don't start
-        // by doing a bunch of nothing.
-        if (verbose >= 2) System.out.println("              doing first loop...");
-        int max = 100;  // off-the-rails detection
-        for (int i = 0; ; i++)
-        {
-            CHECK_LT(i, max);
-            if (verbose >= 2) System.out.println("                  top of loop (i="+i+")");
-            if (verbose >= 2) System.out.println("                      start="+start);
-            if (verbose >= 2) System.out.println("                      end="+end);
-            CHECK(!Double.isNaN(start));
-            CHECK(!Double.isNaN(end));
-            findPointOnArc(start, focusX, focusY, c, normalAndTangent, scratch, point);
-            double startX = point[0];
-            double startY = point[1];
-            if (verbose >= 2) System.out.println("                      startX="+startX);
-            if (verbose >= 2) System.out.println("                      startY="+startY);
-            double dist = MAX4(startX-clipMaxX,
-                               clipMinX-startX,
-                               startY-clipMaxY,
-                               clipMinY-startY);
-            if (verbose >= 2) System.out.println("                      dist="+dist);
-            if (dist <= slack)
-                break;
-            start += dir * dist;
-            if (verbose >= 2) System.out.println("                      new start="+start);
-            if (dir * (end-start) < 0)
-            {
-                if (verbose >= 2) System.out.println("            out smartDrawArcClipped (without drawing)");
-                return;
-            }
-        }
-        if (verbose >= 2) System.out.println("              done with first loop.");
-        if (verbose >= 2) System.out.println("              doing second loop...");
-        while (true)
-        {
-            //System.out.println("start="+start);
-            //System.out.println("end="+end);
-            findPointOnArc(end, focusX, focusY, c, normalAndTangent, scratch, point);
-            double endX = point[0];
-            double endY = point[1];
-            //System.out.println("endX = "+endX);
-            //System.out.println("endY = "+endY);
-            double dist = MAX4(endX-clipMaxX,
-                               clipMinX-endX,
-                               endY-clipMaxY,
-                               clipMinY-endY);
-            if (dist <= slack)
-                break;
-            end -= dir * dist;
-            //System.out.println("new end="+end);
-            if (dir * (end-start) < 0)
-            {
-                //System.out.println("        out smartDrawArcClipped (without drawing.");
-                return;
-            }
-        }
-        if (verbose >= 2) System.out.println("              done with second loop.");
-
-        // Prevent huge circles that start and end in the clip rectangle.
-        // Note this doesn't clip away all arc segments
-        // that leave the clip rectangle, but it does
-        // guarantee that any it misses won't be much larger
-        // than the clip rectangle (and usually much smaller).
-        {
-            double mid = (start+end)*.5;
-            findPointOnArc(mid, focusX, focusY, c, normalAndTangent, scratch, point);
-            double midX = point[0];
-            double midY = point[1];
-            double dist = MAX4(midX-clipMaxX,
-                               clipMinX-midX,
-                               midY-clipMaxY,
-                               clipMinY-midY);
-            if (dist > slack)
-            {
-                smartDrawArcClipped(focusX, focusY, focusAngleRadians, c,
-                                    start, mid,
-                                    antiAlias,
-                                    clipX0, clipX1, clipY0, clipY1, slack);
-                smartDrawArcClipped(focusX, focusY, focusAngleRadians, c,
-                                    mid, end,
-                                    antiAlias,
-                                    clipX0, clipX1, clipY0, clipY1, slack);
-                if (verbose >= 2) System.out.println("        out smartDrawArcClipped (split in two)");
-                return;
-            }
+          CHECK_LE(partStart, partEnd);
+          if (verbose >= 2) System.out.println("              calling smartDrawArcNonClipped...");
+          smartDrawArcNonClipped(focusX,focusY, focusAngleRadians, c, partStart,partEnd,
+                                 antiAlias);
+          if (verbose >= 2) System.out.println("              returned from smartDrawArcNonClipped.");
         }
 
-        if (verbose >= 2) System.out.println("              calling smartDrawArcNonClipped...");
-        smartDrawArcNonClipped(focusX,focusY, focusAngleRadians, c, start,end,
-                               antiAlias);
-        if (verbose >= 2) System.out.println("              returned from smartDrawArcNonClipped.");
-        if (verbose >= 2) System.out.println("            out smartDrawArcClipped (bottom)");
+        if (verbose >= 2) System.out.println("            out smartDrawArcClipped");
     } // smartDrawArcClipped
 
     public void smartDrawArc_(
@@ -1505,8 +1410,7 @@ public class MyGraphics
     private double translateX = 0;
     private double translateY = 0;
     public boolean debugClip = false;
-    public int verbose = 2; // caller can set this before making calls, to debug
-    public boolean boldNewWayFlag = true;
+    public int verbose = 0; // caller can set this before making calls, to debug
 
     public double getScaleX() { return scaleX; }
     public double getScaleY() { return scaleY; }
@@ -1637,22 +1541,8 @@ public class MyGraphics
           System.setProperty("java.awt.headless", "true"); // Equivalent to -Djava.awt.headless=true
         }
 
-        boolean initialBoldNewWayFlag;
-        if (args.length == 1 && args[0].equals("true"))
-          initialBoldNewWayFlag = true;
-        else if (args.length == 1 && args[0].equals("false"))
-          initialBoldNewWayFlag = false;
-        else {
-          System.err.println("Usage: MyGraphics <boldNewWay>[true|false]");
-          System.exit(1);
-          return;
-        }
-
         new javax.swing.JFrame() {{
           this.add(new javax.swing.JPanel() {
-
-            // Visible state
-            private boolean boldNewWayFlag = initialBoldNewWayFlag;
 
             //private double clipX0 = -1.;
             //private double clipX1 = 1.;
@@ -1706,8 +1596,6 @@ public class MyGraphics
                                       x0Fudged, x1Fudged, y0Fudged, y1Fudged);
                   mostRecentMyGraphics = mg;
                 }
-
-                mg.boldNewWayFlag = boldNewWayFlag;
 
                 mg.verbose = 0;
                 //mg.verbose = 2;
@@ -1775,6 +1663,7 @@ public class MyGraphics
                 //   - canned thing hexes spiral
                 //   - my algorithm 2
                 //   - my algorithm max iters = 295
+                // They are fine now, though.
                 java.awt.Dimension size = getSize();
                 MyGraphics mg = new MyGraphics(g,
                                                size,
@@ -1817,12 +1706,10 @@ public class MyGraphics
                   /*slack=*/0.008564522469325795
                 );
               }
+              System.out.println("      maxItersEver = "+maxItersEver);  // never seems to get more than 5
               long t1millis = System.currentTimeMillis();
-              System.out.println("      boldNewWayFlag = "+boldNewWayFlag);
               System.out.println("    out paintComponent in "+(t1millis-t0millis)/1000.+" secs.");
             }  // paintComponent
-
-
 
             private boolean draggingClipX0 = false;
             private boolean draggingClipX1 = false;
@@ -1839,10 +1726,6 @@ public class MyGraphics
                   if (e.getKeyChar() == 'q') {
                     System.out.println("Bye!");
                     System.exit(0);
-                  } else if (e.getKeyChar() == 'b') {
-                    boldNewWayFlag = !boldNewWayFlag;
-                    System.out.println("boldNewWayFlag -> "+boldNewWayFlag);
-                    repaint();
                   }
                   //System.out.println("out keyPressed(e="+e+")");
                 }
