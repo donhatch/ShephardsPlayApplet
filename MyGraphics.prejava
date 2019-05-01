@@ -872,7 +872,6 @@ public class MyGraphics
         if (verbose >= 2) System.out.println("              clipMaxY = "+clipMaxY);
         if (verbose >= 2) System.out.println("              slack = "+slack);
 
-
         if (boldNewWayFlag) {
           // Try new bold way.
           // swap if necessary so start <= end. easier than keeping track.
@@ -888,12 +887,17 @@ public class MyGraphics
           if (c == 0.) {
             CHECK_GE(firstRelevantQuadrant, lastRelevantQuadrant);  // this prevents the zero divide below
           }
+          if (lastRelevantQuadrant == firstRelevantQuadrant-1) {
+            // so horizontal and vertical lines don't disappear...
+            lastRelevantQuadrant = firstRelevantQuadrant;
+          }
 
           if (verbose >= 2) System.out.println("              firstRelevantQuadrant = "+firstRelevantQuadrant);
           if (verbose >= 2) System.out.println("              lastRelevantQuadrant = "+lastRelevantQuadrant);
           CHECK_LE_LE(firstRelevantQuadrant-1, lastRelevantQuadrant, firstRelevantQuadrant+4);
           double startPoint[] = new double[2];  // scratch for loop
           double endPoint[] = new double[2];  // scratch for loop
+          double midPoint[] = new double[2];  // scratch for loop
           for (long quadrant = firstRelevantQuadrant; quadrant <= lastRelevantQuadrant; quadrant++) {
             if (verbose >= 2) System.out.println("                  quadrant = "+quadrant);
             double partStart = quadrant==firstRelevantQuadrant ? start : ((Math.PI/2)*quadrant - focusAngleRadians) / c;  // we never divide by c=0, because in that case there's at most 1 relevant quadrant
@@ -925,7 +929,94 @@ public class MyGraphics
                   continue;
                 }
                 // Clamp partStart to SE of clip region...
+                if (startPoint[0] > clipMaxX+slack
+                 || startPoint[1] < clipMinY-slack) {
+                  double lo = partStart;
+                  double hi = partEnd;
+                  int nItersDone = 0;
+                  while (true) {
+                    double mid = (lo+hi)*.5;
+                    findPointOnArc(mid, focusX, focusY, c, normalAndTangent, scratch, midPoint);
+                    if (midPoint[0] < clipMaxX-slack && midPoint[1] > clipMinY+slack) {
+                      // mid is too far inside
+                      hi = mid;
+                    } else if (midPoint[0] > clipMaxX+slack || midPoint[1] < clipMinY-slack) {
+                      // mid is too far outside
+                      lo = mid;
+                    } else {
+                      partStart = mid;
+                      VecMath.copyvec(startPoint, midPoint);
+                      break;
+                    }
+                    nItersDone++;
+                    if (nItersDone == 10000) {
+                      OUT("=========");
+                      System.out.println("ARGH!");  // CBB: dump everything here
+                      CHECK(false);
+                      break;
+                    }
+                  }
+                  // Clipping to right may have left only stuff that's above top,
+                  // or clipping to bottom may have left only stuff that's left of left.
+                  if (startPoint[0] <= clipMinX+slack
+                   || startPoint[1] >= clipMaxY-slack) {
+                    continue;
+                  }
+                }
                 // Clamp partEnd to NW of clip region...
+                if (endPoint[0] < clipMinX-slack
+                 || endPoint[1] > clipMaxY+slack) {
+                  double lo = partStart;
+                  double hi = partEnd;
+                  int nItersDone = 0;
+                  while (true) {
+                    double mid = (lo+hi)*.5;
+                    findPointOnArc(mid, focusX, focusY, c, normalAndTangent, scratch, midPoint);
+                    if (midPoint[0] > clipMinX+slack && midPoint[1] < clipMaxY-slack) {
+                      // mid is too far inside
+                      lo = mid;
+                    } else if (midPoint[0] < clipMinX-slack || midPoint[1] > clipMaxY+slack) {
+                      // mid is too far outside
+                      hi = mid;
+                    } else {
+                      partEnd = mid;
+                      VecMath.copyvec(endPoint, midPoint);
+                      break;
+                    }
+                    nItersDone++;
+                    if (nItersDone == 10000) {
+                      OUT("=========");
+                      OUT("ARGH!");
+                      PRINT(focusX);
+                      PRINT(focusY);
+                      PRINT(focusAngleRadians);
+                      PRINT(RTOD(focusAngleRadians));
+                      PRINT(c);
+                      PRINT(start);
+                      PRINT(end);
+                      PRINT(partStart);
+                      PRINT(partEnd);
+                      PRINT(clipX0);
+                      PRINT(clipX1);
+                      PRINT(clipY0);
+                      PRINT(clipY1);
+                      PRINT(slack);
+                      PRINT(hi);
+                      PRINT(lo);
+                      PRINT(mid);
+                      PRINTVEC(midPoint);
+                      CHECK(false);
+                      break;
+                    }
+                  }
+                  // Clipping to left may have left only stuff that's below bottom,
+                  // or clipping to top may have left only stuff that's right of right.
+                  if (endPoint[0] >= clipMaxX-slack
+                   || endPoint[1] <= clipMinY+slack) {
+                    continue;
+                  }
+                }
+
               } else if ((quadrant&3) == 1) {
                 // Moving SW.
                 if (startPoint[0] <= clipMinX+slack
@@ -934,6 +1025,75 @@ public class MyGraphics
                  || endPoint[1] >= clipMaxY-slack) {
                   if (verbose >= 2) System.out.println("                      clipped away");
                   continue;
+                }
+                // Clamp partStart to NE of clip region...
+                if (startPoint[0] > clipMaxX+slack
+                 || startPoint[1] > clipMaxY+slack) {
+                  double lo = partStart;
+                  double hi = partEnd;
+                  int nItersDone = 0;
+                  while (true) {
+                    double mid = (lo+hi)*.5;
+                    findPointOnArc(mid, focusX, focusY, c, normalAndTangent, scratch, midPoint);
+                    if (midPoint[0] < clipMaxX-slack && midPoint[1] < clipMaxY-slack) {
+                      // mid is too far inside
+                      hi = mid;
+                    } else if (midPoint[0] > clipMaxX+slack || midPoint[1] > clipMaxY+slack) {
+                      // mid is too far outside
+                      lo = mid;
+                    } else {
+                      partStart = mid;
+                      VecMath.copyvec(startPoint, midPoint);
+                      break;
+                    }
+                    nItersDone++;
+                    if (nItersDone == 10000) {
+                      OUT("=========");
+                      System.out.println("ARGH!");
+                      CHECK(false);
+                      break;
+                    }
+                  }
+                  // Clipping to right may have left only stuff that's below bottom,
+                  // or clipping to top may have left only stuff that's left of left.
+                  if (startPoint[0] <= clipMinX+slack
+                   || startPoint[1] <= clipMinY+slack) {
+                    continue;
+                  }
+                }
+                // Clamp partEnd to SW of clip region...
+                if (endPoint[0] < clipMinX-slack
+                 || endPoint[1] < clipMinY-slack) {
+                  double lo = partStart;
+                  double hi = partEnd;
+                  int nItersDone = 0;
+                  while (true) {
+                    double mid = (lo+hi)*.5;
+                    findPointOnArc(mid, focusX, focusY, c, normalAndTangent, scratch, midPoint);
+                    if (midPoint[0] > clipMinX+slack && midPoint[1] > clipMinY+slack) {
+                      // mid is too far inside
+                      lo = mid;
+                    } else if (midPoint[0] < clipMinX-slack || midPoint[1] < clipMinY-slack) {
+                      // mid is too far outside
+                      hi = mid;
+                    } else {
+                      partEnd = mid;
+                      VecMath.copyvec(endPoint, midPoint);
+                      break;
+                    }
+                    nItersDone++;
+                    if (nItersDone == 10000) {
+                      OUT("=========");
+                      OUT("ARGH!");
+                      break;
+                    }
+                  }
+                  // Clipping to left may have left only stuff that's below bottom,
+                  // or clipping to top may have left only stuff that's right of right.
+                  if (endPoint[0] >= clipMaxX-slack
+                   || endPoint[1] >= clipMaxY-slack) {
+                    continue;
+                  }
                 }
               } else if ((quadrant&3) == 2) {
                 // Moving SE.
@@ -971,7 +1131,7 @@ public class MyGraphics
         // Start by jumping start towards the clip area, so we don't start
         // by doing a bunch of nothing.
         if (verbose >= 2) System.out.println("              doing first loop...");
-        int max = 1000;  // off-the-rails detection
+        int max = 100;  // off-the-rails detection
         for (int i = 0; ; i++)
         {
             CHECK_LT(i, max);
@@ -1196,7 +1356,7 @@ public class MyGraphics
     private double translateY = 0;
     public boolean debugClip = false;
     public int verbose = 2; // caller can set this before making calls, to debug
-    public boolean boldNewWayFlag = false;
+    public boolean boldNewWayFlag = true;
 
     public double getScaleX() { return scaleX; }
     public double getScaleY() { return scaleY; }
@@ -1343,10 +1503,19 @@ public class MyGraphics
 
             // Visible state
             private boolean boldNewWayFlag = initialBoldNewWayFlag;
-            private double clipX0 = -1.;
-            private double clipX1 = 1.;
-            private double clipY0 = -1.;
-            private double clipY1 = 1.;
+
+            //private double clipX0 = -1.;
+            //private double clipX1 = 1.;
+            //private double clipY0 = -1.;
+            //private double clipY1 = 1.;
+
+            // These cause an assert fail
+            private double clipX0 = -0.7466340931508219;
+            private double clipX1 = 1.253365906849178;
+            private double clipY0 = -1.1993769470404987;
+            private double clipY1 = 0.8006230529595016;
+
+
             private MyGraphics mostRecentMyGraphics = null;
 
             @Override protected void paintComponent(java.awt.Graphics g) {
@@ -1413,7 +1582,7 @@ public class MyGraphics
                     System.out.println("              centerX="+centerX+" centerY="+centerY);
                     double startDeltaRadians = 1.*LERP(-Math.PI, Math.PI, iRow/(nRowsCols-1.));  // not really; will scale by circle radius
                     double endDeltaRadians = 1.*LERP(-Math.PI, Math.PI, iCol/(nRowsCols-1.));  // not really; will scale by circle radius
-                    int nConcentric = 15;
+                    int nConcentric = 17;
                     //int nConcentric = 4;
                     for (int i = 0; i < nConcentric; ++i) {
                       double radius = (i+1.)/nConcentric * maxRadius;
@@ -1423,19 +1592,22 @@ public class MyGraphics
                       System.out.println("                  i="+i+": radius="+radius+" c="+c+" focusAngleDegrees="+RTOD(focusAngleRadians));
                       double focusX = centerX + radius * Math.cos(focusAngleRadians);
                       double focusY = centerY + radius * Math.sin(focusAngleRadians);
-                      mg.smartDrawArcClipped(focusX,
-                                             focusY,
-                                             focusAngleRadians,
-                                             c,
-                                             startDeltaRadians*radius,
-                                             endDeltaRadians*radius,
-                                             /*antiAlias=*/false,
-                                             /*clipX0=*/clipX0,
-                                             /*clipX1=*/clipX1,
-                                             /*clipY0=*/clipY0,
-                                             /*clipY1=*/clipY1,
-                                             /*slack=*/slack);
-
+                      double[] curvatureScales = {1., .5, 0.};
+                      for (int iCurvatureScale = 0; iCurvatureScale < curvatureScales.length; ++iCurvatureScale) {
+                        double curvatureScale = curvatureScales[iCurvatureScale];
+                        mg.smartDrawArcClipped(focusX,
+                                               focusY,
+                                               focusAngleRadians,
+                                               c * curvatureScale,
+                                               startDeltaRadians*radius,
+                                               endDeltaRadians*radius,
+                                               /*antiAlias=*/false,
+                                               /*clipX0=*/clipX0,
+                                               /*clipX1=*/clipX1,
+                                               /*clipY0=*/clipY0,
+                                               /*clipY1=*/clipY1,
+                                               /*slack=*/slack);
+                      }
                     }
                   }
                 }
@@ -1490,6 +1662,7 @@ public class MyGraphics
                 );
               }
               long t1millis = System.currentTimeMillis();
+              System.out.println("      boldNewWayFlag = "+boldNewWayFlag);
               System.out.println("    out paintComponent in "+(t1millis-t0millis)/1000.+" secs.");
             }  // paintComponent
 
@@ -1524,75 +1697,101 @@ public class MyGraphics
               });
               this.addMouseListener(new java.awt.event.MouseListener() {
                 @Override public void mouseEntered(java.awt.event.MouseEvent e) {
-                   double[] xy = new double[2];
-                   mostRecentMyGraphics.pick(e.getX()+.5, e.getY()+.5, xy);
-                   System.out.println("  mouse entered at "+VecMath.toString(xy));
-                   prevX = xy[0];
-                   prevY = xy[1];
+                   if (mostRecentMyGraphics != null) {
+                     double[] xy = new double[2];
+                     mostRecentMyGraphics.pick(e.getX()+.5, e.getY()+.5, xy);
+                     System.out.println("  mouse entered at "+VecMath.toString(xy));
+                     prevX = xy[0];
+                     prevY = xy[1];
+                   }
                 }
                 @Override public void mousePressed(java.awt.event.MouseEvent e) {
-                   double[] xy = new double[2];
-                   mostRecentMyGraphics.pick(e.getX()+.5, e.getY()+.5, xy);
-                   System.out.println("          mouse pressed at "+VecMath.toString(xy));
-                   double threshold = .05;  // CBB: measure in pixels?  not sure
-                   draggingClipX0 = Math.abs(xy[0] - clipX0) <= threshold;
-                   draggingClipX1 = Math.abs(xy[0] - clipX1) <= threshold;
-                   draggingClipY0 = Math.abs(xy[1] - clipY0) <= threshold;
-                   draggingClipY1 = Math.abs(xy[1] - clipY1) <= threshold;
-                   PRINT(draggingClipX0);
-                   PRINT(draggingClipX1);
-                   PRINT(draggingClipY0);
-                   PRINT(draggingClipY1);
-                   prevX = xy[0];
-                   prevY = xy[1];
+                   if (mostRecentMyGraphics != null) {
+                     double[] xy = new double[2];
+                     mostRecentMyGraphics.pick(e.getX()+.5, e.getY()+.5, xy);
+                     System.out.println("          mouse pressed at "+VecMath.toString(xy));
+                     double threshold = .05;  // CBB: measure in pixels?  not sure
+                     // CBB: pick closest of X0,X1, and of Y0,Y1
+                     draggingClipX0 = Math.abs(xy[0] - clipX0) <= threshold;
+                     draggingClipX1 = !draggingClipX0 && Math.abs(xy[0] - clipX1) <= threshold;
+                     draggingClipY0 = Math.abs(xy[1] - clipY0) <= threshold;
+                     draggingClipY1 = !draggingClipY0 && Math.abs(xy[1] - clipY1) <= threshold;
+
+                     if (!draggingClipX0 && !draggingClipX1 && !draggingClipY0 && !draggingClipY1
+                      && (INRANGE(clipX0 <=, xy[0], <= clipX1) || INRANGE(clipX1 <=, xy[0], <= clipX0))
+                      && (INRANGE(clipY0 <=, xy[1], <= clipY1) || INRANGE(clipY1 <=, xy[1], <= clipY0))) {
+                        // In interior-- pan whole clip region
+                       draggingClipX0 = true;
+                       draggingClipX1 = true;
+                       draggingClipY0 = true;
+                       draggingClipY1 = true;
+                     }
+
+                     PRINT(draggingClipX0);
+                     PRINT(draggingClipX1);
+                     PRINT(draggingClipY0);
+                     PRINT(draggingClipY1);
+                     prevX = xy[0];
+                     prevY = xy[1];
+                   }
                 }
                 @Override public void mouseReleased(java.awt.event.MouseEvent e) {
-                   double[] xy = new double[2];
-                   mostRecentMyGraphics.pick(e.getX()+.5, e.getY()+.5, xy);
-                   System.out.println("          mouse released at "+VecMath.toString(xy));
-                   draggingClipX0 = false;
-                   draggingClipX1 = false;
-                   draggingClipY0 = false;
-                   draggingClipY1 = false;
-                   prevX = xy[0];
-                   prevY = xy[1];
+                   if (mostRecentMyGraphics != null) {
+                     double[] xy = new double[2];
+                     mostRecentMyGraphics.pick(e.getX()+.5, e.getY()+.5, xy);
+                     System.out.println("          mouse released at "+VecMath.toString(xy));
+                     draggingClipX0 = false;
+                     draggingClipX1 = false;
+                     draggingClipY0 = false;
+                     draggingClipY1 = false;
+                     prevX = xy[0];
+                     prevY = xy[1];
+                   }
                 }
                 @Override public void mouseClicked(java.awt.event.MouseEvent e) {
-                   double[] xy = new double[2];
-                   mostRecentMyGraphics.pick(e.getX()+.5, e.getY()+.5, xy);
-                   System.out.println("      mouse clicked at "+VecMath.toString(xy));
-                   prevX = xy[0];
-                   prevY = xy[1];
+                   if (mostRecentMyGraphics != null) {
+                     double[] xy = new double[2];
+                     mostRecentMyGraphics.pick(e.getX()+.5, e.getY()+.5, xy);
+                     System.out.println("      mouse clicked at "+VecMath.toString(xy));
+                     prevX = xy[0];
+                     prevY = xy[1];
+                   }
                 }
                 @Override public void mouseExited(java.awt.event.MouseEvent e) {
-                   double[] xy = new double[2];
-                   mostRecentMyGraphics.pick(e.getX()+.5, e.getY()+.5, xy);
-                   System.out.println("  mouse exited at "+VecMath.toString(xy));
-                   prevX = xy[0];
-                   prevY = xy[1];
+                   if (mostRecentMyGraphics != null) {
+                     double[] xy = new double[2];
+                     mostRecentMyGraphics.pick(e.getX()+.5, e.getY()+.5, xy);
+                     System.out.println("  mouse exited at "+VecMath.toString(xy));
+                     prevX = xy[0];
+                     prevY = xy[1];
+                   }
                 }
               });
               this.addMouseMotionListener(new java.awt.event.MouseMotionListener() {
                 @Override public void mouseMoved(java.awt.event.MouseEvent e) {
-                   double[] xy = new double[2];
-                   mostRecentMyGraphics.pick(e.getX()+.5, e.getY()+.5, xy);
-                   System.out.println("      mouse moved to "+VecMath.toString(xy));
-                   prevX = xy[0];
-                   prevY = xy[1];
+                   if (mostRecentMyGraphics != null) {
+                     double[] xy = new double[2];
+                     mostRecentMyGraphics.pick(e.getX()+.5, e.getY()+.5, xy);
+                     System.out.println("      mouse moved to "+VecMath.toString(xy));
+                     prevX = xy[0];
+                     prevY = xy[1];
+                   }
                 }
                 @Override public void mouseDragged(java.awt.event.MouseEvent e) {
-                   double[] xy = new double[2];
-                   mostRecentMyGraphics.pick(e.getX()+.5, e.getY()+.5, xy);
-                   System.out.println("              mouse dragged to "+VecMath.toString(xy));
-                   if (draggingClipX0) clipX0 += xy[0] - prevX;
-                   if (draggingClipX1) clipX1 += xy[0] - prevX;
-                   if (draggingClipY0) clipY0 += xy[1] - prevY;
-                   if (draggingClipY1) clipY1 += xy[1] - prevY;
-                   if (draggingClipX0 || draggingClipX1 || draggingClipY0 || draggingClipY1) {
-                     repaint();
-                   }
-                   prevX = xy[0];
-                   prevY = xy[1];
+                   if (mostRecentMyGraphics != null) {
+                     double[] xy = new double[2];
+                     mostRecentMyGraphics.pick(e.getX()+.5, e.getY()+.5, xy);
+                     System.out.println("              mouse dragged to "+VecMath.toString(xy));
+                     if (draggingClipX0) clipX0 += xy[0] - prevX;
+                     if (draggingClipX1) clipX1 += xy[0] - prevX;
+                     if (draggingClipY0) clipY0 += xy[1] - prevY;
+                     if (draggingClipY1) clipY1 += xy[1] - prevY;
+                     if (draggingClipX0 || draggingClipX1 || draggingClipY0 || draggingClipY1) {
+                       repaint();
+                     }
+                     prevX = xy[0];
+                     prevY = xy[1];
+                  }
                 }
               });
             }
@@ -1601,6 +1800,6 @@ public class MyGraphics
           this.setSize(/*width=*/1000, /*height=*/1000);
           this.setVisible(true);
           this.setDefaultCloseOperation(EXIT_ON_CLOSE);
-        }};
+        }};  // new JFrame
     }  // main
 } // class MyGraphics
