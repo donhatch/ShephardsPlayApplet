@@ -833,13 +833,22 @@ public class MyGraphics
         CHECK(Double.isFinite(clipY1));
         CHECK(Double.isFinite(slack));
 
+        // If curvature is negative, transform into a differerent scenario where it's positive.
+        // Note that this may switch the relative order of start and end, so put this *before* the start/end correction swap.
+        if (c < 0) {
+            c *= -1.;
+            focusAngleRadians += (focusAngleRadians > 0. ? -Math.PI : Math.PI);
+            start *= -1.;
+            end *= -1.;
+        }
+
         // Swap if necessary so start <= end; that's easier than keeping track.
         if (start > end) {
-          double temp;
-          SWAP(start, end, temp);
-          if (verbose >= 2) System.out.println("              SWAPPING start and end");
-          if (verbose >= 2) System.out.println("                  start="+start);
-          if (verbose >= 2) System.out.println("                  end="+end);
+            double temp;
+            SWAP(start, end, temp);
+            if (verbose >= 2) System.out.println("              SWAPPING start and end");
+            if (verbose >= 2) System.out.println("                  start="+start);
+            if (verbose >= 2) System.out.println("                  end="+end);
         }
 
         double clipMinX = Math.min(clipX0, clipX1);
@@ -1276,7 +1285,8 @@ public class MyGraphics
     {
     }
 
-    // little test program
+    // Fun little test program.  Makes lots of different arcs with different curvatures and endpoints,
+    // and lets you drag the clip bounds around.
     public static void main(String[] args)
     {
         if (false)
@@ -1381,7 +1391,7 @@ public class MyGraphics
                       if (verboseLevel >= 3) System.out.println("                  i="+i+": radius="+radius+" c="+c+" focusAngleDegrees="+RTOD(focusAngleRadians));
                       double focusX = centerX + radius * Math.cos(focusAngleRadians);
                       double focusY = centerY + radius * Math.sin(focusAngleRadians);
-                      double[] curvatureScales = {1., .5, 0.};
+                      double[] curvatureScales = {1., .5, 0., -.5};
                       for (int iCurvatureScale = 0; iCurvatureScale < curvatureScales.length; ++iCurvatureScale) {
                         double curvatureScale = curvatureScales[iCurvatureScale];
                         mg.smartDrawArcClipped(focusX,
@@ -1400,56 +1410,6 @@ public class MyGraphics
                     }
                   }
                 }
-              }
-
-              if (false)
-              {
-                // Something that CHECK-failed before:
-                //   - canned thing hexes spiral
-                //   - my algorithm 2
-                //   - my algorithm max iters = 295
-                // They are fine now, though.
-                java.awt.Dimension size = getSize();
-                MyGraphics mg = new MyGraphics(g,
-                                               size,
-                                               /*left=*/-20,
-                                               /*right=*/20,
-                                               /*bottom=*/-20,
-                                               /*top=*/20
-                                               );
-                mg.verbose = 3;
-                mg.smartDrawArcClipped(
-                  ///*focusX=*/2.4065304826489604,  // EXCEPTION
-                  /*focusX=*/2,  // EXCEPTION
-                  ///*focusY=*/-1.016121680672899,  // EXCEPTION
-                  /*focusY=*/-1.02,  // EXCEPTION
-                  ///*focusY=*/-1,  // OK
-                  ///*focusAngleRadians=*/1.5707963267948966,  // EXCEPTION
-                  ///*focusAngleRadians=*/1.57,  // EXCEPTION
-                  /*focusAngleRadians=*/1.5672,  // EXCEPTION
-                  ///*focusAngleRadians=*/1.5671,  // OK
-                  ///*focusAngleRadians=*/0,  // OK
-                  /*c=*/0.0,
-                  ///*start=*/-10.0, // EXCEPTION
-                  /*start=*/1.5,  // EXCEPTION
-                  ///*end=*/10.0,  // EXCEPTION
-                  /*end=*/3.5,  // EXCEPTION
-                  /*antiAlias=*/false,
-
-                  // THESE CAUSE AN EXCEPTION
-                  /*clipX0=*/-1.096158027664877,
-                  /*clipX1=*/1.096158027664877,
-                  /*clipY0=*/1.0021413276231264,
-                  /*clipY1=*/-1.0021413276231264,
-
-                  // THESE ARE OK
-                  ///*clipX0=*/-10.96158027664877,
-                  ///*clipX1=*/10.96158027664877,
-                  ///*clipY0=*/10.021413276231264,
-                  ///*clipY1=*/-10.021413276231264,
-
-                  /*slack=*/0.008564522469325795
-                );
               }
               System.out.println("      maxItersEver = "+maxItersEver);  // never seems to get more than 5
               long t1millis = System.currentTimeMillis();
