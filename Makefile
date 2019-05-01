@@ -31,8 +31,11 @@
 #JAVAROOT="c:/Program Files (x86)/Java/jdk1.6.0_17"
 #JAR=${JAVAROOT}/bin/jar
 
-JAVAC=/usr/bin/javac
+JAVAC=/usr/bin/javac -source 1.8 -target 1.8
 JAR=/usr/bin/jar
+
+#JAVAC=/usr/bin/javac
+#JAR=/usr/bin/jar
 
 
 # On linux and cygwin, use uname -o; on darwin, use uname
