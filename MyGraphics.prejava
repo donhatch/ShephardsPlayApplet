@@ -830,15 +830,6 @@ public class MyGraphics
         CHECK(Double.isFinite(clipY1));
         CHECK(Double.isFinite(slack));
 
-        if (true) {
-          // Try new bold way.
-          double startAngleRadians = focusAngleRadians + start*c;
-          double endAngleRadians = focusAngleRadians + end*c;
-          double firstRelevantI = Math.floor(startAngleRadians / (Math.PI/2));
-          double lastRelevantI = Math.ceil(endAngleRadians / (Math.PI/2));
-        }
-
-
         // I don't know how to clip analytically yet,
         // so do the following instead:
         // while an endpoint is outside the clip area,
@@ -860,6 +851,7 @@ public class MyGraphics
             end = 2*Math.PI / c;
         }
 
+        // TODO: explain what this is for.  If it accomplishes the same thing as simply swapping start and end, then should probably do that instead.
         int dir = (start <= end ? 1 : -1);
 
         double normalX = Math.cos(focusAngleRadians);
@@ -878,10 +870,100 @@ public class MyGraphics
         if (verbose >= 2) System.out.println("              slack = "+slack);
 
 
+        if (boldNewWayFlag) {
+          // Try new bold way.
+          // swap if necessary so start <= end. easier than keeping track.
+          if (start > end) {
+            double temp;
+            SWAP(start, end, temp);
+          }
+          double startAngleRadians = focusAngleRadians + start*c;
+          double endAngleRadians = focusAngleRadians + end*c;
+          // CBB: should coerce the following to int, somehow
+          long firstRelevantQuadrant = (long)(Math.floor(startAngleRadians / (Math.PI/2)));
+          long lastRelevantQuadrant = (long)(Math.ceil(endAngleRadians / (Math.PI/2)) - 1.0);
+          if (verbose >= 2) System.out.println("              firstRelevantQuadrant = "+firstRelevantQuadrant);
+          if (verbose >= 2) System.out.println("              lastRelevantQuadrant = "+lastRelevantQuadrant);
+          CHECK_LE_LE(firstRelevantQuadrant-1, lastRelevantQuadrant, firstRelevantQuadrant+4);
+          double startPoint[] = new double[2];  // scratch for loop
+          double endPoint[] = new double[2];  // scratch for loop
+          for (long quadrant = firstRelevantQuadrant; quadrant <= lastRelevantQuadrant; quadrant++) {
+            if (verbose >= 2) System.out.println("                  quadrant = "+quadrant);
+            double partStart = quadrant==firstRelevantQuadrant ? start : (Math.PI/2)*quadrant;
+            double partEnd = quadrant==lastRelevantQuadrant ? end : (Math.PI/2)*(quadrant+1.);
+            if (verbose >= 2) System.out.println("                      partStart = "+partStart);
+            if (verbose >= 2) System.out.println("                      partEnd = "+partEnd);
+            CHECK(Double.isFinite(partStart));
+            CHECK(Double.isFinite(partEnd));
+            if (quadrant == firstRelevantQuadrant) {
+              findPointOnArc(partStart, focusX, focusY, c, normalAndTangent, scratch, startPoint);
+            } else {
+              VecMath.copyvec(startPoint, endPoint);  // reuse result from previous iteration
+            }
+            findPointOnArc(partEnd, focusX, focusY, c, normalAndTangent, scratch, endPoint);
+            if (verbose >= 2) System.out.println("                      startPoint = "+VecMath.toString(startPoint));
+            if (verbose >= 2) System.out.println("                      endPoint = "+VecMath.toString(endPoint));
+
+            // Clip part against the four clip lines.
+            CHECK_LE_LE(0, (quadrant&3), 3);
+            if (true) {
+              if ((quadrant&3) == 0) {
+                // Moving NW.
+                if (startPoint[0] <= clipMinX+slack
+                 || endPoint[0] >= clipMaxX-slack
+                 || startPoint[1] >= clipMaxY-slack
+                 || endPoint[1] <= clipMinY+slack) {
+                  if (verbose >= 2) System.out.println("                      clipped away");
+                  continue;
+                }
+                // Clamp partStart to SE of clip region...
+                // Clamp partEnd to NW of clip region...
+              } else if ((quadrant&3) == 1) {
+                // Moving SW.
+                if (startPoint[0] <= clipMinX+slack
+                 || endPoint[0] >= clipMaxX-slack
+                 || startPoint[1] <= clipMinY+slack
+                 || endPoint[1] >= clipMaxY-slack) {
+                  if (verbose >= 2) System.out.println("                      clipped away");
+                  continue;
+                }
+              } else if ((quadrant&3) == 2) {
+                // Moving SE.
+                if (startPoint[0] >= clipMaxX-slack
+                 || endPoint[0] <= clipMinX+slack
+                 || startPoint[1] <= clipMinY+slack
+                 || endPoint[1] >= clipMaxY-slack) {
+                  if (verbose >= 2) System.out.println("                      clipped away");
+                  continue;
+                }
+              } else if ((quadrant&3) == 3) {
+                // Moving NE.
+                if (startPoint[0] >= clipMaxX-slack
+                 || endPoint[0] <= clipMinX+slack
+                 || startPoint[1] >= clipMaxY-slack
+                 || endPoint[1] <= clipMinY+slack) {
+                  if (verbose >= 2) System.out.println("                      clipped away");
+                  continue;
+                }
+              } else {
+                CHECK(false);  // can't happen because already checked
+              }
+            }
+            if (verbose >= 2) System.out.println("              calling smartDrawArcNonClipped...");
+            smartDrawArcNonClipped(focusX,focusY, focusAngleRadians, c, partStart,partEnd,
+                                   antiAlias);
+            if (verbose >= 2) System.out.println("              returned from smartDrawArcNonClipped.");
+          }
+          if (verbose >= 2) System.out.println("            out smartDrawArcClipped (after better clipping)");
+          return;
+        }  // bold new way
+
+
+
         // Start by jumping start towards the clip area, so we don't start
         // by doing a bunch of nothing.
         if (verbose >= 2) System.out.println("              doing first loop...");
-        int max = 100;  // off-the-rails detection
+        int max = 1000;  // off-the-rails detection
         for (int i = 0; ; i++)
         {
             CHECK_LT(i, max);
@@ -1106,6 +1188,7 @@ public class MyGraphics
     private double translateY = 0;
     public boolean debugClip = false;
     public int verbose = 2; // caller can set this before making calls, to debug
+    public boolean boldNewWayFlag = false;
 
     public double getScaleX() { return scaleX; }
     public double getScaleY() { return scaleY; }
@@ -1239,13 +1322,101 @@ public class MyGraphics
         new javax.swing.JFrame() {{
           this.add(new javax.swing.JPanel() {
             @Override protected void paintComponent(java.awt.Graphics g) {
-              if (true)
+              System.out.println("    in paintComponent");
+              long t0millis = System.currentTimeMillis();
+
+              if (true) {
+                boolean boldNewWayFlag;
+                if (args.length == 1 && args[0].equals("true"))
+                  boldNewWayFlag = true;
+                else if (args.length == 1 && args[0].equals("false"))
+                  boldNewWayFlag = false;
+                else {
+                  System.err.println("Usage: MyGraphics <boldNewWay>[true|false]");
+                  System.exit(1);
+                  return;
+                }
+
+                java.awt.Dimension size = getSize();
+                double x0 = -2.;
+                double x1 = 2.;
+                double y0 = -2.;
+                double y1 = 2.;
+
+                MyGraphics mg;
+                {
+                  // CBB: think of a way to make this a clean function
+                  double x0Fudged = x0;
+                  double x1Fudged = x1;
+                  double y0Fudged = y0;
+                  double y1Fudged = y1;
+                  if (size.width > size.height) {
+                    // wide; adjust x0Fudged and x1Fudged
+                    x0Fudged *= (double)size.width / (double)size.height;
+                    x1Fudged *= (double)size.width / (double)size.height;
+                  } else {
+                    // tall; adjust y0Fudged and y1Fudged
+                    y0Fudged *= (double)size.height / (double)size.width;
+                    y1Fudged *= (double)size.height / (double)size.width;
+                  }
+                  mg = new MyGraphics(g,
+                                      size,
+                                      x0Fudged, x1Fudged, y0Fudged, y1Fudged);
+                }
+
+                mg.boldNewWayFlag = boldNewWayFlag;
+
+
+                mg.verbose = 0;
+                int nRowsCols = 10;
+                //int nRowsCols = 2;
+                CHECK_GT(nRowsCols, 1);  // since we devide by nRowsCols-1
+                double maxRadius = (x1-x0)/nRowsCols / 2;
+                for (int iRow = 0; iRow < nRowsCols; ++iRow) {
+                  for (int iCol = 0; iCol < nRowsCols; ++iCol) {
+                    System.out.println("          iRow="+iRow+" iCol="+iCol);
+                    double centerX = LERP(x0, x1, (iCol+.5)/nRowsCols);
+                    double centerY = LERP(y0, y1, (iRow+.5)/nRowsCols);
+                    System.out.println("              centerX="+centerX+" centerY="+centerY);
+                    double start = 1.*LERP(-Math.PI, Math.PI, iRow/(nRowsCols-1.));  // not really
+                    double end = 1.*LERP(-Math.PI, Math.PI, iCol/(nRowsCols-1.));  // not really
+                    int nConcentric = 20;
+                    for (double i = 0; i < nConcentric; ++i) {
+                      double radius = (i+1.)/nConcentric * maxRadius;
+                      double c = 1. / radius;  // TODO: exercise c=0
+                      double slack = .01;  // somewhat arbitrary
+                      double focusAngleRadians = LERP(-Math.PI, Math.PI, i / (nConcentric-1.));
+                      double focusX = centerX + radius * Math.cos(focusAngleRadians);
+                      double focusY = centerY + radius * Math.sin(focusAngleRadians);
+                      mg.smartDrawArcClipped(focusX,
+                                             focusY,
+                                             focusAngleRadians,
+                                             c,
+                                             start*radius,
+                                             end*radius,
+                                             /*antiAlias=*/false,
+                                             /*clipX0=*/x0,
+                                             /*clipX1=*/x1,
+                                             /*clipY0=*/y0,
+                                             /*clipY1=*/y1,
+                                             /*slack=*/slack);
+
+                    }
+                  }
+                }
+
+                for (double start = -2.; start < 2.; start += .2) {
+                  for (double end = -2.; end < 2.; end += .2) {
+                  }
+                }
+              }
+
+              if (false)
               {
-                // Something that failed:
+                // Something that CHECK-failed before:
                 //   - canned thing hexes spiral
                 //   - my algorithm 2
                 //   - my algorithm max iters = 295
-                //java.awt.Dimension size = new java.awt.Dimension(500, 500);
                 java.awt.Dimension size = getSize();
                 MyGraphics mg = new MyGraphics(g,
                                                size,
@@ -1288,13 +1459,19 @@ public class MyGraphics
                   /*slack=*/0.008564522469325795
                 );
               }
+              long t1millis = System.currentTimeMillis();
+              System.out.println("    out paintComponent in "+(t1millis-t0millis)/1000.+" secs.");
             }  // paintComponent
             {
               this.setFocusable(true);
               this.addKeyListener(new java.awt.event.KeyListener() {
                 @Override public void keyPressed(java.awt.event.KeyEvent e) {
-                  System.out.println("Bye!");
-                  System.exit(0);
+                  //System.out.println("in keyPressed(e="+e+")");
+                  if (e.getKeyChar() == 'q') {
+                    System.out.println("Bye!");
+                    System.exit(0);
+                  }
+                  //System.out.println("out keyPressed(e="+e+")");
                 }
                 @Override public void keyReleased(java.awt.event.KeyEvent e) {
                 }
@@ -1303,7 +1480,8 @@ public class MyGraphics
               });
             }
           });
-          this.setSize(/*width=*/100, /*height=*/100);
+          //this.setSize(/*width=*/100, /*height=*/100);
+          this.setSize(/*width=*/500, /*height=*/500);
           this.setVisible(true);
           this.setDefaultCloseOperation(EXIT_ON_CLOSE);
         }};
