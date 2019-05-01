@@ -807,7 +807,7 @@ public class MyGraphics
         if (verbose >= 2) System.out.println("            in smartDrawArcClipped");
         if (verbose >= 2) System.out.println("              focusX="+focusX);
         if (verbose >= 2) System.out.println("              focusY="+focusY);
-        if (verbose >= 2) System.out.println("              focusAngleRadians="+focusAngleRadians);
+        if (verbose >= 2) System.out.println("              focusAngleRadians="+focusAngleRadians+" focusAngleDegrees="+RTOD(focusAngleRadians));
         if (verbose >= 2) System.out.println("              c="+c);
         if (verbose >= 2) System.out.println("              start="+start);
         if (verbose >= 2) System.out.println("              end="+end);
@@ -845,10 +845,12 @@ public class MyGraphics
         double clipMinY = Math.min(clipY0, clipY1);
         double clipMaxY = Math.max(clipY0, clipY1);
 
+        if (verbose >= 2) System.out.println("              span degrees = "+RTOD(c * Math.abs(end-start)));
         if (c * Math.abs(end-start) > 2*Math.PI)
         {
             start = 0.;
-            end = 2*Math.PI / c;
+            end = 2*Math.PI / c;  // safe because that test couldn't have passed if c were zero
+            if (verbose >= 2) System.out.println("              MORE THAN FULL CIRCLE!  adjusting to start="+start+" end="+end);
         }
 
         // TODO: explain what this is for.  If it accomplishes the same thing as simply swapping start and end, then should probably do that instead.
@@ -882,6 +884,10 @@ public class MyGraphics
           // CBB: should coerce the following to int, somehow
           long firstRelevantQuadrant = (long)(Math.floor(startAngleRadians / (Math.PI/2)));
           long lastRelevantQuadrant = (long)(Math.ceil(endAngleRadians / (Math.PI/2)) - 1.0);
+          if (c == 0.) {
+            CHECK_GE(firstRelevantQuadrant, lastRelevantQuadrant);  // this prevents the zero divide below
+          }
+
           if (verbose >= 2) System.out.println("              firstRelevantQuadrant = "+firstRelevantQuadrant);
           if (verbose >= 2) System.out.println("              lastRelevantQuadrant = "+lastRelevantQuadrant);
           CHECK_LE_LE(firstRelevantQuadrant-1, lastRelevantQuadrant, firstRelevantQuadrant+4);
@@ -889,12 +895,13 @@ public class MyGraphics
           double endPoint[] = new double[2];  // scratch for loop
           for (long quadrant = firstRelevantQuadrant; quadrant <= lastRelevantQuadrant; quadrant++) {
             if (verbose >= 2) System.out.println("                  quadrant = "+quadrant);
-            double partStart = quadrant==firstRelevantQuadrant ? start : (Math.PI/2)*quadrant;
-            double partEnd = quadrant==lastRelevantQuadrant ? end : (Math.PI/2)*(quadrant+1.);
-            if (verbose >= 2) System.out.println("                      partStart = "+partStart);
-            if (verbose >= 2) System.out.println("                      partEnd = "+partEnd);
+            double partStart = quadrant==firstRelevantQuadrant ? start : ((Math.PI/2)*quadrant - focusAngleRadians) / c;  // we never divide by c=0, because in that case there's at most 1 relevant quadrant
+            double partEnd = quadrant==lastRelevantQuadrant ? end : ((Math.PI/2)*(quadrant+1.) - focusAngleRadians) / c;  // we never divide by c=0, because in that case there's at most 1 relevant quadrant
+            if (verbose >= 2) System.out.println("                      partStartAngleDegrees = "+RTOD(focusAngleRadians + partStart*c));
+            if (verbose >= 2) System.out.println("                      partEndAngleDegrees = "+RTOD(focusAngleRadians + partEnd*c));
             CHECK(Double.isFinite(partStart));
             CHECK(Double.isFinite(partEnd));
+
             if (quadrant == firstRelevantQuadrant) {
               findPointOnArc(partStart, focusX, focusY, c, normalAndTangent, scratch, startPoint);
             } else {
@@ -1366,34 +1373,39 @@ public class MyGraphics
 
                 mg.boldNewWayFlag = boldNewWayFlag;
 
-
                 mg.verbose = 0;
+                //mg.verbose = 2;
+
                 int nRowsCols = 10;
                 //int nRowsCols = 2;
                 CHECK_GT(nRowsCols, 1);  // since we devide by nRowsCols-1
                 double maxRadius = (x1-x0)/nRowsCols / 2;
                 for (int iRow = 0; iRow < nRowsCols; ++iRow) {
                   for (int iCol = 0; iCol < nRowsCols; ++iCol) {
+                    //if (!(iRow == 0 && iCol == 1)) continue;
+                    //if (!(iRow == 0 && iCol == nRowsCols-1)) continue;
                     System.out.println("          iRow="+iRow+" iCol="+iCol);
                     double centerX = LERP(x0, x1, (iCol+.5)/nRowsCols);
                     double centerY = LERP(y0, y1, (iRow+.5)/nRowsCols);
                     System.out.println("              centerX="+centerX+" centerY="+centerY);
-                    double start = 1.*LERP(-Math.PI, Math.PI, iRow/(nRowsCols-1.));  // not really
-                    double end = 1.*LERP(-Math.PI, Math.PI, iCol/(nRowsCols-1.));  // not really
+                    double startDeltaRadians = 1.*LERP(-Math.PI, Math.PI, iRow/(nRowsCols-1.));  // not really; will scale by circle radius
+                    double endDeltaRadians = 1.*LERP(-Math.PI, Math.PI, iCol/(nRowsCols-1.));  // not really; will scale by circle radius
                     int nConcentric = 20;
-                    for (double i = 0; i < nConcentric; ++i) {
+                    //int nConcentric = 4;
+                    for (int i = 0; i < nConcentric; ++i) {
                       double radius = (i+1.)/nConcentric * maxRadius;
                       double c = 1. / radius;  // TODO: exercise c=0
                       double slack = .01;  // somewhat arbitrary
                       double focusAngleRadians = LERP(-Math.PI, Math.PI, i / (nConcentric-1.));
+                      System.out.println("                  i="+i+": radius="+radius+" c="+c+" focusAngleDegrees="+RTOD(focusAngleRadians));
                       double focusX = centerX + radius * Math.cos(focusAngleRadians);
                       double focusY = centerY + radius * Math.sin(focusAngleRadians);
                       mg.smartDrawArcClipped(focusX,
                                              focusY,
                                              focusAngleRadians,
                                              c,
-                                             start*radius,
-                                             end*radius,
+                                             startDeltaRadians*radius,
+                                             endDeltaRadians*radius,
                                              /*antiAlias=*/false,
                                              /*clipX0=*/x0,
                                              /*clipX1=*/x1,
@@ -1402,11 +1414,6 @@ public class MyGraphics
                                              /*slack=*/slack);
 
                     }
-                  }
-                }
-
-                for (double start = -2.; start < 2.; start += .2) {
-                  for (double end = -2.; end < 2.; end += .2) {
                   }
                 }
               }
@@ -1481,7 +1488,7 @@ public class MyGraphics
             }
           });
           //this.setSize(/*width=*/100, /*height=*/100);
-          this.setSize(/*width=*/500, /*height=*/500);
+          this.setSize(/*width=*/1000, /*height=*/1000);
           this.setVisible(true);
           this.setDefaultCloseOperation(EXIT_ON_CLOSE);
         }};
