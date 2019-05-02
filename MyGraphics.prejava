@@ -1374,6 +1374,12 @@ public class MyGraphics
                   if (draggingClipY0) mg.drawLineNonClipped(clipX0,clipY0+i*onePixelX, clipX1,clipY0+i*onePixelX, /*antiAlias=*/false);
                   if (draggingClipY1) mg.drawLineNonClipped(clipX0,clipY1-i*onePixelX, clipX1,clipY1-i*onePixelX, /*antiAlias=*/false);
                 }
+                for (int i = 1; i <= 1; ++i) {  // CBB: doesn't look good with more than one extra pixel width of thickness, since it's biased inward.  if it wasn't biased, it would probably look good.
+                  if (hoveringClipX0) mg.drawLineNonClipped(clipX0+i*onePixelX,clipY0, clipX0+i*onePixelX,clipY1, /*antiAlias=*/false);
+                  if (hoveringClipX1) mg.drawLineNonClipped(clipX1-i*onePixelX,clipY0, clipX1-i*onePixelX,clipY1, /*antiAlias=*/false);
+                  if (hoveringClipY0) mg.drawLineNonClipped(clipX0,clipY0+i*onePixelX, clipX1,clipY0+i*onePixelX, /*antiAlias=*/false);
+                  if (hoveringClipY1) mg.drawLineNonClipped(clipX0,clipY1-i*onePixelX, clipX1,clipY1-i*onePixelX, /*antiAlias=*/false);
+                }
 
                 mg.setColor(java.awt.Color.BLACK);
 
@@ -1432,8 +1438,27 @@ public class MyGraphics
             private boolean draggingClipX1 = false;
             private boolean draggingClipY0 = false;
             private boolean draggingClipY1 = false;
+            private boolean hoveringClipX0 = false;
+            private boolean hoveringClipX1 = false;
+            private boolean hoveringClipY0 = false;
+            private boolean hoveringClipY1 = false;
             private double prevX = 0.;
             private double prevY = 0.;
+            final private double threshold = .025;  // CBB: measure in pixels?  not sure
+
+            private double distanceToSegment(double x, double y, double x0, double y0, double x1, double y1) {
+              double segLength2 = SQR(x1-x0)+SQR(y1-y0);
+              if (segLength2 == 0.) {
+                return Math.hypot(x-x0, y-y0);
+              }
+              double t = ((x-x0)*(x1-x0)+(y-y0)*(y1-y0)) / segLength2;
+              if (t <= 0.) return Math.hypot(x-x0, y-y0);
+              if (t >= 1.) return Math.hypot(x-x1, y-y1);
+              double xProjected = LERP(x0, x1, t);
+              double yProjected = LERP(y0, y1, t);
+              return Math.hypot(x-xProjected, y-yProjected);
+            }  // distanceToSegment
+
 
             {
               this.setFocusable(true);
@@ -1461,18 +1486,21 @@ public class MyGraphics
                      prevY = xy[1];
                    }
                 }
+
                 @Override public void mousePressed(java.awt.event.MouseEvent e) {
                    if (mostRecentMyGraphics != null) {
                      double[] xy = new double[2];
                      mostRecentMyGraphics.pick(e.getX()+.5, e.getY()+.5, xy);
                      System.out.println("          mouse pressed at "+VecMath.toString(xy));
-                     double threshold = .05;  // CBB: measure in pixels?  not sure
+                     hoveringClipX0 = false;
+                     hoveringClipX1 = false;
+                     hoveringClipY0 = false;
+                     hoveringClipY1 = false;
                      // CBB: pick closest of X0,X1, and of Y0,Y1
-                     draggingClipX0 = Math.abs(xy[0] - clipX0) <= threshold;
-                     draggingClipX1 = !draggingClipX0 && Math.abs(xy[0] - clipX1) <= threshold;
-                     draggingClipY0 = Math.abs(xy[1] - clipY0) <= threshold;
-                     draggingClipY1 = !draggingClipY0 && Math.abs(xy[1] - clipY1) <= threshold;
-
+                     draggingClipX0 = distanceToSegment(xy[0], xy[1], clipX0,clipY0, clipX0,clipY1) <= threshold;
+                     draggingClipX1 = !draggingClipX0 && distanceToSegment(xy[0], xy[1], clipX1,clipY0, clipX1,clipY1) <= threshold;
+                     draggingClipY0 = distanceToSegment(xy[0], xy[1], clipX0,clipY0, clipX1,clipY0) <= threshold;
+                     draggingClipY1 = !draggingClipY0 && distanceToSegment(xy[0], xy[1], clipX0,clipY1, clipX1,clipY1) <= threshold;
                      if (!draggingClipX0 && !draggingClipX1 && !draggingClipY0 && !draggingClipY1
                       && (INRANGE(clipX0 <=, xy[0], <= clipX1) || INRANGE(clipX1 <=, xy[0], <= clipX0))
                       && (INRANGE(clipY0 <=, xy[1], <= clipY1) || INRANGE(clipY1 <=, xy[1], <= clipY0))) {
@@ -1499,6 +1527,10 @@ public class MyGraphics
                      double[] xy = new double[2];
                      mostRecentMyGraphics.pick(e.getX()+.5, e.getY()+.5, xy);
                      System.out.println("          mouse released at "+VecMath.toString(xy));
+                     hoveringClipX0 = draggingClipX0;
+                     hoveringClipX1 = draggingClipX1;
+                     hoveringClipY0 = draggingClipY0;
+                     hoveringClipY1 = draggingClipY1;
                      draggingClipX0 = false;
                      draggingClipX1 = false;
                      draggingClipY0 = false;
@@ -1533,6 +1565,28 @@ public class MyGraphics
                      double[] xy = new double[2];
                      mostRecentMyGraphics.pick(e.getX()+.5, e.getY()+.5, xy);
                      System.out.println("      mouse moved to "+VecMath.toString(xy));
+
+                     draggingClipX0 = false;
+                     draggingClipX1 = false;
+                     draggingClipY0 = false;
+                     draggingClipY1 = false;
+
+                     // CBB: pick closest of X0,X1, and of Y0,Y1
+                     boolean newHoveringClipX0 = distanceToSegment(xy[0], xy[1], clipX0,clipY0, clipX0,clipY1) <= threshold;
+                     boolean newHoveringClipX1 = !draggingClipX0 && distanceToSegment(xy[0], xy[1], clipX1,clipY0, clipX1,clipY1) <= threshold;
+                     boolean newHoveringClipY0 = distanceToSegment(xy[0], xy[1], clipX0,clipY0, clipX1,clipY0) <= threshold;
+                     boolean newHoveringClipY1 = !draggingClipY0 && distanceToSegment(xy[0], xy[1], clipX0,clipY1, clipX1,clipY1) <= threshold;
+                     if (newHoveringClipX0 != hoveringClipX0
+                      || newHoveringClipX1 != hoveringClipX1
+                      || newHoveringClipY0 != hoveringClipY0
+                      || newHoveringClipY1 != hoveringClipY1) {
+                       hoveringClipX0 = newHoveringClipX0;
+                       hoveringClipX1 = newHoveringClipX1;
+                       hoveringClipY0 = newHoveringClipY0;
+                       hoveringClipY1 = newHoveringClipY1;
+                       repaint();
+                     }
+
                      prevX = xy[0];
                      prevY = xy[1];
                    }
