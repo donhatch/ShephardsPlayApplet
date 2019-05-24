@@ -3216,6 +3216,57 @@ final public class MeshUtils
         // XXX should get rid of unreferenced vertices? NO! But should get rid of dups maybe
     } // delaunayized
 
+    // See if I can come up with a mesh representing the
+    // intersection between a primal and dual mesh.
+    // Initial observations:
+    // - if primal (white, triangulated) has verts all on sphere
+    //   or slightly above it, then the intersection will consist
+    //   of a little polygon around each primal vertex.
+    public static Mesh[/*2*/] MakePrimalDualConvexHullAndIntersection(Mesh primal,
+                                                                      Mesh dual)
+    {
+        final int verboseLevel = 1;
+        if (verboseLevel >= 1) OUT("    in MakePrimalDualConvexHullAndIntersection");
+
+        int nPrimalVerts = primal.verts.size();
+        int nDualVerts = dual.verts.size();
+        double[][] vertPositions = new double[nPrimalVerts + nDualVerts][];
+        for (int i = 0; i < nPrimalVerts; ++i) {
+            Mesh.Vertex vert = primal.getVert(i);
+            vertPositions[i] = new double[] {
+                vert.X(),
+                vert.Y(),
+                vert.Z(),
+                vert.W(),
+            };
+        }
+        for (int i = 0; i < nDualVerts; ++i) {
+            Mesh.Vertex vert = dual.getVert(i);
+            vertPositions[nPrimalVerts+i] = new double[] {
+                vert.X(),
+                vert.Y(),
+                vert.Z(),
+                vert.W(),
+            };
+        }
+        Mesh vertsMesh = new Mesh(vertPositions, new int[0][]);
+        Mesh convexHullMesh = MeshUtils.delaunayized(vertsMesh,
+                                                     /*wrapAroundSphereFlagValue=*/false,
+                                                     /*wrapSphereCurvatureValue=*/1.,
+                                                     /*centerSphereFlagValue=*/false,
+                                                     /*calcInsideOutDualVertsFlagValue=*/false,
+                                                     /*slightlyVerbose=*/true);
+        Mesh intersectionMesh = Mesh.makeDualMesh(convexHullMesh,
+                                                  /*includeNonArity3=*/false,
+                                                  /*includeInsideOut=*/false,  // always true these days
+                                                  /*wrapAroundSphereFlagValue=*/false,
+                                                  /*centerSphereFlagValue=*/false,
+                                                  /*wrapSphereCurvatureValue=*/1.);
+        Mesh[] answer = new Mesh[] {convexHullMesh, intersectionMesh};
+        if (verboseLevel >= 1) OUT("    out MakePrimalDualConvexHullAndIntersection");
+        return answer;
+    }  // MakePrimalDualConvexHullAndIntersection
+
 
     public static void saveToOFF(Mesh mesh,
                                  Net net,
