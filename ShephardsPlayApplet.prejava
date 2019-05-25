@@ -10018,34 +10018,72 @@ public class ShephardsPlayApplet
                     Mesh[/*2*/] primalDualConvexHullAndIntersection = MeshUtils.MakePrimalDualConvexHullAndIntersection(mesh, dualMesh);
                     Mesh convexHullMesh = primalDualConvexHullAndIntersection[0];
                     Mesh intersectionMesh = primalDualConvexHullAndIntersection[1];
-                    mg3d.setColor(java.awt.Color.RED.darker());  // ?
-                    FORIDOWN (iEdge, intersectionMesh.edges.size())
+                    CHECK_EQ(convexHullMesh.edges.size(), intersectionMesh.edges.size());
+
+                    Mesh[] meshesToDraw = {
+                      //convexHullMesh,
+                      intersectionMesh,
+                    };
+
+                    for (int iMeshToDraw = 0; iMeshToDraw < meshesToDraw.length; ++iMeshToDraw)
                     {
-                      Mesh.Edge edge = intersectionMesh.getEdge(iEdge);
-                      Mesh.Vertex v0 = edge.initialVertex();
-                      Mesh.Vertex v1 = edge.finalVertex();
-                      if (v0 != null || v1 != null) {
-                        double[] from = v0!=null ? new double[]{v0.X(), v0.Y(), v0.Z(), v0.W()}
-                                        // TODO: do math in homo coords, from v1coords, not v1.x(),y(),z()
-                                        : new double[]{v1.x() - edge.direction[0],
-                                                       v1.y() - edge.direction[1],
-                                                       v1.z() - edge.direction[2],
-                                                       1.};
-                        double[] to = v1!=null ? new double[]{v1.X(), v1.Y(), v1.Z(), v1.W()}
-                                               // TODO: do math in homo coords, from v1coords, not v1.x(),y(),z()
-                                               : new double[]{v0.x() + edge.direction[0],
-                                                              v0.y() + edge.direction[1],
-                                                              v0.z() + edge.direction[2],
-                                                              1.};
-                        mg3d.drawLine(from[0], from[1], from[2], from[3],
-                                      to[0], to[1], to[2], to[3],
-                                      antiAliasingFlag);
-                      }
-                    }
-                    FORIDOWN (iVert, intersectionMesh.verts.size())
-                    {
-                        Mesh.Vertex v = intersectionMesh.getVert(iVert);
-                        mg3d.drawPoint(v.X(), v.Y(), v.Z(), v.W(), 5);
+                        Mesh meshToDraw = meshesToDraw[iMeshToDraw];
+                        FORIDOWN (iEdge, meshToDraw.edges.size())
+                        {
+                          {
+                            // Decide whether we really are interested in this intersection edge.
+                            // We're interested iff one of its incident faces is on the primal and the other is on the dual.
+                            // I.e. we're interested if the corresponding edge on the convex hull joins a vertex on the primal with a vertex on the dual.
+                            Mesh.Edge convexHullEdge = convexHullMesh.getEdge(iEdge);
+                            Mesh.Vertex v0 = convexHullEdge.initialVertex();
+                            Mesh.Vertex v1 = convexHullEdge.finalVertex();
+                            CHECK(v0 != null && v1 != null);
+
+                            if (v0.myIndex() >= mesh.verts.size() + dualMesh.verts.size()
+                             || v1.myIndex() >= mesh.verts.size() + dualMesh.verts.size()) {
+                              // It involves one of the synthetic verts that was added along a ray of dual--
+                              // definitely not interested.
+                              //continue;
+                            }
+
+                            boolean v0IsOnDual = v0.myIndex() >= mesh.verts.size();
+                            boolean v1IsOnDual = v1.myIndex() >= mesh.verts.size();
+                            boolean isInteresting = (v0IsOnDual != v1IsOnDual);
+
+                            if (isInteresting) {
+                              mg3d.setColor(java.awt.Color.RED);  // ?
+                            } else {
+                              mg3d.setColor(java.awt.Color.RED.darker().darker());  // ?
+                            }
+                          }
+
+                          Mesh.Edge edge = meshToDraw.getEdge(iEdge);
+                          CHECK_EQ(edge.myIndex(), iEdge);
+                          if (edge.opposite().myIndex() < iEdge) continue;  // this edge isn't the canonical one
+                          Mesh.Vertex v0 = edge.initialVertex();
+                          Mesh.Vertex v1 = edge.finalVertex();
+                          CHECK(v0 != null || v1 != null);  // wouldn't be able to locate it otherwise
+                          double[] from = v0!=null ? new double[]{v0.X(), v0.Y(), v0.Z(), v0.W()}
+                                          // TODO: do math in homo coords, from v1coords, not v1.x(),y(),z()
+                                          : new double[]{v1.x() - edge.direction[0],
+                                                         v1.y() - edge.direction[1],
+                                                         v1.z() - edge.direction[2],
+                                                         1.};
+                          double[] to = v1!=null ? new double[]{v1.X(), v1.Y(), v1.Z(), v1.W()}
+                                                 // TODO: do math in homo coords, from v1coords, not v1.x(),y(),z()
+                                                 : new double[]{v0.x() + edge.direction[0],
+                                                                v0.y() + edge.direction[1],
+                                                                v0.z() + edge.direction[2],
+                                                                1.};
+                          mg3d.drawLine(from[0], from[1], from[2], from[3],
+                                        to[0], to[1], to[2], to[3],
+                                        antiAliasingFlag);
+                        }
+                        FORIDOWN (iVert, meshToDraw.verts.size())
+                        {
+                            Mesh.Vertex v = meshToDraw.getVert(iVert);
+                            mg3d.drawPoint(v.X(), v.Y(), v.Z(), v.W(), 5);
+                        }
                     }
                 }
 
