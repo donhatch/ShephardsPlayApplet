@@ -31,11 +31,17 @@
 #JAVAROOT="c:/Program Files (x86)/Java/jdk1.6.0_17"
 #JAR=${JAVAROOT}/bin/jar
 
-JAVAC=/usr/bin/javac -source 1.7 -target 1.7
-JAR=/usr/bin/jar
-
-#JAVAC=/usr/bin/javac -source 1.8 -target 1.8
+#JAVAC=/usr/bin/javac -source 1.7 -target 1.7 -deprecation
 #JAR=/usr/bin/jar
+
+#JAVAC=/usr/bin/javac -source 1.8 -target 1.8 -deprecation
+#JAR=/usr/bin/jar
+
+#JAVAC=/usr/bin/javac -source 1.9 -target 1.9 -deprecation
+#JAR=/usr/bin/jar
+
+JAVAC=/usr/bin/javac -source 1.10 -target 1.10 -deprecation
+JAR=/usr/bin/jar
 
 #JAVAC=/usr/bin/javac
 #JAR=/usr/bin/jar
