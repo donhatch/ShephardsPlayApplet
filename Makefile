@@ -34,14 +34,16 @@
 #JAVAC=/usr/bin/javac -source 1.7 -target 1.7 -deprecation
 #JAR=/usr/bin/jar
 
-#JAVAC=/usr/bin/javac -source 1.8 -target 1.8 -deprecation
-#JAR=/usr/bin/jar
+JAVAC=/usr/bin/javac -source 1.8 -target 1.8 -deprecation
+JAR=/usr/bin/jar
 
+# doesn't exist on my mac yet
 #JAVAC=/usr/bin/javac -source 1.9 -target 1.9 -deprecation
 #JAR=/usr/bin/jar
 
-JAVAC=/usr/bin/javac -source 1.10 -target 1.10 -deprecation
-JAR=/usr/bin/jar
+# doesn't exist on my mac yet
+#JAVAC=/usr/bin/javac -source 1.10 -target 1.10 -deprecation
+#JAR=/usr/bin/jar
 
 #JAVAC=/usr/bin/javac
 #JAR=/usr/bin/jar
