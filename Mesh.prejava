@@ -1924,7 +1924,7 @@ public class Mesh
     //
     public static Mesh makeDualMesh(Mesh primal,
                                     boolean includeNonArity3,
-                                    boolean includeInsideOut,  // always true these days
+                                    boolean includeInsideOut,  // always true these days  XXX no it isn't!  it's controlled by calcInsideOutDualVertsFlag, i.e. Behavior -> Calc underside when delaunayizing
                                     boolean wrapAroundSphereFlagValue,
                                     boolean centerSphereFlagValue,
                                     double wrapSphereCurvatureValue)
@@ -2108,6 +2108,11 @@ public class Mesh
                                                         wrapAroundSphereFlagValue, // TODO: doesn't need to take this any more, we're paraboloid at this point.  oh fooey, still needed for other call to SolveForDualMomentAndArea, in optimization stuff
                                                         centerSphereFlagValue,
                                                         wrapSphereCurvatureValue); // TODO: doesn't need to take this any more, we're paraboloid at this point.  oh fooey, still needed for other call to SolveForDualMomentAndArea, in optimization stuff
+                    if (XXXcentroidHack) {  // probably doesn't interact well with non-default settings of other things like wrap
+                       triMomentAndArea[0] = (v0.x() + v1.x() + v2.x()) / 3. * triMomentAndArea[3];
+                       triMomentAndArea[1] = (v0.y() + v1.y() + v2.y()) / 3. * triMomentAndArea[3];
+                       triMomentAndArea[2] = (v0.h() + v1.h() + v2.h()) / 3. * triMomentAndArea[3];
+                    }
                     GeomUtils.accumulateMomentAndArea(totalMomentAndArea, triMomentAndArea);
                 }
 
@@ -2231,6 +2236,8 @@ public class Mesh
         return dual;
     } // makeDualMesh()
 
+    static boolean XXXcentroidHack = false;
+
     // called at end of makeDualMesh,
     // and also after rescaling or tweaking
     public static void fixDualDirections(Mesh primal,
@@ -2293,6 +2300,31 @@ public class Mesh
                 double dir[] = VecMath.vxv3(n0, n1);
                 VecMath.normalize(dir,dir);
                 dualEdge.direction = dir;
+
+                if (XXXcentroidHack) {
+                    // dual edge dir is the normalized direction from start to end vert...
+                    // if not both in same place (as they are when primal is a single tri)
+                    Mesh.Vertex dualV0 = dualEdge.initialVertex();
+                    Mesh.Vertex dualV1 = dualEdge.finalVertex();
+                    if (dualV0 != null && dualV1 != null
+                     && (dualV0.x() != dualV1.x() || dualV0.y() != dualV1.y())) {
+                      dir = new double[] {
+                          dualV1.x() - dualV0.x(),
+                          dualV1.y() - dualV0.y(),
+                          0.,  // XXX actually not sure what this is supposed to be
+                      };
+                      VecMath.normalize(dir,dir);
+                      if (dualV0.weight * dualV1.weight < 0) {
+                          VecMath.sxv(dir, -1., dir);
+                      }
+                      dualEdge.direction = dir;
+                    } else {
+                      // What to do here?
+                      // Well, I think this won't happen, *if* includeInsideOut is true (i.e. "Calc primal undersiad and secondary dual sheet").
+                      // XXX actually it does happen if just a single tri.  bug?
+                      OUT("          what do do here?  don't have both dual verts");
+                    }
+                }
             }
 
             CHECK_EQ(dualEdge._opposite.direction, null);
