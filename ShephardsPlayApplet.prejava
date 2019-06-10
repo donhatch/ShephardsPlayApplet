@@ -4,6 +4,15 @@ that will let me play with triangulations with heights,
 and produce the dual diagrams with heights.
 
 BUGS:
+  Minkowski related:
+    - in order to get nice picture, need to:
+        - turn on "Calc underside when delaunayizing"
+        - turn on and off "Keep delaunayized"
+        - hit the "Set mesh to primal/dual Minkowski average
+      that's pretty obscure.
+    - do the above, then undo and redo -> CHECK failure here:
+        Exception in thread "AWT-EventQueue-0" java.lang.Error: Assertion failed at MeshUtils.prejava(2458): (edgeJ.direction)!=(null) (null vs. null)
+            at MeshUtils.getFacings(MeshUtils.prejava:2458)
   Dual related:
     - dual vert numbering isn't sane (maybe nothing can be done about that...
       I think they come out in order based on tri order,
@@ -2995,13 +3004,17 @@ public class ShephardsPlayApplet
                                 setMargin(nomargin);
                                 buttonGroup.add(this);
                             }});
+                            add(new JCheckBoxForBoolean("naive", applet.naivePrimalEdgesFlag) {{
+                                setToolTipText("display all primal edges as internal (rather than to infinity if to inside-out vert)");
+                                setMargin(nomargin);
+                            }});
                         }});
                         add(new JRow() {{
                             add(new JLabel("Show Dual:"));
                             add(new JCheckBoxForBoolean("verts", applet.showDualVertsFlag) {{ setMargin(nomargin); }});
                             add(new JCheckBoxForBoolean("edges", applet.showDualEdgesFlag) {{ setMargin(nomargin); }});
                             add(new JCheckBoxForBoolean("naive", applet.naiveDualEdgesFlag) {{
-                                setToolTipText("display all dual edges as internal");
+                                setToolTipText("display all dual edges as internal (rather than to infinity if to inside-out vert)");
                                 setMargin(nomargin);
                             }});
                         }});
@@ -3757,7 +3770,7 @@ public class ShephardsPlayApplet
                         add(new JCheckBoxForBoolean("show primal/dual intersection", applet.showPrimalDualIntersectionFlag));
                         add(new JRow() {{
                             add(new JCheckBoxForBoolean("show primal/dual minkowski average", applet.showPrimalDualMinkowskiAverageFlag));
-                            add(new JButton("Set mesh to primal/dual minkowski average dual") {{
+                            add(new JButton("Set mesh to primal/dual minkowski average") {{
                                 setMargin(nomargin);
                                 addActionListener(new java.awt.event.ActionListener() {
                                     @Override public void actionPerformed(java.awt.event.ActionEvent e)
@@ -4140,6 +4153,13 @@ public class ShephardsPlayApplet
                 @Override public void valueChanged()
                 {
                     System.out.println("showDualEdgesFlag -> "+showDualEdgesFlag.get());
+                    theCanvas.repaint();
+                }
+            });
+            naivePrimalEdgesFlag.addListener(naivePrimalEdgesFlagListener = new Listenable.Listener() {
+                @Override public void valueChanged()
+                {
+                    System.out.println("naivePrimalEdgesFlag -> "+naivePrimalEdgesFlag.get());
                     theCanvas.repaint();
                 }
             });
@@ -8335,10 +8355,15 @@ public class ShephardsPlayApplet
 
                 double vertCoordsHomo[][] = new double[nVerts][4];
                 double dualVertCoordsHomoNormalized[][] = new double[nDualVerts][4];
+                boolean naivePrimalEdgesFlagValue = naivePrimalEdgesFlag.get();
                 FORI (iVert, nVerts)
                 {
                     Mesh.Vertex v = mesh.getVert(iVert);
                     vertCoordsHomo[iVert] = new double[]{v.X(), v.Y(), v.Z(), v.W()};
+                    // XXX not sure this is the right place for this
+                    if (naivePrimalEdgesFlagValue && vertCoordsHomo[iVert][3] < 0.) {
+                        VecMath.sxv(vertCoordsHomo[iVert], -1., vertCoordsHomo[iVert]);
+                    }
                 }
                 FORI (iDualVert, nDualVerts)
                 {
@@ -15930,6 +15955,7 @@ OFF
         private Listenable.Listener showPrimalDualIntersectionFlagListener = null;
         private Listenable.Listener showPrimalDualMinkowskiAverageFlagListener = null;
         private Listenable.Listener primalDualVisFlagListener = null;
+        private Listenable.Listener naivePrimalEdgesFlagListener = null;
         private Listenable.Listener naiveDualEdgesFlagListener = null;
         private Listenable.Listener windowTitleListener = null;
         private Listenable.Listener myAlgorithmMaxItersListener = null;
@@ -16015,6 +16041,7 @@ OFF
         private Listenable.Boolean showPrimalEdgesFlag = new Listenable.Boolean(true);
         private Listenable.Boolean showDualVertsFlag = new Listenable.Boolean(true);
         private Listenable.Boolean showDualEdgesFlag = new Listenable.Boolean(true);
+        private Listenable.Boolean naivePrimalEdgesFlag = new Listenable.Boolean(false);
         private Listenable.Boolean naiveDualEdgesFlag = new Listenable.Boolean(false);
         private Listenable.Boolean showNetFlag = new Listenable.Boolean(false);
         private Listenable.Boolean showFlattenedNetFlag = new Listenable.Boolean(true);
