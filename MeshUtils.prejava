@@ -3224,6 +3224,173 @@ final public class MeshUtils
         // XXX should get rid of unreferenced vertices? NO! But should get rid of dups maybe
     } // delaunayized
 
+    public static Mesh[] MakePrimalDualMinkowskiAverageAndDual(Mesh primal,
+                                                               Mesh dual)
+    {
+        int nPrimalVerts = primal.verts.size();
+        int nEdges = primal.edges.size();
+        CHECK_EQ(nEdges % 2, 0);
+        int nUndirectedEdges = nEdges / 2;
+        int nDualVerts = dual.verts.size();
+        CHECK_EQ(dual.edges.size(), nEdges);
+        double[][] vertPositions = new double[nPrimalVerts + nDualVerts + nUndirectedEdges][];
+        for (int i = 0; i < nPrimalVerts; ++i) {
+            Mesh.Vertex vert = primal.getVert(i);
+            vertPositions[i] = new double[] {
+                vert.x(),
+                vert.y(),
+                0.
+            };
+        }
+        for (int i = 0; i < nDualVerts; ++i) {
+            Mesh.Vertex vert = dual.getVert(i);
+            vertPositions[nPrimalVerts+i] = new double[] {
+                vert.x(),
+                vert.y(),
+                0.,
+            };
+        }
+        for (int i = 0; i < nUndirectedEdges; ++i) {
+            // XXX I'm sure I do this in another place, where is it?
+            Mesh.Edge primalEdge = primal.getEdge(2*i);
+            Mesh.Edge dualEdge = dual.getEdge(2*i);
+
+            Mesh.Vertex primalVert = primalEdge.initialVertex();
+            CHECK(primalVert != null);
+            Mesh.Vertex dualVert = dualEdge.initialVertex();
+            if (dualVert == null) dualVert = dualEdge.finalVertex();
+            double[] p0 = {primalVert.x(), primalVert.y()};
+            double[] p1 = {dualVert.x(), dualVert.y()};
+
+            double[] dualEdgeDirection = dualEdge.direction;
+            CHECK(dualEdgeDirection != null);
+            CHECK(primalEdge.direction == null);
+            Mesh.Vertex primalVert1 = primalEdge.finalVertex();
+            double[] primalEdgeDirection = {primalVert1.x() - p0[0], primalVert1.y() - p0[1]};
+
+            double[] v0 = {primalEdgeDirection[0], primalEdgeDirection[1]};
+            double[] v1 = {dualEdgeDirection[0], dualEdgeDirection[1]};
+            double[] intersection = new double[2];
+            GeomUtils.intersectLines(intersection, p0, v0, p1, v1);
+            double x = intersection[0];
+            double y = intersection[1];
+            double h = 0.;
+            vertPositions[nPrimalVerts+nDualVerts+i] = new double[] {x, y, h};
+
+            if (false) {
+                // HACK - for some reason, simply not doing the infinite edges produces a better result.
+                // Or maybe not :-(
+                if (dualEdge.initialVertex() == null || dualEdge.finalVertex() == null) {
+                    vertPositions[nPrimalVerts+nDualVerts+i] = null;
+                }
+            }
+        }
+        {
+            // remove nulls
+            int nRemaining = 0;
+            for (int i = 0; i < vertPositions.length; ++i) {
+                if (vertPositions[i] != null) nRemaining++;
+            }
+            double[][] remaining = new double[nRemaining][];
+            nRemaining = 0;
+            for (int i = 0; i < vertPositions.length; ++i) {
+                if (vertPositions[i] != null) remaining[nRemaining++] = vertPositions[i];
+            }
+            CHECK_EQ(nRemaining, remaining.length);
+            vertPositions = remaining;
+        }
+        Mesh minkowskiAverageDualMesh = MeshUtils.delaunayized(new Mesh(vertPositions, new int[0][]),
+                                                               /*wrapAroundSphereFlagValue=*/false,
+                                                               /*wrapSphereCurvatureValue=*/1.,
+                                                               /*centerSphereFlagValue=*/false,
+                                                               /*calcInsideOutDualVertsFlagValue=*/false,
+                                                               /*slightlyVerbose=*/true);
+
+        Mesh minkowskiAverageMesh;
+        boolean makeMinkowskiAverageExplicitlyFlag = true;
+        if (makeMinkowskiAverageExplicitlyFlag) {
+            // Verts = {avg(primalVert, dualVert) for each *incident* primal and dual vert}
+            // Edges = {primalEdge + dualVert for each incident primal edge and dual vert}
+            //   union {primalVert + dualEdge for each incident primal vert and dual edge}
+            java.util.HashMap<String, Integer> vv2v = new java.util.HashMap<String, Integer>();
+            java.util.HashMap<Integer, int[]> v2vv = new java.util.HashMap<Integer, int[]>();
+            for (int iEdge = 0; iEdge < nUndirectedEdges; iEdge++) {
+                Mesh.Edge primalEdge = primal.getEdge(2*iEdge);
+                Mesh.Edge dualEdge = dual.getEdge(2*iEdge);
+                Mesh.Vertex[] primalEdgeEndpoints = {primalEdge.initialVertex(), primalEdge.finalVertex()};
+                Mesh.Vertex[] dualEdgeEndpoints = {dualEdge.initialVertex(), dualEdge.finalVertex()};
+                for (int i = 0; i < 2; ++i)
+                for (int j = 0; j < 2; ++j)
+                {
+                    Mesh.Vertex primalVert = primalEdgeEndpoints[i];
+                    Mesh.Vertex dualVert = dualEdgeEndpoints[j];
+                    if (primalVert == null || dualVert == null)
+                    {
+                        // This happens only if mesh dual had no underside,
+                        // i.e. if calcInsideOutDualVertsFlag was false when it was computed.
+                        continue;
+                    }
+                    String key = primalVert.myIndex() + "," + dualVert.myIndex();
+                    Integer previous = vv2v.get(key);
+                    if (previous == null) {
+                        int value = vv2v.size();
+                        OUT("key="+key+" -> "+value);
+                        previous = vv2v.put(key, value);
+                        CHECK_EQ(previous, null);
+                        v2vv.put(value, new int[] {primalVert.myIndex(), dualVert.myIndex()});
+                    }
+                }
+            }
+            double[][] verts = new double[v2vv.size()][4];
+            for (int i = 0; i < verts.length; ++i)
+            {
+                int[] vv = v2vv.get(i);
+                Mesh.Vertex primalVert = primal.getVert(vv[0]);
+                Mesh.Vertex dualVert = dual.getVert(vv[1]);
+                // XXX TODO: do the interpolation in homo space?
+                // XXX TODO, better: do the H interpolation separately?  that will be more accurate, if far from origin.  not sure it's possible though
+                verts[i][0] = LERP(primalVert.x(), dualVert.x(), .5);
+                verts[i][1] = LERP(primalVert.y(), dualVert.y(), .5);
+                verts[i][2] = LERP(primalVert.z(), dualVert.z(), .5);
+                verts[i][3] = 1.;
+            }
+            minkowskiAverageMesh = new Mesh(verts, new int[0][0]);
+            for (int i = 0; i < verts.length; ++i)
+            {
+                int[] vv = v2vv.get(i);
+                Mesh.Vertex primalVert = primal.getVert(vv[0]);
+                Mesh.Vertex dualVert = dual.getVert(vv[1]);
+                minkowskiAverageMesh.getVert(i).weight = (primalVert.weight*dualVert.weight) < 0. ? -1. : 1.;
+            }
+            minkowskiAverageMesh = MeshUtils.delaunayized(minkowskiAverageMesh,
+                                                          /*wrapAroundSphereFlagValue=*/false,
+                                                          /*wrapSphereCurvatureValue=*/1.,
+                                                          /*centerSphereFlagValue=*/false,
+                                                          /*calcInsideOutDualVertsFlagValue=*/false,
+                                                          /*slightlyVerbose=*/true);
+            if (true) {
+              // XXX temporary?  required for now, until we get number of minkowski edges right
+              minkowskiAverageDualMesh = Mesh.makeDualMesh(minkowskiAverageMesh,
+                                                           /*includeNonArity3=*/false,  // XXX ? doesn't seem to make any difference?  need to get clear on what this is supposed to do
+                                                           /*includeInsideOut=*/true,  // XXX ?
+                                                           /*wrapAroundSphereFlagValue=*/false,
+                                                           /*centerSphereFlagValue=*/false,
+                                                           /*wrapSphereCurvatureValue=*/1.);
+            }
+        } else {
+            minkowskiAverageMesh = Mesh.makeDualMesh(minkowskiAverageDualMesh,
+                                                     /*includeNonArity3=*/true,  // XXX ? doesn't seem to make any difference?  need to get clear on what this is supposed to do
+                                                     /*includeInsideOut=*/false,  // XXX ?
+                                                     /*wrapAroundSphereFlagValue=*/false,
+                                                     /*centerSphereFlagValue=*/false,
+                                                     /*wrapSphereCurvatureValue=*/1.);
+        }
+        return new Mesh[] {
+          minkowskiAverageMesh,
+          minkowskiAverageDualMesh,
+        };
+    }  // MakePrimalDualMinkowskiAverageAndDual
+
     // See if I can come up with a mesh representing the
     // intersection between a primal and dual mesh.
     // Initial observations:

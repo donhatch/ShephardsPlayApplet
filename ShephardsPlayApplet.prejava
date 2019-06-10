@@ -3,6 +3,9 @@ Trying to make a little applet
 that will let me play with triangulations with heights,
 and produce the dual diagrams with heights.
 
+TODO fairly soon:
+  - change "calc underside" default from false to true
+  - make a SimplerMeshDataStructure.toMesh()
 BUGS:
   Dual related:
     - dual vert numbering isn't sane (maybe nothing can be done about that...
@@ -1754,38 +1757,44 @@ public class ShephardsPlayApplet
                         //setLayout(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, finalFlowLayoutGap, finalFlowLayoutGap));
                         setLayout(new java.awt.FlowLayout(java.awt.FlowLayout.CENTER, 0, 0));
 
-                        add(cloneButton);
-                        add(clearButton);
-                        add(new JRow() {{ // so no space between this pair
-                            add(undoButton);
-                            add(redoButton);
-                        }});
-                        add(loadButton);
+                        add(new JCol() {{
+                            add(new JRow() {{
+                                add(cloneButton);
+                                add(clearButton);
+                                add(new JRow() {{ // so no space between this pair
+                                    add(undoButton);
+                                    add(redoButton);
+                                }});
+                            }});
+                            add(new JRow() {{
+                                add(loadButton);
 #ifdef TOO_HELPFUL
-                        add(smartSaveButton);
+                                add(smartSaveButton);
 #endif // TOO_HELPFUL
-                        add(new JButton("Save DUMP.off (xyh)") {Listenable.Listener listener;{
-                            setMargin(nomargin);
-                            addActionListener(new java.awt.event.ActionListener() {
-                                @Override public void actionPerformed(java.awt.event.ActionEvent e)
-                                {
-                                    boolean saveHomo = false;
-                                    applet.save("DUMP.off", saveHomo);
-                                }
-                            });
+                                add(new JButton("Save DUMP.off (xyh)") {Listenable.Listener listener;{
+                                    setMargin(nomargin);
+                                    addActionListener(new java.awt.event.ActionListener() {
+                                        @Override public void actionPerformed(java.awt.event.ActionEvent e)
+                                        {
+                                            boolean saveHomo = false;
+                                            applet.save("DUMP.off", saveHomo);
+                                        }
+                                    });
+                                }});
+                                add(new JButton("Save DUMP.off (XYZW)") {Listenable.Listener listener;{
+                                    setMargin(nomargin);
+                                    addActionListener(new java.awt.event.ActionListener() {
+                                        @Override public void actionPerformed(java.awt.event.ActionEvent e)
+                                        {
+                                            boolean saveHomo = true;
+                                            applet.save("DUMP.off", saveHomo);
+                                        }
+                                    });
+                                }});
+                                add(saveDualButton);
+                                // scale?
+                            }});
                         }});
-                        add(new JButton("Save DUMP.off (XYZW)") {Listenable.Listener listener;{
-                            setMargin(nomargin);
-                            addActionListener(new java.awt.event.ActionListener() {
-                                @Override public void actionPerformed(java.awt.event.ActionEvent e)
-                                {
-                                    boolean saveHomo = true;
-                                    applet.save("DUMP.off", saveHomo);
-                                }
-                            });
-                        }});
-                        add(saveDualButton);
-                        // scale?
                     }});
                 }}));
                 contentPane.add(new JSeparator(), stretchx);
@@ -2023,7 +2032,7 @@ public class ShephardsPlayApplet
                                     });
                                 }
                             });
-                            add(new JCheckBoxForBoolean("Calc underside when delaunayizing", applet.calcInsideOutDualVertsFlag));
+                            add(new JCheckBoxForBoolean("Calc underside when delaunayizing, and second dual sheet", applet.calcInsideOutDualVertsFlag));  // CBB: is this a misleading label?  it confuses me
                         }});
                     }});
                 }}));
@@ -3749,6 +3758,28 @@ public class ShephardsPlayApplet
                     add(new JCol() {{
                         add(new JCheckBoxForBoolean("show topo region of dragged vert", applet.showTopologicalRegionWhenDraggingVertexFlag));
                         add(new JCheckBoxForBoolean("show primal/dual intersection", applet.showPrimalDualIntersectionFlag));
+                        add(new JRow() {{
+                            add(new JCheckBoxForBoolean("show primal/dual minkowski average", applet.showPrimalDualMinkowskiAverageFlag));
+                            add(new JButton("Set mesh to primal/dual minkowski average dual") {{
+                                setMargin(nomargin);
+                                addActionListener(new java.awt.event.ActionListener() {
+                                    @Override public void actionPerformed(java.awt.event.ActionEvent e)
+                                    {
+                                        UndoItem.State before = applet.newUndoItemState();
+                                        Mesh[] minkowskiAverageAndDual = MeshUtils.MakePrimalDualMinkowskiAverageAndDual(applet.mesh, applet.getDualMesh());
+                                        Mesh minkowskiAverage = minkowskiAverageAndDual[0];
+                                        Mesh minkowskiAverageDual = minkowskiAverageAndDual[1];
+
+                                        applet.mesh = minkowskiAverage;
+                                        applet._dualMesh = minkowskiAverageDual;
+                                        applet._primalMeshOfDualMesh = applet.mesh; // counter-counter-espionage, prevents dual from thinking it's dirty
+                                        UndoItem.State after = applet.newUndoItemState();
+                                        applet.undoTreeSquirrel.Do(new UndoItem(before, after));
+                                        applet.theCanvas.repaint();
+                                    }
+                                });
+                            }});
+                        }});
                     }});
                 }}));
                 contentPane.add(new JSeparator(), stretchx);
@@ -4161,6 +4192,13 @@ public class ShephardsPlayApplet
                 @Override public void valueChanged()
                 {
                     System.out.println("showPrimalDualIntersectionFlag -> "+showPrimalDualIntersectionFlag.get());
+                    theCanvas.repaint();
+                }
+            });
+            showPrimalDualMinkowskiAverageFlag.addListener(showPrimalDualMinkowskiAverageFlagListener = new Listenable.Listener() {
+                @Override public void valueChanged()
+                {
+                    System.out.println("showPrimalDualMinkowskiAverageFlag -> "+showPrimalDualMinkowskiAverageFlag.get());
                     theCanvas.repaint();
                 }
             });
@@ -10097,6 +10135,50 @@ public class ShephardsPlayApplet
                     }
                 }
 
+                // Draw minkowski average.
+                if (showPrimalDualMinkowskiAverageFlag.get())
+                {
+                    final int verboseLevel = 0;
+                    Mesh minkowskiAverage = MeshUtils.MakePrimalDualMinkowskiAverageAndDual(mesh, dualMesh)[0];
+                    Mesh[] meshesToDraw = {
+                      minkowskiAverage,
+                    };
+
+                    for (int iMeshToDraw = 0; iMeshToDraw < meshesToDraw.length; ++iMeshToDraw)
+                    {
+                        Mesh meshToDraw = meshesToDraw[iMeshToDraw];
+                        FORIDOWN (iEdge, meshToDraw.edges.size())
+                        {
+                          Mesh.Edge edge = meshToDraw.getEdge(iEdge);
+                          CHECK_EQ(edge.myIndex(), iEdge);
+                          if (edge.opposite().myIndex() < iEdge) continue;  // this edge isn't the canonical one
+                          Mesh.Vertex v0 = edge.initialVertex();
+                          Mesh.Vertex v1 = edge.finalVertex();
+                          CHECK(v0 != null || v1 != null);  // wouldn't be able to locate it otherwise
+                          double[] from = v0!=null ? new double[]{v0.X(), v0.Y(), v0.Z(), v0.W()}
+                                          // TODO: do math in homo coords, from v1coords, not v1.x(),y(),z()
+                                          : new double[]{v1.x() - edge.direction[0],
+                                                         v1.y() - edge.direction[1],
+                                                         v1.z() - edge.direction[2],
+                                                         1.};
+                          double[] to = v1!=null ? new double[]{v1.X(), v1.Y(), v1.Z(), v1.W()}
+                                                 // TODO: do math in homo coords, from v1coords, not v1.x(),y(),z()
+                                                 : new double[]{v0.x() + edge.direction[0],
+                                                                v0.y() + edge.direction[1],
+                                                                v0.z() + edge.direction[2],
+                                                                1.};
+                          mg3d.drawLine(from[0], from[1], from[2], from[3],
+                                        to[0], to[1], to[2], to[3],
+                                        antiAliasingFlag);
+                        }
+                        FORIDOWN (iVert, meshToDraw.verts.size())
+                        {
+                            Mesh.Vertex v = meshToDraw.getVert(iVert);
+                            mg3d.drawPoint(v.X(), v.Y(), v.Z(), v.W(), 5);
+                        }
+                    }
+                }
+
                 //
                 // Draw topological region.
                 // Currently drawing this close to last, but should think about when to do it.
@@ -15782,11 +15864,11 @@ OFF
              || _primalMeshOfDualMesh != mesh)
             {
                 _dualMesh = Mesh.makeDualMesh(mesh,
-                                              false,
-                                              calcInsideOutDualVertsFlag.get(), // includeInsideOut
-                                              wrapAroundSphereFlag.get(),
-                                              centerSphereFlag.get(),
-                                              wrapSphereCurvature.get());
+                                              /*includeNonArity3=*/true,
+                                              /*includeInsideOut=*/calcInsideOutDualVertsFlag.get(),
+                                              /*wrapAroundSphereFlagValue=*/wrapAroundSphereFlag.get(),
+                                              /*centerSphereFlagValue=*/centerSphereFlag.get(),
+                                              /*wrapSphereCurvatureValue=*/wrapSphereCurvature.get());
                 _primalMeshOfDualMesh = mesh;
                 theNet = null;
             }
@@ -15849,6 +15931,7 @@ OFF
         private Listenable.Listener labelDualEdgesFlagListener = null;
         private Listenable.Listener showTopologicalRegionWhenDraggingVertexFlagListener = null;
         private Listenable.Listener showPrimalDualIntersectionFlagListener = null;
+        private Listenable.Listener showPrimalDualMinkowskiAverageFlagListener = null;
         private Listenable.Listener primalDualVisFlagListener = null;
         private Listenable.Listener naiveDualEdgesFlagListener = null;
         private Listenable.Listener windowTitleListener = null;
@@ -15928,6 +16011,7 @@ OFF
         private Listenable.Boolean showFlatPrimalEdgesFlag = new Listenable.Boolean(false);
         private Listenable.Boolean showTopologicalRegionWhenDraggingVertexFlag = new Listenable.Boolean(false);
         private Listenable.Boolean showPrimalDualIntersectionFlag = new Listenable.Boolean(false);
+        private Listenable.Boolean showPrimalDualMinkowskiAverageFlag = new Listenable.Boolean(false);
 
         private boolean showPositiveOrthantnessVisualizationFlag = false; // XXX total hack-- it's cool but put it somewhere else!!
         private Listenable.Boolean showPrimalVertsFlag = new Listenable.Boolean(true);
