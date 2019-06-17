@@ -1762,6 +1762,8 @@ public class Mesh
             // if they are insane...
             java.util.HashSet boundary = new java.util.HashSet();
             FORI (iFace, faceIndices.length)
+            {
+                CHECK_GE(faceIndices[iFace].length, 2);
                 FORI (iVertThisFace, faceIndices[iFace].length)
                 {
                     int v0 = faceIndices[iFace][iVertThisFace];
@@ -1778,6 +1780,7 @@ public class Mesh
                     if (!boundary.remove(v1_v0))
                         boundary.add(v0_v1);
                 }
+            }
             if (!boundary.isEmpty())
             {
                 System.out.println("ERROR in Mesh ctor: unmatched edge(s):");
@@ -1813,36 +1816,63 @@ public class Mesh
         }
         java.util.HashMap vertIndsToEdge = new java.util.HashMap();
         FORI (i, faceIndices.length)
-        FORI (j, faceIndices[i].length)
         {
-            int v0 = faceIndices[i][j];
-            int v1 = faceIndices[i][(j+1)%faceIndices[i].length];
-            CHECK_LE_LT(0, v0, vertPositions.length);
-            CHECK_LE_LT(0, v1, vertPositions.length);
-            String v0_v1 = ""+v0+"_"+v1;
-            String v1_v0 = ""+v1+"_"+v0;
-            if (vertIndsToEdge.get(v0_v1) == null)
+            if (faceIndices[i].length == 2) continue;  // we'll insert the digons last
+            FORI (j, faceIndices[i].length)
             {
-                Edge edge = new Edge(true); // adds itself, and opposite, to verts
-                vertIndsToEdge.put(v0_v1, edge);
-                vertIndsToEdge.put(v1_v0, edge.opposite());
-                edge.setInitialVertex((Vertex)verts.get(v0));
-                edge.opposite().setInitialVertex((Vertex)verts.get(v1));
+                int v0 = faceIndices[i][j];
+                int v1 = faceIndices[i][(j+1)%faceIndices[i].length];
+                CHECK_LE_LT(0, v0, vertPositions.length);
+                CHECK_LE_LT(0, v1, vertPositions.length);
+                String v0_v1 = ""+v0+"_"+v1;
+                String v1_v0 = ""+v1+"_"+v0;
+                if (vertIndsToEdge.get(v0_v1) == null)
+                {
+                    Edge edge = new Edge(true); // adds itself, and opposite, to edges
+                    vertIndsToEdge.put(v0_v1, edge);
+                    vertIndsToEdge.put(v1_v0, edge.opposite());
+                    edge.setInitialVertex((Vertex)verts.get(v0));
+                    edge.opposite().setInitialVertex((Vertex)verts.get(v1));
+                }
             }
         }
         FORI (i, faceIndices.length)
-        FORI (j, faceIndices[i].length)
         {
-            int v0 = faceIndices[i][j];
-            int v1 = faceIndices[i][(j+1)%faceIndices[i].length];
-            int v2 = faceIndices[i][(j+2)%faceIndices[i].length];
-            String v0_v1 = ""+v0+"_"+v1;
-            String v1_v2 = ""+v1+"_"+v2;
-            Edge e01 = (Edge)vertIndsToEdge.get(v0_v1);
-            Edge e12 = (Edge)vertIndsToEdge.get(v1_v2);
-            e01.setNext(e12, true);
+            if (faceIndices[i].length == 2) continue;  // we'll insert the digons last
+            FORI (j, faceIndices[i].length)
+            {
+                int v0 = faceIndices[i][j];
+                int v1 = faceIndices[i][(j+1)%faceIndices[i].length];
+                int v2 = faceIndices[i][(j+2)%faceIndices[i].length];
+                String v0_v1 = ""+v0+"_"+v1;
+                String v1_v2 = ""+v1+"_"+v2;
+                Edge e01 = (Edge)vertIndsToEdge.get(v0_v1);
+                Edge e12 = (Edge)vertIndsToEdge.get(v1_v2);
+                e01.setNext(e12, true);
+            }
         }
         sanityCheckTopology();
+        // Now go back and insert the digons.
+        FORI (i, faceIndices.length)
+        {
+            if (faceIndices[i].length == 2)
+            {
+                int v0 = faceIndices[i][0];
+                int v1 = faceIndices[i][1];
+                String v0_v1 = v0+"_"+v1;
+                Edge e01 = (Edge)vertIndsToEdge.get(v0_v1);
+                Edge prev = e01.prev();
+                Edge next = e01.next();
+                Edge edge = new Edge(true);  // adds itself, and opposite, to edges
+                edge.setInitialVertex((Vertex)verts.get(v0));
+                edge.opposite().setInitialVertex((Vertex)verts.get(v1));
+                edge.setNext(e01.next(), true);
+                edge.setPrev(e01.prev(), true);
+                edge.opposite().setNext(e01, true);
+                edge.opposite().setPrev(e01, true);
+            }
+        }
+        sanityCheckTopology();  // again
     } // Mesh from vertex positions and face indices
 
     // copy ctor
