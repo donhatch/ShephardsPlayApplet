@@ -2417,7 +2417,7 @@ final public class MeshUtils
                     Mesh.Vertex v0 = edgeI.initialVertex();
                     if (v0 == null)
                     {
-                        if (verboseLevel >= 2) System.out.println("              ouch! edge "+iEdge+" has null initial vertex ("+(edgeI.direction!=null?"has direction":"no direction")+")");
+                        if (verboseLevel >= 2) System.out.println("              ouch; edge "+iEdge+" has null initial vertex ("+(edgeI.direction!=null?"has direction":"no direction")+")");
                         // This one shouldn't be a disaster; this face will be solved by some other edge on it.
                         continue;
                     }
@@ -2433,20 +2433,25 @@ final public class MeshUtils
                     {
                         Mesh.Vertex v1 = edgeJ.initialVertex();
                         Mesh.Vertex v2 = edgeJ.finalVertex();
-                        // a bit hackish, but prevents weird computation using vertices we shouldn't be using
-                        if (v1 != null && v1.weight < 0.) v1 = null;
-                        if (v2 != null && v2.weight < 0.) v2 = null;
+                        if (false) {  // XXX disabling this for minkowski.  need to think about what it means.
+                            // a bit hackish, but prevents weird computation using vertices we shouldn't be using
+                            if (v1 != null && v1.weight < 0.) v1 = null;
+                            if (v2 != null && v2.weight < 0.) v2 = null;
+                        }
                         if (v1 == null && v2 == null)
                         {
                             // Happens when not "calc underside when delaunayizing"
                             // Not quite sure yet how to prevent these things from being drawn.  (e.g. the second sheet, when convex noise 1 starts from a square and I don't re-delaunayize with "calc underside when delaunayizing"=false at end)
-                            if (verboseLevel >= 0) System.out.println("                  ouch! edge "+edgeJ.myIndex()+" has null initial and final vertex ("+(edgeJ.direction!=null?"has direction":"no direction")+")");
+                            if (verboseLevel >= 0) System.out.println("                  ouch! edge "+edgeJ.myIndex()+" has null or negative initial and final vertex ("+(edgeJ.direction!=null?"has direction":"no direction")+")");
                             break;
                         }
                         else if (v1 == null)
                         {
-                            if (verboseLevel >= 2) System.out.println("                  ouch! edge "+edgeJ.myIndex()+" has null initial vertex ("+(edgeJ.direction!=null?"has direction":"no direction")+")");
-                            CHECK_NE(edgeJ.direction, null);
+                            if (verboseLevel >= 2 || edgeJ.direction == null) System.out.println("                  ouch, edge "+edgeJ.myIndex()+" has null or negative initial vertex ("+(edgeJ.direction!=null?"has direction":"no direction")+")");
+                            if (edgeJ.direction == null) {
+                                // this can probably happen for minkowski (since the similar situation below can), although I haven't seen it
+                                break;
+                            }
                             v2coords[0] = v2.x();
                             v2coords[1] = v2.y();
                             v2coords[2] = v2.z();
@@ -2454,8 +2459,11 @@ final public class MeshUtils
                         }
                         else if (v2 == null)
                         {
-                            if (verboseLevel >= 2) System.out.println("                  ouch! edge "+edgeJ.myIndex()+" has null final vertex ("+(edgeJ.direction!=null?"has direction":"no direction")+")");
-                            CHECK_NE(edgeJ.direction, null);
+                            if (verboseLevel >= 2 || edgeJ.direction == null) System.out.println("                  ouch, edge "+edgeJ.myIndex()+" has null or negative final vertex ("+(edgeJ.direction!=null?"has direction":"no direction")+")");
+                            if (edgeJ.direction == null) {
+                                // this happens for minkowski
+                                break;
+                            }
                             v1coords[0] = v1.x();
                             v1coords[1] = v1.y();
                             v1coords[2] = v1.z();
@@ -3244,64 +3252,87 @@ final public class MeshUtils
     public static Mesh[] MakePrimalDualMinkowskiAverageAndDual(Mesh primal,
                                                                Mesh dual)
     {
+        OUT("in MakePrimalDualMinkowskiAverageAndDual");
         int nPrimalVerts = primal.verts.size();
         int nEdges = primal.edges.size();
         CHECK_EQ(nEdges % 2, 0);
         int nUndirectedEdges = nEdges / 2;
         int nDualVerts = dual.verts.size();
         CHECK_EQ(dual.edges.size(), nEdges);
-        double[][] vertPositions = new double[nPrimalVerts + nDualVerts + nUndirectedEdges][];
-        for (int i = 0; i < nPrimalVerts; ++i) {
-            Mesh.Vertex vert = primal.getVert(i);
-            vertPositions[i] = new double[] {
-                vert.x(),
-                vert.y(),
-                0.
-            };
+
+        Mesh minkowskiAverageDualMesh = null;
+        {
+            boolean hasARay = false;
+            for (int i = 0; i < nEdges; ++i)
+            {
+                Mesh.Edge primalEdge = primal.getEdge(i);
+                if (primalEdge.initialVertex() == null) {
+                    hasARay = true;
+                    break;
+                }
+                Mesh.Edge dualEdge = dual.getEdge(i);
+                if (dualEdge.initialVertex() == null) {
+                    hasARay = true;
+                    break;
+                }
+            }
+            if (hasARay)
+            {
+                double[][] dualVertPositions = new double[nPrimalVerts + nDualVerts + nUndirectedEdges][];
+                for (int i = 0; i < nPrimalVerts; ++i) {
+                    Mesh.Vertex vert = primal.getVert(i);
+                    dualVertPositions[i] = new double[] {
+                        vert.x(),
+                        vert.y(),
+                        0.
+                    };
+                }
+                for (int i = 0; i < nDualVerts; ++i) {
+                    Mesh.Vertex vert = dual.getVert(i);
+                    dualVertPositions[nPrimalVerts+i] = new double[] {
+                        vert.x(),
+                        vert.y(),
+                        0.,
+                    };
+                }
+                for (int i = 0; i < nUndirectedEdges; ++i) {
+                    // XXX I'm sure I do this in another place, where is it?
+                    Mesh.Edge primalEdge = primal.getEdge(2*i);
+                    Mesh.Edge dualEdge = dual.getEdge(2*i);
+
+                    Mesh.Vertex primalVert = primalEdge.initialVertex();
+                    CHECK(primalVert != null);
+                    Mesh.Vertex dualVert = dualEdge.initialVertex();
+                    if (dualVert == null) dualVert = dualEdge.finalVertex();
+                    double[] p0 = {primalVert.x(), primalVert.y()};
+                    double[] p1 = {dualVert.x(), dualVert.y()};
+
+                    double[] dualEdgeDirection = dualEdge.direction;
+                    CHECK(dualEdgeDirection != null);
+                    CHECK(primalEdge.direction == null);
+                    Mesh.Vertex primalVert1 = primalEdge.finalVertex();
+                    double[] primalEdgeDirection = {primalVert1.x() - p0[0], primalVert1.y() - p0[1]};
+
+                    double[] v0 = {primalEdgeDirection[0], primalEdgeDirection[1]};
+                    double[] v1 = {dualEdgeDirection[0], dualEdgeDirection[1]};
+                    double[] intersection = new double[2];
+                    GeomUtils.intersectLines(intersection, p0, v0, p1, v1);
+                    double x = intersection[0];
+                    double y = intersection[1];
+                    double h = 0.;
+                    dualVertPositions[nPrimalVerts+nDualVerts+i] = new double[] {x, y, h};
+                }
+                minkowskiAverageDualMesh = MeshUtils.delaunayized(new Mesh(dualVertPositions, new int[0][]),
+                                                                  /*wrapAroundSphereFlagValue=*/false,
+                                                                  /*wrapSphereCurvatureValue=*/1.,
+                                                                  /*centerSphereFlagValue=*/false,
+                                                                  /*calcInsideOutDualVertsFlagValue=*/false,
+                                                                  /*slightlyVerbose=*/true);
+            }
         }
-        for (int i = 0; i < nDualVerts; ++i) {
-            Mesh.Vertex vert = dual.getVert(i);
-            vertPositions[nPrimalVerts+i] = new double[] {
-                vert.x(),
-                vert.y(),
-                0.,
-            };
-        }
-        for (int i = 0; i < nUndirectedEdges; ++i) {
-            // XXX I'm sure I do this in another place, where is it?
-            Mesh.Edge primalEdge = primal.getEdge(2*i);
-            Mesh.Edge dualEdge = dual.getEdge(2*i);
 
-            Mesh.Vertex primalVert = primalEdge.initialVertex();
-            CHECK(primalVert != null);
-            Mesh.Vertex dualVert = dualEdge.initialVertex();
-            if (dualVert == null) dualVert = dualEdge.finalVertex();
-            double[] p0 = {primalVert.x(), primalVert.y()};
-            double[] p1 = {dualVert.x(), dualVert.y()};
-
-            double[] dualEdgeDirection = dualEdge.direction;
-            CHECK(dualEdgeDirection != null);
-            CHECK(primalEdge.direction == null);
-            Mesh.Vertex primalVert1 = primalEdge.finalVertex();
-            double[] primalEdgeDirection = {primalVert1.x() - p0[0], primalVert1.y() - p0[1]};
-
-            double[] v0 = {primalEdgeDirection[0], primalEdgeDirection[1]};
-            double[] v1 = {dualEdgeDirection[0], dualEdgeDirection[1]};
-            double[] intersection = new double[2];
-            GeomUtils.intersectLines(intersection, p0, v0, p1, v1);
-            double x = intersection[0];
-            double y = intersection[1];
-            double h = 0.;
-            vertPositions[nPrimalVerts+nDualVerts+i] = new double[] {x, y, h};
-        }
-        Mesh minkowskiAverageDualMesh = MeshUtils.delaunayized(new Mesh(vertPositions, new int[0][]),
-                                                               /*wrapAroundSphereFlagValue=*/false,
-                                                               /*wrapSphereCurvatureValue=*/1.,
-                                                               /*centerSphereFlagValue=*/false,
-                                                               /*calcInsideOutDualVertsFlagValue=*/false,
-                                                               /*slightlyVerbose=*/true);
-
-        Mesh minkowskiAverageMesh;
+        Mesh minkowskiAverageMesh = null;
+        int[][] minkowskiEdge2MinkowskiFaceIndex = null;
         {
             // Verts = {avg(primalVert, dualVert) for each *incident* primal and dual vert}
             // Edges = {primalEdge + dualVert for each incident primal edge and dual vert}
@@ -3327,15 +3358,17 @@ final public class MeshUtils
                         continue;
                     }
                     String key = primalVert.myIndex() + "," + dualVert.myIndex();
-                    Integer previous = vv2v.get(key);
-                    if (previous == null) {
+                    Integer existing = vv2v.get(key);
+                    if (existing == null) {
                         int value = vv2v.size();
-                        previous = vv2v.put(key, value);
-                        CHECK_EQ(previous, null);
+                        existing = vv2v.put(key, value);
+                        CHECK_EQ(existing, null);
                         v2vv.put(value, new int[] {primalVert.myIndex(), dualVert.myIndex()});
                     }
                 }
             }
+            PRINTARRAY(vv2v);
+            PRINTARRAY(v2vv);
             double[][] verts = new double[v2vv.size()][4];
             for (int i = 0; i < verts.length; ++i)
             {
@@ -3351,9 +3384,48 @@ final public class MeshUtils
             }
             if (!foundAtLeastOneRay)
             {
+                OUT("  no rays, so using the topology-aware mesh ctor");
                 // Every edge has both endpoints, so can use the topology-aware mesh constructor.
                 int[][] minkowskiFaces = new int[nPrimalVerts + nDualVerts + nUndirectedEdges][];
                 int iMinkowskiFace = 0;
+                {
+                    boolean[] primalVertDone = new boolean[nPrimalVerts];  // false initially
+                    for (int iEdge = 0; iEdge < nEdges; ++iEdge) {
+                        Mesh.Edge primalEdge0 = primal.getEdge(iEdge);
+                        Mesh.Edge dualEdge0 = dual.getEdge(iEdge); // leftward facing
+                        Mesh.Vertex finalPrimalVert = primalEdge0.finalVertex();
+                        int finalPrimalVertIndex = finalPrimalVert.myIndex();
+                        if (!primalVertDone[finalPrimalVertIndex])
+                        {
+                            int[] dualFace = getMeshFace(dual, dualEdge0.myIndex());
+                            Arrays.reverse(dualFace, dualFace);
+                            for (int i = 0; i < dualFace.length; ++i)
+                            {
+                                dualFace[i] = vv2v.get(finalPrimalVertIndex+","+dualFace[i]);
+                            }
+                            minkowskiFaces[iMinkowskiFace++] = dualFace;
+                            primalVertDone[finalPrimalVertIndex] = true;
+                        }
+                    }
+                }
+                {
+                    boolean[] dualVertDone = new boolean[nDualVerts];  // false initially
+                    for (int iEdge = 0; iEdge < nEdges; ++iEdge) {
+                        Mesh.Edge primalEdge0 = primal.getEdge(iEdge);
+                        Mesh.Edge dualEdge0 = dual.getEdge(iEdge);
+                        Mesh.Vertex leftDualVert = dualEdge0.finalVertex();
+                        int leftDualVertIndex = leftDualVert.myIndex();
+                        if (!dualVertDone[leftDualVertIndex]) {
+                            int[] primalFace = getMeshFace(primal, primalEdge0.myIndex());
+                            for (int i = 0; i < primalFace.length; ++i)
+                            {
+                                primalFace[i] = vv2v.get(primalFace[i]+","+leftDualVertIndex);
+                            }
+                            minkowskiFaces[iMinkowskiFace++] = primalFace;
+                            dualVertDone[leftDualVertIndex] = true;
+                        }
+                    }
+                }
                 for (int iEdge = 0; iEdge < nUndirectedEdges; ++iEdge) {
                     Mesh.Edge primalEdge = primal.getEdge(2*iEdge);
                     Mesh.Edge dualEdge = dual.getEdge(2*iEdge);
@@ -3367,51 +3439,72 @@ final public class MeshUtils
                         vv2v.get(primalEdgeEndpoints[0].myIndex()+","+dualEdgeEndpoints[1].myIndex()),
                     };
                 }
-                boolean[] primalVertDone = new boolean[nPrimalVerts];  // false initially
-                boolean[] dualVertDone = new boolean[nDualVerts];  // false initially
-                for (int iEdge = 0; iEdge < nEdges; ++iEdge) {
-                    Mesh.Edge primalEdge0 = primal.getEdge(iEdge);
-                    Mesh.Edge dualEdge0 = dual.getEdge(iEdge);
-                    Mesh.Vertex leftDualVert = dualEdge0.finalVertex();
-                    Mesh.Vertex finalPrimalVert = primalEdge0.finalVertex();
-                    int leftDualVertIndex = leftDualVert.myIndex();
-                    int finalPrimalVertIndex = finalPrimalVert.myIndex();
+                CHECK_EQ(iMinkowskiFace, minkowskiFaces.length);
+                PRINTARRAY(minkowskiFaces);
+                OUT("      calling Mesh ctor on minkowski verts and faces");
+                int nMinkowskiEdges = nEdges * 4;
+                minkowskiEdge2MinkowskiFaceIndex = new int[nMinkowskiEdges][2];  // to be filled in
+                minkowskiAverageMesh = new Mesh(verts, minkowskiFaces, minkowskiEdge2MinkowskiFaceIndex);
+                OUT("      returned from Mesh ctor on minkowski verts and faces");
+                PRINT(minkowskiAverageMesh.verts.size());
+                PRINT(minkowskiAverageMesh.edges.size());
+                PRINTARRAY(minkowskiEdge2MinkowskiFaceIndex);
 
-                    if (!dualVertDone[leftDualVertIndex]) {
-                        int[] primalFace = getMeshFace(primal, primalEdge0.myIndex());
-                        for (int i = 0; i < primalFace.length; ++i)
-                        {
-                            primalFace[i] = vv2v.get(primalFace[i]+","+leftDualVertIndex);
+                if (minkowskiAverageDualMesh != null) {
+                    PRINT(minkowskiAverageDualMesh.verts.size());
+                    PRINT(minkowskiAverageDualMesh.edges.size());
+                }
+
+
+                if (true) { // XXX maybe put this somewhere more generic?
+                    // Sanity check.
+                    CHECK_EQ(nMinkowskiEdges, minkowskiAverageMesh.edges.size());
+
+                    // face-and-index to edge index, inverse of minkowskiEdge2MinkowskiFaceIndex
+                    int[][] fi2e = new int[minkowskiFaces.length][];
+                    for (int i = 0; i < fi2e.length; ++i) {
+                        fi2e[i] = Arrays.fill(minkowskiFaces[i].length, -1);
+                    }
+                    for (int iMinkowskiEdge = 0; iMinkowskiEdge < nMinkowskiEdges; ++iMinkowskiEdge) {
+                        int i = minkowskiEdge2MinkowskiFaceIndex[iMinkowskiEdge][0];
+                        int j = minkowskiEdge2MinkowskiFaceIndex[iMinkowskiEdge][1];
+                        CHECK_EQ(fi2e[i][j], -1);
+                        fi2e[i][j] = iMinkowskiEdge;
+                    }
+                    for (int i = 0; i < fi2e.length; ++i) {
+                        for (int j = 0; j < fi2e[i].length; ++j) {
+                            CHECK_NE(fi2e[i][j], -1);
                         }
-                        minkowskiFaces[iMinkowskiFace++] = primalFace;
-                        dualVertDone[leftDualVertIndex] = true;
                     }
 
-                    if (!primalVertDone[finalPrimalVertIndex]) {
-                        int[] dualFace = getMeshFace(dual, dualEdge0.myIndex());
-                        Arrays.reverse(dualFace, dualFace);
-                        for (int i = 0; i < dualFace.length; ++i)
-                        {
-                            dualFace[i] = vv2v.get(finalPrimalVertIndex+","+dualFace[i]);
-                        }
-                        minkowskiFaces[iMinkowskiFace++] = dualFace;
-                        primalVertDone[finalPrimalVertIndex] = true;
+                    // XXX O(n^2)! need to keep track of what I've done already
+                    for (int iEdge = 0; iEdge < nMinkowskiEdges; ++iEdge) {
+                        Mesh.Edge edge0 = minkowskiAverageMesh.getEdge(iEdge);
+                        Mesh.Edge edge = edge0;
+                        do {
+                            Mesh.Edge nextEdge = edge.next();
+                            CHECK_EQ(minkowskiEdge2MinkowskiFaceIndex[edge.myIndex()][0],
+                                     minkowskiEdge2MinkowskiFaceIndex[nextEdge.myIndex()][0]);
+                            CHECK_EQ((minkowskiEdge2MinkowskiFaceIndex[edge.myIndex()][1] + 1) % minkowskiFaces[minkowskiEdge2MinkowskiFaceIndex[edge.myIndex()][0]].length,
+                                     minkowskiEdge2MinkowskiFaceIndex[nextEdge.myIndex()][1]);
+                            edge = nextEdge;
+                        } while (edge != edge0);
                     }
                 }
-                CHECK_EQ(iMinkowskiFace, minkowskiFaces.length);
-                minkowskiAverageMesh = new Mesh(verts, minkowskiFaces);
             }
             else
             {
                 // Punt.
+                OUT("  there was at least one ray, so just using convex hull for the minkowski mesh.");
                 minkowskiAverageMesh = new Mesh(verts, new int[0][0]);
                 minkowskiAverageMesh = MeshUtils.delaunayized(minkowskiAverageMesh,
                                                               /*wrapAroundSphereFlagValue=*/false,
                                                               /*wrapSphereCurvatureValue=*/1.,
                                                               /*centerSphereFlagValue=*/false,
-                                                              /*calcInsideOutDualVertsFlagValue=*/false,
+                                                              /*calcInsideOutDualVertsFlagValue=*/true,
                                                               /*slightlyVerbose=*/true);
             }
+            // Correct negativity.
             for (int i = 0; i < verts.length; ++i)
             {
                 int[] vv = v2vv.get(i);
@@ -3430,18 +3523,133 @@ final public class MeshUtils
                     CHECK_EQ(minkowskiVert.W(), -1.);
                 }
             }
-            //if (foundAtLeastOneRay)
-            if (true)
+
+            if (minkowskiAverageDualMesh == null)
             {
-              // XXX temporary?  required at least for now, until we get number of minkowski edges right
-              minkowskiAverageDualMesh = Mesh.makeDualMesh(minkowskiAverageMesh,
-                                                           /*includeNonArity3=*/false,  // XXX ? doesn't seem to make any difference?  need to get clear on what this is supposed to do
-                                                           /*includeInsideOut=*/true,  // XXX ?
-                                                           /*wrapAroundSphereFlagValue=*/false,
-                                                           /*centerSphereFlagValue=*/false,
-                                                           /*wrapSphereCurvatureValue=*/1.);
-            }
+                // Make the dual mesh, structurally, with zeros for verts, for starters.
+                // We can't rely on it for vert coords, since it wouldn't be able to figure out digons.
+                minkowskiAverageDualMesh = Mesh.makeDualMesh(minkowskiAverageMesh,
+                                                             /*includeNonArity3=*/true,
+                                                             /*includeInsideOut=*/true,
+                                                             /*zeroVerts=*/true,
+                                                             /*wrapAroundSphereFlagValue=*/false,
+                                                             /*centerSphereFlagValue=*/false,
+                                                             /*wrapSphereCurvatureValue=*/1.);
+                OUT("no, really...");  // XXX we created dual mesh previously.  just remove that, I think, and return null if there are rays?  that's a lame case anyway
+                PRINT(minkowskiAverageDualMesh.verts.size());
+                PRINT(minkowskiAverageDualMesh.edges.size());
+
+                // Correct the vertices of the dual.
+                // Each dual-of-minkowski vertex will be either:
+                //   - An original primal vertex, with h set to 0
+                //   - An original dual vertex, with h set to 0
+                //   - The intersection of an original primal and dual edge, with h set to 0.
+                if (minkowskiEdge2MinkowskiFaceIndex != null)
+                {
+                    boolean[] didDualMeshVertexAlready = new boolean[minkowskiAverageDualMesh.verts.size()];  // false initially
+                    int nMinkowskiEdges = minkowskiEdge2MinkowskiFaceIndex.length;
+                    for (int iMinkowskiEdge = 0; iMinkowskiEdge < nMinkowskiEdges; ++iMinkowskiEdge) {
+                        int i = minkowskiEdge2MinkowskiFaceIndex[iMinkowskiEdge][0];
+                        if (didDualMeshVertexAlready[i]) continue;
+                        didDualMeshVertexAlready[i] = true;
+                        int j = minkowskiEdge2MinkowskiFaceIndex[iMinkowskiEdge][1];
+                        Mesh.Vertex minkowskiDualVert = minkowskiAverageDualMesh.getVert(i);
+                        if (i < nPrimalVerts) {
+                            int iPrimalVert = i;
+                            Mesh.Vertex primalVert = primal.getVert(iPrimalVert);
+                            double x = primalVert.x();
+                            double y = primalVert.y();
+                            minkowskiDualVert.setXYHW(x, y, 0., 1.);
+                            if (primalVert.weight < 0.)
+                            {
+                                minkowskiDualVert.weight = -1.;
+                                minkowskiDualVert.setXYZW(
+                                    -minkowskiDualVert.X(),
+                                    -minkowskiDualVert.Y(),
+                                    -minkowskiDualVert.Z(),
+                                    -minkowskiDualVert.W());
+                            }
+                        }
+                        else if (i < nPrimalVerts+nDualVerts)
+                        {
+                            int iDualVert = i-nPrimalVerts;
+                            Mesh.Vertex dualVert = dual.getVert(iDualVert);
+                            double x = dualVert.x();
+                            double y = dualVert.y();
+                            minkowskiDualVert.setXYHW(x, y, 0., 1.);
+                            if (dualVert.weight < 0.)
+                            {
+                                minkowskiDualVert.weight = -1.;
+                                minkowskiDualVert.setXYZW(
+                                    -minkowskiDualVert.X(),
+                                    -minkowskiDualVert.Y(),
+                                    -minkowskiDualVert.Z(),
+                                    -minkowskiDualVert.W());
+                            }
+                        }
+                        else
+                        {
+                            int iUndirectedEdge = i-(nPrimalVerts+nDualVerts);
+                            // This minkowski face is a quad; it's the minkowski average of a primal and dual edge.
+                            // The dual vertex will be the intersection of that primal and dual edge.
+                            Mesh.Edge minkowskiEdge = minkowskiAverageMesh.getEdge(iMinkowskiEdge);
+                            CHECK(minkowskiEdge.next().next().next().next() == minkowskiEdge);
+
+                            // XXX I'm sure I do this in another place, where is it?
+                            Mesh.Edge primalEdge = primal.getEdge(2*iUndirectedEdge);
+                            Mesh.Edge dualEdge = dual.getEdge(2*iUndirectedEdge);
+
+                            Mesh.Vertex primalVert = primalEdge.initialVertex();
+                            CHECK(primalVert != null);
+                            Mesh.Vertex dualVert = dualEdge.initialVertex();
+                            if (dualVert == null) dualVert = dualEdge.finalVertex();
+                            double[] p0 = {primalVert.x(), primalVert.y()};
+                            double[] p1 = {dualVert.x(), dualVert.y()};
+
+                            double[] dualEdgeDirection = dualEdge.direction;
+                            CHECK(dualEdgeDirection != null);
+                            CHECK(primalEdge.direction == null);
+                            Mesh.Vertex primalVert1 = primalEdge.finalVertex();
+                            double[] primalEdgeDirection = {primalVert1.x() - p0[0], primalVert1.y() - p0[1]};
+
+                            double[] v0 = {primalEdgeDirection[0], primalEdgeDirection[1]};
+                            double[] v1 = {dualEdgeDirection[0], dualEdgeDirection[1]};
+                            double[] intersection = new double[2];
+                            GeomUtils.intersectLines(intersection, p0, v0, p1, v1);
+                            double x = intersection[0];
+                            double y = intersection[1];
+                            double h = 0.;
+
+                            if (false) {
+                                double angle = Math.random() * 2 * Math.PI;
+                                x = Math.cos(angle) * .75;
+                                y = Math.sin(angle) * .75;
+                            }
+
+                            minkowskiDualVert.setXYHW(x, y, h, 1.);
+                            // TODO: when to set W negative?  I have no idea.
+                        }
+                    }  // for iMinkowskiEdge
+                }  // if minkowskiEdge2MinkowskiFaceIndex != null
+
+                if (true) {
+                    // Just kill the edges, for now.
+                    while (minkowskiAverageDualMesh.edges.size() > 0) {
+                        minkowskiAverageDualMesh.deleteEdge(minkowskiAverageDualMesh.getEdge(minkowskiAverageDualMesh.edges.size()-1));
+                    }
+                    // argh, and num edges must match, so...
+                    minkowskiAverageDualMesh = MeshUtils.delaunayized(minkowskiAverageDualMesh,
+                                                              /*wrapAroundSphereFlagValue=*/false,
+                                                              /*wrapSphereCurvatureValue=*/1.,
+                                                              /*centerSphereFlagValue=*/false,
+                                                              /*calcInsideOutDualVertsFlagValue=*/false,
+                                                              /*slightlyVerbose=*/true);
+                    PRINT(minkowskiAverageDualMesh.verts.size());
+                    PRINT(minkowskiAverageDualMesh.edges.size());
+                }
+            }  // if (true)  (or something)
         }
+        OUT("out MakePrimalDualMinkowskiAverageAndDual");
         return new Mesh[] {
           minkowskiAverageMesh,
           minkowskiAverageDualMesh,
@@ -3524,6 +3732,7 @@ final public class MeshUtils
         Mesh intersectionMesh = Mesh.makeDualMesh(convexHullMesh,
                                                   /*includeNonArity3=*/false,
                                                   /*includeInsideOut=*/false,  // always true these days
+                                                  /*zeroVerts=*/false,
                                                   /*wrapAroundSphereFlagValue=*/false,
                                                   /*centerSphereFlagValue=*/false,
                                                   /*wrapSphereCurvatureValue=*/1.);
