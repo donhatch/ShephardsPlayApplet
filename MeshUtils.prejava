@@ -3253,6 +3253,8 @@ final public class MeshUtils
                                                                Mesh dual)
     {
         OUT("in MakePrimalDualMinkowskiAverageAndDual");
+        PRINT(primal);
+        PRINT(dual);
         int nPrimalVerts = primal.verts.size();
         int nEdges = primal.edges.size();
         CHECK_EQ(nEdges % 2, 0);
@@ -3524,6 +3526,8 @@ final public class MeshUtils
                 }
             }
 
+            PRINT(minkowskiAverageMesh);
+
             if (minkowskiAverageDualMesh == null)
             {
                 // Make the dual mesh, structurally, with zeros for verts, for starters.
@@ -3538,6 +3542,7 @@ final public class MeshUtils
                 OUT("no, really...");  // XXX we created dual mesh previously.  just remove that, I think, and return null if there are rays?  that's a lame case anyway
                 PRINT(minkowskiAverageDualMesh.verts.size());
                 PRINT(minkowskiAverageDualMesh.edges.size());
+                PRINT(minkowskiAverageDualMesh);
 
                 // Correct the vertices of the dual.
                 // Each dual-of-minkowski vertex will be either:
@@ -3546,14 +3551,25 @@ final public class MeshUtils
                 //   - The intersection of an original primal and dual edge, with h set to 0.
                 if (minkowskiEdge2MinkowskiFaceIndex != null)
                 {
+                    // NOTE: this is not actually indexed by dual mesh vert index; it's indexed by the index of the corresponding face in the recipe minkowskiFaces.  But that's ok.
                     boolean[] didDualMeshVertexAlready = new boolean[minkowskiAverageDualMesh.verts.size()];  // false initially
+                    boolean[] didIAlready = new boolean[minkowskiAverageDualMesh.verts.size()];  // false initially
                     int nMinkowskiEdges = minkowskiEdge2MinkowskiFaceIndex.length;
                     for (int iMinkowskiEdge = 0; iMinkowskiEdge < nMinkowskiEdges; ++iMinkowskiEdge) {
                         int i = minkowskiEdge2MinkowskiFaceIndex[iMinkowskiEdge][0];
-                        if (didDualMeshVertexAlready[i]) continue;
-                        didDualMeshVertexAlready[i] = true;
-                        int j = minkowskiEdge2MinkowskiFaceIndex[iMinkowskiEdge][1];
-                        Mesh.Vertex minkowskiDualVert = minkowskiAverageDualMesh.getVert(i);
+
+                        //int j = minkowskiEdge2MinkowskiFaceIndex[iMinkowskiEdge][1];  // unused
+                        Mesh.Vertex minkowskiDualVert = minkowskiAverageDualMesh.getEdge(iMinkowskiEdge).finalVertex();
+
+                        CHECK_EQ(didDualMeshVertexAlready[minkowskiDualVert.myIndex()], didIAlready[i]);
+                        if (didDualMeshVertexAlready[minkowskiDualVert.myIndex()]) continue;
+                        didDualMeshVertexAlready[minkowskiDualVert.myIndex()] = true;
+                        didIAlready[i] = true;
+
+                        OUT("=====");
+                        PRINT(minkowskiDualVertNOT.myIndex());
+                        PRINT(minkowskiDualVert.myIndex());
+                        OUT("=====");
                         if (i < nPrimalVerts) {
                             int iPrimalVert = i;
                             Mesh.Vertex primalVert = primal.getVert(iPrimalVert);
@@ -3630,20 +3646,34 @@ final public class MeshUtils
                             // TODO: when to set W negative?  I have no idea.
                         }
                     }  // for iMinkowskiEdge
+                    OUT("after vert correction:");
+                    PRINT(minkowskiAverageDualMesh);
                 }  // if minkowskiEdge2MinkowskiFaceIndex != null
 
-                if (true) {
+                if (false) {  // XXX get rid of this when through messing around, it's pretty useless anyway
+                    OUT("before:");
+                    PRINT(minkowskiAverageDualMesh.verts.size());
+                    PRINT(minkowskiAverageDualMesh.edges.size());
                     // Just kill the edges, for now.
                     while (minkowskiAverageDualMesh.edges.size() > 0) {
                         minkowskiAverageDualMesh.deleteEdge(minkowskiAverageDualMesh.getEdge(minkowskiAverageDualMesh.edges.size()-1));
                     }
+                    int nDualVertsToKeep = 2;
+                    while (minkowskiAverageDualMesh.verts.size() > nDualVertsToKeep)
+                    {
+                        minkowskiAverageDualMesh.deleteVertex(minkowskiAverageDualMesh.getVert(minkowskiAverageDualMesh.verts.size()-1), /*oldToNew=*/null, /*newToOld=*/null);
+                    }
+
                     // argh, and num edges must match, so...
+                    if (false)
                     minkowskiAverageDualMesh = MeshUtils.delaunayized(minkowskiAverageDualMesh,
                                                               /*wrapAroundSphereFlagValue=*/false,
                                                               /*wrapSphereCurvatureValue=*/1.,
                                                               /*centerSphereFlagValue=*/false,
                                                               /*calcInsideOutDualVertsFlagValue=*/false,
                                                               /*slightlyVerbose=*/true);
+                    // argh, and they STILL don't match :-(
+                    OUT("after:");
                     PRINT(minkowskiAverageDualMesh.verts.size());
                     PRINT(minkowskiAverageDualMesh.edges.size());
                 }
