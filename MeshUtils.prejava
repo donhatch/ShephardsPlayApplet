@@ -2791,7 +2791,7 @@ final public class MeshUtils
     //      0 0 .1  .1 0 10  .2 0 .1 .3 0 10  .4 0 .1  .5 0 10
     //
     //      just noise 1000, delaunayized
-    //      0 0 .1  .2 .25 .1  .4 1 .1 
+    //      0 0 .1  .2 .25 .1  .4 1 .1
     // however, starting from upwards net usually solves it.  hmm.
     public static void applyRadialHeightFieldPairsToMesh(Mesh mesh, double pairs[][])
     {
@@ -3252,9 +3252,10 @@ final public class MeshUtils
     public static Mesh[] MakePrimalDualMinkowskiAverageAndDual(Mesh primal,
                                                                Mesh dual)
     {
-        OUT("in MakePrimalDualMinkowskiAverageAndDual");
-        PRINT(primal);
-        PRINT(dual);
+        int verboseLevel = 1;
+        if (verboseLevel >= 1) OUT("in MakePrimalDualMinkowskiAverageAndDual");
+        if (verboseLevel >= 2) PRINT(primal);
+        if (verboseLevel >= 2) PRINT(dual);
 
         int nPrimalVerts = primal.verts.size();
         int nEdges = primal.edges.size();
@@ -3281,7 +3282,7 @@ final public class MeshUtils
             if (hasARay)
             {
                 // Can't make it unless all verts exist.
-                OUT("out MakePrimalDualMinkowskiAverageAndDual, returning null because there's a ray");
+                if (verboseLevel >= 1) OUT("out MakePrimalDualMinkowskiAverageAndDual, returning null because there's a ray (to prevent this, delaunayize with \"Calc underside when delaunayizing\" on");
                 return null;
             }
         }
@@ -3315,8 +3316,8 @@ final public class MeshUtils
                     }
                 }
             }
-            PRINTARRAY(vv2v);
-            PRINTARRAY(v2vv);
+            if (verboseLevel >= 2) PRINTARRAY(vv2v);
+            if (verboseLevel >= 2) PRINTARRAY(v2vv);
             double[][] minkowskiAverageVerts = new double[v2vv.size()][4];
             for (int i = 0; i < minkowskiAverageVerts.length; ++i)
             {
@@ -3330,7 +3331,6 @@ final public class MeshUtils
                 minkowskiAverageVerts[i][2] = LERP(primalVert.z(), dualVert.z(), .5);
                 minkowskiAverageVerts[i][3] = 1.;
             }
-            OUT("  no rays, so using the topology-aware mesh ctor for minkowski average");
             // Every edge has both endpoints, so can use the topology-aware mesh constructor for minkowski average.
             // The minkowski faces will be, in order:
             //   - one for each vertex of the primal (i.e. face of the dual)
@@ -3385,15 +3385,15 @@ final public class MeshUtils
                     vv2v.get(primalEdgeEndpoints[0].myIndex()+","+dualEdgeEndpoints[1].myIndex()),
                 };
             }
-            PRINTARRAY(minkowskiFaces);
-            OUT("      calling Mesh ctor on minkowski verts and faces");
+            if (verboseLevel >= 2) PRINTARRAY(minkowskiFaces);
+            if (verboseLevel >= 2) OUT("      calling Mesh ctor on minkowski verts and faces");
             int nMinkowskiEdges = nEdges * 4;
             minkowskiEdge2MinkowskiFaceIndex = new int[nMinkowskiEdges][2];  // to be filled in
             minkowskiAverageMesh = new Mesh(minkowskiAverageVerts, minkowskiFaces, minkowskiEdge2MinkowskiFaceIndex);
-            OUT("      returned from Mesh ctor on minkowski verts and faces");
-            PRINT(minkowskiAverageMesh.verts.size());
-            PRINT(minkowskiAverageMesh.edges.size());
-            PRINTARRAY(minkowskiEdge2MinkowskiFaceIndex);
+            if (verboseLevel >= 2) OUT("      returned from Mesh ctor on minkowski verts and faces");
+            if (verboseLevel >= 2) PRINT(minkowskiAverageMesh.verts.size());
+            if (verboseLevel >= 2) PRINT(minkowskiAverageMesh.edges.size());
+            if (verboseLevel >= 2) PRINTARRAY(minkowskiEdge2MinkowskiFaceIndex);
 
             if (true) { // XXX maybe put this somewhere more generic?
                 // Sanity check.
@@ -3449,8 +3449,48 @@ final public class MeshUtils
 		    CHECK_EQ(minkowskiVert.W(), -1.);
 		}
 	    }
+            // For each primal or dual edge that had a direction,
+            // copy that direction to each minkowski edge
+            // that's in that same direction.
+            // This can be important when drawing the edge,
+            // in the case that the edge goes from a point to the same point in the other world.
+            for (int iMinkowskiEdge = 0; iMinkowskiEdge < nMinkowskiEdges; ++iMinkowskiEdge) {
+                // Which minkowski polygon did it come from?
+                int i = minkowskiEdge2MinkowskiFaceIndex[iMinkowskiEdge][0];
+                int j = minkowskiEdge2MinkowskiFaceIndex[iMinkowskiEdge][1];
+                  if (i >= nPrimalVerts + nDualVerts) {
+                    CHECK_EQ(minkowskiFaces[i].length, 4);
+                    int iEdge = i - (nPrimalVerts+nDualVerts);
+                    // Recall that this minkowski face is a quad that was constructed as:
+                    // p0d0 p1d0 p1d1 p0d1
+                    // where p0,p1,d0,d1 are the endpoints of the primal
+                    // and dual edge.
+                    Mesh.Edge primalEdge = primal.getEdge(2*iEdge);
+                    Mesh.Edge dualEdge = dual.getEdge(2*iEdge);
+                    // I.e. the directions of the four edges on this quad are:
+                    //   primalEdge.direction
+                    //   dualEdge.direction
+                    //   -primalEdge.direction
+                    //   -dualEdge.direction
+                    double[] direction =
+                      j==0 ? primalEdge.direction==null ? null : VecMath.copyvec(primalEdge.direction) :
+                      j==1 ? dualEdge.direction==null ? null : VecMath.copyvec(dualEdge.direction) :
+                      j==2 ? primalEdge.direction==null ? null : VecMath.sxv(-1., primalEdge.direction) :
+                      j==3 ? dualEdge.direction==null ? null : VecMath.sxv(-1., dualEdge.direction) :
+                      null;  // can't happen
+                    if (direction != null) {
+                        double[] oppositeDirection = VecMath.sxv(-1., direction);
+                        Mesh.Edge minkowskiEdge = minkowskiAverageMesh.getEdge(iMinkowskiEdge);
+                        Mesh.Edge minkowskiEdgeOpposite = minkowskiEdge.opposite();
+                        CHECK(minkowskiEdge.direction == null);
+                        CHECK(minkowskiEdgeOpposite.direction == null);
+                        minkowskiEdge.direction = direction;
+                        minkowskiEdgeOpposite.direction = oppositeDirection;
+                    }
+                }
+            }
         }
-        PRINT(minkowskiAverageMesh);
+        if (verboseLevel >= 2) PRINT(minkowskiAverageMesh);
 
         Mesh minkowskiAverageDualMesh = null;
         {
@@ -3463,9 +3503,9 @@ final public class MeshUtils
                                                          /*wrapAroundSphereFlagValue=*/false,
                                                          /*centerSphereFlagValue=*/false,
                                                          /*wrapSphereCurvatureValue=*/1.);
-            PRINT(minkowskiAverageDualMesh.verts.size());
-            PRINT(minkowskiAverageDualMesh.edges.size());
-            PRINT(minkowskiAverageDualMesh);
+            if (verboseLevel >= 2) PRINT(minkowskiAverageDualMesh.verts.size());
+            if (verboseLevel >= 2) PRINT(minkowskiAverageDualMesh.edges.size());
+            if (verboseLevel >= 2) PRINT(minkowskiAverageDualMesh);
 
             // Correct the vertices of the dual.
             // Each dual-of-minkowski vertex will be either:
@@ -3488,9 +3528,9 @@ final public class MeshUtils
                     didDualMeshVertexAlready[minkowskiDualVert.myIndex()] = true;
                     didIAlready[i] = true;
 
-                    OUT("=====");
-                    PRINT(minkowskiDualVert.myIndex());
-                    OUT("=====");
+                    if (verboseLevel >= 2) OUT("=====");
+                    if (verboseLevel >= 2) PRINT(minkowskiDualVert.myIndex());
+                    if (verboseLevel >= 2) OUT("=====");
                     if (i < nPrimalVerts) {
                         int iPrimalVert = i;
                         Mesh.Vertex primalVert = primal.getVert(iPrimalVert);
@@ -3545,7 +3585,7 @@ final public class MeshUtils
 
                         double[] dualEdgeDirection = dualEdge.direction;
                         CHECK(dualEdgeDirection != null);
-                        CHECK(primalEdge.direction == null);
+                        //CHECK(primalEdge.direction == null);  // actually it may be non-null, if primal was a previously constructed minkowski
                         Mesh.Vertex primalVert1 = primalEdge.finalVertex();
                         double[] primalEdgeDirection = {primalVert1.x() - p0[0], primalVert1.y() - p0[1]};
 
@@ -3567,11 +3607,11 @@ final public class MeshUtils
                         // TODO: when to set W negative?  I have no idea.
                     }
                 }  // for iMinkowskiEdge
-                OUT("after vert correction:");
-                PRINT(minkowskiAverageDualMesh);
+                if (verboseLevel >= 2) OUT("after vert correction:");
+                if (verboseLevel >= 2) PRINT(minkowskiAverageDualMesh);
             }
         }
-        OUT("out MakePrimalDualMinkowskiAverageAndDual");
+        if (verboseLevel >= 1) OUT("out MakePrimalDualMinkowskiAverageAndDual");
         return new Mesh[] {
           minkowskiAverageMesh,
           minkowskiAverageDualMesh,
