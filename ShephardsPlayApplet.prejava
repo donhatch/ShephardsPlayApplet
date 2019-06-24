@@ -3779,17 +3779,19 @@ public class ShephardsPlayApplet
                                 addActionListener(new java.awt.event.ActionListener() {
                                     @Override public void actionPerformed(java.awt.event.ActionEvent e)
                                     {
-                                        UndoItem.State before = applet.newUndoItemState();
                                         Mesh[] minkowskiAverageAndDual = MeshUtils.MakePrimalDualMinkowskiAverageAndDual(applet.mesh, applet.getDualMesh());
-                                        Mesh minkowskiAverage = minkowskiAverageAndDual[0];
-                                        Mesh minkowskiAverageDual = minkowskiAverageAndDual[1];
+                                        if (minkowskiAverageAndDual != null) {
+                                          UndoItem.State before = applet.newUndoItemState();
+                                          Mesh minkowskiAverage = minkowskiAverageAndDual[0];
+                                          Mesh minkowskiAverageDual = minkowskiAverageAndDual[1];
 
-                                        applet.mesh = minkowskiAverage;
-                                        applet._dualMesh = minkowskiAverageDual;
-                                        applet._primalMeshOfDualMesh = applet.mesh; // counter-counter-espionage, prevents dual from thinking it's dirty
-                                        UndoItem.State after = applet.newUndoItemState();
-                                        applet.undoTreeSquirrel.Do(new UndoItem(before, after));
-                                        applet.theCanvas.repaint();
+                                          applet.mesh = minkowskiAverage;
+                                          applet._dualMesh = minkowskiAverageDual;
+                                          applet._primalMeshOfDualMesh = applet.mesh; // counter-counter-espionage, prevents dual from thinking it's dirty
+                                          UndoItem.State after = applet.newUndoItemState();
+                                          applet.undoTreeSquirrel.Do(new UndoItem(before, after));
+                                          applet.theCanvas.repaint();
+                                        }
                                     }
                                 });
                             }});
@@ -9225,7 +9227,12 @@ public class ShephardsPlayApplet
 
                 int frontBrightness = 240;
                 int backBrightness = (int)(backfaceBrightness.get() * frontBrightness);
-                int passFacings[] = {MeshUtils.FACING_BACK, MeshUtils.FACING_SIDE, MeshUtils.FACING_FRONT, MeshUtils.FACING_UNKNOWN};
+                int passFacings[] = {
+                    MeshUtils.FACING_BACK,
+                    MeshUtils.FACING_SIDE,
+                    MeshUtils.FACING_FRONT,
+                    MeshUtils.FACING_UNKNOWN,
+                };
                 FORI (_iFacingPass, passFacings.length)
                 {
                     int passFacing = passFacings[_iFacingPass];
@@ -9399,7 +9406,7 @@ public class ShephardsPlayApplet
                             }
                             if (true) continue;
                         }
-#endif // 0
+#endif // 0, or 1
 
                         if (showPrimalEdgesFlag.get())
                         {
@@ -9453,9 +9460,28 @@ public class ShephardsPlayApplet
 
                                     double v0[] = vertCoordsHomo[edge.initialVertex().myIndex()];
                                     double v1[] = vertCoordsHomo[edge.finalVertex().myIndex()];
-                                    mg3d.drawLine(v0[0],v0[1],v0[2],v0[3],
-                                                v1[0],v1[1],v1[2],v1[3],
-                                                antiAliasingFlag);
+                                    // Difficult case: if drawing a line from front world to back
+                                    // world, and the two points are the same, then there's no way
+                                    // for mg3d to figure out the direction.
+                                    // In that case, fudge the negative-world vertex
+                                    // so that there will be a direction.
+                                    if (v1[0] == -v0[0]
+                                     && v1[1] == -v0[1]
+                                     && v1[2] == -v0[2]
+                                     && v1[3] == -v0[3]) {
+                                        OUT("pass "+_iFacingPass+":"+passFacing+": DRAWING DIFFICULT LINE FROM v0="+Arrays.toStringCompact(v0)+" to v1="+Arrays.toStringCompact(v1));
+                                        PRINT(edge);
+                                        PRINT(edge.direction);
+                                        mg3d.drawLine(v0[0],v0[1],v0[2],v0[3],
+                                                      v1[0]-.5*v1[3],v1[1]-.5*v1[3],v1[2],v1[3],
+                                                      antiAliasingFlag);
+                                    }
+                                    else
+                                    {
+                                        mg3d.drawLine(v0[0],v0[1],v0[2],v0[3],
+                                                      v1[0],v1[1],v1[2],v1[3],
+                                                      antiAliasingFlag);
+                                    }
 
                                     whichPrimalEdgesGotDrawn[iWholeEdge*2+0] = true;
                                     whichPrimalEdgesGotDrawn[iWholeEdge*2+1] = true;
