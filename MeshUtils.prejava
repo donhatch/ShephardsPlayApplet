@@ -3294,7 +3294,6 @@ final public class MeshUtils
             //   union {primalVert + dualEdge for each incident primal vert and dual edge}
             java.util.HashMap<String, Integer> vv2v = new java.util.HashMap<String, Integer>();
             java.util.HashMap<Integer, int[]> v2vv = new java.util.HashMap<Integer, int[]>();
-            boolean foundAtLeastOneRay = false;
             for (int iEdge = 0; iEdge < nUndirectedEdges; iEdge++) {
                 Mesh.Edge primalEdge = primal.getEdge(2*iEdge);
                 Mesh.Edge dualEdge = dual.getEdge(2*iEdge);
@@ -3305,13 +3304,7 @@ final public class MeshUtils
                 {
                     Mesh.Vertex primalVert = primalEdgeEndpoints[i];
                     Mesh.Vertex dualVert = dualEdgeEndpoints[j];
-                    if (primalVert == null || dualVert == null)
-                    {
-                        // This happens only if mesh dual had no underside,
-                        // i.e. if calcInsideOutDualVertsFlag was false when it was computed.
-                        foundAtLeastOneRay = true;
-                        continue;
-                    }
+                    CHECK(primalVert != null && dualVert != null);
                     String key = primalVert.myIndex() + "," + dualVert.myIndex();
                     Integer existing = vv2v.get(key);
                     if (existing == null) {
@@ -3337,140 +3330,125 @@ final public class MeshUtils
                 minkowskiAverageVerts[i][2] = LERP(primalVert.z(), dualVert.z(), .5);
                 minkowskiAverageVerts[i][3] = 1.;
             }
-            if (!foundAtLeastOneRay)
+            OUT("  no rays, so using the topology-aware mesh ctor for minkowski average");
+            // Every edge has both endpoints, so can use the topology-aware mesh constructor for minkowski average.
+            // The minkowski faces will be, in order:
+            //   - one for each vertex of the primal (i.e. face of the dual)
+            //   - one for each vertex of the dual (i.e. face of the primal)
+            //   - one for each undirected edge of the primal (i.e. undirected edge of the dual)
+            int[][] minkowskiFaces = new int[nPrimalVerts + nDualVerts + nUndirectedEdges][];  // all null initially
             {
-                OUT("  no rays, so using the topology-aware mesh ctor for minkowski average");
-                // Every edge has both endpoints, so can use the topology-aware mesh constructor for minkowski average.
-                // The minkowski faces will be, in order:
-                //   - one for each vertex of the primal (i.e. face of the dual)
-                //   - one for each vertex of the dual (i.e. face of the primal)
-                //   - one for each undirected edge of the primal (i.e. undirected edge of the dual)
-                int[][] minkowskiFaces = new int[nPrimalVerts + nDualVerts + nUndirectedEdges][];  // all null initially
-                {
-                    for (int iEdge = 0; iEdge < nEdges; ++iEdge) {
-                        Mesh.Edge primalEdge0 = primal.getEdge(iEdge);
-                        Mesh.Edge dualEdge0 = dual.getEdge(iEdge); // leftward facing
-                        Mesh.Vertex finalPrimalVert = primalEdge0.finalVertex();
-                        int finalPrimalVertIndex = finalPrimalVert.myIndex();
-                        if (minkowskiFaces[finalPrimalVertIndex] == null)
+                for (int iEdge = 0; iEdge < nEdges; ++iEdge) {
+                    Mesh.Edge primalEdge0 = primal.getEdge(iEdge);
+                    Mesh.Edge dualEdge0 = dual.getEdge(iEdge); // leftward facing
+                    Mesh.Vertex finalPrimalVert = primalEdge0.finalVertex();
+                    int finalPrimalVertIndex = finalPrimalVert.myIndex();
+                    if (minkowskiFaces[finalPrimalVertIndex] == null)
+                    {
+                        int[] dualFace = getMeshFace(dual, dualEdge0.myIndex());
+                        Arrays.reverse(dualFace, dualFace);
+                        for (int i = 0; i < dualFace.length; ++i)
                         {
-                            int[] dualFace = getMeshFace(dual, dualEdge0.myIndex());
-                            Arrays.reverse(dualFace, dualFace);
-                            for (int i = 0; i < dualFace.length; ++i)
-                            {
-                                dualFace[i] = vv2v.get(finalPrimalVertIndex+","+dualFace[i]);
-                            }
-                            minkowskiFaces[finalPrimalVertIndex] = dualFace;
+                            dualFace[i] = vv2v.get(finalPrimalVertIndex+","+dualFace[i]);
                         }
+                        minkowskiFaces[finalPrimalVertIndex] = dualFace;
                     }
                 }
-                {
-                    for (int iEdge = 0; iEdge < nEdges; ++iEdge) {
-                        Mesh.Edge primalEdge0 = primal.getEdge(iEdge);
-                        Mesh.Edge dualEdge0 = dual.getEdge(iEdge);
-                        Mesh.Vertex leftDualVert = dualEdge0.finalVertex();
-                        int leftDualVertIndex = leftDualVert.myIndex();
-                        if (minkowskiFaces[nPrimalVerts+leftDualVertIndex] == null)
+            }
+            {
+                for (int iEdge = 0; iEdge < nEdges; ++iEdge) {
+                    Mesh.Edge primalEdge0 = primal.getEdge(iEdge);
+                    Mesh.Edge dualEdge0 = dual.getEdge(iEdge);
+                    Mesh.Vertex leftDualVert = dualEdge0.finalVertex();
+                    int leftDualVertIndex = leftDualVert.myIndex();
+                    if (minkowskiFaces[nPrimalVerts+leftDualVertIndex] == null)
+                    {
+                        int[] primalFace = getMeshFace(primal, primalEdge0.myIndex());
+                        for (int i = 0; i < primalFace.length; ++i)
                         {
-                            int[] primalFace = getMeshFace(primal, primalEdge0.myIndex());
-                            for (int i = 0; i < primalFace.length; ++i)
-                            {
-                                primalFace[i] = vv2v.get(primalFace[i]+","+leftDualVertIndex);
-                            }
-                            minkowskiFaces[nPrimalVerts+leftDualVertIndex] = primalFace;
+                            primalFace[i] = vv2v.get(primalFace[i]+","+leftDualVertIndex);
                         }
-                    }
-                }
-                for (int iEdge = 0; iEdge < nUndirectedEdges; ++iEdge) {
-                    Mesh.Edge primalEdge = primal.getEdge(2*iEdge);
-                    Mesh.Edge dualEdge = dual.getEdge(2*iEdge);
-                    Mesh.Vertex[] primalEdgeEndpoints = {primalEdge.initialVertex(), primalEdge.finalVertex()};
-                    Mesh.Vertex[] dualEdgeEndpoints = {dualEdge.initialVertex(), dualEdge.finalVertex()};
-                    // p0d0 p1d0 p1d1 p0d1
-                    minkowskiFaces[nPrimalVerts+nDualVerts+iEdge] = new int[] {
-                        vv2v.get(primalEdgeEndpoints[0].myIndex()+","+dualEdgeEndpoints[0].myIndex()),
-                        vv2v.get(primalEdgeEndpoints[1].myIndex()+","+dualEdgeEndpoints[0].myIndex()),
-                        vv2v.get(primalEdgeEndpoints[1].myIndex()+","+dualEdgeEndpoints[1].myIndex()),
-                        vv2v.get(primalEdgeEndpoints[0].myIndex()+","+dualEdgeEndpoints[1].myIndex()),
-                    };
-                }
-                PRINTARRAY(minkowskiFaces);
-                OUT("      calling Mesh ctor on minkowski verts and faces");
-                int nMinkowskiEdges = nEdges * 4;
-                minkowskiEdge2MinkowskiFaceIndex = new int[nMinkowskiEdges][2];  // to be filled in
-                minkowskiAverageMesh = new Mesh(minkowskiAverageVerts, minkowskiFaces, minkowskiEdge2MinkowskiFaceIndex);
-                OUT("      returned from Mesh ctor on minkowski verts and faces");
-                PRINT(minkowskiAverageMesh.verts.size());
-                PRINT(minkowskiAverageMesh.edges.size());
-                PRINTARRAY(minkowskiEdge2MinkowskiFaceIndex);
-
-                if (true) { // XXX maybe put this somewhere more generic?
-                    // Sanity check.
-                    CHECK_EQ(nMinkowskiEdges, minkowskiAverageMesh.edges.size());
-
-                    // face-and-index to edge index, inverse of minkowskiEdge2MinkowskiFaceIndex
-                    int[][] fi2e = new int[minkowskiFaces.length][];
-                    for (int i = 0; i < fi2e.length; ++i) {
-                        fi2e[i] = Arrays.fill(minkowskiFaces[i].length, -1);
-                    }
-                    for (int iMinkowskiEdge = 0; iMinkowskiEdge < nMinkowskiEdges; ++iMinkowskiEdge) {
-                        int i = minkowskiEdge2MinkowskiFaceIndex[iMinkowskiEdge][0];
-                        int j = minkowskiEdge2MinkowskiFaceIndex[iMinkowskiEdge][1];
-                        CHECK_EQ(fi2e[i][j], -1);
-                        fi2e[i][j] = iMinkowskiEdge;
-                    }
-                    for (int i = 0; i < fi2e.length; ++i) {
-                        for (int j = 0; j < fi2e[i].length; ++j) {
-                            CHECK_NE(fi2e[i][j], -1);
-                        }
-                    }
-
-                    // XXX O(n^2)! need to keep track of what I've done already
-                    for (int iEdge = 0; iEdge < nMinkowskiEdges; ++iEdge) {
-                        Mesh.Edge edge0 = minkowskiAverageMesh.getEdge(iEdge);
-                        Mesh.Edge edge = edge0;
-                        do {
-                            Mesh.Edge nextEdge = edge.next();
-                            CHECK_EQ(minkowskiEdge2MinkowskiFaceIndex[edge.myIndex()][0],
-                                     minkowskiEdge2MinkowskiFaceIndex[nextEdge.myIndex()][0]);
-                            CHECK_EQ((minkowskiEdge2MinkowskiFaceIndex[edge.myIndex()][1] + 1) % minkowskiFaces[minkowskiEdge2MinkowskiFaceIndex[edge.myIndex()][0]].length,
-                                     minkowskiEdge2MinkowskiFaceIndex[nextEdge.myIndex()][1]);
-                            edge = nextEdge;
-                        } while (edge != edge0);
+                        minkowskiFaces[nPrimalVerts+leftDualVertIndex] = primalFace;
                     }
                 }
             }
-            else
-            {
-                // Punt.
-                OUT("  there was at least one ray, so just using convex hull for the minkowski mesh.");
-                minkowskiAverageMesh = new Mesh(minkowskiAverageVerts, new int[0][0]);
-                minkowskiAverageMesh = MeshUtils.delaunayized(minkowskiAverageMesh,
-                                                              /*wrapAroundSphereFlagValue=*/false,
-                                                              /*wrapSphereCurvatureValue=*/1.,
-                                                              /*centerSphereFlagValue=*/false,
-                                                              /*calcInsideOutDualVertsFlagValue=*/true,
-                                                              /*slightlyVerbose=*/true);
+            for (int iEdge = 0; iEdge < nUndirectedEdges; ++iEdge) {
+                Mesh.Edge primalEdge = primal.getEdge(2*iEdge);
+                Mesh.Edge dualEdge = dual.getEdge(2*iEdge);
+                Mesh.Vertex[] primalEdgeEndpoints = {primalEdge.initialVertex(), primalEdge.finalVertex()};
+                Mesh.Vertex[] dualEdgeEndpoints = {dualEdge.initialVertex(), dualEdge.finalVertex()};
+                // p0d0 p1d0 p1d1 p0d1
+                minkowskiFaces[nPrimalVerts+nDualVerts+iEdge] = new int[] {
+                    vv2v.get(primalEdgeEndpoints[0].myIndex()+","+dualEdgeEndpoints[0].myIndex()),
+                    vv2v.get(primalEdgeEndpoints[1].myIndex()+","+dualEdgeEndpoints[0].myIndex()),
+                    vv2v.get(primalEdgeEndpoints[1].myIndex()+","+dualEdgeEndpoints[1].myIndex()),
+                    vv2v.get(primalEdgeEndpoints[0].myIndex()+","+dualEdgeEndpoints[1].myIndex()),
+                };
             }
-            // Correct negativity.
-            for (int i = 0; i < minkowskiAverageVerts.length; ++i)
-            {
-                int[] vv = v2vv.get(i);
-                Mesh.Vertex primalVert = primal.getVert(vv[0]);
-                Mesh.Vertex dualVert = dual.getVert(vv[1]);
-                Mesh.Vertex minkowskiVert = minkowskiAverageMesh.getVert(i);
-                CHECK_EQ(minkowskiVert.weight, 1.);
-                CHECK_EQ(minkowskiVert.W(), 1.);
-                if (primalVert.weight*dualVert.weight < 0.) {
-                    minkowskiVert.weight = -1.;
-                    minkowskiVert.setXYZW(
-                        -minkowskiVert.X(),
-                        -minkowskiVert.Y(),
-                        -minkowskiVert.Z(),
-                        -minkowskiVert.W());
-                    CHECK_EQ(minkowskiVert.W(), -1.);
+            PRINTARRAY(minkowskiFaces);
+            OUT("      calling Mesh ctor on minkowski verts and faces");
+            int nMinkowskiEdges = nEdges * 4;
+            minkowskiEdge2MinkowskiFaceIndex = new int[nMinkowskiEdges][2];  // to be filled in
+            minkowskiAverageMesh = new Mesh(minkowskiAverageVerts, minkowskiFaces, minkowskiEdge2MinkowskiFaceIndex);
+            OUT("      returned from Mesh ctor on minkowski verts and faces");
+            PRINT(minkowskiAverageMesh.verts.size());
+            PRINT(minkowskiAverageMesh.edges.size());
+            PRINTARRAY(minkowskiEdge2MinkowskiFaceIndex);
+
+            if (true) { // XXX maybe put this somewhere more generic?
+                // Sanity check.
+                CHECK_EQ(nMinkowskiEdges, minkowskiAverageMesh.edges.size());
+
+                // face-and-index to edge index, inverse of minkowskiEdge2MinkowskiFaceIndex
+                int[][] fi2e = new int[minkowskiFaces.length][];
+                for (int i = 0; i < fi2e.length; ++i) {
+                    fi2e[i] = Arrays.fill(minkowskiFaces[i].length, -1);
+                }
+                for (int iMinkowskiEdge = 0; iMinkowskiEdge < nMinkowskiEdges; ++iMinkowskiEdge) {
+                    int i = minkowskiEdge2MinkowskiFaceIndex[iMinkowskiEdge][0];
+                    int j = minkowskiEdge2MinkowskiFaceIndex[iMinkowskiEdge][1];
+                    CHECK_EQ(fi2e[i][j], -1);
+                    fi2e[i][j] = iMinkowskiEdge;
+                }
+                for (int i = 0; i < fi2e.length; ++i) {
+                    for (int j = 0; j < fi2e[i].length; ++j) {
+                        CHECK_NE(fi2e[i][j], -1);
+                    }
+                }
+
+                // XXX O(n^2)! need to keep track of what I've done already
+                for (int iEdge = 0; iEdge < nMinkowskiEdges; ++iEdge) {
+                    Mesh.Edge edge0 = minkowskiAverageMesh.getEdge(iEdge);
+                    Mesh.Edge edge = edge0;
+                    do {
+                        Mesh.Edge nextEdge = edge.next();
+                        CHECK_EQ(minkowskiEdge2MinkowskiFaceIndex[edge.myIndex()][0],
+                                 minkowskiEdge2MinkowskiFaceIndex[nextEdge.myIndex()][0]);
+                        CHECK_EQ((minkowskiEdge2MinkowskiFaceIndex[edge.myIndex()][1] + 1) % minkowskiFaces[minkowskiEdge2MinkowskiFaceIndex[edge.myIndex()][0]].length,
+                                 minkowskiEdge2MinkowskiFaceIndex[nextEdge.myIndex()][1]);
+                        edge = nextEdge;
+                    } while (edge != edge0);
                 }
             }
+	    // Correct negativity.
+	    for (int i = 0; i < minkowskiAverageVerts.length; ++i)
+	    {
+		int[] vv = v2vv.get(i);
+		Mesh.Vertex primalVert = primal.getVert(vv[0]);
+		Mesh.Vertex dualVert = dual.getVert(vv[1]);
+		Mesh.Vertex minkowskiVert = minkowskiAverageMesh.getVert(i);
+		CHECK_EQ(minkowskiVert.weight, 1.);
+		CHECK_EQ(minkowskiVert.W(), 1.);
+		if (primalVert.weight*dualVert.weight < 0.) {
+		    minkowskiVert.weight = -1.;
+		    minkowskiVert.setXYZW(
+			-minkowskiVert.X(),
+			-minkowskiVert.Y(),
+			-minkowskiVert.Z(),
+			-minkowskiVert.W());
+		    CHECK_EQ(minkowskiVert.W(), -1.);
+		}
+	    }
         }
         PRINT(minkowskiAverageMesh);
 
