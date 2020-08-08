@@ -265,7 +265,7 @@ TO DO:
   Misc:
     - get VERY clear on what negative weights/W's mean through the pipeline
     - maybe use quadratic surds to avoid losing precision, e.g. for sqrt(2) scales?
-    - should mesh store squares of coords instead of coords?  then sqrt(2) scaling could be expressed exactly
+    - should mesh store squares of coords instead of coords?  then sqrt(2) scaling could be expressed exactly.  (no, would fall apart when verts added when scale is sqrt(2)
     - need a way to ask where remaining bad lagoon exits are (finding them visually is a needle in a haystack sometimes)
     - idea: save should operate in xyh when not wrapped around sphere, xyzw when wrapped around sphere? and load should set wrap based on it(but what about center? hmm, maybe should automatically uncenter for purpose of saving/loading? not sure. and the buttons can change
 
@@ -4612,9 +4612,10 @@ public class ShephardsPlayApplet
             FORIDOWN(iVert, mesh.verts.size())
             {
                 Mesh.Vertex vert = mesh.getVert(iVert);
-                vert.setXYZnaive(vert.x(),
-                                 vert.y(),
-                                 vert.z() * scale);
+                vert.setXYZW(vert.X(),
+                             vert.Y(),
+                             vert.Z() * scale,
+                             vert.W());
                 CHECK_EQ(vert.momentAndArea, null);
             }
             dirtyDualMesh();
@@ -4625,10 +4626,21 @@ public class ShephardsPlayApplet
 
         public void rescalePrimalOnly(double scale)
         {
-            // cop out. note that this causes 2 undo items.
-            rescale(scale, scale);
-            rescaleDualOnly(1./scale);
-        }
+            UndoItem.State before = newUndoItemState();
+            FORIDOWN(iVert, mesh.verts.size())
+            {
+                Mesh.Vertex vert = mesh.getVert(iVert);
+                vert.setXYZW(vert.X() * scale,
+                             vert.Y() * scale,
+                             vert.Z() * scale,  // not scale*scale (which is what rescale(scale) would do)
+                             vert.W());
+                CHECK_EQ(vert.momentAndArea, null);
+            }
+            dirtyDualMesh();
+            UndoItem.State after = newUndoItemState();
+            undoTreeSquirrel.Do(new UndoItem(before, after));
+            theCanvas.repaint();
+        }  // rescaleDualOnly
 
         public void rescale(double scaleX, double scaleY)
         {
@@ -4655,6 +4667,7 @@ public class ShephardsPlayApplet
             {
                 Mesh.Vertex vert = mesh.getVert(iVert);
                 // non-naive when wrapped around sphere or when was wrapped and then unwrapped
+                // TODO: what was I saying in the above comment?
                 vert.setXYZW(vert.X() * scaleX,
                              vert.Y() * scaleY,
                              vert.Z() * scaleX * scaleY,
@@ -11615,8 +11628,9 @@ public class ShephardsPlayApplet
 
                 if (true)
                 {
-                    // randomly homogeneous scale half the verts by 2.
-                    // this shouldn't change anything.
+                    // Randomly homogeneous scale half the verts by 2.
+                    // This shouldn't change anything,
+                    // but it may root out some xform stuff that's too naive.
                     System.out.println("randomly homogeneous scaling about half the grid verts by 2");
                     int nVerts = mesh.verts.size();
                     FORI (iVert, nVerts)
