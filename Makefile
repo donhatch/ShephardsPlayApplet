@@ -31,18 +31,23 @@
 #JAVAROOT="c:/Program Files (x86)/Java/jdk1.6.0_17"
 #JAR=${JAVAROOT}/bin/jar
 
-#JAVAC=/usr/bin/javac -source 1.7 -target 1.7 -deprecation
-#JAR=/usr/bin/jar
+# "warning: [options] source value 6 is obsolete and will be removed in a future release"
+# "warning: [options] target value 1.6 is obsolete and will be removed in a future release"
 
-JAVAC=/usr/bin/javac -source 1.8 -target 1.8 -deprecation
+JAVAC=/usr/bin/javac -source 1.7 -target 1.7 -deprecation
 JAR=/usr/bin/jar
 
-# doesn't exist on my mac yet
+#JAVAC=/usr/bin/javac -source 1.8 -target 1.8 -deprecation
+#JAR=/usr/bin/jar
+
 #JAVAC=/usr/bin/javac -source 1.9 -target 1.9 -deprecation
 #JAR=/usr/bin/jar
 
-# doesn't exist on my mac yet
 #JAVAC=/usr/bin/javac -source 1.10 -target 1.10 -deprecation
+#JAR=/usr/bin/jar
+
+# doesn't exist on my lenovo laptop yet
+#JAVAC=/usr/bin/javac -source 1.11 -target 1.11 -deprecation
 #JAR=/usr/bin/jar
 
 #JAVAC=/usr/bin/javac
@@ -114,7 +119,7 @@ CPPFLAGS+=-DOVERRIDE=@Override
 
 .SUFFIXES: .prejava .java .class
 .prejava.class:
-	./javacpp ${CPPFLAGS} ${JAVAC} -deprecation -classpath ".$(CLASSPATHSEP)./donhatchsw.jar" $*.prejava
+	./javacpp ${CPPFLAGS} ${JAVAC} -classpath ".$(CLASSPATHSEP)./donhatchsw.jar" $*.prejava
 ifneq ($(uname),Cygwin)
 	./javarenumber -v 0 $*.class
         # too slow... only do this in the production version
