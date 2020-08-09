@@ -18,15 +18,6 @@
 #JAVAC=${JAVAROOT}/bin/javac
 #JAR=${JAVAROOT}/bin/jar
 
-# doesn't work for this project--- JFrame.EXIT_ON_CLOSE not defined
-#JAVAC=javac1.2
-#JAVAROOT=c:/jdk1.2.2
-#JAR=${JAVAROOT}/bin/jar
-
-#JAVAC=javac1.3
-#JAVAROOT=c:/jdk1.3.1_20
-#JAR=${JAVAROOT}/bin/jar
-
 #JAVAC=javac1.6
 #JAVAROOT="c:/Program Files (x86)/Java/jdk1.6.0_17"
 #JAR=${JAVAROOT}/bin/jar
@@ -34,8 +25,8 @@
 # "warning: [options] source value 6 is obsolete and will be removed in a future release"
 # "warning: [options] target value 1.6 is obsolete and will be removed in a future release"
 
-JAVAC=/usr/bin/javac -source 1.7 -target 1.7 -deprecation
-JAR=/usr/bin/jar
+#JAVAC=/usr/bin/javac -source 1.7 -target 1.7 -deprecation
+#JAR=/usr/bin/jar
 
 #JAVAC=/usr/bin/javac -source 1.8 -target 1.8 -deprecation
 #JAR=/usr/bin/jar
@@ -46,9 +37,9 @@ JAR=/usr/bin/jar
 #JAVAC=/usr/bin/javac -source 1.10 -target 1.10 -deprecation
 #JAR=/usr/bin/jar
 
-# doesn't exist on my lenovo laptop yet
-#JAVAC=/usr/bin/javac -source 1.11 -target 1.11 -deprecation
-#JAR=/usr/bin/jar
+# for some reason 1.11 doesn't work, but 11 does
+JAVAC=/usr/bin/javac -source 11 -target 11 -deprecation
+JAR=/usr/bin/jar
 
 #JAVAC=/usr/bin/javac
 #JAR=/usr/bin/jar
