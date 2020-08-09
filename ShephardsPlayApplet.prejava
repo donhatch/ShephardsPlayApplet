@@ -4864,6 +4864,99 @@ public class ShephardsPlayApplet
             //OUT("out frameNoUndoRedo(primal="+framePrimalFlag+", dual="+frameDualFlag+", gang="+gangFlag+")");
         } // frameNoUndoRedo
 
+        // IDEA: splitting uniformScaleAndTranslate into two things
+        // TODO: isn't this redundant with rescale() and rescaleDualOnly() and rescalePrimalOnly()?  consolidate!  (or maybe it isn't)
+        public void uniformScaleNoUndoRedoUnchecked(double scale, boolean primalFlag, boolean dualFlag)
+        {
+            int verboseLevel = 1;
+            if (verboseLevel >= 1) OUT("            in uniformScaleNoUndoRedoUnchecked(primal="+primalFlag+", dual="+dualFlag+")");
+
+            CHECK(primalFlag || dualFlag); // or both
+            if (primalFlag && !dualFlag)
+            {
+                FORIDOWN(iVert, mesh.verts.size())
+                {
+                    Mesh.Vertex vert = mesh.getVert(iVert);
+                    vert.setXYZW(vert.X() * scale,
+                                 vert.Y() * scale,
+                                 vert.Z() * scale,
+                                 vert.W());
+                }
+                dirtyDualMesh(); // TODO: do better
+            }
+            else if (dualFlag && !primalFlag)
+            {
+                FORIDOWN(iVert, mesh.verts.size())
+                {
+                    Mesh.Vertex vert = mesh.getVert(iVert);
+                    vert.setXYZW(vert.X(),
+                                 vert.Y(),
+                                 vert.Z() * scale,
+                                 vert.W());
+                }
+                dirtyDualMesh(); // TODO: do better
+            }
+            else // primalFlag && dualFlag
+            {
+                FORIDOWN(iVert, mesh.verts.size())
+                {
+                    Mesh.Vertex vert = mesh.getVert(iVert);
+                    vert.setXYZW(vert.X() * scale,
+                                 vert.Y() * scale,
+                                 vert.Z() * (scale*scale),
+                                 vert.W());
+                }
+                dirtyDualMesh(); // TODO: do better
+            }
+            if (verboseLevel >= 1) OUT("            out uniformScaleNoUndoRedoUnchecked(primal="+primalFlag+", dual="+dualFlag+")");
+        }  // uniformScaleNoUndoRedoUnchecked
+
+        public void translateNoUndoRedoUnchecked(double dx, double dy, boolean primalFlag, boolean dualFlag)
+        {
+            int verboseLevel = 1;
+            if (verboseLevel >= 1) OUT("            in translateNoUndoRedoUnchecked(primal="+primalFlag+", dual="+dualFlag+")");
+
+            CHECK(primalFlag || dualFlag); // or both
+            if (primalFlag && !dualFlag)
+            {
+                FORIDOWN(iVert, mesh.verts.size())
+                {
+                    Mesh.Vertex vert = mesh.getVert(iVert);
+                    vert.setXYZW(vert.X() + dx*vert.W(),
+                                 vert.Y() + dy*vert.W(),
+                                 vert.Z() + dx*vert.X() + dy*vert.Y(),  // XXX no W? doesn't seem right
+                                 vert.W());
+                }
+                dirtyDualMesh(); // TODO: do better
+            }
+            else if (dualFlag && !primalFlag)
+            {
+                FORIDOWN(iVert, mesh.verts.size())
+                {
+                    Mesh.Vertex vert = mesh.getVert(iVert);
+                    vert.setXYZW(vert.X(),
+                                 vert.Y(),
+                                 vert.Z() - dx*vert.X() - dy*vert.Y(),  // XXX no W? doesn't seem right
+                                 vert.W());
+                }
+                dirtyDualMesh(); // TODO: do better
+            }
+            else // primalFlag && dualFlag
+            {
+                FORIDOWN(iVert, mesh.verts.size())
+                {
+                    Mesh.Vertex vert = mesh.getVert(iVert);
+                    vert.setXYZW(vert.X() + dx*vert.W(),
+                                 vert.Y() + dy*vert.W(),
+                                 vert.Z(),
+                                 vert.W());
+                }
+                dirtyDualMesh(); // TODO: do better
+            }
+
+            if (verboseLevel >= 1) OUT("            out translateNoUndoRedoUnchecked(primal="+primalFlag+", dual="+dualFlag+")");
+        }  // translateNoUndoRedoUnchecked
+
         // TODO: I bet the nonuniform scale could be done in terms of this too.  consolidate!
         public void uniformScaleAndTranslateNoUndoRedo(double scale, double dx, double dy, boolean primalFlag, boolean dualFlag)
         {
@@ -4881,33 +4974,26 @@ public class ShephardsPlayApplet
 
             CHECK(primalFlag || dualFlag); // or both
 
-            if (primalFlag && !dualFlag)
+            if (!(primalFlag && dualFlag))
             {
-                // cop-out
-                uniformScaleAndTranslateNoUndoRedo(scale, dx, dy, /*primalFlag=*/true, /*dualFlag=*/true); // both
-                uniformScaleAndTranslateNoUndoRedo(1./scale, -dx/scale, -dy/scale, /*primalFlag=*/false, /*dualFlag=*/true); // dual only, backwards
-                dirtyDualMesh(); // TODO: do better
-            }
-            else if (dualFlag && !primalFlag)
-            {
-                FORIDOWN(iVert, mesh.verts.size())
-                {
-                    Mesh.Vertex vert = mesh.getVert(iVert);
-                    vert.setXYZW(vert.X(),
-                                 vert.Y(),
-                                 vert.Z() * scale - dx*vert.X() - dy*vert.Y(),
-                                 vert.W());
-                }
-                dirtyDualMesh(); // TODO: do better
+                // this happens on ctrl-frame-primal and ctrl-frame-dual
+                // (ctrl meaning don't bring the other along)
+                uniformScaleNoUndoRedoUnchecked(scale, primalFlag, dualFlag);
+                translateNoUndoRedoUnchecked(dx, dy, primalFlag, dualFlag);
+                // dirties the dual mesh.  // TODO: do better!
             }
             else // primalFlag && dualFlag
             {
+                // this happens on Frame
+
+                // TODO: factor all this into scale and translate parts, and put it down inside uniformScaleNoUndoRedoUnchecked and translateNoUndoRedoUnchecked
+
                 FORIDOWN(iVert, mesh.verts.size())
                 {
                     Mesh.Vertex vert = mesh.getVert(iVert);
                     vert.setXYZW(vert.X()*scale + dx*vert.W(),
                                  vert.Y()*scale + dy*vert.W(),
-                                 vert.Z()*scale,  // TODO: I haven't noticed a difference when I intentionally botch this to scale*scale or even more
+                                 vert.Z()*(scale*scale),
                                  vert.W());
                 }
                 Mesh dualMesh = getDualMesh();
