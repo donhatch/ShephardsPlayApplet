@@ -69,6 +69,7 @@ BUGS:
                      it's really clunky without that!
                 - change surface and verts together while leaving view fixed
                    - including homo xforms that xform between plane,paraboloid,ellipsoid,sphere,hyperboloid
+                - mobius-ish xforms: e.g. clustering verts more towards one side of the sphere
     - manipulation is all confusing.
       - non-sphere mode:
         - middle rotates about origin in tilt/twirl mode, changing surface from plane to paraboloid when not top down
@@ -263,9 +264,10 @@ TO DO:
       Is there or is there not an example where a crack is *forced* to cut own tail?
 
   Misc:
+    - make some usable way to make an infinitesimal-ish curvature mesh on the face of another mesh; ctrl-Grid is a start, with degrees.
+      - Needs a way to "scale dual" of just the verts we're adding.  Hmm.  How?  Provide a way to select a subset of primal verts and apply xforms to them only?  (that might be useful in general, actually)
     - get VERY clear on what negative weights/W's mean through the pipeline
     - maybe use quadratic surds to avoid losing precision, e.g. for sqrt(2) scales?
-    - should mesh store squares of coords instead of coords?  then sqrt(2) scaling could be expressed exactly.  (no, would fall apart when verts added when scale is sqrt(2)
     - need a way to ask where remaining bad lagoon exits are (finding them visually is a needle in a haystack sometimes)
     - idea: save should operate in xyh when not wrapped around sphere, xyzw when wrapped around sphere? and load should set wrap based on it(but what about center? hmm, maybe should automatically uncenter for purpose of saving/loading? not sure. and the buttons can change
 
@@ -1072,10 +1074,16 @@ public class ShephardsPlayApplet
                         }
                     });
                 }};
-                final JTextFieldForNumber theGridNTextField = new JTextFieldForNumber(applet.gridN);
-                final JTextFieldForNumber theBlueNoiseNTextField = new JTextFieldForNumber(applet.blueNoiseN);
-                final JTextFieldForNumber theJustNoiseNTextField = new JTextFieldForNumber(applet.justNoiseN);
-                final JTextFieldForNumber theConvexNoiseNTextField = new JTextFieldForNumber(applet.convexNoiseN);
+                final JTextFieldForNumber theGridNTextField = new JTextFieldForNumber(applet.gridN)
+                  {{ setToolTipText("number of layers for Grid"); }};
+                final JTextFieldForNumber theGridRotDegreesTextField = new JTextFieldForNumber(applet.gridRotDegrees)
+                  {{ setToolTipText("rotation degrees for Grid "); }};
+                final JTextFieldForNumber theBlueNoiseNTextField = new JTextFieldForNumber(applet.blueNoiseN)
+                  {{ setToolTipText("approximate number of points for Blue Noise"); }};
+                final JTextFieldForNumber theJustNoiseNTextField = new JTextFieldForNumber(applet.justNoiseN)
+                  {{ setToolTipText("number of points for Just Noise"); }};;
+                final JTextFieldForNumber theConvexNoiseNTextField = new JTextFieldForNumber(applet.convexNoiseN)
+                  {{ setToolTipText("number of points for Convex Noise"); }};
 
                 final java.awt.Component cannedThingButtons[] = {
                     new JButton("Hexes Spiral") {{
@@ -1515,7 +1523,7 @@ public class ShephardsPlayApplet
                     }},
                     new JRow() {{
                         add(new JButton("Grid") {{
-                            {setToolTipText("Square grid, or, if rotational symmetry is a multiple of 3, hex grid.");}
+                            {setToolTipText("<html>Square grid,<br>or, if rotational symmetry is a multiple of 3, hex grid.<br>ctrl to add to existing grid verts.<html>");}
                             setMargin(nomargin); // XXX remind me what this is for and why I don't have it on, for example, Far Lagoon Killer 1 and 2?
                             addActionListener(new java.awt.event.ActionListener() {
                                 @Override public void actionPerformed(java.awt.event.ActionEvent e)
@@ -1523,6 +1531,7 @@ public class ShephardsPlayApplet
                                     // Flush the textfield value into gridN
                                     try
                                     {
+                                        // XXX shouldn't this be setDouble?
                                         applet.gridN.setDouble(Double.valueOf(theGridNTextField.getText()).doubleValue());
                                     }
                                     catch (java.lang.NumberFormatException nfe)
@@ -1531,10 +1540,22 @@ public class ShephardsPlayApplet
                                         theGridNTextField.updateText(applet.gridN);
                                     }
 
+                                    // Flush the textfield value into gridRotDegrees
+                                    try
+                                    {
+                                        applet.gridRotDegrees.setDouble(Double.valueOf(theGridRotDegreesTextField.getText()).doubleValue());
+                                    }
+                                    catch (java.lang.NumberFormatException nfe)
+                                    {
+                                        // maybe should print an error message or something
+                                        theGridRotDegreesTextField.updateText(applet.gridRotDegrees);
+                                    }
+
 
                                     UndoItem.State before = applet.newUndoItemState();
 
-                                    applet.doUniformGridThing(applet.gridN.get());
+                                    boolean controlIsDown = ((e.getModifiers() & java.awt.event.InputEvent.CTRL_MASK) != 0);
+                                    applet.doUniformGridThing(applet.gridN.get(), applet.gridRotDegrees.get(), /*augment_existing_mesh=*/controlIsDown);
 
                                     if (applet.continuouslyDelaunayizeFlag.get()) applet.delaunayize();
                                     UndoItem.State after = applet.newUndoItemState();
@@ -1545,6 +1566,7 @@ public class ShephardsPlayApplet
                             });
                         }}, stretchx);
                         add(theGridNTextField, stretchx);
+                        add(theGridRotDegreesTextField, stretchx);
                     }},
                     new JRow() {{
                         add(new JRepeatingButton("Blue Noise") {{
@@ -7456,7 +7478,7 @@ public class ShephardsPlayApplet
                             {
                                 UndoItem.State before = newUndoItemState();
 
-                                doUniformGridThing(gridN.get());
+                                doUniformGridThing(gridN.get(), gridRotDegrees.get(), /*augment_existing_mesh=*/false);  // CBB: argh, ctrl on the Mesh button means augment_existing_mesh=true
 
                                 if (continuouslyDelaunayizeFlag.get()) delaunayize();
                                 UndoItem.State after = newUndoItemState();
@@ -11661,19 +11683,21 @@ public class ShephardsPlayApplet
                 if (verboseLevel >= 1) OUT("    out doConvexNoiseThing ("+(t1millis-t0millis)*1e-3+" secs)");
             } // doConvexNoiseThing
 
-            private void doUniformGridThing(int nX)
+            private void doUniformGridThing(int nX, double rotDegrees, boolean augment_existing_mesh)
             {
+                double[][] verts;
+
                 if (nX <= 0)
-                    mesh = new Mesh(new double[0][3], new int[][]{});
+                    verts = new double[0][3];
                 else if (nX == 1)
-                    mesh = new Mesh(new double[][] {{0.,0.,0.}}, new int[][]{});
+                    verts = new double[][] {{0.,0.,0.}};
                 else if (pRotationalSymmetry.get() % 3 == 0)
                 {
                     // do regular tri grid, verts of {3,6}
                     double r = 1.;
                     int nRots = 6;
                     int nVerts = nX*(nX-1)/2 * nRots + 1;
-                    double verts[][] = new double[nVerts][3]; // zeros initially, heights stay zero
+                    verts = new double[nVerts][3]; // zeros initially, heights stay zero
                     int iVert = 0;
                     verts[iVert][0] = 0; verts[iVert][1] = 0; iVert++;
                     FORI (iRot, nRots)
@@ -11692,13 +11716,12 @@ public class ShephardsPlayApplet
                     //PRINT(iVert);
                     //PRINT(verts.length);
                     CHECK_EQ(iVert, verts.length);
-                    mesh = new Mesh(verts, new int[][]{});
                 }
                 else
                 {
                     // do regular square grid, verts of {4,4}
                     int nY = nX;
-                    double verts[][] = new double[nX*nY][3]; // zeros initially, heights stay zero
+                    verts = new double[nX*nY][3]; // zeros initially, heights stay zero
                     int iVert = 0;
                     FORI (iY, nY)
                         FORI (iX, nX)
@@ -11710,7 +11733,28 @@ public class ShephardsPlayApplet
                             iVert++;
                         }
                     CHECK_EQ(iVert, verts.length);
-                    mesh = new Mesh(verts, new int[][]{});
+                }
+
+                if (rotDegrees != 0.) {
+                    double c = Math.cos(DTOR(rotDegrees));
+                    double s = Math.sin(DTOR(rotDegrees));
+                    verts = VecMath.mxm(verts, new double[][] {{c,s,0},{-s,c,0},{0,0,1}});
+                }
+
+                if (augment_existing_mesh)
+                {
+                    if (false) {
+                        // this works but throws away existing mesh
+                        verts = (double[][])Arrays.concat(MeshUtils.getMeshVertsXYZW(mesh), verts);
+                    } else {
+                        FORI (i, verts.length) {
+                            this.mesh.newVertex(/*x=*/verts[i][0],
+                                                /*y=*/verts[i][1],
+                                                /*h=*/verts[i][2]);
+                        }
+                    }
+                } else {
+                    this.mesh = new Mesh(verts, new int[][]{});
                 }
 
                 if (true)
@@ -11719,10 +11763,10 @@ public class ShephardsPlayApplet
                     // This shouldn't change anything,
                     // but it may root out some xform stuff that's too naive.
                     System.out.println("randomly homogeneous scaling about half the grid verts by 2");
-                    int nVerts = mesh.verts.size();
+                    int nVerts = this.mesh.verts.size();
                     FORI (iVert, nVerts)
                     {
-                        Mesh.Vertex vert = mesh.getVert(iVert);
+                        Mesh.Vertex vert = this.mesh.getVert(iVert);
                         if (randomNumberGenerator.nextDouble() > .5)
                             vert.setXYZW(vert.X()*2.,
                                          vert.Y()*2.,
@@ -11730,6 +11774,7 @@ public class ShephardsPlayApplet
                                          vert.W()*2.);
                     }
                 }
+
 
             } // doUniformGridThing
 
@@ -16244,6 +16289,7 @@ OFF
 
         private Listenable.Double backfaceBrightness = new Listenable.Double(0.,1., .25);
         private Listenable.Int gridN = new Listenable.Int(0,1000,10);
+        private Listenable.Double gridRotDegrees = new Listenable.Double(0.,360.,0.);
         private Listenable.Int blueNoiseN = new Listenable.Int(0,1000,100);
         private Listenable.Int justNoiseN = new Listenable.Int(0,1000,100);
         private Listenable.Int convexNoiseN = new Listenable.Int(0,1000,144);
