@@ -78,7 +78,6 @@ CLASSES = \
         MeshSweepOrderUtils.class \
         MyAlgorithmMaybe.class \
         Surface.class \
-        ShimsForDeprecated.class \
         ShephardsPlayApplet.class \
         CounterexampleSearch.class \
         PoincareDiskIsometry.class \
