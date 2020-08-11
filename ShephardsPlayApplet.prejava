@@ -668,6 +668,7 @@ public class ShephardsPlayApplet
                             modifiers);
                         // the ctor that takes "when" introduced some time in (1.3, 1.6]
                         // so don't use it, so we can compile using 1.3
+                        // TODO: use it!
                         actionListener.actionPerformed(synthesizedActionEvent); // initial execution
 
                         repeatTimer = new javax.swing.Timer(100, new java.awt.event.ActionListener() {
@@ -4391,34 +4392,85 @@ public class ShephardsPlayApplet
                 text += " > " + classNameAncestors(classs.getSuperclass());
             return text;
         } // classNameAncestors
-        private static void dumpComponentHierarchy(java.awt.Component component, int depth, int iChildInParent, int nChildrenInParent)
+        private static String xcolorstring(java.awt.Color color) {
+          if (color == null) return "null";
+          int argb = color.getRGB();
+          if (((argb >> 24)&0xff) == 0xff) {
+            return String.format("#%06x", argb&0xffffff);
+          } else {
+            return String.format("#%08x", argb);
+          }
+        }
+        private static String colored(java.awt.Color fg, java.awt.Color bg, String text) {
+          if (fg == null || bg == null) return "";
+          int fg_rgb = fg.getRGB();
+          int bg_rgb = bg.getRGB();
+          String answer = String.format("\033[38;2;%d;%d;%dm\033[48;2;%d;%d;%dm%s\033[0m",
+                ((fg_rgb>>16)&0xff),
+                ((fg_rgb>>8)&0xff),
+                ((fg_rgb>>0)&0xff),
+                ((bg_rgb>>16)&0xff),
+                ((bg_rgb>>8)&0xff),
+                ((bg_rgb>>0)&0xff),
+                text);
+          return answer;
+        }
+
+        // TODO: publish this somewhere more legit
+        public static void dumpComponentHierarchy(java.awt.Component component, int depth, int iChildInParent, int nChildrenInParent)
         {
             FORI (i, depth) System.out.print(" ");
 
             System.out.print(iChildInParent+"/"+nChildrenInParent+" ");
-            System.out.println(classNameAncestors(component.getClass()));
+            //System.out.print(component+" ");  // interesting but too much
+            System.out.print(classNameAncestors(component.getClass()));
+            System.out.print("  (fg="+xcolorstring(component.getForeground())+" bg="+xcolorstring(component.getBackground())+")");
+            System.out.print("  (name="+component.getName()+")");
+            if (false) {
+              boolean desiredDoubleBufferedness = true;
+              if (component instanceof javax.swing.JComponent) {
+                if (component.isDoubleBuffered() != desiredDoubleBufferedness) {
+                  System.out.print("  (FORCING DOUBLE BUFFERED TO "+desiredDoubleBufferedness+")");
+                  ((javax.swing.JComponent)component).setDoubleBuffered(desiredDoubleBufferedness);
+                  CHECK(component.isDoubleBuffered() == desiredDoubleBufferedness);
+                }
+              }
+            }
+            if (false) {
+              boolean desiredOpaqueness = false;
+              if (component instanceof javax.swing.JComponent) {
+                if (component.isOpaque() != desiredOpaqueness) {
+                  System.out.print("  (FORCING OPAQUE TO "+desiredOpaqueness+")");
+                  ((javax.swing.JComponent)component).setOpaque(desiredOpaqueness);
+                  CHECK(component.isOpaque() == desiredOpaqueness);
+                }
+              }
+            }
+
+
+            System.out.print("  (db="+component.isDoubleBuffered()+")");
+            System.out.print(" (op="+component.isOpaque()+")");
+            System.out.print("  "+colored(component.getForeground(), component.getBackground(), " HELLO "));
+            System.out.println();
 
             if (component instanceof java.awt.Container)
             {
                 java.awt.Container C = (java.awt.Container)component;
                 if (true) {
                   FORI (i, depth) System.out.print(" ");
-                  System.out.println("    "+C.getLayout()+(C.getLayout()==null?"":" ("+classNameAncestors(C.getLayout().getClass())+")"));
+                  System.out.print("    "+C.getLayout()+(C.getLayout()==null?"":" ("+classNameAncestors(C.getLayout().getClass())+")"));
+                  System.out.println();
                 }
                 int n = C.getComponentCount();
                 for (int iChild = 0; iChild < n; ++iChild)
                 {
-                    //FORI (iIndent, depth) System.out.print(" "); System.out.println(iChild+"/"+n);
                     dumpComponentHierarchy(C.getComponent(iChild), depth+1, iChild, n);
-                }
-                if (n > 0)
-                {
-                    //FORI (iIndent, depth) System.out.print(" "); System.out.println(n+"/"+n);
                 }
             }
         } // dumpComponentHierarchy
 
-        private static void randomlyColorize(java.awt.Component c,
+        // TODO: publish this somewhere more legit
+        public static void randomlyColorize(java.awt.Component c,
                                              java.util.Random randomNumberGenerator)
         {
             c.setBackground(new java.awt.Color((float)randomNumberGenerator.nextDouble(),
@@ -8099,6 +8151,9 @@ public class ShephardsPlayApplet
             @Override public void paintComponent(java.awt.Graphics frontBufferGraphics)
             {
                 if (eventVerbose >= 1) System.out.println("in paintComponent");
+                if (eventVerbose >= 1) System.out.println("  doubleBufferFlag = "+doubleBufferFlag);
+
+                CHECK(javax.swing.SwingUtilities.isEventDispatchThread());
 
                 makeSureBackBufferIsRight();
                 java.awt.Graphics g;
@@ -16191,10 +16246,10 @@ OFF
 
         private java.awt.Component theCanvas = null;
         //private java.awt.Component theHelpWindow = null;
-        private JFrame theMainAppletWindow = null;
-        private JFrame theControlPanelWindow = null;
-        private JFrame theHelpWindow = null;
-        private Listenable.String windowTitle = new Listenable.String("Shephards Play Applet");
+        public JFrame theMainAppletWindow = null;
+        public JFrame theControlPanelWindow = null;
+        public JFrame theHelpWindow = null;
+        public Listenable.String windowTitle = new Listenable.String("Shephards Play Applet");
 
         // hack
         private int theOptimizationIndex = -1;
@@ -16461,7 +16516,7 @@ OFF
         private static int nonEventVerbose = 0; // so static classes can refer to it
         private boolean antiAliasingFlag = false;
         private boolean implementAntiAliasingInHardware = true; // XXX should have a better name for this-- really mean let java runtime do it
-        private boolean doubleBufferFlag = false; // TODO: swing does this for us... can get rid of it, as soon as I figure out how to do the magnifying glass without it  XXX except it still flickers during resize!  (not violent black/grey any more due to System.setProperty("sun.awt.noerasebackground", "true"), but still flickering!  argh!
+        private boolean doubleBufferFlag = false; // TODO: swing does this for us... can get rid of it, as soon as I figure out how to do the magnifying glass without it  XXX except it still flickers during resize!  (not violent black/grey any more due to System.setProperty("sun.awt.noerasebackground", "true"), but still flickering!  argh!  wtf?  THERE MUST BE A BUG: Double buffering is not working properly during resize!!!
         private java.awt.Image backBufferImage = null;
         private MyGraphics3D mostRecentGraphics = null;
         private Listenable.Boolean showMagFlag = new Listenable.Boolean(false);
@@ -16862,8 +16917,9 @@ OFF
 
     //
     // Half-assed clone.
-    // just runs main again,
-    // and copies the original mesh to the new one.
+    // just runs main again (but with no args this time!)
+    // and copies the original mesh to the new one,
+    // along with as much state as possible by copying fields.
     //
     public void cloneApplet()
     {
@@ -17021,7 +17077,7 @@ OFF
 
         //dumpComponentHierarchy(frame, 0, 0, 1);
 
-        // the following seems to be necessary, or getParameter() will crash, at least in 1.4.  Want to send params from command line anyway.
+        // the following seems to be necessary, or getParameter() will crash.  Want to send params from command line anyway.
         applet.setStub(new com.donhatchsw.shims_for_deprecated.java_applet_AppletStub() {
              @Override public void appletResize(int width, int height)
                  { /* should resize frame, but a ShephardsPlayApplet never asks to be resized */ }
@@ -17033,8 +17089,7 @@ OFF
                  // case insensitive... and unfortunately there's no
                  // startsWithIgnoreCase
                  String prefix = name.toLowerCase() + "=";
-                 int i;
-                 FOR (i, args.length)
+                 for (int i = 0; i < args.length; ++i)
                      if (args[i].toLowerCase().startsWith(prefix))
                          return args[i].substring(prefix.length());
                  return null;
@@ -17072,7 +17127,8 @@ OFF
     public static void main(final String args[])
     {
         // Avoids black-grey flickering during resize.
-        // (still flickers a bit).
+        // (although the picture still flickers a bit).
+        // TODO: figure out why Arrows demo is flicker-free and this one isn't
         System.setProperty("sun.awt.noerasebackground", "true");
 
         ShephardsPlayApplet applet = main0(args);
