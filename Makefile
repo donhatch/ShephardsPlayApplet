@@ -61,7 +61,6 @@ endif
 JARFILE = ShephardsPlayApplet.jar
 CLASSES = \
         MergeFindNewStuff.class \
-        GraphicsAntiAliasingSetter.class \
         MyGraphics.class \
         MyGraphics3D.class \
         Misc.class \
