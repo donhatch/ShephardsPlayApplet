@@ -38,7 +38,7 @@
 #JAR=/usr/bin/jar
 
 # for some reason 1.11 doesn't work, but 11 does
-JAVAC=/usr/bin/javac -source 11 -target 11 -deprecation
+JAVAC=/usr/bin/javac -source 11 -target 11 -deprecation -Xlint:unchecked
 JAR=/usr/bin/jar
 
 #JAVAC=/usr/bin/javac
