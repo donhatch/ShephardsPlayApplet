@@ -4354,6 +4354,7 @@ public class ShephardsPlayApplet
             "    'c' - clear",
             "    'u' / ctrl-'z' - undo",
             "    'r' / 'U' / ctrl-'r' / ctrl-'y' - redo",
+            "    'z' - pan closest vertex to origin",
             "    'h' - help",
             "    ctrl-'q' - quit",
             "",
@@ -4617,7 +4618,6 @@ public class ShephardsPlayApplet
         public void pan(double dx, double dy)
         {
             UndoItem.State before = newUndoItemState();
-            // XXX bogus! should pan around at constant offset distance from surface... or something.
             uniformScaleAndTranslateNoUndoRedo(1., dx, dy, /*primalFlag=*/true, /*dualFlag=*/true);
             UndoItem.State after = newUndoItemState();
             undoTreeSquirrel.Do(new UndoItem(before, after));
@@ -4972,9 +4972,9 @@ public class ShephardsPlayApplet
                 FORIDOWN(iVert, mesh.verts.size())
                 {
                     Mesh.Vertex vert = mesh.getVert(iVert);
-                    vert.setXYZW(vert.X() * scale,
+                    vert.setXYHW(vert.X() * scale,
                                  vert.Y() * scale,
-                                 vert.Z() * scale,
+                                 vert.H() * scale,
                                  vert.W());
                 }
                 dirtyDualMesh(); // TODO: do better
@@ -4984,9 +4984,9 @@ public class ShephardsPlayApplet
                 FORIDOWN(iVert, mesh.verts.size())
                 {
                     Mesh.Vertex vert = mesh.getVert(iVert);
-                    vert.setXYZW(vert.X(),
+                    vert.setXYHW(vert.X(),
                                  vert.Y(),
-                                 vert.Z() * scale,
+                                 vert.H() * scale,
                                  vert.W());
                 }
                 dirtyDualMesh(); // TODO: do better
@@ -4996,9 +4996,9 @@ public class ShephardsPlayApplet
                 FORIDOWN(iVert, mesh.verts.size())
                 {
                     Mesh.Vertex vert = mesh.getVert(iVert);
-                    vert.setXYZW(vert.X() * scale,
+                    vert.setXYHW(vert.X() * scale,
                                  vert.Y() * scale,
-                                 vert.Z() * (scale*scale),
+                                 vert.H() * (scale*scale),
                                  vert.W());
                 }
                 dirtyDualMesh(); // TODO: do better
@@ -5017,9 +5017,9 @@ public class ShephardsPlayApplet
                 FORIDOWN(iVert, mesh.verts.size())
                 {
                     Mesh.Vertex vert = mesh.getVert(iVert);
-                    vert.setXYZW(vert.X() + dx*vert.W(),
+                    vert.setXYHW(vert.X() + dx*vert.W(),
                                  vert.Y() + dy*vert.W(),
-                                 vert.Z() + dx*vert.X() + dy*vert.Y(),  // XXX no W? doesn't seem right
+                                 vert.H() + dx*vert.X() + dy*vert.Y(),  // XXX no W? doesn't seem right
                                  vert.W());
                 }
                 dirtyDualMesh(); // TODO: do better
@@ -5029,9 +5029,9 @@ public class ShephardsPlayApplet
                 FORIDOWN(iVert, mesh.verts.size())
                 {
                     Mesh.Vertex vert = mesh.getVert(iVert);
-                    vert.setXYZW(vert.X(),
+                    vert.setXYHW(vert.X(),
                                  vert.Y(),
-                                 vert.Z() - dx*vert.X() - dy*vert.Y(),  // XXX no W? doesn't seem right
+                                 vert.H() - dx*vert.X() - dy*vert.Y(),  // XXX no W? doesn't seem right
                                  vert.W());
                 }
                 dirtyDualMesh(); // TODO: do better
@@ -5041,9 +5041,9 @@ public class ShephardsPlayApplet
                 FORIDOWN(iVert, mesh.verts.size())
                 {
                     Mesh.Vertex vert = mesh.getVert(iVert);
-                    vert.setXYZW(vert.X() + dx*vert.W(),
+                    vert.setXYHW(vert.X() + dx*vert.W(),
                                  vert.Y() + dy*vert.W(),
-                                 vert.Z(),
+                                 vert.H(),
                                  vert.W());
                 }
                 dirtyDualMesh(); // TODO: do better
@@ -5082,13 +5082,12 @@ public class ShephardsPlayApplet
                 // this happens on Frame
 
                 // TODO: factor all this into scale and translate parts, and put it down inside uniformScaleNoUndoRedoUnchecked and translateNoUndoRedoUnchecked
-
                 FORIDOWN(iVert, mesh.verts.size())
                 {
                     Mesh.Vertex vert = mesh.getVert(iVert);
-                    vert.setXYZW(vert.X()*scale + dx*vert.W(),
+                    vert.setXYHW(vert.X()*scale + dx*vert.W(),
                                  vert.Y()*scale + dy*vert.W(),
-                                 vert.Z()*(scale*scale),
+                                 vert.H()*scale*scale,
                                  vert.W());
                 }
                 Mesh dualMesh = getDualMesh();
@@ -7455,9 +7454,20 @@ public class ShephardsPlayApplet
                                 theCanvas.repaint();
                                 break;
                             }
+                            case 'z': // move closest vertex to origin
+                            {
+                                int closestVertIndex = mesh.indexOfClosestVert(prevP[0],prevP[1],mostRecentGraphics);
+                                if (closestVertIndex != -1) {
+                                  Mesh.Vertex vert = mesh.getVert(closestVertIndex);
+                                  double dx = -vert.x();
+                                  double dy = -vert.y();
+                                  pan(dx, dy);
+                                }
+                                break;
+                            }
                             case 'C': // toggle centroid hack
                             {
-                                System.out.println("Mesh.XXXcentroidHach "+Mesh.XXXcentroidHack+" -> "+!Mesh.XXXcentroidHack);
+                                System.out.println("Mesh.XXXcentroidHack "+Mesh.XXXcentroidHack+" -> "+!Mesh.XXXcentroidHack);
                                 Mesh.XXXcentroidHack = !Mesh.XXXcentroidHack;
                                 dirtyDualMesh();
                                 theCanvas.repaint();

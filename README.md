@@ -32,7 +32,6 @@ CONJECTURES ABOUT SPECIFIC STRONGER UNFOLDINGS THAT FOLLOW A PATTERN:
 * Every trivalent convex polyhedron has an unfolding in which
   the dullest edge at every vertex is a fold.
   [false, easy counterexample: just take a regular pentagonal prism
-  (jittered slightly so trivalent (XXX what did I mean here? it's already trivalent)),
   or a slightly squashed regular tetrahedron,
   or a regular 7-gon in the plane with edges going straight out
   from the center-- those spokes can't all be folds.]

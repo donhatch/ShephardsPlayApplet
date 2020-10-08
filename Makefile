@@ -25,16 +25,19 @@
 # "warning: [options] source value 6 is obsolete and will be removed in a future release"
 # "warning: [options] target value 1.6 is obsolete and will be removed in a future release"
 
-#JAVAC=/usr/bin/javac -source 1.7 -target 1.7 -deprecation
+#JAVAC=/usr/bin/javac -source 1.6 -target 1.6 -deprecation -Xlint:unchecked
 #JAR=/usr/bin/jar
 
-#JAVAC=/usr/bin/javac -source 1.8 -target 1.8 -deprecation
+#JAVAC=/usr/bin/javac -source 1.7 -target 1.7 -deprecation -Xlint:unchecked
 #JAR=/usr/bin/jar
 
-#JAVAC=/usr/bin/javac -source 1.9 -target 1.9 -deprecation
+#JAVAC=/usr/bin/javac -source 1.8 -target 1.8 -deprecation -Xlint:unchecked
 #JAR=/usr/bin/jar
 
-#JAVAC=/usr/bin/javac -source 1.10 -target 1.10 -deprecation
+#JAVAC=/usr/bin/javac -source 1.9 -target 1.9 -deprecation -Xlint:unchecked
+#JAR=/usr/bin/jar
+
+#JAVAC=/usr/bin/javac -source 1.10 -target 1.10 -deprecation -Xlint:unchecked
 #JAR=/usr/bin/jar
 
 # for some reason 1.11 doesn't work, but 11 does
