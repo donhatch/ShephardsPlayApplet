@@ -99,6 +99,7 @@
 #define SQR(x) ((x)*(x))
 #define CUB(x) ((x)*(x)*(x))
 #define TRIANGLED(x) (((x)*((x)+1)) / 2)
+#define HEXED(x) (3*(x)*((x)-1)+1)
 #define RTOD(r) ((r)*(180./Math.PI))
 #define DTOR(r) ((r)*(Math.PI/180.))
 

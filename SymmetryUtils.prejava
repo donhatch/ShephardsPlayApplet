@@ -145,6 +145,8 @@ final class SymmetryUtils {
     // and rotation of order q around some point between the +z and +y axis.
     public static double[][/*4*/][/*4*/] computeSymmetryGroup3d(int p, int q, boolean leftRightSymmetry, boolean sphereCentralSymmetry, boolean repeatSymmetryWorkInProgress)
     {
+        int verboseLevel = 0;
+        if (verboseLevel >= 1) System.out.println("    in computeSymmetryGroup3d(p="+p+", q="+q+", leftRightSymmetry="+leftRightSymmetry+", sphereCentralSymmetry="+sphereCentralSymmetry+", repeatSymmetryWorkInProgress="+repeatSymmetryWorkInProgress+")");
         double gens[][][][] = computeSymmetryGroupGenerators3d(p, q, leftRightSymmetry, sphereCentralSymmetry);
 
         if (false)
@@ -206,29 +208,71 @@ final class SymmetryUtils {
 
         if (repeatSymmetryWorkInProgress)
         {
+            if (verboseLevel >= 1) System.out.println("      doing repeat stuff");
+            if (verboseLevel >= 1) System.out.println("          group = "+Arrays.toStringNonCompact(group, "", "    "));
             // WORK IN PROGRESS
             // Experiment with planar repeat.
-            int r = 2;
+
+            double[][][] translations;
+
+
+            int r = 2;  // radius, in units where a unit is from one point to the next
             double tileWidth = 1.;
-            int multiplicity = SQR(2*r+1);
-            double bigGroup[][][] = new double[group.length * multiplicity][4][4];
-            int N = 0;
-            int nReps = 10;
-            for (int ix = -2; ix <= 2; ++ix)
-            for (int iy = -2; iy <= 2; ++iy)
+
+            if (p % 3 == 0)
             {
-                double translation[][] = {
-                    {1,0,0,0},
-                    {0,1,0,0},
-                    {0,0,1,0},
-                    {ix*tileWidth,iy*tileWidth,0,1},
-                };
-                FORI (iGroup, group.length)
-                    VecMath.mxm(bigGroup[N++], group[iGroup], translation);
+                translations = new double[HEXED(r+1)][4][4];
+                int nTranslations = 0;
+                for (int iy = -r; iy <= r; ++iy)
+                for (int ix = (iy<0 ? -r-iy : -r); ix <= (iy<0 ? r : r-iy); ++ix) {
+                    double dx = ix*tileWidth + iy*tileWidth/2.;
+                    double dy = iy*tileWidth * Math.sqrt(3)/2.;
+                    translations[nTranslations++] = new double[][] {
+                        {1,0,0,0},
+                        {0,1,0,0},
+                        {0,0,1,0},
+                        {dx,dy,0,1},
+                    };
+                }
+                CHECK_EQ(nTranslations, translations.length);
             }
-            CHECK_EQ(N, bigGroup.length);
+            else
+            {
+                translations = new double[SQR(2*r+1)][4][4];
+                int nTranslations = 0;
+                for (int ix = -r; ix <= r; ++ix)
+                for (int iy = -r; iy <= r; ++iy)
+                {
+                    double dx = ix*tileWidth;
+                    double dy = iy*tileWidth;
+                    translations[nTranslations++] = new double[][] {
+                        {1,0,0,0},
+                        {0,1,0,0},
+                        {0,0,1,0},
+                        {dx,dy,0,1},
+                    };
+                }
+                CHECK_EQ(nTranslations, translations.length);
+            }
+            // Put the middle one first
+            {
+                double[][] temp;
+                SWAP(translations[0], translations[(translations.length-1)/2], temp);
+            }
+
+            double bigGroup[][][] = new double[translations.length * group.length][4][4];
+            FORI (iTranslation, translations.length)
+            {
+               FORI (iGroup, group.length) {
+                  VecMath.mxm(bigGroup[iTranslation*group.length+iGroup], group[iGroup], translations[iTranslation]);
+               }
+            }
             group = bigGroup;
+
+            if (verboseLevel >= 1) System.out.println("      done repeat stuff");
         }
+        if (verboseLevel >= 1) System.out.println("    out computeSymmetryGroup3d(p="+p+", q="+q+", leftRightSymmetry="+leftRightSymmetry+", sphereCentralSymmetry="+sphereCentralSymmetry+", repeatSymmetryWorkInProgress="+repeatSymmetryWorkInProgress+"), returning "+Arrays.toStringCompact(group));
+        if (verboseLevel >= 1) System.out.println("    out computeSymmetryGroup3d(p="+p+", q="+q+", leftRightSymmetry="+leftRightSymmetry+", sphereCentralSymmetry="+sphereCentralSymmetry+", repeatSymmetryWorkInProgress="+repeatSymmetryWorkInProgress+"), returning "+Arrays.toStringNonCompact(group, /*indentString=*/"", /*indentIncr=*/"    "));
         return group;
     } // computeSymmetryGroup3d
 
