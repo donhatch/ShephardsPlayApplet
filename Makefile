@@ -28,7 +28,7 @@
 # "warning: [options] source value 6 is obsolete and will be removed in a future release"
 # "warning: [options] target value 1.6 is obsolete and will be removed in a future release"
 
-# jdk14:
+# jdk13 and jdk14:
 # error: Source option 6 is no longer supported. Use 7 or later.
 # error: Target option 6 is no longer supported. Use 7 or later.
 # warning: [options] source value 7 is obsolete and will be removed in a future release
@@ -40,23 +40,23 @@ JAVAROOT=/usr/lib/jvm/java-1.11.0-openjdk-amd64
 JAVAC=${JAVAROOT}/bin/javac -source 1.6 -target 1.6 -deprecation -Xlint:unchecked -Xlint:all -Xlint:-options
 JAR=${JAVAROOT}/bin/jar
 
-#JAVAC=/usr/bin/javac -source 1.7 -target 1.7 -deprecation -Xlint:unchecked
+#JAVAC=/usr/bin/javac -source 1.7 -target 1.7 -deprecation -Xlint:unchecked -Xlint:all -Xlint:-options
 #JAR=/usr/bin/jar
 
-#JAVAC=/usr/bin/javac -source 1.8 -target 1.8 -deprecation -Xlint:unchecked
+#JAVAC=/usr/bin/javac -source 1.8 -target 1.8 -deprecation -Xlint:unchecked -Xlint:all
 #JAR=/usr/bin/jar
 
-#JAVAC=/usr/bin/javac -source 1.9 -target 1.9 -deprecation -Xlint:unchecked
+#JAVAC=/usr/bin/javac -source 1.9 -target 1.9 -deprecation -Xlint:unchecked -Xlint:all
 #JAR=/usr/bin/jar
 
-#JAVAC=/usr/bin/javac -source 1.10 -target 1.10 -deprecation -Xlint:unchecked
+#JAVAC=/usr/bin/javac -source 1.10 -target 1.10 -deprecation -Xlint:unchecked -Xlint:all
 #JAR=/usr/bin/jar
 
 # for some reason 1.11 doesn't work, but 11 does
-#JAVAC=/usr/bin/javac -source 11 -target 11 -deprecation -Xlint:unchecked
+#JAVAC=/usr/bin/javac -source 11 -target 11 -deprecation -Xlint:unchecked -Xlint:all
 #JAR=/usr/bin/jar
 
-#JAVAC=/usr/bin/javac -source 14 -target 14 -deprecation -Xlint:unchecked
+#JAVAC=/usr/bin/javac -source 14 -target 14 -deprecation -Xlint:unchecked -Xlint:all
 #JAR=/usr/bin/jar
 
 #JAVAC=/usr/bin/javac
