@@ -5426,20 +5426,10 @@ public class ShephardsPlayApplet
             theCanvas.repaint();
         }
 
-
-
         @Override public void init()
         {
-            eventVerbose = getParameterInt("EventVerbose", eventVerbose);
+            // Note that eventVerbose can be set on the command line, e.g. eventVerbose=10
             if (eventVerbose >= 1) System.out.println("in init");
-
-            // These (and eventVerbose) can be specified on the command line as, e.g. showLabelsFlag=true (except that one doesn't exist)
-            // TODO: just automatically get any public member
-            continuouslyDelaunayizeFlag.set(getParameterBoolean("continuouslyDelaunayizeFlag", continuouslyDelaunayizeFlag.get()));
-            optimizeFlag.set(getParameterBoolean("optimizeFlag", optimizeFlag.get()));
-            showPositiveOrthantnessVisualizationFlag = getParameterBoolean("showPositiveOrthantnessVisualizationFlag", showPositiveOrthantnessVisualizationFlag);
-            // XXX this is kind of messed up, we don't get to know whether the user misspelled something
-
 
             //doCannedThingHexesSpiral();
             //doCannedThingNetless9();
@@ -16207,8 +16197,8 @@ OFF
         private Listenable.Listener myAlgorithmMaxItersListener = null;
         private Listenable.Listener myAlgorithmSweepOriginHomoSpecListener = null;
 
-        private Listenable.Boolean continuouslyDelaunayizeFlag = new Listenable.Boolean(false);  // has to be false, or it may alter stuff on load
-        private Listenable.Boolean optimizeFlag = new Listenable.Boolean(false);
+        public Listenable.Boolean continuouslyDelaunayizeFlag = new Listenable.Boolean(false);  // has to be false, or it may alter stuff on load
+        public Listenable.Boolean optimizeFlag = new Listenable.Boolean(false);
         private Listenable.Int optimizationTypeIndex = new Listenable.Int(0, Mesh.availableOptimizationTypes.length-1, Mesh.OPTIMIZE_LENGTHS_MAX_MIN); // min, max, default
         int optimizationType = Mesh.availableOptimizationTypes[optimizationTypeIndex.get()];
         private Listenable.String radialHeightFieldSpec = new Listenable.String("0. 0.  1. 1.");
@@ -16282,7 +16272,7 @@ OFF
         private Listenable.Boolean showPrimalDualIntersectionFlag = new Listenable.Boolean(false);
         private Listenable.Boolean showPrimalDualMinkowskiAverageFlag = new Listenable.Boolean(false);
 
-        private boolean showPositiveOrthantnessVisualizationFlag = false; // XXX total hack-- it's cool but put it somewhere else!!
+        public boolean showPositiveOrthantnessVisualizationFlag = false; // XXX total hack-- it's cool but put it somewhere else!!
         private Listenable.Boolean showPrimalVertsFlag = new Listenable.Boolean(true);
         private Listenable.Boolean showPrimalEdgesFlag = new Listenable.Boolean(true);
         private Listenable.Boolean showDualVertsFlag = new Listenable.Boolean(true);
@@ -16332,7 +16322,7 @@ OFF
         private Listenable.Boolean transformWhenChangingWrapOrCenterFlag = new Listenable.Boolean(true);
 
         private Listenable.Double backfaceBrightness = new Listenable.Double(0.,1., .25);
-        private Listenable.Int gridN = new Listenable.Int(0,1000,10);
+        public Listenable.Int gridN = new Listenable.Int(0,1000,10);
         private Listenable.Double gridRotDegrees = new Listenable.Double(0.,360.,0.);
         private Listenable.Int blueNoiseN = new Listenable.Int(0,1000,100);
         private Listenable.Int justNoiseN = new Listenable.Int(0,1000,100);
@@ -16522,7 +16512,7 @@ OFF
     //
     // Applet-generic member variables...
     //
-        private int eventVerbose = 0; // can set with eventVerbose=1 on command line
+        public int eventVerbose = 0; // can set with eventVerbose=1 on command line
         private static int nonEventVerbose = 0; // so static classes can refer to it
         private boolean antiAliasingFlag = false;
         private boolean implementAntiAliasingInHardware = true; // XXX should have a better name for this-- really mean let java runtime do it
@@ -17006,6 +16996,95 @@ OFF
     } // cloneApplet
 
 
+    private static boolean parseBoolean(String s)
+    {
+      // Boolean.valueOf() is too lax: "t", "xxx", "1" all evaluate to false.
+      if (s.equals("true")) return true;
+      if (s.equals("false")) return false;
+      throw new IllegalArgumentException(Arrays.toStringCompact(s)+" is not \"true\" or \"false\"");
+    }
+
+    // TODO: put this in some public place in donhatchsw; it's generally useful
+    private static void setPublicFieldsFromArgsOrDie(Object object, String[] args)
+    {
+        int verboseLevel = 0;
+        if (verboseLevel >= 1) System.out.println("        in setPublicFieldsFromArgsOrDie");
+
+        // TODO: consider just using getDeclaredField?  (will that find the field in superclasses?)
+        java.util.HashMap<String,java.lang.reflect.Field> name2field = new java.util.HashMap<String,java.lang.reflect.Field>();
+        {
+            Class<?> classs = object.getClass();
+            java.lang.reflect.Field[] fields = classs.getFields();
+            for (java.lang.reflect.Field field : fields)
+            {
+                int modifiers = field.getModifiers();
+                if (!java.lang.reflect.Modifier.isPublic(modifiers)) continue;
+                if (java.lang.reflect.Modifier.isFinal(modifiers)) continue;
+                if (java.lang.reflect.Modifier.isStatic(modifiers)) continue;
+                String name = field.getName();
+                if (verboseLevel >= 1) System.out.println("              field "+Arrays.toStringCompact(name)+": "+field);
+                CHECK_EQ(name2field.get(name), null);
+                name2field.put(name, field);
+            }
+        }
+        int nErrors = 0;
+        for (String arg : args)
+        {
+            if (verboseLevel >= 1) System.out.println("          arg = "+Arrays.toStringCompact(arg));
+            int equalsIndex = arg.indexOf("=");
+            if (equalsIndex == -1)
+            {
+                System.err.println("unrecognized arg "+Arrays.toStringCompact(arg));
+                nErrors++;
+                continue;
+            }
+            String name = arg.substring(0, equalsIndex);
+            String valueString = arg.substring(equalsIndex+1);
+            if (verboseLevel >= 1) System.out.println("              name = "+Arrays.toStringCompact(name));
+            if (verboseLevel >= 1) System.out.println("              valueString = "+Arrays.toStringCompact(valueString));
+            java.lang.reflect.Field field = name2field.get(name);
+            if (field == null)
+            {
+                System.err.println("no public non-static non-final field "+Arrays.toStringCompact(name));
+                nErrors++;
+                continue;
+            }
+            Class<?> fieldType = field.getType();
+            try {
+                if (false) {}
+
+                else if (fieldType.equals(boolean.class)) { field.setBoolean(object, parseBoolean(valueString)); }
+                // decode instead of valueOf, so "0x10" will work, for all integer types
+                else if (fieldType.equals(byte.class)) { field.setByte(object, Byte.decode(valueString).byteValue()); }
+                else if (fieldType.equals(short.class)) { field.setShort(object, Short.decode(valueString).shortValue()); }
+                else if (fieldType.equals(int.class)) { field.setInt(object, Integer.decode(valueString).intValue()); }
+                else if (fieldType.equals(long.class)) { field.setLong(object, Long.decode(valueString).longValue()); }
+                else if (fieldType.equals(float.class)) { field.setFloat(object, Float.valueOf(valueString).floatValue()); }
+                else if (fieldType.equals(double.class)) { field.setDouble(object, Double.valueOf(valueString).doubleValue()); }
+                else if (fieldType.equals(char.class)) { field.setChar(object, valueString.charAt(0)); }
+                else if (fieldType.equals(String.class)) { field.set(object, valueString); }
+
+                // CBB: derives from instead of equals, for all of the following? not sure
+                else if (fieldType.equals(Listenable.Boolean.class)) { ((Listenable.Boolean)field.get(object)).set(parseBoolean(valueString)); }
+                else if (fieldType.equals(Listenable.Int.class)) { ((Listenable.Int)field.get(object)).set(Integer.decode(valueString)); }
+                else if (fieldType.equals(Listenable.Float.class)) { ((Listenable.Float)field.get(object)).set(Float.valueOf(valueString)); }
+                else if (fieldType.equals(Listenable.Double.class)) { ((Listenable.Double)field.get(object)).set(Double.valueOf(valueString)); }
+                else {
+                    System.err.println("don't know how to set field "+field);
+                    nErrors++;
+                    continue;
+                }
+            } catch (Exception e) {
+                System.err.println(e + " while initializing "+field+" from arg "+Arrays.toStringCompact(arg));
+                nErrors++;
+                continue;
+            };
+        }
+        if (nErrors > 0) {
+            System.exit(1);
+        }
+        if (verboseLevel >= 1) System.out.println("        out setPublicFieldsFromArgsOrDie");
+    }  // setPublicFieldsFromArgsOrDie
 
 
     //
@@ -17014,7 +17093,7 @@ OFF
     public static ShephardsPlayApplet main0(final String args[])
     {
         System.out.println("in main0");
-        System.out.println("    java "+System.getProperty("java.version"));
+        System.out.println("  java "+System.getProperty("java.version"));
 
 
         if (false)
@@ -17096,6 +17175,8 @@ OFF
 
         //dumpComponentHierarchy(frame, 0, 0, 1);
 
+        // TODO: get rid of this.  all I used it for was params, and we're doing that via setPublicFieldsFromArgsOrDie now
+
         // the following seems to be necessary, or getParameter() will crash.  Want to send params from command line anyway.
         applet.setStub(new com.donhatchsw.shims_for_deprecated.java_applet_AppletStub() {
              @Override public void appletResize(int width, int height)
@@ -17115,6 +17196,8 @@ OFF
              }
              @Override public boolean isActive() { return true; }
         });
+
+        setPublicFieldsFromArgsOrDie(applet, args);
 
         applet.init();
         applet.start();
