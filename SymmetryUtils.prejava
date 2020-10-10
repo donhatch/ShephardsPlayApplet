@@ -143,7 +143,7 @@ final class SymmetryUtils {
     // 3d symmetry groups that hold origin fixed.
     // rotation of order p around z axis,
     // and rotation of order q around some point between the +z and +y axis.
-    public static double[][/*4*/][/*4*/] computeSymmetryGroup3d(int p, int q, boolean leftRightSymmetry, boolean sphereCentralSymmetry, boolean repeatSymmetryWorkInProgress)
+    public static double[][/*4*/][/*4*/] computeSymmetryGroup3d(int p, int q, boolean leftRightSymmetry, boolean sphereCentralSymmetry, boolean repeatSymmetryWorkInProgress, int qForRepeatSymmetryWorkInProgress)
     {
         int verboseLevel = 0;
         if (verboseLevel >= 1) System.out.println("        in computeSymmetryGroup3d(p="+p+", q="+q+", leftRightSymmetry="+leftRightSymmetry+", sphereCentralSymmetry="+sphereCentralSymmetry+", repeatSymmetryWorkInProgress="+repeatSymmetryWorkInProgress+")");
@@ -293,7 +293,9 @@ final class SymmetryUtils {
             int r = 2;  // radius, in units where a unit is from one point to the next
             double tileWidth = 1.;
 
-            if (p % 3 == 0)
+            int repeatQ = qForRepeatSymmetryWorkInProgress;
+            CHECK(repeatQ == 3 || repeatQ == 4 || repeatQ == 6);
+            if (repeatQ == 3 || repeatQ == 6)
             {
                 translations = new double[HEXED(r+1)][4][4];
                 int nTranslations = 0;
@@ -301,6 +303,12 @@ final class SymmetryUtils {
                 for (int ix = (iy<0 ? -r-iy : -r); ix <= (iy<0 ? r : r-iy); ++ix) {
                     double dx = ix*tileWidth + iy*tileWidth/2.;
                     double dy = iy*tileWidth * Math.sqrt(3)/2.;
+                    if (repeatQ == 6) {
+                      double temp;
+                      SWAP(dx, dy, temp);
+                      dy *= -1;
+                      if (MOD(iy-ix, 3) == 1) continue;
+                    }
                     translations[nTranslations++] = new double[][] {
                         {1,0,-dx,0},
                         {0,1,-dy,0},
@@ -308,6 +316,7 @@ final class SymmetryUtils {
                         {dx,dy,-(dx*dx+dy*dy)/2.,1},
                     };
                 }
+                translations = (double[][][])Arrays.subarray(translations, 0, nTranslations);
                 CHECK_EQ(nTranslations, translations.length);
             }
             else
@@ -319,8 +328,11 @@ final class SymmetryUtils {
                 for (int ix = -rx; ix <= rx; ++ix)
                 for (int iy = -ry; iy <= ry; ++iy)
                 {
-                    double dx = ix*tileWidth;
-                    double dy = iy*tileWidth;
+                    //double dx = ix*tileWidth;
+                    //double dy = iy*tileWidth;
+                    double dx = (ix*tileWidth + iy*tileWidth)*.5;
+                    double dy = (iy*tileWidth - ix*tileWidth)*.5;
+
                     translations[nTranslations++] = new double[][] {
                         {1,0,-dx,0},
                         {0,1,-dy,0},
@@ -349,12 +361,12 @@ final class SymmetryUtils {
         return group;
     } // computeSymmetryGroup3d
 
-    public static double[][/*4*/][/*4*/] getSymmetryGroup(int p, int q, boolean leftRight, boolean sphereCentral,  boolean wrapAroundSphereFlag, double wrapSphereCurvature, boolean centerSphereFlag, boolean repeatSymmetryWorkInProgress)
+    public static double[][/*4*/][/*4*/] getSymmetryGroup(int p, int q, boolean leftRight, boolean sphereCentral,  boolean wrapAroundSphereFlag, double wrapSphereCurvature, boolean centerSphereFlag, boolean repeatSymmetryWorkInProgress, int qForRepeatSymmetryWorkInProgress)
     {
         int verboseLevel = 0;
         if (verboseLevel >= 1) OUT("    in getSymmetryGroup(p="+p+", q="+q+", leftRight="+leftRight+", sphereCentral="+sphereCentral+", wrapAroundSphereFlag="+wrapAroundSphereFlag+", wrapSphereCurvature="+wrapSphereCurvature+", centerSphereFlag="+centerSphereFlag+", repeatSymmetryWorkInProgress="+repeatSymmetryWorkInProgress+")");
 
-        double group[][][] = computeSymmetryGroup3d(p, q, leftRight, sphereCentral, repeatSymmetryWorkInProgress);
+        double group[][][] = computeSymmetryGroup3d(p, q, leftRight, sphereCentral, repeatSymmetryWorkInProgress, qForRepeatSymmetryWorkInProgress);
 
         if (!repeatSymmetryWorkInProgress) {  // if repeat, then we did the logic in the plane/paraboloid, so blow off any sphere stuff.  q stuff will be totally wrong
           if (!centerSphereFlag) // XXX TODO: wait a minute, this test can't be right when not wrapped, can it?

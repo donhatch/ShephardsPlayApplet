@@ -3015,7 +3015,7 @@ public class ShephardsPlayApplet
                                         @Override public void actionPerformed(java.awt.event.ActionEvent e)
                                         {
                                             boolean newLeftRightSymmetry = isSelected();
-                                            applet.changeSymmetry(/*p=*/applet.pRotationalSymmetry.get(), /*q=*/applet.qRotationalSymmetry.get(), /*leftRight=*/newLeftRightSymmetry, /*central=*/applet.sphereCentralSymmetry.get(), /*repeatWorkInProgress=*/applet.repeatSymmetryWorkInProgressFlag.get());
+                                            applet.changeSymmetry(/*p=*/applet.pRotationalSymmetry.get(), /*q=*/applet.qRotationalSymmetry.get(), /*leftRight=*/newLeftRightSymmetry, /*central=*/applet.sphereCentralSymmetry.get(), /*repeatWorkInProgress=*/applet.repeatSymmetryWorkInProgressFlag.get(), /*qForRepeatWorkInProgress=*/applet.qForRepeatSymmetryWorkInProgress.get());
                                         }
                                     });
                                     setSelected(applet.leftRightSymmetry.get());
@@ -3037,7 +3037,7 @@ public class ShephardsPlayApplet
                                         @Override public void actionPerformed(java.awt.event.ActionEvent e)
                                         {
                                             boolean newSphereCentralSymmetry = isSelected();
-                                            applet.changeSymmetry(/*p=*/applet.pRotationalSymmetry.get(), /*q=*/applet.qRotationalSymmetry.get(), /*leftRight=*/applet.leftRightSymmetry.get(), /*central=*/newSphereCentralSymmetry, /*repeatWorkInProgress=*/applet.repeatSymmetryWorkInProgressFlag.get());
+                                            applet.changeSymmetry(/*p=*/applet.pRotationalSymmetry.get(), /*q=*/applet.qRotationalSymmetry.get(), /*leftRight=*/applet.leftRightSymmetry.get(), /*central=*/newSphereCentralSymmetry, /*repeatWorkInProgress=*/applet.repeatSymmetryWorkInProgressFlag.get(), /*qForRepeatWorkInProgress=*/applet.qForRepeatSymmetryWorkInProgress.get());
                                         }
                                     });
                                     setSelected(applet.sphereCentralSymmetry.get());
@@ -3123,7 +3123,7 @@ public class ShephardsPlayApplet
                                                             int p = final_i;
                                                             int q = applet.qRotationalSymmetryIntent.get();
                                                             int maxp = q<=2 ? Integer.MAX_VALUE : q==3 ? 5 : q==4 ? 3 : q==5 ? 3 : 2;
-                                                            setEnabled(p <= maxp);
+                                                            //setEnabled(p <= maxp);
                                                             setVisible(p <= maxp);
                                                         }
                                                     });
@@ -3156,20 +3156,32 @@ public class ShephardsPlayApplet
                                                     // to deselect itself.  More details above.
                                                     pButtonGroup.clearSelection();
                                                 }
-                                                applet.changeSymmetry(applet.pRotationalSymmetryIntent.get(), applet.qRotationalSymmetryIntent.get(), /*leftRight=*/applet.leftRightSymmetry.get(), /*central=*/applet.sphereCentralSymmetry.get(), /*repeatWorkInProgress=*/applet.repeatSymmetryWorkInProgressFlag.get());
+                                                applet.changeSymmetry(applet.pRotationalSymmetryIntent.get(), applet.qRotationalSymmetryIntent.get(), /*leftRight=*/applet.leftRightSymmetry.get(), /*central=*/applet.sphereCentralSymmetry.get(), /*repeatWorkInProgress=*/applet.repeatSymmetryWorkInProgressFlag.get(), /*qForRepeatWorkInProgress=*/applet.qForRepeatSymmetryWorkInProgress.get());
                                             }
                                         });
                                     }
                                     advanceRow();
                                     {
-                                        add(new JLabel("q:") {{
-                                            {setToolTipText("\"q\" symmetry: rotational symmetry about an axis somewhere between +z and +y");}
-                                        }}, rightjustify);
+                                        add(new JLabel("q:") {
+                                            // CBB: a lot of dup code.  maybe try to make convenience functions for attaching enabledness?
+                                            Listenable.Listener enabledListener;
+                                            {
+                                                setToolTipText("\"q\" symmetry: rotational symmetry about an axis somewhere between +z and +y");
+                                                setEnabled(!applet.repeatSymmetryWorkInProgressFlag.get());
+                                                applet.repeatSymmetryWorkInProgressFlag.addListener(enabledListener = new Listenable.Listener() {
+                                                    @Override public void valueChanged()
+                                                    {
+                                                        setEnabled(!applet.repeatSymmetryWorkInProgressFlag.get());
+                                                    }
+                                                });
+                                            }
+                                        }, rightjustify);
                                         for (int i = 1; i <= maxpq; ++i)
                                         {
                                             final int final_i = i;
                                             add(new JRadioButton("") {
                                                 Listenable.Listener qListener, pListener; // needed to keep strong refs to them for as long as I'm alive
+                                                Listenable.Listener enabledListener;
                                                 {
                                                     addActionListener(new java.awt.event.ActionListener() {
                                                         @Override public void actionPerformed(java.awt.event.ActionEvent e)
@@ -3180,6 +3192,7 @@ public class ShephardsPlayApplet
                                                         }
                                                     });
                                                     setSelected(final_i == applet.qRotationalSymmetry.get());
+                                                    setEnabled(!applet.repeatSymmetryWorkInProgressFlag.get());
                                                     setMargin(nomargin);
                                                     qButtonGroup.add(this);
 
@@ -3191,13 +3204,19 @@ public class ShephardsPlayApplet
                                                             setSelected(applet.qRotationalSymmetryIntent.get() == q);
                                                         }
                                                     });
+                                                    applet.repeatSymmetryWorkInProgressFlag.addListener(enabledListener = new Listenable.Listener() {
+                                                        @Override public void valueChanged()
+                                                        {
+                                                            setEnabled(!applet.repeatSymmetryWorkInProgressFlag.get());
+                                                        }
+                                                    });
                                                     applet.pRotationalSymmetryIntent.addListener(pListener = new Listenable.Listener() {
                                                         @Override public void valueChanged()
                                                         {
                                                             int q = final_i;
                                                             int p = applet.pRotationalSymmetryIntent.get();
                                                             int maxq = p<=2 ? Integer.MAX_VALUE : p==3 ? 5 : p==4 ? 3 : p==5 ? 3 : 2;
-                                                            setEnabled(q <= maxq);
+                                                            //setEnabled(q <= maxq);  // no, enabledness is attached to repeat checkbox
                                                             setVisible(q <= maxq);
                                                         }
                                                     });
@@ -3226,14 +3245,50 @@ public class ShephardsPlayApplet
                                                 // Yes, necessary, see explanation above
                                                 if (applet.qRotationalSymmetryIntent.get() > maxpq) // from outside button group
                                                     pButtonGroup.clearSelection();
-                                                applet.changeSymmetry(/*p=*/applet.pRotationalSymmetryIntent.get(), /*q=*/applet.qRotationalSymmetryIntent.get(), applet.leftRightSymmetry.get(), applet.sphereCentralSymmetry.get(), /*repeatWorkInProgress=*/applet.repeatSymmetryWorkInProgressFlag.get());
+                                                applet.changeSymmetry(/*p=*/applet.pRotationalSymmetryIntent.get(), /*q=*/applet.qRotationalSymmetryIntent.get(), applet.leftRightSymmetry.get(), applet.sphereCentralSymmetry.get(), /*repeatWorkInProgress=*/applet.repeatSymmetryWorkInProgressFlag.get(), /*qForRepeatSymmetryWorkInProgress=*/applet.qForRepeatSymmetryWorkInProgress.get());
                                             }
                                         });
                                     }
                                 }
                             });
                             add(new JLabel("    "));
-                            add(new JCheckBoxForBoolean("repeat (work-in-progress)", applet.repeatSymmetryWorkInProgressFlag));
+                            add(new JCol() {{
+                                add(new JLabel(" "));  // just some vertical space 
+                                add(new JCheckBoxForBoolean("repeat (work-in-progress)", applet.repeatSymmetryWorkInProgressFlag));
+                                add(new JRow() {{
+                                    add(new JLabel("    "));
+                                    final ButtonGroup buttonGroup = new ButtonGroup();  // if nothing else, prevents deselecting
+                                    for (final int q : new int[]{3,4,6}) {
+                                      add(new JLabel("  "));
+                                      add(new JRadioButton(""+q) {
+                                        Listenable.Listener valueListener;
+                                        Listenable.Listener enablednessListener;
+                                        {
+                                            addActionListener(new java.awt.event.ActionListener() {
+                                                @Override public void actionPerformed(java.awt.event.ActionEvent e)
+                                                {
+                                                    System.out.println("q = "+q);
+                                                    applet.qForRepeatSymmetryWorkInProgress.set(q); // which triggers valueListener below
+                                                }
+                                            });
+                                            setSelected(q == applet.qForRepeatSymmetryWorkInProgress.get());
+                                            setEnabled(applet.repeatSymmetryWorkInProgressFlag.get());
+                                            buttonGroup.add(this);
+                                            applet.qForRepeatSymmetryWorkInProgress.addListener(valueListener = new Listenable.Listener() {
+                                                @Override public void valueChanged() {
+                                                    setSelected(applet.qForRepeatSymmetryWorkInProgress.get() == q);
+                                                }
+                                            });
+                                            applet.repeatSymmetryWorkInProgressFlag.addListener(enablednessListener = new Listenable.Listener() {
+                                                @Override public void valueChanged() {
+                                                    setEnabled(applet.repeatSymmetryWorkInProgressFlag.get());
+                                                }
+                                            });
+                                        }
+                                      });
+                                    } // for q
+                                }});
+                            }});
                         }});
                         add(new JCol() {{
                             add(new JCheckBox("remap fundamental region when changing rotational symmetry") { Listenable.Listener listener; {
@@ -3338,6 +3393,7 @@ public class ShephardsPlayApplet
                                     applet.leftRightSymmetry.addListener(listener);
                                     applet.sphereCentralSymmetry.addListener(listener);
                                     applet.repeatSymmetryWorkInProgressFlag.addListener(listener);
+                                    applet.qForRepeatSymmetryWorkInProgress.addListener(listener);
                                     fixEnableds();
                                 }
                             });
@@ -5246,13 +5302,14 @@ public class ShephardsPlayApplet
         } // xformTheMesh
 
 
-        private void changeSymmetry(int p, int q, boolean leftRight, boolean central, boolean repeatWorkInProgress)
+        private void changeSymmetry(int p, int q, boolean leftRight, boolean central, boolean repeatWorkInProgress, int qForRepeatWorkInProgress)
         {
             if (p == pRotationalSymmetry.get()
              && q == qRotationalSymmetry.get()
              && leftRight == leftRightSymmetry.get()
              && central == sphereCentralSymmetry.get()
-             && repeatWorkInProgress == repeatSymmetryWorkInProgressFlag.get())
+             && repeatWorkInProgress == repeatSymmetryWorkInProgressFlag.get()
+             && qForRepeatWorkInProgress == qForRepeatSymmetryWorkInProgress.get())
             {
                 return; // no change
             }
@@ -7414,13 +7471,13 @@ public class ShephardsPlayApplet
                             case '1': case '2': case '3': case '4': case '5':
                             case '6': case '7': case '8': case '9': case '0':
                             {
-                                changeSymmetry(/*p=*/ c=='0' ? 10 : c-'0', /*q=*/qRotationalSymmetry.get(), /*leftRight=*/false, /*central=*/false, /*repeatWorkInProgress=*/false);
+                                changeSymmetry(/*p=*/ c=='0' ? 10 : c-'0', /*q=*/qRotationalSymmetry.get(), /*leftRight=*/false, /*central=*/false, /*repeatWorkInProgress=*/false, /*qForRepeatWorkInProgress=*/1);
                                 break;
                             }
                             case '!': case '@': case '#': case '$': case '%':
                             case '^': case '&': case '*': case '(': case ')':
                             {
-                                changeSymmetry(/*p=*/ c==')' ? 10 : ")!@#$%^&*(".indexOf(c), /*q=*/qRotationalSymmetry.get(), /*leftRight=*/true, /*central=*/false, /*repeatWorkInProgress=*/false);
+                                changeSymmetry(/*p=*/ c==')' ? 10 : ")!@#$%^&*(".indexOf(c), /*q=*/qRotationalSymmetry.get(), /*leftRight=*/true, /*central=*/false, /*repeatWorkInProgress=*/false, /*qForRepeatWorkInProgress=*/1);
                                 break;
                             }
 
@@ -14862,7 +14919,7 @@ OFF
                     {0,3/8., 0.}, // so use this instead
                 };
 
-                double xforms[][][] = SymmetryUtils.computeSymmetryGroup3d(3, 1, false, false, false);
+                double xforms[][][] = SymmetryUtils.computeSymmetryGroup3d(3, 1, false, false, false, /*qForRepeatSymmetryWorkInProgress=*/4);
                 double verts[][] = SymmetryUtils.generateVertices(vertsGenerators,
                                                                   xforms);
 
@@ -15928,7 +15985,8 @@ OFF
                 wrapAroundSphereFlag.get(),
                 wrapSphereCurvature.get(),
                 centerSphereFlag.get(),
-                repeatSymmetryWorkInProgressFlag.get());
+                repeatSymmetryWorkInProgressFlag.get(),
+                qForRepeatSymmetryWorkInProgress.get());
         }
         private double[][/*4*/][/*4*/] getTheSymmetryGroup()
         {
@@ -15940,7 +15998,8 @@ OFF
                 wrapAroundSphereFlag.get(),
                 wrapSphereCurvature.get(),
                 centerSphereFlag.get(),
-                repeatSymmetryWorkInProgressFlag.get());
+                repeatSymmetryWorkInProgressFlag.get(),
+                qForRepeatSymmetryWorkInProgress.get());
         }
         private double[][/*4*/][/*4*/] getTheSymmetryGroupGenerators()
         {
@@ -16231,6 +16290,7 @@ OFF
         private Listenable.Boolean leftRightSymmetry = new Listenable.Boolean(false);
         private Listenable.Boolean sphereCentralSymmetry = new Listenable.Boolean(false);
         public Listenable.Boolean repeatSymmetryWorkInProgressFlag = new Listenable.Boolean(false);
+        public Listenable.Int qForRepeatSymmetryWorkInProgress = new Listenable.Int(3,6, 4);
         private Listenable.Boolean remapFundamentalRegionWhenChangingRotationalSymmetry = new Listenable.Boolean(false);
         private Listenable.Boolean deleteUnmatchedVertsWhenChangingRotationalSymmetry = new Listenable.Boolean(false);
 
@@ -17068,7 +17128,8 @@ OFF
                     {
                         System.out.println("    testing computeSymmetryGroup3d(p="+p+", q="+q+", leftRight="+leftRightSymmetry+", central="+sphereCentralSymmetry);
                         boolean repeatSymmetryWorkInProgress = false; // not testing it, currently
-                        SymmetryUtils.computeSymmetryGroup3d(p, q, leftRightSymmetry, sphereCentralSymmetry, repeatSymmetryWorkInProgress);
+                        int qForRepeatSymmetryWorkInProgress = 1;
+                        SymmetryUtils.computeSymmetryGroup3d(p, q, leftRightSymmetry, sphereCentralSymmetry, repeatSymmetryWorkInProgress, qForRepeatSymmetryWorkInProgress);
                     }
                 }
             }
