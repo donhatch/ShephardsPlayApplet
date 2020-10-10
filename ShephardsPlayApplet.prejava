@@ -3961,6 +3961,7 @@ public class ShephardsPlayApplet
                     // TODO: this interaction is fucked-- undo needs to restore wrapAroundSphereFlag or wrapAroundSphereFlagIntent (not sure which at the moment)
                     if (transformWhenChangingWrapOrCenterFlag.get())
                     {
+                        // not during load (i.e. when toggling the button), we do it this way
                         UndoItem.State before = newUndoItemState();
                         // This should be the *only* setting of extent. In particular, there should be no
                         // gui elements connected directly to wrapAroundSphereFlag, unless read-only.
@@ -3972,7 +3973,10 @@ public class ShephardsPlayApplet
                     }
                     else
                     {
+                        // during load, we do it this way
                         wrapAroundSphereFlag.set(wrapAroundSphereFlagIntent.get()); // set the extent
+                        PRINT(wrapAroundSphereFlagIntent);
+                        PRINT(wrapAroundSphereFlag);
                     }
                 }
             });
@@ -5718,15 +5722,27 @@ public class ShephardsPlayApplet
                                             double x = vertToAdd[0];
                                             double y = vertToAdd[1];
                                             double z = vertToAdd[2];
+                                            double w = vertToAdd[3];
 
-                                            System.out.println("    Adding vertex "+mesh.verts.size()+" at "+x+" "+y+" "+0+"");
-                                            if (wrapAroundSphereFlag.get())
-                                                mesh.addIsolatedVertex(x, y, z, 1.);
+                                            if (repeatSymmetryWorkInProgressFlag.get())
+                                            {
+                                                System.out.println("    Adding vertex "+mesh.verts.size()+" at "+x+" "+y+" "+z+" "+w+", hope this is right");
+                                                mesh.addIsolatedVertex(x, y, z, w);
+                                                System.out.println("        it came out as: "+mesh.verts.get(mesh.verts.size()-1));
+                                            }
+                                            else if (wrapAroundSphereFlag.get())
+                                            {
+                                                System.out.println("    Adding vertex "+mesh.verts.size()+" at "+x+" "+y+" "+z+" "+w);
+                                                mesh.addIsolatedVertex(x, y, z, w);
+                                            }
                                             else
+                                            {
+                                                System.out.println("    Adding vertex "+mesh.verts.size()+" at "+x+" "+y+" 0 (ignoring z="+z+" and w="+w+")");
                                                 mesh.addIsolatedVertex(x, y, 0.);
+                                            }
 
                                             //PRINT(vertOffset(mesh.getVert(mesh.verts.size()-1), wrapAroundSphereFlag.get()));
-                                            CHECK_ALMOST_EQ(vertOffset(mesh.getVert(mesh.verts.size()-1), wrapAroundSphereFlag.get()), 0., 1e-6);
+                                            //CHECK_ALMOST_EQ(vertOffset(mesh.getVert(mesh.verts.size()-1), wrapAroundSphereFlag.get()), 0., 1e-6);
 
                                             java.util.ArrayList<Mesh.Vertex> verts = mesh.verts;
                                             java.util.ArrayList<Mesh.Edge> edges = mesh.edges;
@@ -16208,19 +16224,19 @@ OFF
         // extent is what's been applied to the model (since changing symmetry can change the model, if one or more of the
         // "when changing symmetry" flags is set).
         // (Or, can just think of the non-intent values as "previous" or "applied" values.)
-        private Listenable.Int pRotationalSymmetryIntent = new Listenable.Int(1,10, 1);
-        private Listenable.Int qRotationalSymmetryIntent = new Listenable.Int(1,10, 1);
+        public Listenable.Int pRotationalSymmetryIntent = new Listenable.Int(1,10, 1);
+        public Listenable.Int qRotationalSymmetryIntent = new Listenable.Int(1,10, 1);
         private Listenable.Int pRotationalSymmetry = new Listenable.Int(1,10, 1);
         private Listenable.Int qRotationalSymmetry = new Listenable.Int(1,10, 1);
         private Listenable.Boolean leftRightSymmetry = new Listenable.Boolean(false);
         private Listenable.Boolean sphereCentralSymmetry = new Listenable.Boolean(false);
-        private Listenable.Boolean repeatSymmetryWorkInProgressFlag = new Listenable.Boolean(false);
+        public Listenable.Boolean repeatSymmetryWorkInProgressFlag = new Listenable.Boolean(false);
         private Listenable.Boolean remapFundamentalRegionWhenChangingRotationalSymmetry = new Listenable.Boolean(false);
         private Listenable.Boolean deleteUnmatchedVertsWhenChangingRotationalSymmetry = new Listenable.Boolean(false);
 
-        private Listenable.Boolean wrapAroundSphereFlagIntent = new Listenable.Boolean(false);
+        public Listenable.Boolean wrapAroundSphereFlagIntent = new Listenable.Boolean(false);
         private Listenable.Boolean wrapAroundSphereFlag = new Listenable.Boolean(wrapAroundSphereFlagIntent.get());
-        private Listenable.Boolean centerSphereFlag = new Listenable.Boolean(true);
+        public Listenable.Boolean centerSphereFlag = new Listenable.Boolean(true);
         private Listenable.Double wrapSphereCurvature = new Listenable.Double(.001,2., 1.);
         private Listenable.Double wrapSphereSymbolicRadius = new Listenable.Double(.001,1.999, 1.);
         private Listenable.Boolean transformWhenChangingWrapOrCenterFlag = new Listenable.Boolean(true);
@@ -17070,15 +17086,24 @@ OFF
 
         //dumpComponentHierarchy(frame, 0, 0, 1);
 
-        setPublicFieldsFromArgsOrDie(applet, args);
+        {
+          // CBB: too much hackery here
+          boolean savedTransformFlag = applet.transformWhenChangingWrapOrCenterFlag.get();
+          applet.transformWhenChangingWrapOrCenterFlag.set(false);
+
+          setPublicFieldsFromArgsOrDie(applet, args);
+
+          applet.transformWhenChangingWrapOrCenterFlag.set(savedTransformFlag);
+        }
+
         applet.init();
 
         frame.setLocation(10, 10);
         // no frame.pack(), since we call setSize explicitly
         frame.setSize(720, 745);
         //frame.setSize(100,100);
-        //frame.setSize(300,300);
-        frame.setSize(512,512);
+        frame.setSize(300,300);
+        //frame.setSize(512,512);
         //frame.setSize(768,768);
         //frame.setSize(1024,1024);
 

@@ -145,8 +145,8 @@ final class SymmetryUtils {
     // and rotation of order q around some point between the +z and +y axis.
     public static double[][/*4*/][/*4*/] computeSymmetryGroup3d(int p, int q, boolean leftRightSymmetry, boolean sphereCentralSymmetry, boolean repeatSymmetryWorkInProgress)
     {
-        int verboseLevel = 1;
-        if (verboseLevel >= 1) System.out.println("    in computeSymmetryGroup3d(p="+p+", q="+q+", leftRightSymmetry="+leftRightSymmetry+", sphereCentralSymmetry="+sphereCentralSymmetry+", repeatSymmetryWorkInProgress="+repeatSymmetryWorkInProgress+")");
+        int verboseLevel = 0;
+        if (verboseLevel >= 1) System.out.println("        in computeSymmetryGroup3d(p="+p+", q="+q+", leftRightSymmetry="+leftRightSymmetry+", sphereCentralSymmetry="+sphereCentralSymmetry+", repeatSymmetryWorkInProgress="+repeatSymmetryWorkInProgress+")");
         double gens[][][][] = computeSymmetryGroupGenerators3d(p, q, leftRightSymmetry, sphereCentralSymmetry);
 
         if (false)
@@ -208,18 +208,90 @@ final class SymmetryUtils {
 
         if (repeatSymmetryWorkInProgress)
         {
-            if (verboseLevel >= 1) System.out.println("      doing repeat stuff");
-            if (verboseLevel >= 1) System.out.println("          group was "+Arrays.toStringNonCompact(group, "", "    "));
+            //  THINK ABOUT THIS:
+            //  What's a homogeneous matrix that pans in x and keeps points the same offset from the parabola?
+            //  So, homogeneous:
+            //     -2,4,1 -> -1,1,1
+            //     -1,1,1 ->  0,0,1
+            //      0,0,1 ->  1,1,1
+            //      1,1,1 ->  2,4,1
+            //      2,4,1 ->  3,9,1
+            //      3,9,1 ->  4,16,1
+            //
+            //  So the matrix must be:
+            //      ? ? ?
+            //      ? ? ?
+            //      1 1 1
+            //
+            //  Oh let's see, here's a clue: x^2+x is an offset paraboloid, right?
+            //  So, if we have x^2 and x, can we express x+1, (x+1)^2?  
+            //  Well, (x+1)^2 = x^2 + 2x + 1
+            //  So we want x,x^2,1 -> x+1,x^2+2x+1,1
+            //             a,b,1 -> a+1,2a+b+1,1
+            //             1,0,1 -> 2,3,1
+            //             0,1,1 -> 1,2,1
+            //             0,0,1 -> 1,1,1
+            //
+            //             1,0,0 -> 1,2,0
+            //             0,1,0 -> 0,1,0
+            //             0,0,1 -> 1,1,1
+
+            //  So, is that the answer?
+            //  Yes, it is!!
+            //  And, by 2 instead of 1:
+            //    {{1,2,0},{0,1,0},{1,1,1}}^2
+            //      1 4 0
+            //      0 1 0
+            //      2 4 1
+            //    {{1,2,0},{0,1,0},{1,1,1}}^3
+            //      1 6 0
+            //      0 1 0
+            //      3 9 1
+            //  So, to move by dx:
+            //      1 2*dx 0
+            //      0  1   0
+            //     dx dx^2 1
+            //  In one higher dimension:
+            //      1   0     2*dx   0
+            //      0   1     2*dy   0
+            //      0   0      1     0
+            //     dx  dy  dx^2+dy^2 1
+            // Ok, but that was the paraboloid z=x^2+y^2, which has curvature 2 at the origin.
+            // We want the one that has curvature 1 at the origin.
+            // So that's:  steepen * m * flatten
+            // I think that's:
+            //      1   0     dx         0
+            //      0   1     dy         0
+            //      0   0      1         0
+            //     dx  dy  (dx^2+dy^2)/2 1
+            // but let's make sure.
+            //    {{1,0,0},{0,2,0},{0,0,1}} . {{1,2,0},{0,1,0},{1,1,1}} . {{1,0,0},{0,1/2,0},{0,0,1}}
+            //        1  1  0
+            //        0  1  0
+            //        1 1/2 1
+            // and 2 units is:
+            //        1 2 0
+            //        0 1 0
+            //        2 2 1
+            // so for general dx it's:
+            //        1  dx    0
+            //        0  1     0
+            //       dx dx^2/2 1
+            // oh and actually the curvature has to be negative:
+            //        1   -dx   0
+            //        0    1    0
+            //       dx -dx^2/2 1
+
+
+            if (verboseLevel >= 1) System.out.println("          doing repeat stuff");
+            if (verboseLevel >= 1) System.out.println("              group was "+Arrays.toStringNonCompact(group, "", "    "));
             // WORK IN PROGRESS
             // Experiment with planar repeat.
 
             double[][][] translations;
 
-
-            //int r = 2;  // radius, in units where a unit is from one point to the next
-            int r = 1;  // radius, in units where a unit is from one point to the next
-            //double tileWidth = 1.;
-            double tileWidth = .5;
+            int r = 2;  // radius, in units where a unit is from one point to the next
+            double tileWidth = 1.;
 
             if (p % 3 == 0)
             {
@@ -230,10 +302,10 @@ final class SymmetryUtils {
                     double dx = ix*tileWidth + iy*tileWidth/2.;
                     double dy = iy*tileWidth * Math.sqrt(3)/2.;
                     translations[nTranslations++] = new double[][] {
-                        {1,0,0,0},
-                        {0,1,0,0},
+                        {1,0,-dx,0},
+                        {0,1,-dy,0},
                         {0,0,1,0},
-                        {dx,dy,0,1},
+                        {dx,dy,-(dx*dx+dy*dy)/2.,1},
                     };
                 }
                 CHECK_EQ(nTranslations, translations.length);
@@ -241,8 +313,7 @@ final class SymmetryUtils {
             else
             {
                 int rx = r;
-                ///int ry = r;
-                int ry = 0;
+                int ry = r;
                 translations = new double[(2*rx+1)*(2*ry+1)][4][4];
                 int nTranslations = 0;
                 for (int ix = -rx; ix <= rx; ++ix)
@@ -251,10 +322,10 @@ final class SymmetryUtils {
                     double dx = ix*tileWidth;
                     double dy = iy*tileWidth;
                     translations[nTranslations++] = new double[][] {
-                        {1,0,0,0},
-                        {0,1,0,0},
+                        {1,0,-dx,0},
+                        {0,1,-dy,0},
                         {0,0,1,0},
-                        {dx,dy,0,1},
+                        {dx,dy,-(dx*dx+dy*dy)/2.,1},
                     };
                 }
                 CHECK_EQ(nTranslations, translations.length);
@@ -272,49 +343,58 @@ final class SymmetryUtils {
             }
             group = bigGroup;
 
-            if (verboseLevel >= 1) System.out.println("      done repeat stuff");
+            if (verboseLevel >= 1) System.out.println("          done repeat stuff");
         }
-        if (verboseLevel >= 1) System.out.println("    out computeSymmetryGroup3d(p="+p+", q="+q+", leftRightSymmetry="+leftRightSymmetry+", sphereCentralSymmetry="+sphereCentralSymmetry+", repeatSymmetryWorkInProgress="+repeatSymmetryWorkInProgress+"), returning "+Arrays.toStringNonCompact(group, /*indentString=*/"", /*indentIncr=*/"    "));
+        if (verboseLevel >= 1) System.out.println("        out computeSymmetryGroup3d(p="+p+", q="+q+", leftRightSymmetry="+leftRightSymmetry+", sphereCentralSymmetry="+sphereCentralSymmetry+", repeatSymmetryWorkInProgress="+repeatSymmetryWorkInProgress+"), returning "+Arrays.toStringNonCompact(group, /*indentString=*/"", /*indentIncr=*/"    "));
         return group;
     } // computeSymmetryGroup3d
 
     public static double[][/*4*/][/*4*/] getSymmetryGroup(int p, int q, boolean leftRight, boolean sphereCentral,  boolean wrapAroundSphereFlag, double wrapSphereCurvature, boolean centerSphereFlag, boolean repeatSymmetryWorkInProgress)
     {
+        int verboseLevel = 0;
+        if (verboseLevel >= 1) OUT("    in getSymmetryGroup(p="+p+", q="+q+", leftRight="+leftRight+", sphereCentral="+sphereCentral+", wrapAroundSphereFlag="+wrapAroundSphereFlag+", wrapSphereCurvature="+wrapSphereCurvature+", centerSphereFlag="+centerSphereFlag+", repeatSymmetryWorkInProgress="+repeatSymmetryWorkInProgress+")");
+
         double group[][][] = computeSymmetryGroup3d(p, q, leftRight, sphereCentral, repeatSymmetryWorkInProgress);
 
-        if (!centerSphereFlag) // XXX TODO: wait a minute, this test can't be right when not wrapped, can it?
-        {
-            // un-center the symmetry group
-            double wrapSphereRadius = 1./wrapSphereCurvature;
-            double originToSphereCenter[][] = {
-                {1,0,0,0},
-                {0,1,0,0},
-                {0,0,1,0},
-                {0,0,-wrapSphereRadius,1},
-            };
-            double sphereCenterToOrigin[][] = {
-                {1,0,0,0},
-                {0,1,0,0},
-                {0,0,1,0},
-                {0,0,wrapSphereRadius,1},
-            };
-            FORI (iGroup, group.length)
-            {
-                group[iGroup] = VecMath.mxmxm(sphereCenterToOrigin,
-                                              group[iGroup],
-                                              originToSphereCenter);
-            }
+        if (!repeatSymmetryWorkInProgress) {  // if repeat, then we did the logic in the plane/paraboloid, so blow off any sphere stuff.  q stuff will be totally wrong
+          if (!centerSphereFlag) // XXX TODO: wait a minute, this test can't be right when not wrapped, can it?
+          {
+              // un-center the symmetry group
+              double wrapSphereRadius = 1./wrapSphereCurvature;
+              double originToSphereCenter[][] = {
+                  {1,0,0,0},
+                  {0,1,0,0},
+                  {0,0,1,0},
+                  {0,0,-wrapSphereRadius,1},
+              };
+              double sphereCenterToOrigin[][] = {
+                  {1,0,0,0},
+                  {0,1,0,0},
+                  {0,0,1,0},
+                  {0,0,wrapSphereRadius,1},
+              };
+              FORI (iGroup, group.length)
+              {
+                  group[iGroup] = VecMath.mxmxm(sphereCenterToOrigin,
+                                                group[iGroup],
+                                                originToSphereCenter);
+              }
+          }
+          if (!wrapAroundSphereFlag)
+          {
+              // unwrap the symmetry group
+              // TODO: this assumes the symmetry group was wrapped to begin with... not true if it's all translational, is it??
+              double wrapMat[][] = GeomUtils.getWrapAroundSphereMatrix(wrapSphereCurvature, centerSphereFlag);
+              double unwrapMat[][] = GeomUtils.getUnwrapAroundSphereMatrix(wrapSphereCurvature, centerSphereFlag);
+              if (verboseLevel >= 1) OUT("      wrapMat = "+Arrays.toStringCompact(wrapMat));
+              if (verboseLevel >= 1) OUT("      unwrapMat = "+Arrays.toStringCompact(wrapMat));
+              FORI (iGroup, group.length)
+                  group[iGroup] = VecMath.mxmxm(wrapMat,
+                                                group[iGroup],
+                                                unwrapMat);
+          }
         }
-        if (!wrapAroundSphereFlag)
-        {
-            // unwrap the symmetry group
-            double wrapMat[][] = GeomUtils.getWrapAroundSphereMatrix(wrapSphereCurvature, centerSphereFlag);
-            double unwrapMat[][] = GeomUtils.getUnwrapAroundSphereMatrix(wrapSphereCurvature, centerSphereFlag);
-            FORI (iGroup, group.length)
-                group[iGroup] = VecMath.mxmxm(wrapMat,
-                                              group[iGroup],
-                                              unwrapMat);
-        }
+        if (verboseLevel >= 1) OUT("    out getSymmetryGroup(p="+p+", q="+q+", leftRight="+leftRight+", sphereCentral="+sphereCentral+", wrapAroundSphereFlag="+wrapAroundSphereFlag+", wrapSphereCurvature="+wrapSphereCurvature+", centerSphereFlag="+centerSphereFlag+", repeatSymmetryWorkInProgress="+repeatSymmetryWorkInProgress+"), returning "+Arrays.toStringNonCompact(group, /*indentString=*/"", /*indentIncr=*/"    "));
         return group;
     } // getTheSymmetryGroup
 
@@ -323,7 +403,8 @@ final class SymmetryUtils {
     public static double[][] generateVertices(double vertGenerators[][],
                                               double xforms[][][])
     {
-        OUT("    in generateVertices");
+        int verboseLevel = 1;  // 1 is a good number
+        if (verboseLevel >= 1) OUT("    in generateVertices");
         double tol = 1e-9;
         double verts[][] = new double[vertGenerators.length*xforms.length][4];
         int nVerts = 0;
@@ -346,7 +427,7 @@ final class SymmetryUtils {
             FOR (jVert, nVerts)
                 if (VecMath.equals(3, vert3out, verts[jVert], tol))
                     break;
-            if (jVert == nVerts)
+            if (jVert == nVerts)  // didn't find it
             {
                 VecMath.copyvec(3, verts[nVerts], vert3out);
                 verts[nVerts][3] = 1.;
@@ -354,7 +435,9 @@ final class SymmetryUtils {
             }
         }
         verts = (double[][])Arrays.subarray(verts, 0, nVerts);
-        OUT("    out generateVertices, returning "+verts.length+"/"+(vertGenerators.length*xforms.length)+" verts");
+        if (verboseLevel >= 1) OUT("      verts = "+Arrays.toStringNonCompact(verts, "        ", "    "));
+
+        if (verboseLevel >= 1) OUT("    out generateVertices, returning "+verts.length+"/"+(vertGenerators.length*xforms.length)+" verts");
         return verts;
     } // generateVertices
 
