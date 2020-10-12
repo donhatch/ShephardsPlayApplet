@@ -3713,10 +3713,8 @@ public class ShephardsPlayApplet
                                         @Override public void itemStateChanged(java.awt.event.ItemEvent e)
                                         {
                                             applet.showMagFlag.set(isSelected());
-                                            System.out.println("showMagFlag -> "+applet.showMagFlag.get());
-                                            // need to double buffer iff magnifying
-                                            applet.doubleBufferFlag = applet.showMagFlag.get();
-                                            System.out.println("    doubleBufferFlag -> "+applet.doubleBufferFlag);
+                                            // CBB: haphazard printing, there's also one when I hit ctrl-M.  should be doing this in a value listener, not in either of those places
+                                            System.out.println("(from checkbox itemStateChanged) showMagFlag -> "+applet.showMagFlag.get()+" (which affects home grown double buffering which is "+applet.homeGrownDoubleBufferFlag+")");
                                             applet.theCanvas.repaint();
                                         }
                                     });
@@ -3847,6 +3845,11 @@ public class ShephardsPlayApplet
                     }
                 }
             }
+
+            // Content pane doesn't need to be a JPanel, with double buffering and background and opaqueness semantics; just make it a JComponent.
+            // TODO: could we even just make it the canvas?
+            setContentPane(new javax.swing.JComponent() {{ setName("my content pane"); }});
+            getContentPane().setLayout(new java.awt.BorderLayout());
 
             getContentPane().add(theCanvas = new TheCanvas());
 
@@ -4441,24 +4444,58 @@ public class ShephardsPlayApplet
             }
         } // dumpComponentHierarchy
 
+	private interface DoSomethingToComponent { void apply(java.awt.Component c); };
+	private interface DoSomethingToSwingComponent { void apply(javax.swing.JComponent jc); };
+	public static void doToAllComponents(java.awt.Component c, DoSomethingToComponent doSomethingToComponent) {
+	  // pre-order (so, for instance, if it's paintComponent, it will do it in a sensible order)
+	  doSomethingToComponent.apply(c);
+	  if (c instanceof java.awt.Container)
+	  {
+	      java.awt.Container C = (java.awt.Container)c;
+	      int n = C.getComponentCount();
+	      for (int i = 0; i < n; ++i)
+		  doToAllComponents(C.getComponent(i), doSomethingToComponent);
+	  }
+	}
+#ifdef NOTYET  // argh, can't do lambdas because can't do 1.8 because "Unknown cp_info tag"
+	public static void doToAllSwingComponents(java.awt.Component c, DoSomethingToSwingComponent doSomethingToSwingComponent) {
+	  doToAllComponents(c, c1 -> {
+	    if (c1 instanceof javax.swing.JComponent) {
+	      doSomethingToSwingComponent.apply((javax.swing.JComponent)c1);
+	    }
+	  });
+	}
+
+      // for debugging XXX should probably be in com.donhatchsw.awt somewhere, the layout stuff has it too.  also the printComponent stuff, maybe
+      public static void randomlyColorize(java.awt.Component c)
+      {
+          doToAllComponents(c, c1 -> {
+              c1.setBackground(new java.awt.Color((float)Math.random(),
+                                                  (float)Math.random(),
+                                                  (float)Math.random()));
+              c1.setForeground(new java.awt.Color((float)Math.random(),
+                                                  (float)Math.random(),
+                                                  (float)Math.random()));
+          });
+      } // randomlyColorize
+#else
+
         // TODO: publish this somewhere more legit
         public static void randomlyColorize(java.awt.Component c,
-                                             java.util.Random randomNumberGenerator)
+                                            final java.util.Random randomNumberGenerator)
         {
-            c.setBackground(new java.awt.Color((float)randomNumberGenerator.nextDouble(),
-                                               (float)randomNumberGenerator.nextDouble(),
-                                               (float)randomNumberGenerator.nextDouble()));
-            c.setForeground(new java.awt.Color((float)randomNumberGenerator.nextDouble(),
-                                               (float)randomNumberGenerator.nextDouble(),
-                                               (float)randomNumberGenerator.nextDouble()));
-            if (c instanceof java.awt.Container)
-            {
-                java.awt.Container C = (java.awt.Container)c;
-                int n = C.getComponentCount();
-                for (int i = 0; i < n; ++i)
-                    randomlyColorize(C.getComponent(i), randomNumberGenerator);
-            }
+            doToAllComponents(c, new DoSomethingToComponent() {
+              @Override public void apply(java.awt.Component c) {
+                c.setBackground(new java.awt.Color((float)randomNumberGenerator.nextDouble(),
+                                                   (float)randomNumberGenerator.nextDouble(),
+                                                   (float)randomNumberGenerator.nextDouble()));
+                c.setForeground(new java.awt.Color((float)randomNumberGenerator.nextDouble(),
+                                                   (float)randomNumberGenerator.nextDouble(),
+                                                   (float)randomNumberGenerator.nextDouble()));
+              }
+            });
         } // randomlyColorize
+#endif
 
         // This is a bit ridiculous, but... figure out the height a flowLayout wants to be, given a width.
         // Maybe ask on stackOverflow?
@@ -7300,7 +7337,7 @@ public class ShephardsPlayApplet
                             case CTRL('M'):
                             case CTRL('J'): // ARGH! ctrl-m comes out as ctrl-j!?
                                 showMagFlag.set(!showMagFlag.get());
-                                System.out.println("showMagFlag -> "+showMagFlag.get());
+                                System.out.println("(from ctrl-m key) showMagFlag -> "+showMagFlag.get()+" (which affects home grown double buffering which is "+homeGrownDoubleBufferFlag+")");
                                 theCanvas.repaint();
                                 break;
 
@@ -8118,14 +8155,14 @@ public class ShephardsPlayApplet
             @Override public void paintComponent(java.awt.Graphics frontBufferGraphics)
             {
                 if (eventVerbose >= 1) System.out.println("in paintComponent");
-                if (eventVerbose >= 1) System.out.println("  doubleBufferFlag = "+doubleBufferFlag);
+                if (eventVerbose >= 1) System.out.println("  homeGrownDoubleBufferFlag = "+homeGrownDoubleBufferFlag);
 
                 CHECK(javax.swing.SwingUtilities.isEventDispatchThread());
 
                 makeSureBackBufferIsRight();
                 java.awt.Graphics g;
                 java.awt.Dimension size;
-                if (doubleBufferFlag)
+                if (homeGrownDoubleBufferFlag || showMagFlag.get())
                 {
                     g = backBufferImage.getGraphics();
                     size = new java.awt.Dimension(backBufferImage.getWidth(null),
@@ -10938,7 +10975,7 @@ public class ShephardsPlayApplet
 
             private void makeSureBackBufferIsRight()
             {
-                if (doubleBufferFlag)
+                if (homeGrownDoubleBufferFlag || showMagFlag.get())
                 {
                     java.awt.Dimension size = getSize();
                     int shouldBeWidth = (int)Math.ceil((double)size.width);
@@ -16485,7 +16522,15 @@ OFF
         private static int nonEventVerbose = 0; // so static classes can refer to it
         private boolean antiAliasingFlag = false;
         private boolean implementAntiAliasingInHardware = true; // XXX should have a better name for this-- really mean let java runtime do it
-        private boolean doubleBufferFlag = false; // TODO: swing does this for us... can get rid of it, as soon as I figure out how to do the magnifying glass without it  XXX except it still flickers during resize!  (not violent black/grey any more due to System.setProperty("sun.awt.noerasebackground", "true"), but still flickering!  argh!  wtf?  THERE MUST BE A BUG: Double buffering is not working properly during resize!!!
+
+
+        // Still need to mess with these.
+        // Current state:
+        //      swing true homegrown false: works great, no flicker during resize.
+        //      swing false homegrown true: flicker during resize :-(  this would be the one I'd like to use, if it worked.
+        public boolean swingDoubleBufferFlag = true;
+        public boolean homeGrownDoubleBufferFlag = false; // TODO: swing does this for us... can get rid of it, as soon as I figure out how to do the magnifying glass without it  XXX except it still flickers during resize!  (not violent black/grey any more due to System.setProperty("sun.awt.noerasebackground", "true"), but still flickering!  argh!  wtf?  THERE MUST BE A BUG: Double buffering is not working properly during resize!!!   (note: I have overhauled since I said all that, so need to revisit)
+
         private java.awt.Image backBufferImage = null;
         private MyGraphics3D mostRecentGraphics = null;
         private Listenable.Boolean showMagFlag = new Listenable.Boolean(false);
@@ -17144,6 +17189,20 @@ OFF
           setPublicFieldsFromArgsOrDie(applet, args);
 
           applet.transformWhenChangingWrapOrCenterFlag.set(savedTransformFlag);
+
+          // must do this after setting public members!
+          // TODO: make it a listenable!
+          if (!applet.swingDoubleBufferFlag) {
+            // Disable swing's double buffering.
+            // Not sure whether we want it in the long run, and disabling it lets me confirm that
+            // ancestor components aren't doing unnecessary clears, if I comment out the clear
+            // in paintComponent.
+            for (java.awt.Component c = applet.theCanvas; c != null; c = c.getParent()) {
+              if (c instanceof javax.swing.JComponent) {
+                ((javax.swing.JComponent)c).setDoubleBuffered(false);
+              }
+            }
+          }
         }
 
         applet.init();
@@ -17181,7 +17240,8 @@ OFF
         // *if* applet is added to content pane of frame.
         // (But, I figured out how to avoid that, by transplanting contents instead of adding!
         // voodoo voodoo voodoo.)
-        // Do this anyway, since it may make resizes slightly more efficient. (voodood)
+        // (And, further simplified since then so we're more and more direct)
+        // Do this anyway, since it may make resizes slightly more efficient. (voodoo)
         System.setProperty("sun.awt.noerasebackground", "true");
 
         // More responsive tooltips that don't go away while mouse is over the thing
