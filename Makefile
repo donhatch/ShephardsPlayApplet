@@ -36,16 +36,16 @@
 
 
 
-JAVAROOT=/usr/lib/jvm/java-1.11.0-openjdk-amd64
-JAVAC=${JAVAROOT}/bin/javac -source 1.6 -target 1.6 -deprecation -Xlint:unchecked -Xlint:all -Xlint:-options
-JAR=${JAVAROOT}/bin/jar
+#JAVAROOT=/usr/lib/jvm/java-1.11.0-openjdk-amd64
+#JAVAC=${JAVAROOT}/bin/javac -source 1.6 -target 1.6 -deprecation -Xlint:unchecked -Xlint:all -Xlint:-options
+#JAR=${JAVAROOT}/bin/jar
 
 #JAVAC=/usr/bin/javac -source 1.7 -target 1.7 -deprecation -Xlint:unchecked -Xlint:all -Xlint:-options
 #JAR=/usr/bin/jar
 
 # Using lambdas now, so at least 1.8
-#JAVAC=/usr/bin/javac -source 1.8 -target 1.8 -deprecation -Xlint:unchecked -Xlint:all
-#JAR=/usr/bin/jar
+JAVAC=/usr/bin/javac -source 1.8 -target 1.8 -deprecation -Xlint:unchecked -Xlint:all
+JAR=/usr/bin/jar
 
 #JAVAC=/usr/bin/javac -source 1.9 -target 1.9 -deprecation -Xlint:unchecked -Xlint:all
 #JAR=/usr/bin/jar
