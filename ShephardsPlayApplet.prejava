@@ -4300,7 +4300,7 @@ public class ShephardsPlayApplet
             "    'D' - Delaunay triangulate",
             "    'w' - add or remove closest dual vertex from list of points to show curvature center of",
             "    'W' - select *all* dual verts for weighting (positive weight, of arity 3), or deselect all if selected all previously",
-            "    'e' - toggle also showing centroid and euler line, whenever showing curvature center of selected dual verts",
+            "    'e' - toggle also showing centroid and orthocenter and euler line, whenever showing curvature center of selected dual verts",
             "    'O' - toggle optimizeFlag",
             "    'l' - toggle showLabels",
             //"    '0' - toggle showOrigin",
@@ -8541,6 +8541,7 @@ public class ShephardsPlayApplet
                 java.awt.Color dualEdgeColors[] = null;
                 double[] avg = null; // we set it to non-null if drawing one
                 double[] centroid = null;  // we set it to non-null if drawing one
+                double[] orthocenter = null;  // we set it to non-null if drawing one
                 double lagoonCenter[] = null; // we set it to non-null if drawing one
                 double momentAndWeightStrictlyBelowEachDualVertex[][] = null;
                 boolean dualEdgeIsOffBalanceCut[] = null;
@@ -8710,7 +8711,8 @@ public class ShephardsPlayApplet
                     //
                     {
                         double curvatureMomentAndAreaSum[] = new double[4]; // zeros
-                        double centroidMomentSumTimes3[] = showEulerLineWhenShowingWeightsFlag.get() ? new double[2] : null;  // worry about only x and y, for simplicity
+                        double centroidMomentTimes3[] = showEulerLineWhenShowingWeightsFlag.get() ? new double[2] : null;  // worry about only x and y, for simplicity
+                        double orthocenterMoment[] = showEulerLineWhenShowingWeightsFlag.get() ? new double[2] : null;  // worry about only x and y, for simplicity
                         FORI (i, selectedDualVertIndices.length)
                         {
                             int ind = selectedDualVertIndices[i];
@@ -8719,12 +8721,33 @@ public class ShephardsPlayApplet
                             dualVertColors[ind] = dualVertSelectionColor;
                             Mesh.Vertex dualVert = dualMesh.getVert(ind);
                             GeomUtils.accumulateMomentAndArea(curvatureMomentAndAreaSum, dualVert.momentAndArea);
-                            if (centroidMomentSumTimes3 != null) {
+                            if (centroidMomentTimes3 != null) {
                                 Mesh.Vertex v0 = mesh.getVert(selectedTris[i][0]);
                                 Mesh.Vertex v1 = mesh.getVert(selectedTris[i][1]);
                                 Mesh.Vertex v2 = mesh.getVert(selectedTris[i][2]);
-                                centroidMomentSumTimes3[0] += (v0.x() + v1.x() + v2.x()) * dualVert.momentAndArea[3];
-                                centroidMomentSumTimes3[1] += (v0.y() + v1.y() + v2.y()) * dualVert.momentAndArea[3];
+                                centroidMomentTimes3[0] += (v0.x() + v1.x() + v2.x()) * dualVert.momentAndArea[3];
+                                centroidMomentTimes3[1] += (v0.y() + v1.y() + v2.y()) * dualVert.momentAndArea[3];
+                            }
+                            if (orthocenterMoment != null) {
+                                // What's the orthocenter of a triangle?
+                                // https://en.wikipedia.org/wiki/Altitude_(triangle)#Orthocenter
+                                Mesh.Vertex v0 = mesh.getVert(selectedTris[i][0]);
+                                Mesh.Vertex v1 = mesh.getVert(selectedTris[i][1]);
+                                Mesh.Vertex v2 = mesh.getVert(selectedTris[i][2]);
+                                // edge lengths squared...
+                                double asqrd = SQR(v1.x()-v2.x()) + SQR(v1.y()-v2.y());
+                                double bsqrd = SQR(v2.x()-v0.x()) + SQR(v2.y()-v0.y());
+                                double csqrd = SQR(v0.x()-v1.x()) + SQR(v0.y()-v1.y());
+                                // barycentrics...
+                                double abary = (asqrd+bsqrd-csqrd)*(asqrd-bsqrd+csqrd);
+                                double bbary = (bsqrd+csqrd-asqrd)*(bsqrd-csqrd+asqrd);
+                                double cbary = (csqrd+asqrd-bsqrd)*(csqrd-asqrd+bsqrd);
+                                double barysum = (abary+bbary+cbary);
+                                abary /= barysum;
+                                bbary /= barysum;
+                                cbary /= barysum;
+                                orthocenterMoment[0] += (v0.x()*abary + v1.x()*bbary + v2.x()*cbary) * dualVert.momentAndArea[3];
+                                orthocenterMoment[1] += (v0.y()*abary + v1.y()*bbary + v2.y()*cbary) * dualVert.momentAndArea[3];
                             }
                         }
                         if (selectedDualVertIndices.length > 0)
@@ -8736,10 +8759,16 @@ public class ShephardsPlayApplet
                                 curvatureMomentAndAreaSum[1] / A,
                                 curvatureMomentAndAreaSum[2] / (A*A),
                             };
-                            if (centroidMomentSumTimes3 != null) {
+                            if (centroidMomentTimes3 != null) {
                                 centroid = new double[] {
-                                  centroidMomentSumTimes3[0] / (3.*A),
-                                  centroidMomentSumTimes3[1] / (3.*A),
+                                  centroidMomentTimes3[0] / (3.*A),
+                                  centroidMomentTimes3[1] / (3.*A),
+                                };
+                            }
+                            if (orthocenterMoment != null) {
+                                orthocenter = new double[] {
+                                  orthocenterMoment[0] / A,
+                                  orthocenterMoment[1] / A,
                                 };
                             }
                         }
@@ -10072,16 +10101,25 @@ public class ShephardsPlayApplet
                                            0.,
                                            7);
                         }
-                        // And euler line, if we have both center of curvature and centroid
-                        if (avg != null && centroid != null)
+                        // And orthocenter
+                        if (orthocenter != null) {
+                            mg3d.setColor(java.awt.Color.MAGENTA);
+                            mg3d.drawPoint(orthocenter[0],
+                                           orthocenter[1],
+                                           0.,
+                                           7);
+                        }
+                        // And euler line, if we have both centroid and orthocenter.
+                        // avg (center of curvature) will be on this line if all heights are 0.
+                        if (centroid != null && orthocenter != null)
                         {
                             mg3d.setColor(java.awt.Color.CYAN);
                             // Just do simple 2d math
                             double lengthMultiplier = 10.;
-                            double x0 = LERP(avg[0], centroid[0], lengthMultiplier);
-                            double y0 = LERP(avg[1], centroid[1], lengthMultiplier);
-                            double x1 = LERP(centroid[0], avg[0], lengthMultiplier);
-                            double y1 = LERP(centroid[1], avg[1], lengthMultiplier);
+                            double x0 = LERP(centroid[0], orthocenter[0], lengthMultiplier);
+                            double y0 = LERP(centroid[1], orthocenter[1], lengthMultiplier);
+                            double x1 = LERP(orthocenter[0], centroid[0], lengthMultiplier);
+                            double y1 = LERP(orthocenter[1], centroid[1], lengthMultiplier);
                             mg3d.drawLine(x0,y0,0.,
                                           x1,y1,0.,
                                           antiAliasingFlag);
