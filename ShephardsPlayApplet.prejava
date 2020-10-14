@@ -4300,6 +4300,7 @@ public class ShephardsPlayApplet
             "    'D' - Delaunay triangulate",
             "    'w' - add or remove closest dual vertex from list of points to show curvature center of",
             "    'W' - select *all* dual verts for weighting (positive weight, of arity 3), or deselect all if selected all previously",
+            "    'e' - toggle also showing centroid and euler line, whenever showing curvature center of selected dual verts",
             "    'O' - toggle optimizeFlag",
             "    'l' - toggle showLabels",
             //"    '0' - toggle showOrigin",
@@ -4444,27 +4445,27 @@ public class ShephardsPlayApplet
             }
         } // dumpComponentHierarchy
 
-	private interface DoSomethingToComponent { void apply(java.awt.Component c); };
-	private interface DoSomethingToSwingComponent { void apply(javax.swing.JComponent jc); };
-	public static void doToAllComponents(java.awt.Component c, DoSomethingToComponent doSomethingToComponent) {
-	  // pre-order (so, for instance, if it's paintComponent, it will do it in a sensible order)
-	  doSomethingToComponent.apply(c);
-	  if (c instanceof java.awt.Container)
-	  {
-	      java.awt.Container C = (java.awt.Container)c;
-	      int n = C.getComponentCount();
-	      for (int i = 0; i < n; ++i)
-		  doToAllComponents(C.getComponent(i), doSomethingToComponent);
-	  }
-	}
+        private interface DoSomethingToComponent { void apply(java.awt.Component c); };
+        private interface DoSomethingToSwingComponent { void apply(javax.swing.JComponent jc); };
+        public static void doToAllComponents(java.awt.Component c, DoSomethingToComponent doSomethingToComponent) {
+          // pre-order (so, for instance, if it's paintComponent, it will do it in a sensible order)
+          doSomethingToComponent.apply(c);
+          if (c instanceof java.awt.Container)
+          {
+              java.awt.Container C = (java.awt.Container)c;
+              int n = C.getComponentCount();
+              for (int i = 0; i < n; ++i)
+                  doToAllComponents(C.getComponent(i), doSomethingToComponent);
+          }
+        }
 
-	public static void doToAllSwingComponents(java.awt.Component c, DoSomethingToSwingComponent doSomethingToSwingComponent) {
-	  doToAllComponents(c, c1 -> {
-	    if (c1 instanceof javax.swing.JComponent) {
-	      doSomethingToSwingComponent.apply((javax.swing.JComponent)c1);
-	    }
-	  });
-	}
+        public static void doToAllSwingComponents(java.awt.Component c, DoSomethingToSwingComponent doSomethingToSwingComponent) {
+          doToAllComponents(c, c1 -> {
+            if (c1 instanceof javax.swing.JComponent) {
+              doSomethingToSwingComponent.apply((javax.swing.JComponent)c1);
+            }
+          });
+        }
 
         // TODO: publish this somewhere more legit
         public static void randomlyColorize(java.awt.Component c,
@@ -7180,6 +7181,13 @@ public class ShephardsPlayApplet
                                 break;
                             }
 
+                            case 'e': // toggle visualization of centroid and euler line, whenever showing dual vertex weights
+                            {
+                                showEulerLineWhenShowingWeightsFlag.set(!showEulerLineWhenShowingWeightsFlag.get());
+                                System.out.println("showEulerLineWhenShowingWeightsFlag -> "+showEulerLineWhenShowingWeightsFlag.get());
+                                theCanvas.repaint();
+                                break;
+                            }
                             case 'w': // toggle closest dual vertex for weighting (think of better mnemonic)
                             {
                                 UndoItem.State before = newUndoItemState();
@@ -7245,6 +7253,7 @@ public class ShephardsPlayApplet
                                 theCanvas.repaint();
                                 break;
                             }
+
                             case 'd': // delete closest edge
                             {
                                 UndoItem.State before = newUndoItemState();
@@ -8530,7 +8539,8 @@ public class ShephardsPlayApplet
                 // bunch of stuff that gets set only if drawing dual diagram...
                 java.awt.Color dualVertColors[] = null;
                 java.awt.Color dualEdgeColors[] = null;
-                double avg[] = null; // we set it to non-null if drawing one
+                double[] avg = null; // we set it to non-null if drawing one
+                double[] centroid = null;  // we set it to non-null if drawing one
                 double lagoonCenter[] = null; // we set it to non-null if drawing one
                 double momentAndWeightStrictlyBelowEachDualVertex[][] = null;
                 boolean dualEdgeIsOffBalanceCut[] = null;
@@ -8652,7 +8662,7 @@ public class ShephardsPlayApplet
                         }
 
                         // Re-generate selectedTris from selectedDualVerts.
-                        //System.out.println("    Regenerting selectedTris from selectedDualVerts...");
+                        //System.out.println("    Regenerating selectedTris from selectedDualVerts...");
                         {
                             selectedTris = new int[selectedDualVertIndices.length][3];
                             FORI (iEdge, nEdges)
@@ -8695,10 +8705,12 @@ public class ShephardsPlayApplet
 
                     //
                     // Set color for selected dual vertices,
-                    // and compute their center of curvature
+                    // and compute their center of curvature "avg".
+                    // Also, if showing euler line, compute centroid too.
                     //
                     {
-                        double momentAndAreaSum[] = new double[4]; // zeros
+                        double curvatureMomentAndAreaSum[] = new double[4]; // zeros
+                        double centroidMomentSumTimes3[] = showEulerLineWhenShowingWeightsFlag.get() ? new double[2] : null;  // worry about only x and y, for simplicity
                         FORI (i, selectedDualVertIndices.length)
                         {
                             int ind = selectedDualVertIndices[i];
@@ -8706,17 +8718,31 @@ public class ShephardsPlayApplet
                                 continue;
                             dualVertColors[ind] = dualVertSelectionColor;
                             Mesh.Vertex dualVert = dualMesh.getVert(ind);
-                            GeomUtils.accumulateMomentAndArea(momentAndAreaSum, dualVert.momentAndArea);
+                            GeomUtils.accumulateMomentAndArea(curvatureMomentAndAreaSum, dualVert.momentAndArea);
+                            if (centroidMomentSumTimes3 != null) {
+                                Mesh.Vertex v0 = mesh.getVert(selectedTris[i][0]);
+                                Mesh.Vertex v1 = mesh.getVert(selectedTris[i][1]);
+                                Mesh.Vertex v2 = mesh.getVert(selectedTris[i][2]);
+                                centroidMomentSumTimes3[0] += (v0.x() + v1.x() + v2.x()) * dualVert.momentAndArea[3];
+                                centroidMomentSumTimes3[1] += (v0.y() + v1.y() + v2.y()) * dualVert.momentAndArea[3];
+                            }
                         }
                         if (selectedDualVertIndices.length > 0)
-                            PRINTVEC(momentAndAreaSum);
-                        double A = momentAndAreaSum[3];
-                        if (A != 0.)
+                            PRINTVEC(curvatureMomentAndAreaSum);
+                        double A = curvatureMomentAndAreaSum[3];
+                        if (A != 0.) {
                             avg = new double[] {
-                                momentAndAreaSum[0] / A,
-                                momentAndAreaSum[1] / A,
-                                momentAndAreaSum[2] / (A*A),
+                                curvatureMomentAndAreaSum[0] / A,
+                                curvatureMomentAndAreaSum[1] / A,
+                                curvatureMomentAndAreaSum[2] / (A*A),
                             };
+                            if (centroidMomentSumTimes3 != null) {
+                                centroid = new double[] {
+                                  centroidMomentSumTimes3[0] / (3.*A),
+                                  centroidMomentSumTimes3[1] / (3.*A),
+                                };
+                            }
+                        }
                     }
 
                     //
@@ -10034,9 +10060,31 @@ public class ShephardsPlayApplet
                         {
                             mg3d.setColor(dualVertSelectionColor);
                             mg3d.drawPoint(avg[0],
-                                         avg[1],
-                                         avg[2],
-                                         7);
+                                           avg[1],
+                                           avg[2],
+                                           7);
+                        }
+                        // And centroid
+                        if (centroid != null) {
+                            mg3d.setColor(java.awt.Color.CYAN);
+                            mg3d.drawPoint(centroid[0],
+                                           centroid[1],
+                                           0.,
+                                           7);
+                        }
+                        // And euler line, if we have both center of curvature and centroid
+                        if (avg != null && centroid != null)
+                        {
+                            mg3d.setColor(java.awt.Color.CYAN);
+                            // Just do simple 2d math
+                            double lengthMultiplier = 10.;
+                            double x0 = LERP(avg[0], centroid[0], lengthMultiplier);
+                            double y0 = LERP(avg[1], centroid[1], lengthMultiplier);
+                            double x1 = LERP(centroid[0], avg[0], lengthMultiplier);
+                            double y1 = LERP(centroid[1], avg[1], lengthMultiplier);
+                            mg3d.drawLine(x0,y0,0.,
+                                          x1,y1,0.,
+                                          antiAliasingFlag);
                         }
 
 
@@ -10044,9 +10092,9 @@ public class ShephardsPlayApplet
                         {
                             mg3d.setColor(dualVertSelectionColor);
                             mg3d.drawPoint(lagoonCenter[0],
-                                         lagoonCenter[1],
-                                         lagoonCenter[2],
-                                         3);
+                                           lagoonCenter[1],
+                                           lagoonCenter[2],
+                                           3);
                         }
 
 
@@ -16340,6 +16388,8 @@ OFF
         private Surface theSurface = (wrapAroundSphereFlag.get() ? (Surface)theSphereSurface
                                                                  : (Surface)theParaboloidSurface);
         private Listenable.Int sbaryExperimentType = new Listenable.Int(0,2, 0);
+        private Listenable.Boolean showEulerLineWhenShowingWeightsFlag = new Listenable.Boolean(false);
+
 
         // very special case visualization... if these are set,
         // highlight the primal/dual feature corresponding to the mouse angle.
