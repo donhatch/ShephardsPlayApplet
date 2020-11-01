@@ -825,9 +825,11 @@ final public class MeshUtils
         } // SimplerMeshDataStructure ctor
 
         // CBB: also have isConnected() above... silly, maybe.
+        // Isolated here apparently means *no incident edges*
+        // (not even self-loops).
         public boolean isConnectedExceptMaybeForIsolatedVerts()
         {
-            // DFS is actually faster supposedly but whatever
+            // BFS or DFS is actually faster supposedly but whatever
             int nVerts = v2e.length;
             int nEdges = e2v.length;
             MergeFind mergeFind = new MergeFind(nVerts);
@@ -1529,15 +1531,14 @@ final public class MeshUtils
         {
             // can be done in O(n), but whatever, this is simpler
             int nVerts = v2e.length;
+            if (nVerts <= 1) return true;
             int nEdges = e2v.length; // twice number of undirected edges
-            boolean doomed = false;
-            boolean blessed = false;
             if (nEdges < (nVerts-1)*2)
             {
                 //CHECK(false); // coverage
                 return false;
             }
-            // note, can't make same kind of shortcut for too many edges,
+            // note, can't make same kind of shortcut for *too many* edges,
             // because this might be a multigraph (multiple edges between a given pair of vertices).
             SizeTrackingMergeFind mf = new SizeTrackingMergeFind(v2e.length);
             FORI (iEdge, e2v.length)
@@ -1552,6 +1553,115 @@ final public class MeshUtils
             }
             return false;
         } // isConnected
+
+        private static boolean isConnectedNEW(int v2e[][], int e2v[][]) {
+            OUT("        in isConnectedNEW");
+            int nVerts = v2e.length;
+            if (nVerts == 0) return true;  // I guess. prevents indexing out of bounds below
+            int nEdges = e2v.length; // twice number of undirected edges
+            if (nEdges < (nVerts-1)*2) return false;
+            // note, can't make same kind of shortcut for *too many* edges,
+            // because this might be a multigraph (multiple edges between a given pair of vertices).
+            int[] q = new int[nVerts];
+            boolean[] onq = new boolean[nVerts];  // all false initially
+            int n = 0;
+            q[n++] = 0;
+            onq[0] = true;
+            FORI (ii, n)
+            {
+                int i = q[ii];
+                for (int ei : v2e[i])
+                {
+                    CHECK_EQ(e2v[ei][0], i);
+                    int j = e2v[ei][1];
+                    if (!onq[j])
+                    {
+                        q[n++] = j;
+                        onq[j] = true;
+                    }
+                }
+            }
+            OUT("        out isConnectedNEW, returning (n="+n+" == nVerts="+nVerts+")="+(n==nVerts)+" at bottom");
+            return n == nVerts;
+        }  // isConnectedNEW
+
+        private static void isConnectedTest() {
+          OUT("    in isConnectedTest");
+
+          {
+            int[][][][] v2e_and_e2v_examples = {
+              {
+                {{3},{0},{1,2}},
+                {{1,2},{2,1},{2,0},{0,2}},
+              },
+              {
+                {{1},{3},{0,2}},
+                {{2,0},{0,2},{2,1},{1,2}},
+              },
+            };
+            for (int[][][] v2e_and_e2v_example : v2e_and_e2v_examples) {
+              int[][] v2e = v2e_and_e2v_example[0];
+              int[][] e2v = v2e_and_e2v_example[1];
+              OUT("======");
+              OUT("                  v2e = "+Arrays.toStringCompact(v2e));
+              OUT("                  e2v = "+Arrays.toStringCompact(e2v));
+              CHECK_EQ(isConnected(v2e,e2v), isConnectedNEW(v2e,e2v));
+            }
+          }
+
+
+          if (true) {
+            int maxVerts = 10;
+            int maxEdges = 100;
+            int nExamplesPerSize = 100;
+
+            for (int nVerts = 0; nVerts <= maxVerts; ++nVerts) {
+              OUT("          nVerts = "+nVerts);
+              for (int nEdges = 0; nEdges <= (nVerts==0?0:maxEdges); ++nEdges) {
+                OUT("              nEdges = "+nEdges);
+                for (int iExample = 0; iExample < (nVerts==0?1:nExamplesPerSize); ++iExample) {
+                  java.util.ArrayList<java.util.ArrayList<Integer>> v2elist = new java.util.ArrayList<>();
+                  java.util.ArrayList<int[]> e2vlist = new java.util.ArrayList<>();
+                  for (int iVert = 0; iVert < nVerts; ++iVert) {
+                    v2elist.add(new java.util.ArrayList<Integer>());
+                  }
+                  for (int iEdge = 0; iEdge < nEdges; ++iEdge) {
+                    int i = (int)(Math.random() * nVerts);
+                    int j = (int)(Math.random() * nVerts);
+                    CHECK_LE_LT(0, i, nVerts);
+                    CHECK_LE_LT(0, j, nVerts);
+                    v2elist.get(i).add(e2vlist.size());
+                    e2vlist.add(new int[] {i,j});
+                    if (i != j) {
+                      v2elist.get(j).add(e2vlist.size());
+                      e2vlist.add(new int[] {j,i});
+                    }
+                  }
+
+                  int[][] v2e = new int[v2elist.size()][];
+                  for (int i = 0; i < v2e.length; ++i) {
+                    v2e[i] = new int[v2elist.get(i).size()];
+                    for (int j = 0; j < v2e[i].length; ++j) {
+                      v2e[i][j] = v2elist.get(i).get(j);
+                    }
+                  }
+
+                  int[][] e2v = new int[e2vlist.size()][];
+                  for (int i = 0; i < e2v.length; ++i) {
+                    e2v[i] = e2vlist.get(i);
+                  }
+
+                  OUT("======");
+                  OUT("                  v2e = "+Arrays.toStringCompact(v2e));
+                  OUT("                  e2v = "+Arrays.toStringCompact(e2v));
+
+                  CHECK_EQ(isConnected(v2e,e2v), isConnectedNEW(v2e,e2v));
+                }
+              }
+            }
+          }
+          OUT("    out isConnectedTest");
+        }
 
         private static int[] selectSpanningTreeRecurse(
             int v2e[][], int e2v[][],
@@ -3979,4 +4089,11 @@ final public class MeshUtils
         return mesh;
     } // loadFromOFF
 
+    public static void main(String args[]) {
+        OUT("in main");
+        OUT("  calling isConnectedTest");
+        isConnectedTest();
+        OUT("  returned from isConnectedTest");
+        OUT("out main");
+    }
 }  // class MeshUtils
