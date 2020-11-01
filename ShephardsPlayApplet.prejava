@@ -8557,6 +8557,8 @@ public class ShephardsPlayApplet
                 boolean showNetFlagValue = showNetFlag.get(); // snapshot to avoid confusion
                 boolean showNetFlowFlagValue = showNetFlowFlag.get(); // snapshot to avoid confusion
 
+                boolean showBestFitEllipseFlag = showEulerLineWhenShowingWeightsFlag.get();  // should it have its own flag?
+
                 if (drawDualDiagramFlag)
                 {
                     //
@@ -8708,11 +8710,13 @@ public class ShephardsPlayApplet
                     // Set color for selected dual vertices,
                     // and compute their center of curvature "avg".
                     // Also, if showing euler line, compute centroid too.
+                    // And, what the hell, why not covariance too.
                     //
                     {
                         double curvatureMomentAndAreaSum[] = new double[4]; // zeros
                         double centroidMomentTimes3[] = showEulerLineWhenShowingWeightsFlag.get() ? new double[2] : null;  // worry about only x and y, for simplicity
                         double orthocenterMoment[] = showEulerLineWhenShowingWeightsFlag.get() ? new double[2] : null;  // worry about only x and y, for simplicity
+                        double[][] covariance = showEulerLineWhenShowingWeightsFlag.get() ? new double[2][2] : null;  // woorry about only x and y, for simplicity
                         FORI (i, selectedDualVertIndices.length)
                         {
                             int ind = selectedDualVertIndices[i];
@@ -8771,6 +8775,7 @@ public class ShephardsPlayApplet
                                   orthocenterMoment[1] / A,
                                 };
                             }
+
                         }
                     }
 
@@ -10123,6 +10128,135 @@ public class ShephardsPlayApplet
                             mg3d.drawLine(x0,y0,0.,
                                           x1,y1,0.,
                                           antiAliasingFlag);
+                        }
+
+                        // And best-fit and worst-fit lines
+                        // (axes of best-fit ellipse).
+                        // Is it different for area as for verts?
+                        if (showBestFitEllipseFlag) {
+                          // Only when a single triangle, for now
+                          if (selectedDualVertIndices.length == 1) {
+                              Mesh.Vertex v0 = mesh.getVert(selectedTris[0][0]);
+                              Mesh.Vertex v1 = mesh.getVert(selectedTris[0][1]);
+                              Mesh.Vertex v2 = mesh.getVert(selectedTris[0][2]);
+                              double[][] triVertCoords = {
+                                {v0.x(), v0.y()},
+                                {v1.x(), v1.y()},
+                                {v2.x(), v2.y()},
+                              };
+                              double[] vertsCentroid = VecMath.average(triVertCoords);
+                              mg3d.setColor(java.awt.Color.BLUE);
+                              mg3d.drawPoint(vertsCentroid[0], vertsCentroid[1], 0., 3);
+
+                              for (int i = 0; i < triVertCoords.length; ++i) {
+                                VecMath.vmv(triVertCoords[i], triVertCoords[i], vertsCentroid);
+                              }
+                              // so triVertCoords are now relative to vertsCentroid!
+
+
+                              double[][] covariance;
+                              if (true) {
+                                // Make covariance of interior of ellipse match covariance of points (I think?)
+                                // XXX hmm, there's an mxtransposem but no transposemxm?  and no covariance?  weird.
+                                covariance = VecMath.mxm(VecMath.transpose(triVertCoords), triVertCoords);
+
+                                //VecMath.sxm(covariance, 2./3., covariance);  // magic-- this makes it circumscribed
+                                VecMath.sxm(covariance, 1./6., covariance);  // magic-- this makes it inscribed
+                              } else {
+                                // Make covariance of interior of ellipse match covariance of interior of triangle... crudely.
+                                covariance = new double[2][2];  // zeros
+                                int subdiv = 100;
+                                double[] interiorPoint = new double[2];  // scratch for loop
+                                double[][] interiorPointCovariance = new double[2][2];  // scratch for loop
+                                FORI (i, subdiv) {
+                                  FORI (j, subdiv) {
+                                    double ifrac = (i+1./3.)/subdiv;
+                                    double jfrac = (j+1./3.)/subdiv;
+                                    CHECK_LT_LT(0., ifrac+jfrac, 2.);
+                                    if (i+j >= subdiv) {
+                                      ifrac = 1. - ifrac;
+                                      jfrac = 1. - jfrac;
+                                    }
+                                    CHECK_LT_LT(0., ifrac+jfrac, 1.);
+                                    VecMath.bary(interiorPoint,
+                                                 triVertCoords[0],
+                                                 triVertCoords[1], ifrac,
+                                                 triVertCoords[2], jfrac);
+                                    VecMath.mpouterProduct(covariance, covariance, interiorPoint, interiorPoint);
+                                  }
+                                }
+                                VecMath.sxm(covariance, 1./(subdiv*subdiv), covariance);
+
+                                //VecMath.sxm(covariance, 2., covariance);  // magic - this makes it inscribed.  hmm, is this what I want?
+                                VecMath.sxm(covariance, 8., covariance);  // magic - this makes it circumscribed!  
+                              }
+
+
+
+                              CHECK_EQ(covariance.length, 2);
+                              CHECK_EQ(covariance[0].length, 2);
+                              CHECK_EQ(covariance[1].length, 2);
+
+                              double[][] eigenvectors;
+                              double[] eigenvalues;
+                              {
+                                  double[][] eigenvector_columns = VecMath.copymat(covariance);
+                                  eigenvalues = new double[2];
+                                  VecMath.jacobi(covariance, eigenvalues, eigenvector_columns);
+                                  eigenvectors = VecMath.transpose(eigenvector_columns);
+                                  CHECK_GE(eigenvalues[0], 0.);
+                                  CHECK_GE(eigenvalues[1], 0.);
+                                  // put the minor one first
+                                  if (eigenvalues[0] > eigenvalues[1]) {
+                                    Arrays.swap(eigenvalues, 0, eigenvalues, 1);
+                                    Arrays.swap(eigenvectors, 0, eigenvectors, 1);
+                                  }
+                                  CHECK_LE(eigenvalues[0], eigenvalues[1]);
+                                  double[] singularValues = {Math.sqrt(eigenvalues[0]), Math.sqrt(eigenvalues[1])};
+
+                                  double minorAxisProjectedLength = singularValues[0];  // minor axis of the inscribed ellipse
+                                  if (true) {
+                                    // Scale it so that, instead of being the minor axis of the inscribed ellipse,
+                                    // it looks like an altitude of a regular tetrahedron whose base
+                                    // is the given triangle.
+                                    minorAxisProjectedLength /= singularValues[1];
+                                    minorAxisProjectedLength = Math.sqrt(1 - SQR(minorAxisProjectedLength));
+                                    minorAxisProjectedLength *= singularValues[1];
+                                    // Now multiply by regular (tet height)/(tri inradius).
+                                    // I think that's sqrt(8).  Yup.
+                                    minorAxisProjectedLength *= Math.sqrt(8.);
+                                  }
+                                  mg3d.setColor(java.awt.Color.RED);
+                                  mg3d.drawLine(vertsCentroid[0]-eigenvectors[0][0]*minorAxisProjectedLength,vertsCentroid[1]-eigenvectors[0][1]*minorAxisProjectedLength,0.,
+                                                vertsCentroid[0]+eigenvectors[0][0]*minorAxisProjectedLength,vertsCentroid[1]+eigenvectors[0][1]*minorAxisProjectedLength,0.,
+                                                antiAliasingFlag);
+
+                                  mg3d.setColor(java.awt.Color.GREEN);
+                                  mg3d.drawLine(vertsCentroid[0]-eigenvectors[1][0]*singularValues[1],vertsCentroid[1]-eigenvectors[1][1]*singularValues[1],0.,
+                                                vertsCentroid[0]+eigenvectors[1][0]*singularValues[1],vertsCentroid[1]+eigenvectors[1][1]*singularValues[1],0.,
+                                                antiAliasingFlag);
+                                  double[][] basis = {
+                                    {eigenvectors[0][0]*singularValues[0], eigenvectors[0][1]*singularValues[0]},
+                                    {eigenvectors[1][0]*singularValues[1], eigenvectors[1][1]*singularValues[1]},
+                                  };
+                                  int n = 180;
+                                  for (int i = 0; i < n; ++i) {
+                                    double s = Math.sin(2.*Math.PI*i/n);
+                                    double c = Math.cos(2.*Math.PI*i/n);
+                                    double x = vertsCentroid[0] + c*basis[0][0] + s*basis[1][0];
+                                    double y = vertsCentroid[1] + c*basis[0][1] + s*basis[1][1];
+                                    mg3d.setColor(java.awt.Color.YELLOW);
+                                    mg3d.drawPoint(x, y, 0., 1);
+
+                                    // Assuming the above was inscribed, draw circumscribed too
+                                    x = vertsCentroid[0] + 2*c*basis[0][0] + 2*s*basis[1][0];
+                                    y = vertsCentroid[1] + 2*c*basis[0][1] + 2*s*basis[1][1];
+                                    mg3d.setColor(java.awt.Color.YELLOW);
+                                    mg3d.drawPoint(x, y, 0., 1);
+
+                                  }
+                              }
+                          }
                         }
 
 
